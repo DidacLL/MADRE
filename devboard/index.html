@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MADREdev Dashboard</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #202124;
+      --muted: #5f6368;
+      --line: #d8dee4;
+      --panel: #ffffff;
+      --soft: #f6f8fa;
+      --accent: #0f766e;
+      --warn: #9a6700;
+      --block: #b42318;
+      --ok: #1a7f37;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Arial, sans-serif;
+      color: var(--ink);
+      background: var(--soft);
+      line-height: 1.45;
+    }
+
+    header {
+      background: var(--panel);
+      border-bottom: 1px solid var(--line);
+      padding: 20px clamp(16px, 4vw, 48px);
+    }
+
+    main {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 24px clamp(16px, 4vw, 48px) 48px;
+    }
+
+    h1, h2, h3, p {
+      margin-top: 0;
+    }
+
+    h1 {
+      font-size: 28px;
+      margin-bottom: 4px;
+    }
+
+    h2 {
+      font-size: 18px;
+      margin-bottom: 12px;
+    }
+
+    h3 {
+      font-size: 14px;
+      margin-bottom: 6px;
+    }
+
+    a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      margin-bottom: 0;
+    }
+
+    .notice {
+      margin-top: 14px;
+      max-width: 920px;
+      color: var(--muted);
+    }
+
+    .grid {
+      display: grid;
+      gap: 16px;
+    }
+
+    .summary {
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      margin-bottom: 20px;
+    }
+
+    .columns {
+      grid-template-columns: minmax(0, 1.3fr) minmax(280px, .7fr);
+      align-items: start;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px;
+    }
+
+    .metric {
+      min-height: 116px;
+    }
+
+    .label {
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+    }
+
+    .value {
+      font-size: 22px;
+      font-weight: 700;
+      margin: 6px 0;
+    }
+
+    .tag {
+      display: inline-block;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 2px 8px;
+      font-size: 12px;
+      font-weight: 600;
+      background: var(--soft);
+    }
+
+    .ok {
+      color: var(--ok);
+    }
+
+    .warn {
+      color: var(--warn);
+    }
+
+    .block {
+      color: var(--block);
+    }
+
+    ul {
+      margin: 0;
+      padding-left: 20px;
+    }
+
+    li + li {
+      margin-top: 8px;
+    }
+
+    .task {
+      display: grid;
+      grid-template-columns: 110px minmax(0, 1fr);
+      gap: 12px;
+      padding: 10px 0;
+      border-top: 1px solid var(--line);
+    }
+
+    .task:first-of-type {
+      border-top: 0;
+      padding-top: 0;
+    }
+
+    .links {
+      display: grid;
+      gap: 8px;
+    }
+
+    .note {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    @media (max-width: 760px) {
+      .columns {
+        grid-template-columns: 1fr;
+      }
+
+      .task {
+        grid-template-columns: 1fr;
+        gap: 4px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>MADREdev Dashboard</h1>
+    <p class="subtitle">Read-only development evidence surface for the MADRE repository.</p>
+    <p class="notice">This dashboard is not product authority. Product architecture belongs to the canonical TeX dossier; this page only helps a human inspect current development state without reading a large generated document set.</p>
+  </header>
+
+  <main>
+    <section class="grid summary" aria-label="Project summary">
+      <div class="panel metric">
+        <div class="label">Phase</div>
+        <div class="value">v0.2 correction</div>
+        <span class="tag ok">Operational baseline</span>
+      </div>
+      <div class="panel metric">
+        <div class="label">Product authority</div>
+        <div class="value">TeX dossier</div>
+        <span class="tag ok">Isolated</span>
+      </div>
+      <div class="panel metric">
+        <div class="label">Implementation</div>
+        <div class="value">Gate required</div>
+        <span class="tag block">Gate required</span>
+      </div>
+      <div class="panel metric">
+        <div class="label">Next agent action</div>
+        <div class="value">Check readiness</div>
+        <span class="tag warn">Actionable</span>
+      </div>
+    </section>
+
+    <section class="grid columns">
+      <div class="grid">
+        <section class="panel">
+          <h2>Implementation Readiness Gates</h2>
+          <div class="task">
+            <strong>Definition</strong>
+            <span>Owned behavior has an accepted product or technical definition.</span>
+          </div>
+          <div class="task">
+            <strong>Slice</strong>
+            <span>First-slice scope and explicit non-goals are named.</span>
+          </div>
+          <div class="task">
+            <strong>Evidence</strong>
+            <span>Expected trace records and acceptance evidence are defined.</span>
+          </div>
+          <div class="task">
+            <strong>Negative path</strong>
+            <span>At least one unsafe or unsupported path must fail safely.</span>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h2>Current Readiness Questions</h2>
+          <ul>
+            <li><span class="block">Runtime implementation:</span> requires readiness gate.</li>
+            <li><span class="warn">Kernel boundary:</span> implementation language and boundary remain future decisions.</li>
+            <li><span class="warn">Hardware baseline:</span> local-first validation target is not fixed.</li>
+            <li><span class="warn">First slice:</span> technical artifact must define behavior, evidence, negative paths, and non-goals.</li>
+          </ul>
+        </section>
+
+        <section class="panel">
+          <h2>Open Questions</h2>
+          <ul>
+            <li>Select the first technical artifact for runtime-slice definition.</li>
+            <li>Choose the local hardware profile for early validation.</li>
+            <li>Resolve kernel boundary/language decision if required by the selected slice.</li>
+          </ul>
+        </section>
+      </div>
+
+      <aside class="grid">
+        <section class="panel">
+          <h2>Agent Fast-Check Links</h2>
+          <div class="links">
+            <a href="../AGENTS.md">Root agent entrypoint</a>
+            <a href="../agents/def/product-orientation.md">Product orientation digest</a>
+            <a href="../agents/workflow.md">MADREdev workflow</a>
+            <a href="../agents/def/technical-artifacts.md">Technical artifact policy</a>
+            <a href="../agents/def/agenticdocumentation.md">Agent Markdown rules</a>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h2>Authority Links</h2>
+          <div class="links">
+            <a href="../docs/tex/MADRE-AgenticSystem.tex">Canonical dossier source</a>
+            <a href="../agents/LaTeXdocumentation.md">LaTeX guidance</a>
+            <a href="../agents/state/current.md">Current development state</a>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h2>Technical Artifact Policy</h2>
+          <ul>
+            <li>Specs and ADRs are allowed when owned, scoped, linked, and reviewed.</li>
+            <li>They must derive from the canonical dossier or an explicit accepted task.</li>
+            <li>They must not become a parallel product dossier.</li>
+          </ul>
+        </section>
+
+        <section class="panel">
+          <h2>Dashboard Rule</h2>
+          <p class="note">Update this page as a compact projection of current evidence. Do not turn it into a planning log, product specification, or hidden source of architecture.</p>
+        </section>
+      </aside>
+    </section>
+  </main>
+</body>
+</html>

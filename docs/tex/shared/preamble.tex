@@ -1,0 +1,318 @@
+%# Author: Scvria
+% !TeX spellcheck = en_EN-English
+\RequirePackage[a4paper]{geometry}
+\ProvidesFile{MADREpreamble}
+\RequirePackage{expl3}
+\RequirePackage{accsupp}
+\RequirePackage[T1]{fontenc}
+\RequirePackage[utf8]{inputenc}
+\RequirePackage[default]{pxCORE}
+\RequirePackage{lmodern}
+\RequirePackage{booktabs}
+\RequirePackage{tabularx}
+\RequirePackage{fancyhdr}
+\RequirePackage{graphicx}
+\RequirePackage{tcolorbox}
+\RequirePackage{cleveref}
+\RequirePackage{lastpage}
+\newgeometry{hmargin=.8in,vmargin=1in}
+\usetikzlibrary{arrows.meta,positioning,calc,fit,shapes.geometric}
+%%%%%%%%%%%%%%%%%%% DEFINITIONS
+\def\madreV{Beta v0.1}
+\def\madreName{MADRE Agentic System \madreV}
+\def\madreURL{\url{https://github.com/DidacLL/MADRE-AgenticSystem/}}
+\def\docTitleAlt{Project Definition and Architecture Documentation}
+\def\docTitle{\madreName~Documentation}
+\def\license{GPL-3.0}
+%%%%%%%%%%%%%%%%%%% COLORS
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue,
+  urlcolor=blue,
+  pdftitle={\docTitle}
+}
+\definecolor{primaryColor}{RGB}{240,20,180}
+\definecolor{secondaryColor}{RGB}{100,200,200}
+\def\altText#1#2{\texorpdfstring{\BeginAccSupp{method=escape,ActualText=#1}#2\EndAccSupp{}}{#1}}
+
+%%%%%%%%%%%%%%%%%%% PAGE STYLE
+
+
+\fancypagestyle{scvriasofware}{%
+\renewcommand{\headrule}{%
+\par\vspace*{-2pt}\resizebox{\linewidth}{12pt}{\parbox{\linewidth}{\opacity{25}!{\hspace*{\fill}\rule[10pt]{\linewidth}{1pt}\hspace*{\fill}\\[-11pt]}%
+\opacity{23}!{\hspace*{\fill}\rule[12pt]{\linewidth}{1pt}\hspace*{\fill}\\[-13pt]}%
+\opacity{20}!{\hspace*{\fill}\rule[12pt]{\linewidth}{1pt}\hspace*{\fill}\\[-13pt]}%
+\opacity{10}!{\hspace*{\fill}\rule[12pt]{\linewidth}{1pt}\hspace*{\fill}\\[-12pt]}%
+\opacity{5}!{\hspace*{\fill}\rule[12pt]{.995\linewidth}{1pt}\hspace*{\fill}\\[-12pt]}%
+\opacity{2}!{\hspace*{\fill}\rule[12pt]{.99\linewidth}{1pt}\hspace*{\fill}\\[\headruleskip]}%
+}
+}}
+\fancyhf{}%
+\setlength\headheight{30pt}%
+\setlength{\footskip}{42pt}%
+%%%%%%%%%%%% HEAD%
+\fancyhead[L]{\raisebox{1.1em}{\madreLogo*[.25\linewidth]}}%
+\fancyhead[C]{\hspace*{-.2\linewidth}\parbox{.25\linewidth}{\opacity30!{\small\emph{\docTitleAlt}}}\hspace*{\fill}\\[-.75em]\hspace*{\fill}\resizebox{.3\linewidth}{!}{\madreURL}}%
+\fancyhead[R]{\vspace*{-.8em}\parbox{.5\linewidth}{\raggedleft\opacity60!{\hspace*{\fill}\small\leftmark}\\[1.65em]}}%
+%%%%%%%%%%%% FOOT%
+%	\fancyfoot[L]{\raisebox{1.5em}{\scriptsize\madreURL}}%
+\fancyfoot[C]{\raisebox{1.5em}{\opacity70!{\small\thepage\hspace{1ex}\textbf{/}\hspace{1ex}\pageref*{LastPage}}}}%
+\fancyfoot[R]{\raisebox{.5em}{\madreLogoV*[.09\linewidth]}}%
+}
+%%%%%%%%%%%%%%%%%%% PAGE STYLE
+\fancypagestyle{toc}{%
+\fancyhf{}%
+\renewcommand{\headrule}{}
+\setlength\headheight{-10pt}%
+\setlength{\footskip}{42pt}%
+\fancyfoot[C]{\raisebox{1.5em}{\opacity70!{\small\thepage\hspace{1ex}}}}%
+\fancyfoot[R]{\raisebox{.5em}{\madreLogoV*[.09\linewidth]}}%
+}
+
+%%%%%%%%%%%%%%%%%%% LOGOS
+\makeatletter%
+\def\opacity#1!#2{\colorlet{currcol}{.}\textcolor{currcol!#1!}{#2}}%
+\DeclareRobustCommand{\madre}{\altText{MADRE}{\textsc{M\kern-.206em\raise.68em\hbox{\rotatebox{180}{\opacity50!{\resizebox{.95em}{!}{V}}}}\kern-.72em\resizebox{.28em}{!}{\opacity50!-}\kern.235emD\kern-.15emR\kern-.075emE}}}%
+\DeclareRobustCommand{\madreAgenticName}{\altText{Agentic}{\texttt{A\kern-.05emg\kern-.05eme\kern-.05emn\kern-.05emt\kern-.09emi\kern-.15emc}}}%
+\DeclareRobustCommand{\madreSystemName}{\altText{System}{\texttt{S\kern-.05emy\kern-.05ems\kern-.05emt\kern-.09emem}}}%%
+\DeclareRobustCommand{\madreAgenticSystem}{\altText{AgenticSystem}{\madreAgenticName\hspace{.5ex}\madreSystemName}}%%
+\NewDocumentCommand{\madreLogoH}{s O{12em}}{\altText{MADRE AgenticSystem\IfBooleanT{#1}{[\madreV]}}{%%
+\resizebox{#2}{!}{\opacity90!{\resizebox{\IfBooleanTF{#1}{.35\linewidth}{.5\linewidth}}{!}{\madre}}%%%
+\resizebox{\IfBooleanTF{#1}{.4\linewidth}{.6\linewidth}}{!}{\opacity60!{~\madreAgenticSystem}}%%
+\IfBooleanT{#1}{\texttt{\resizebox{.3\linewidth}{!}{[\madreV]}}}\hspace*{\fill}}}}%%
+\NewDocumentCommand{\madreLogo}{s O{.3\linewidth}}{\resizebox{#2}{!}{%%
+\parbox{.7\linewidth}{%%
+\resizebox{\linewidth}{!}{\madre}\\[.35em]%%
+\resizebox{\linewidth}{!}{\opacity40!{\scshape\textbf{·}Model-\kern-.1emAgnostic\textbf{·}Delayed\textbf{·}Reasoning\textbf{·}Effort\textbf{·}}}\vspace{.2em}%%
+}\hspace{.3em}\raise.7em\hbox{%%
+\parbox{.25\linewidth}{%%
+\resizebox{\linewidth}{!}{\opacity50!{\hspace{.2em}\madreAgenticName}}%%
+\par\vspace*{-.3em}%%
+\resizebox{\linewidth}{!}{\opacity50!{\madreSystemName}}%%
+\IfBooleanT{#1}{%%
+\par\vspace*{.3em}%%
+\resizebox{\linewidth}{!}{\opacity100!{~~\texttt{[\madreV]}}}%%
+\par\vspace*{-2.3em}%%
+}%
+}%
+}}%
+}
+\NewDocumentCommand{\madreLogoV}{s O{6em}}{%
+\resizebox{#2}{!}{%
+\parbox{.1\linewidth}{%
+\resizebox{\linewidth}{!}{\madre\hspace*{-.5em}}\\[-.5em]%
+\resizebox{\linewidth}{!}{\opacity75!{~\madreAgenticName\hspace{.5ex}\madreSystemName}}\IfBooleanT{#1}{\\[-.7em]%
+\hspace*{\fill}\resizebox{.75\linewidth}{!}{\opacity50!{\texttt{~~~\madreV\hspace{-1em}}}}}\\%
+}%
+}%
+}
+\makeatother
+\def\PECTeX{P\kern-.1ex\raise0.6ex\hbox{\resizebox{1ex}{1ex}{3}}\kern-.3ex\raise-0.5ex\hbox{C}\kern-.4ex\TeX\kern1ex}
+\NewDocumentCommand{\textbc}{s O{} m}{\textcolor{\IfBooleanTF{#1}{secondaryColor\IfBlankF{#2}{!#2}}{primaryColor\IfBlankF{#2}{!#2}}}{#3}}
+\NewDocumentCommand{\madreChapter}{s O{#3} m }{\clearpage\vspace{.6em}\opacity50!{%
+\hspace*{\fill}\noindent\textbf{%
+\huge{\textbf{\mdseries #2}}%
+\IfBooleanF{#1}{\addtocounter{chapter}{+1}\setcounter{section}{0}\addcontentsline{toc}{chapter}{#2}\markboth{#2}{#2}}}%
+\hspace*{\fill}\\[.02em]%
+\opacity20!{\hspace*{\fill}\rule{.6\linewidth}{.2em}\hspace*{\fill}\\[1em]}%
+}%
+}
+\NewDocumentCommand\MADRE{s}{\altText{MADRE}{\hspace{-.3em}\textbf{\Large\madre}}\hspace*{.3em}}
+\NewDocumentCommand\Madre{s}{\altText{MADRE}{\textbf{\hspace{-.1em}\madre}}\hspace*{.3em}}
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\umlbox}[4]{\node[draw, rounded corners=2pt, align=left, text width=#4, minimum height=1.0cm, inner sep=5pt] (#1) at #2{\textbf{#3}};}
+\newcommand{\umlrelation}[3]{\draw[-{Latex[length=2mm]}, thick] (#1) -- node[above, sloped, font=\scriptsize]{#3} (#2);}
+\newcommand{\seqactor}[3]{\node[draw, rounded corners=2pt, fill=gray!10, minimum width=2.2cm] (#1) at (#2,0) {#3}; \draw[densely dotted] (#1.south) -- ++(0,-6.0);}
+\newcommand{\seqmsg}[5]{\draw[-{Latex[length=2mm]}, thick] (#1,-#3) -- node[above, font=\scriptsize]{#5} (#2,-#3); \node[font=\scriptsize, anchor=east] at (#1,-#3) {#4};}
+\newcommand{\req}[4]{#1 & #2 & #3 & #4 \\}
+\def\MADRETABLE#1:#2#3{\pxTBLlong[.95\linewidth]{#1}{\toprule #2}[m]{\midrule#3\\\bottomrule}}
+\def\MADRETABLEv#1:#2#3{\pxTBLlong[.95\linewidth]{#1}{\toprule #2}[m]{#3}}
+
+\def\N{\n\midrule}
+
+\def\MTABLE#1:(#2,#3)#4{\pxTBLlong[.95\linewidth]{#1}{\toprule \parbox{\linewidth}{\hspace{\fill}#2}\hspace*{.1\linewidth} & #3}[m]{\\[.5em]#4}}
+\def\MTABLEv(#1,#2)#3{\pxTBLlong[.95\linewidth]{2}{\parbox[m]{\linewidth}{#1}& \parbox[m]{\linewidth}{#2}}[m]{\\[.5em]#3}}
+\ProvideDocumentCommand{\MHEAD}{s o m m}{\IfNoValueTF{#2}{\parbox{\linewidth}{\hspace{\fill}\textbf{\IfBooleanTF{#1}{\Large}{\large}#3}\hspace*{.1\linewidth}}}{\parbox[m]{#2}{\textbf{\IfBooleanTF{#1}{\Large}{\large}#3}}}& \bfseries\IfBooleanTF{#1}{\Large}{\large} #4}
+\ProvideDocumentCommand{\MROW}{s o m m }{\IfNoValueTF{#2}{\hspace{.1\linewidth}\parbox[m]{.8\linewidth}{\textbf{#3}\hspace*{.1\linewidth}}}{\parbox[m]{#2}{\textbf{#3}}}& #4\IfBooleanTF{#1}{\N}{\n}}
+\ProvideDocumentCommand{\MROWv}{s m m }{\parbox[m]{.9\linewidth}{\textbf{#2}} & #3 \IfBooleanTF{#1}{\\\bottomrule}{\n}}
+
+\NewDocumentEnvironment{pxQuote}{O{secondaryColor}}{%%
+\begin{quote}%%
+\texttt{\Huge\hspace*{-1.5ex}\textcolor{#1}{``}}%%
+\itshape%%
+}{%%
+\par\texttt{\Huge\hspace*{\linewidth}\raisebox{1.3em}{\textcolor{#1}{''}}}%%
+\end{quote}%%
+\vspace*{-1em}
+}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%	LIST
+%\LIST{P:p,p,p,p;A:a,a,a,a;T:t,t,t,t,t;A:a;T:t;A:a}
+\ProvideDocumentCommand{\LIST}{s o >{\SplitList{;}} +m }{%
+\IfBooleanTF{#1}{%
+\begin{enumerate}%
+\ProcessList{#3}{\ItemListProcessor}%
+\end{enumerate}%
+}{%
+\begin{itemize}%
+\ProcessList{#3}{\ItemListProcessor}%
+\end{itemize}%
+}%
+}
+
+\ProvideDocumentCommand{\ItemProcessor}{ m +m }{%
+\item\textbf{#1}:%
+\foreach \itelem in {#2}{ \subitem~ \parbox{\linewidth}{\itelem}}%
+}
+\ProvideDocumentCommand{\ItemListProcessor}{>{\SplitArgument{1}{:}}+m }{%
+\expandafter\ItemProcessor#1%
+}
+
+\NewDocumentCommand{\n}{}{\bigskip\\}
+\NewDocumentCommand{\brb}{m}{\emph{``\textcolor{primaryColor!60!}{#1''}}}
+\def\BOX#1:#2{%
+\IfBlankTF{#1}{%
+\parbox[c]{.8\linewidth}{#2}%
+}{%
+\parbox[c]{#1\linewidth}{#2}%
+}%
+}
+\def\itembf#1:{\item\textbf{#1:}}
+\def\subitembf#1:{\subitem\textbf{#1:}}
+\def\subsubitembf#1:{\subsubitem\textbf{#1:}}
+\def\itemT#1:#2:{\item\textbf{#1:}\IfBlankF{#2}{\\\hspace*{1em}\BOX:{#2:}}}
+\def\subitemT#1:#2:{\subitem\textbf{#1:}\IfBlankF{#2}{\\\hspace*{1em}\BOX:{#2:}}}
+\def\itemL#1:#2:{\vspace*{1em}\item\textbf{\large#1}\IfBlankF{#2}{\vspace*{.5em}\\\hspace*{1em}\BOX:{#2:}}}
+\def\itemUL#1:#2:#3{
+\vspace*{1em}\item\textbf{\large#1}%
+\IfBlankF{#2}{%
+\vspace*{.5em}\\\hspace*{1em}\BOX:{#2:%
+\begin{itemize}%
+\foreach \element in {#3}{\item\element}%
+\end{itemize}%
+}%
+}%
+}
+\def\itemOL#1:#2:#3{%
+\vspace*{1em}\item\textbf{\large#1}%
+\IfBlankF{#2}{%
+\vspace*{.5em}\\\hspace*{1em}\BOX:{#2:%
+\IfBlankF{#3}{%
+\begin{enumerate}%
+\foreach \element in {#3}{\item\element}%
+\end{enumerate}%
+}%
+}%
+}%
+}
+\def\PUSH#1 {%
+\IfBlankTF{#1}{%
+\hspace*{2em}%
+}{%
+\hspace*{#1em}%
+}%
+}
+\def\PULL#1 {%
+\IfBlankTF{#1}{%
+\hspace*{-2em}%
+}{%
+\hspace*{-#1em}%
+}%
+}
+\def\SHOUT#1:{\resizebox{\linewidth}{!}{\bfseries #1}}
+\def\GROW#1:#2 {\IfBlankTF{#1}{\resizebox{.8\linewidth}{!}{#2}}{\resizebox{#1\linewidth}{!}{#2}}}
+\def\FILL#1 {\resizebox{\linewidth}{!}{#1}}
+\NewDocumentCommand{\OL}{+m}{
+	\begin{enumerate}
+		\foreach \element in {#1}{\item\element}
+	\end{enumerate}
+}
+\def\UL#1{
+	\begin{itemize}
+		\foreach \element in {#1}{\item\element}
+	\end{itemize}
+}
+
+\NewDocumentCommand{\titleTable}{m}{
+	\vspace*{-.5em}
+	\par\pxGrow{
+		\hspace{.15\linewidth}\bfseries #1 \hspace{.15\linewidth}
+	}
+	\vspace*{-1em}\par\pxHRule*
+}
+\NewDocumentCommand{\SWOT}{m m m m}{
+	\pxTABsetup{
+		style=plain,
+		cellmode=paragraph,
+		paragraphcoltype=p,
+		width=.96\linewidth,
+	}
+	\noindent\pxTable{
+		{\titleTable{Strengths} #1\vspace*{1em}},
+		{\cellcolor{primaryColor!80!secondaryColor!20!}\titleTable{Weaknesses} #2\vspace*{1em}}}
+	{
+		{\cellcolor{primaryColor!80!secondaryColor!20!}\titleTable{Opportunities} #3\vspace*{1em}},
+		{\titleTable{Threats} #4}
+	}
+}
+\NewDocumentCommand{\imgItem}{m m +m o}{
+	{\item[]{\textbf{#1}}\\[-.2em]
+		\subitem \resizebox{.23\linewidth}{!}{\includegraphics{img/#2}}\FL\parbox[b]{.65\linewidth}{#3\vspace*{1em}}
+		\IfBlankF{#4}{\subsubitem \FL\emph{#4}\\[2em]}}
+}
+\def\usCard#1#2#3#4#5#6{
+	\vspace{0.5cm}
+	\begin{tcolorbox}[
+		colback=primaryColor!5!,
+		colframe=primaryColor!80!,
+		title=\noindent\textbf{ID:~#1}\hspace*{\fill}\textbf{#4},
+		fonttitle=\bfseries,
+		left=5pt,
+		right=5pt,
+		top=5pt,
+		bottom=5pt,
+		breakable,              % PERMET EL SALT DE PÀGINA
+		enhanced jigsaw,        % MILLORA EL TRENCAMENT ENTRE PÀGINES
+		before skip=10pt,
+		after skip=10pt
+		]
+		\textbc{User Journey} #2\\[0.2cm]
+		\textbc{Epic:} #3\\[0.2cm]
+		\textbc{User Voice:} As a\textbf{ #2 } I want \textit{#5}\\[0.3cm]
+		\textbc{Acceptance:}\\[0.1cm]
+		\begin{itemize}
+			#6
+		\end{itemize}
+	\end{tcolorbox}
+}
+\def\escenari#1#2#3#4#5#6{
+	\item \textbc{Scenario #1}:#2
+	\subitem \textbc{As a } #3
+	\subitem \textbc{and } #4
+	\subitem \textbc{I want } #5
+	\subitem \textbc{So that } #6
+}
+
+\def\US{User stories}
+
+%%%%%%%%%%%%%%%%%%% BEGIN DOCUMENT
+\AtBeginDocument{
+	\pagenumbering{gobble}
+	\begin{titlepage}
+		\begin{center}
+			{\madreLogo*[\linewidth]}\\[3em]
+			\vspace*{\fill}
+			\rule{.75\linewidth}{.3em}\\[6em]
+			{\parbox{.7\linewidth}{\huge\centering\textbf{\docTitleAlt}}}\\[6em]
+			\rule{.75\linewidth}{.3em}\\[3em]
+			{\Large Scvria Sofware}\\[0.5em]
+			{\large \today}\\[3em]
+		\end{center}
+	\end{titlepage}
+	\pagestyle{toc}
+	\pagenumbering{roman}
+	\tableofcontents
+	\clearpage
+	\pagenumbering{arabic}
+	\pagestyle{scvriasofware}
+}
