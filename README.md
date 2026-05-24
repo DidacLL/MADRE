@@ -24,12 +24,16 @@ Agents should start with `AGENTS.md` and `agents/def/product-orientation.md`; th
 
 State and dashboard files are advisory coordination aids; current user instructions and the canonical dossier control work.
 
+Development changes should be made through topic branches, PRs, and CI; `main` is not the normal work branch.
+
 ```text
 AGENTS.md                         Root agent entrypoint
 agents/workflow.md                MADREdev workflow
 agents/LaTeXdocumentation.md      LaTeX editing guidance
 agents/def/agenticdocumentation.md Agent-facing Markdown rules
+agents/def/artifact-taxonomy.md   Repository path ownership
 agents/def/product-orientation.md Non-authoritative product digest
+agents/def/repository-governance.md Branch, PR, and main-protection rules
 agents/def/technical-artifacts.md Controlled technical-artifact policy
 agents/state/current.md           Mutable development state, not authority
 devboard/index.html               Static read-only development dashboard
@@ -39,7 +43,17 @@ Open `devboard/index.html` directly in a browser to inspect current development 
 
 ## Build
 
-The architecture dossier depends on [P3CTeX](https://github.com/DidacLL/P3CTeX). With P3CTeX available to the local TeX installation or checked out under `.deps/P3CTeX`, compile from `docs/tex`:
+The architecture dossier depends on [P3CTeX](https://github.com/DidacLL/P3CTeX). Local development expects P3CTeX in MiKTeX and uses `pdflatex`.
+
+Compile recently modified TeX files locally:
+
+```powershell
+.\scripts\compile-recent-tex.ps1
+```
+
+The script writes auxiliary files under `docs/tex/auxfiles`, writes deliverable PDFs under `docs`, and removes auxiliary files after successful compilation.
+
+Manual single-document compile from `docs/tex`:
 
 ```powershell
 pdflatex -interaction=nonstopmode -halt-on-error -file-line-error MADRE-AgenticSystem.tex

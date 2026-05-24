@@ -10,9 +10,10 @@ This file is agent procedure only. It does not define MADRE product architecture
 1. Read the user request and identify the owned file before editing.
 2. Read the smallest source set needed to answer the task.
 3. Keep product documentation, agent procedure, mutable state, and private research separate.
-4. Make the smallest coherent change that satisfies the request.
-5. Validate only what the change can affect.
-6. Summarize changed files, validation, and any remaining risk.
+4. Confirm the branch is not `main` before mutation.
+5. Make the smallest coherent change that satisfies the request.
+6. Validate only what the change can affect.
+7. Summarize changed files, validation, and any remaining risk.
 
 ## Source Priority
 
@@ -33,9 +34,29 @@ If sources conflict, the user request controls the task, product architecture st
 - Code: implement only behavior already defined at the right product or technical level.
 - Dashboard: display development evidence; do not make it an authority source.
 
+## Branch Discipline
+
+Before mutation, confirm the current branch is not `main`. If it is `main`, create or switch to an appropriate topic branch, or stop and report that a topic branch is required.
+
+Do not merge or push to `main` directly.
+
+## File Creation Gate
+
+Before creating a file, answer:
+
+- What artifact type is this?
+- Which path class in `agents/def/artifact-taxonomy.md` owns it?
+- Is the target path mutable or stable?
+- Is it generated, stable procedure, product documentation, technical contract, state, report, or dashboard?
+- Which paths are explicitly forbidden?
+
+Create or patch the minimal owning artifact in the path class defined by `agents/def/artifact-taxonomy.md`.
+
+Runtime-slice contracts default to `docs/technical/runtime-slice-XXX.md`.
+
 ## Implementation Readiness Gate
 
-Runtime code may start when the current user request authorizes implementation and the owned behavior has a product or technical definition, first-slice scope, expected trace/acceptance evidence, and negative-path validation. If any of those are missing, create or patch the minimal owning technical artifact first; do not block solely on old coordination-state wording.
+Runtime code may start when the current user request authorizes implementation and the owned behavior has a product or technical definition, first-slice scope, expected trace/acceptance evidence, and negative-path validation. If any of those are missing, create or patch the minimal owning artifact in the path class defined by `agents/def/artifact-taxonomy.md`; do not block solely on old coordination-state wording.
 
 Agents must not wait for perfect fine-grained design, but must not invent runtime behavior without an owner artifact.
 

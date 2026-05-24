@@ -197,8 +197,8 @@
     <section class="grid summary" aria-label="Project summary">
       <div class="panel metric">
         <div class="label">Phase</div>
-        <div class="value">v0.2 correction</div>
-        <span class="tag ok">Operational baseline</span>
+        <div class="value">Governance repair</div>
+        <span class="tag warn">MADREdev</span>
       </div>
       <div class="panel metric">
         <div class="label">Product authority</div>
@@ -212,13 +212,33 @@
       </div>
       <div class="panel metric">
         <div class="label">Next agent action</div>
-        <div class="value">Check readiness</div>
+        <div class="value">Repair governance</div>
         <span class="tag warn">Actionable</span>
       </div>
     </section>
 
     <section class="grid columns">
       <div class="grid">
+        <section class="panel">
+          <h2>Repository Governance</h2>
+          <ul>
+            <li>Work branch required for non-trivial changes.</li>
+            <li>PR integration expected before `main`.</li>
+            <li>CI required before merge.</li>
+            <li>`main` is not the normal work branch.</li>
+          </ul>
+        </section>
+
+        <section class="panel">
+          <h2>Artifact Ownership</h2>
+          <ul>
+            <li><code>agents/def/**</code>: stable procedure only.</li>
+            <li><code>docs/technical/**</code>: technical contracts.</li>
+            <li><code>agents/state/**</code>: advisory state.</li>
+            <li><code>agents/reports/**</code> or <code>agents/backlog/**</code>: generated analysis and reports.</li>
+          </ul>
+        </section>
+
         <section class="panel">
           <h2>Implementation Readiness Gates</h2>
           <div class="task">
@@ -265,6 +285,8 @@
           <div class="links">
             <a href="../AGENTS.md">Root agent entrypoint</a>
             <a href="../agents/def/product-orientation.md">Product orientation digest</a>
+            <a href="../agents/def/artifact-taxonomy.md">Artifact taxonomy</a>
+            <a href="../agents/def/repository-governance.md">Repository governance</a>
             <a href="../agents/workflow.md">MADREdev workflow</a>
             <a href="../agents/def/technical-artifacts.md">Technical artifact policy</a>
             <a href="../agents/def/agenticdocumentation.md">Agent Markdown rules</a>
@@ -283,8 +305,9 @@
         <section class="panel">
           <h2>Technical Artifact Policy</h2>
           <ul>
-            <li>Specs and ADRs are allowed when owned, scoped, linked, and reviewed.</li>
+            <li>Specs and ADRs are allowed when owned, scoped, and linked.</li>
             <li>They must derive from the canonical dossier or an explicit accepted task.</li>
+            <li>Runtime-slice contracts belong under <code>docs/technical/**</code>.</li>
             <li>They must not become a parallel product dossier.</li>
           </ul>
         </section>
