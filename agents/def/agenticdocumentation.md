@@ -25,9 +25,9 @@ This file defines writing rules for agent-facing MADREdev Markdown. It is not pr
 ## Do Not Add
 
 - Permanent MADREdev personas, role-play modes, or agent identity files. Use temporary task passes only.
-- Sprint ceremony or PR ritual.
+- Ceremony or PR ritual.
 - Uncontrolled parallel ADR/specification forests. Short technical specs and ADRs are allowed only when explicitly derived from the canonical dossier, owned, linked, and accepted through review.
-- Generated task outputs, reports, runtime-slice specs, ADR drafts, or implementation contracts under `agents/def/**`.
+- Generated task outputs, reports, implementation specs, ADR drafts, or implementation contracts under `agents/def/**`.
 - Long history summaries.
 - Private conversational wording.
 - Product architecture restated as procedure.
@@ -35,7 +35,7 @@ This file defines writing rules for agent-facing MADREdev Markdown. It is not pr
 ## Temporal Language
 
 - Avoid phrases that create stale blockers through manual-review, correction-state, baseline-readiness, or human-acceptance wording unless the current user explicitly asks for that status.
-- Prefer neutral operational labels: "Open question," "Known risk," "Requires definition," "Readiness gate not satisfied," or "Next agent action."
+- Prefer neutral operational labels: "Open question," "Known risk," "Requires definition," or "Next agent action."
 - A missing definition can block implementation; an old status sentence cannot.
 
 ## Review Checklist

@@ -12,8 +12,9 @@ This file is agent procedure only. It does not define MADRE product architecture
 3. Keep product documentation, agent procedure, mutable state, and private research separate.
 4. Confirm the branch is not `main` before mutation.
 5. Make the smallest coherent change that satisfies the request.
-6. Validate only what the change can affect.
-7. Summarize changed files, validation, and any remaining risk.
+6. Check whether `devboard/index.html` still reflects human-visible status; update it only when status changed.
+7. Validate only what the change can affect.
+8. Summarize changed files, validation, and any remaining risk.
 
 ## Source Priority
 
@@ -32,7 +33,7 @@ If sources conflict, the user request controls the task, product architecture st
 - Agent docs: keep instructions concise, operational, and non-authoritative for product architecture.
 - `agents/state/**`: record current coordination only; avoid history dumps.
 - Code: implement only behavior already defined at the right product or technical level.
-- Dashboard: display development evidence; do not make it an authority source.
+- Dashboard: display human-visible status and evidence; do not make it an authority source or planning document.
 
 ## Branch Discipline
 
@@ -40,7 +41,7 @@ Before mutation, confirm the current branch is not `main`. If it is `main`, crea
 
 Do not merge or push to `main` directly.
 
-## File Creation Gate
+## File Creation Check
 
 Before creating a file, answer:
 
@@ -50,13 +51,11 @@ Before creating a file, answer:
 - Is it generated, stable procedure, product documentation, technical contract, state, report, or dashboard?
 - Which paths are explicitly forbidden?
 
-Create or patch the minimal owning artifact in the path class defined by `agents/def/artifact-taxonomy.md`.
+Create or patch the minimal owning artifact in the path class defined by `agents/def/artifact-taxonomy.md`. Use `agents/def/technical-artifacts.md` for technical-contract rules.
 
-Runtime-slice contracts default to `docs/technical/runtime-slice-XXX.md`.
+## Implementation Definition Check
 
-## Implementation Readiness Gate
-
-Runtime code may start when the current user request authorizes implementation and the owned behavior has a product or technical definition, first-slice scope, expected trace/acceptance evidence, and negative-path validation. If any of those are missing, create or patch the minimal owning artifact in the path class defined by `agents/def/artifact-taxonomy.md`; do not block solely on old coordination-state wording.
+Runtime code may start when the current user request authorizes implementation and the owned behavior has a product or technical definition, scoped work, expected trace/acceptance evidence, and negative-path validation. If any of those are missing, create or patch the minimal owning artifact in the path class defined by `agents/def/artifact-taxonomy.md`; do not block solely on old coordination-state wording.
 
 Agents must not wait for perfect fine-grained design, but must not invent runtime behavior without an owner artifact.
 
@@ -72,11 +71,11 @@ Before code work, answer:
 
 Short technical specs and ADRs are allowed when explicitly requested or needed to derive implementable contracts from the dossier. Use `agents/def/technical-artifacts.md`; keep them minimal and never let them become a parallel product dossier.
 
-## Quality Gates
+## Quality Checks
 
 - No product/procedure scope leakage.
 - No private wording or disposable review narrative in tracked public files.
-- No permanent MADREdev personas, role-play modes, sprint ceremony, unmanaged ADR/spec forest, or parallel product architecture.
+- No permanent MADREdev personas, role-play modes, ceremony, unmanaged ADR/spec forest, or parallel product architecture.
 - No stale implementation terms unless quoted as external concepts.
 - No broad test work for documentation-only changes.
 - No TeX formatting churn or hard line wrapping.
@@ -86,4 +85,4 @@ Short technical specs and ADRs are allowed when explicitly requested or needed t
 - TeX changed: run `pdflatex` from `docs/tex`, twice if references or contents changed.
 - Markdown changed: inspect links, scope, brevity, and leakage.
 - Code changed: run tests tied to documented behavior and keep existing tests intact.
-- Dashboard changed: open as a local static file or inspect HTML/CSS for broken references.
+- Dashboard changed: inspect HTML/CSS for layout issues, update `devboard/README.md` only when maintenance rules change, and keep dashboard content synchronized with human-visible status.

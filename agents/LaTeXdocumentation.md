@@ -1,7 +1,7 @@
 # MADRE LaTeX Guidance
 
 Author: ag
-State: generated
+State: read
 
 This file is agent procedure only. Product truth belongs in `docs/tex/MADRE-AgenticSystem.tex`.
 

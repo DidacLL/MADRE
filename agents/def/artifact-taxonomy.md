@@ -8,10 +8,10 @@ This file is stable agent procedure. It defines repository path ownership for MA
 ## Path Ownership
 
 - `AGENTS.md`: root stable agent entrypoint.
-- `agents/def/**`: stable agent-procedure definitions and compact derived digests only. No generated task artifacts, sprint output, or runtime-slice drafts.
+- `agents/def/**`: stable agent-procedure definitions and compact derived digests only. No generated task artifacts, run output, or implementation-contract drafts.
 - `agents/workflow.md`: stable operational workflow.
 - `agents/state/**`: advisory coordination snapshots only. Never authority.
-- `devboard/**`: advisory human inspection projection only. Never authority.
+- `devboard/**`: advisory human status projection and dashboard maintenance files only. Never authority or a planning source.
 - `docs/tex/**`: canonical product documentation and user-facing consolidated truth.
 - `docs/technical/**`: implementation-enabling technical contracts derived from the dossier or current accepted task context.
 - `docs/decisions/**`: short proposed or accepted decision records when required.
@@ -29,6 +29,6 @@ This file is stable agent procedure. It defines repository path ownership for MA
 ## Promotion
 
 - Generated review or report material may inform a technical contract.
-- A technical contract may inform implementation after the readiness gate is satisfied.
+- A technical contract may inform implementation after the implementation definition check is satisfied.
 - Product truth must be consolidated into `docs/tex/MADRE-AgenticSystem.tex` or explicitly linked according to repository convention.
 - Promotion is based on current user instruction plus engineering readiness, not manual reading of every generated file.
