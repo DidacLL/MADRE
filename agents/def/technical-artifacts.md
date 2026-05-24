@@ -9,6 +9,10 @@ This file is agent procedure only. It defines when subordinate technical specs o
 
 Technical specs and ADRs are not banned. They are forbidden only when they become unmanaged parallel authority. Valid artifacts derive implementation contracts from `docs/tex/MADRE-AgenticSystem.tex` or an explicit accepted task and never replace the canonical dossier.
 
+Technical artifacts live under `docs/technical/**` by default. ADRs or decision records, when needed, live under `docs/decisions/**`. Generated analysis and reports live under `agents/reports/**` or `agents/backlog/**`, not under `agents/def/**`.
+
+`agents/def/**` may define technical-artifact policy but must not contain the generated technical artifacts themselves.
+
 ## Valid Uses
 
 - Short ADRs for one concrete decision.
@@ -40,7 +44,7 @@ Technical specs and ADRs are not banned. They are forbidden only when they becom
 
 - No artifact may contradict `docs/tex/MADRE-AgenticSystem.tex`.
 - ADRs must be short and decision-specific.
-- Specs must define implementable contracts, not narrative product vision.
+- Specs must be concise, contract-oriented, and define implementable contracts instead of narrative product vision.
 - Runtime-facing artifacts must include expected evidence and at least one negative safe-failure path.
 - Generated content must not self-mark as `consolidated`, when the user confirms with explicit or implicit acceptance of previous artifacts it would be marked as draft, proposed or accepted depending on the user prompt and the agent criteria based on context. For that reason none agentic file would be never considerated 100% truth. Only when user is confident with that artifact could promote it as `consolidated`making it unmutable, but this is not expect to happen so often.
 - If a technical artifact becomes product truth, summarize/promote it into the dossier or link it from the dossier according to repository convention.

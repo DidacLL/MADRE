@@ -24,7 +24,15 @@ Useful local helpers currently include `\MADRETABLE`, `\MADRETABLEv`, `\MTABLE`,
 
 ## Validation
 
-Compile from `docs/tex`:
+Use the local compile script for recently modified TeX files:
+
+```powershell
+.\scripts\compile-recent-tex.ps1
+```
+
+The script uses local MiKTeX `pdflatex`, writes auxiliary files to `docs/tex/auxfiles`, writes PDFs to `docs`, and removes auxiliary files after a successful compile. P3CTeX is expected in the local MiKTeX installation; do not download it for local work.
+
+Manual single-document compile from `docs/tex`:
 
 ```powershell
 pdflatex -interaction=nonstopmode -halt-on-error -file-line-error MADRE-AgenticSystem.tex

@@ -9,7 +9,7 @@ This file is an advisory coordination snapshot. It is never product authority an
 
 ## Current Baseline
 
-MADREdev v0.2 corrective baseline is usable for preparing first-slice technical artifacts.
+MADREdev requires repository-governance repair before preparing runtime-slice technical artifacts.
 
 ## Authority
 
@@ -36,6 +36,6 @@ Runtime code requires the engineering readiness gate, not manual review of this 
 
 ## Next Agent Action
 
-- If asked to implement, first check the readiness gate.
-- If the gate is incomplete, create or patch the minimal owning technical artifact.
-- If the gate is complete, proceed with implementation.
+- Repair MADREdev governance: artifact taxonomy, branch/PR discipline, CI checks, and dashboard/state alignment.
+- After the taxonomy is accepted by current task context, create runtime-slice technical contracts under `docs/technical/**`.
+- If later asked to implement runtime code, first check the readiness gate and the owning technical contract.
