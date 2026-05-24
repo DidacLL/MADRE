@@ -12,6 +12,7 @@ This file is agent procedure only. Product truth belongs in `docs/tex/MADRE-Agen
 - Do not hard-wrap prose at an arbitrary column; rely on editor word wrap.
 - Prefer targeted edits over generated rewrites.
 - Preserve diagrams, tables, labels, and traceability unless the task explicitly changes them.
+- Use a diagram only when it communicates architecture or runtime boundaries more clearly than prose.
 
 ## Shared Support
 
