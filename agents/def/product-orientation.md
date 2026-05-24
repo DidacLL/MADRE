@@ -22,7 +22,7 @@ MADRE is a local-first, model-agnostic runtime kernel for governed agentic syste
 - Not an unrestricted automation agent.
 - Not a passive conversation-history store.
 
-## Core Invariant Checklist
+## Core Invariants
 
 - Local-first, not cloud-first.
 - Model-agnostic by contract.
@@ -30,14 +30,6 @@ MADRE is a local-first, model-agnostic runtime kernel for governed agentic syste
 - Context is governed, sourced, minimized, classified, scoped, and revocable.
 - Tools/actions are typed internal capabilities behind policy.
 - Model output is not authority.
-- Memory/learning starts quarantined.
-- Audit/recovery are part of the product claim.
+- Memory and learning start quarantined.
+- Audit and recovery are part of the product claim.
 - MADRE runtime is not MADREdev process.
-
-## Before Coding
-
-- Behavior is defined at the right documentation level.
-- Owned artifact is identified.
-- Positive and negative paths are known.
-- Policy, capability, context, and recovery implications are named.
-- Validation evidence is defined.
