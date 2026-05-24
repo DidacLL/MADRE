@@ -13,6 +13,8 @@ This file defines writing rules for agent-facing MADREdev Markdown. It is not pr
 - Put current coordination in `agents/state/current.md`, not in permanent instructions.
 - Put private or disposable notes in ignored development files.
 - Agent-facing Markdown must declare whether it is stable procedure, advisory state, generated report, or technical contract; the directory must match that classification.
+- Generated working artifacts and temporal implementation contracts belong under `agents/state/**`.
+
 
 ## Structure
 

@@ -39,7 +39,13 @@ agents/state/current.md           Mutable development state, not authority
 devboard/index.html               Static read-only development dashboard
 ```
 
-Open `devboard/index.html` directly in a browser to inspect current development status. It does not require a server.
+Open `devboard/index.html` directly in a browser to inspect current development status. It does not require a server. IT IS NOT PRODUCT AUTHORITY IT IS ONLY FOR HUMAN READERS.
+
+
+- Human docs: `docs/**`
+- Stable agent procedure: `agents/def/**`
+- Mutable agent work state: `agents/state/**`
+- Runtime-slice drafts: `agents/state/runtime-slices/**`
 
 ## Build
 

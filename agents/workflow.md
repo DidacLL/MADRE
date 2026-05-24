@@ -23,7 +23,7 @@ This file is agent procedure only. It does not define MADRE product architecture
 3. `agents/def/product-orientation.md` as a non-authoritative product digest.
 4. Root `AGENTS.md`, `agents/workflow.md`, `agents/LaTeXdocumentation.md`, and `agents/def/**` for agent procedure.
 5. `agents/state/**` for current development status only.
-6. `dev/**`, `docs/raw/**`, and `*.inform.md` as private or research input only.
+6. `dev/**`, and `*.inform.md` as private or research input only.
 
 If sources conflict, the user request controls the task, product architecture stays in the canonical dossier, and procedure stays in agent docs. Do not create a new document to avoid locating the owner.
 
@@ -86,3 +86,6 @@ Short technical specs and ADRs are allowed when explicitly requested or needed t
 - Markdown changed: inspect links, scope, brevity, and leakage.
 - Code changed: run tests tied to documented behavior and keep existing tests intact.
 - Dashboard changed: inspect HTML/CSS for layout issues, update `devboard/README.md` only when maintenance rules change, and keep dashboard content synchronized with human-visible status.
+- Runtime-slice drafts default to `agents/state/runtime-slices/runtime-slice-XXX.md`.
+- Working ADR/decision notes default to `agents/state/decisions/D-XXX.md` unless explicitly promoted to human documentation.
+- Human documentation updates go under `docs/**`; agent implementation working artifacts do not.

@@ -15,7 +15,11 @@ Temporal coordination files, dashboard labels, generated status markers, and pre
 - Product documentation: `docs/tex/**`. User-facing, consolidated, additive, and architecture-owned.
 - Agent procedure: `AGENTS.md`, `agents/workflow.md`, `agents/LaTeXdocumentation.md`, `agents/def/**`. Stable operational guidance only; not a catch-all destination for generated task output.
 - Mutable development state: `agents/state/**`. Current coordination notes only; never product authority.
-- Private research and scratch material: `dev/**`, `docs/raw/**`, `*.inform.md`. Input evidence only and not tracked authority.
+- Private research and scratch material: `dev/**`, `*.inform.md`. Input evidence only and not tracked authority.
+- `docs/**` is human documentation/deliverable space. Do not place temporal implementation artifacts, runtime-slice drafts, sprint working contracts, or generated task output under `docs/**`.”
+- `agents/state/**` is the mutable working-artifact space.
+- `agents/def/**` is stable procedure only.
+- `docs/**` is human documentation only.
 
 Do not mix MADRE product behavior with MADREdev procedure. Do not add process history, private wording, permanent MADREdev personas, ceremony, or unmanaged parallel product architecture.
 
