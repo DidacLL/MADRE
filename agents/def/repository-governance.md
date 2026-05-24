@@ -14,7 +14,7 @@ This file is stable agent procedure for repository-level engineering workflow. I
   - `agentic/<short-purpose>` for agentic work.
   - `docs/<short-purpose>` for human documentation-only work.
   - `fix/<short-purpose>` for narrow corrective patches.
-  - `runtime/<short-purpose>` for implementation slices after the readiness gate.
+  - `runtime/<short-purpose>` for implementation work after the behavior is defined.
 
 ## Pull Requests
 

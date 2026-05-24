@@ -8,7 +8,7 @@ State: read
 
 Use development notes only to understand the task. They do not define product architecture. `agents/def/product-orientation.md` is a digest for fast checks, not authority.
 
-Temporal coordination files, dashboard labels, generated status markers, and previous review notes are advisory only. They must never override the current user request or the canonical dossier. Do not block work solely because an older file carries temporal review-status wording. If the current user request authorizes progress, evaluate the actual engineering readiness gate.
+Temporal coordination files, dashboard labels, generated status markers, and previous review notes are advisory only. They must never override the current user request or the canonical dossier. Do not block work solely because an older file carries temporal review-status wording. If the current user request authorizes progress, evaluate the actual implementation definition.
 
 ## Scope Boundaries
 
@@ -17,7 +17,7 @@ Temporal coordination files, dashboard labels, generated status markers, and pre
 - Mutable development state: `agents/state/**`. Current coordination notes only; never product authority.
 - Private research and scratch material: `dev/**`, `docs/raw/**`, `*.inform.md`. Input evidence only and not tracked authority.
 
-Do not mix MADRE product behavior with MADREdev procedure. Do not add process history, private wording, permanent MADREdev personas, sprint ceremony, or unmanaged parallel product architecture.
+Do not mix MADRE product behavior with MADREdev procedure. Do not add process history, private wording, permanent MADREdev personas, ceremony, or unmanaged parallel product architecture.
 
 ## Working Rule
 
@@ -35,11 +35,13 @@ Before creating a file, classify it by artifact taxonomy and name the owner path
 
 Never create generated task artifacts under `agents/def/**`.
 
+Keep `devboard/**` human-facing, concise, and advisory. Check it after each task and update it when human-visible status changes, but do not turn it into a parallel planning document.
+
 Do not work directly on `main`; prepare changes on a topic branch and integrate through PR/CI unless the current user explicitly requests an emergency direct edit.
 
 Use the smallest coherent edit. Preserve the canonical dossier unless the task explicitly changes product architecture.
 
-Runtime code may start only when the owned behavior has an accepted product/technical definition, a first-slice scope, expected trace evidence, and negative-path validation.
+Runtime code may start only when the owned behavior has an accepted product/technical definition, scoped work, expected trace evidence, and negative-path validation.
 
 State fields describe evidence quality and lifecycle; they are not a manual approval workflow unless the current user request explicitly makes them one.
 

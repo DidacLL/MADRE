@@ -1,41 +1,25 @@
 # MADREdev Coordination Snapshot
 
-Author: ag
 State: read
 
 ## Purpose
 
-This file is an advisory coordination snapshot. It is never product authority and never blocks a current user-authorized task by itself.
+Advisory current-state note for MADREdev. It is never product authority and cannot block a current user-authorized task by itself.
 
-## Current Baseline
+## Current Focus
 
-MADREdev requires repository-governance repair before preparing runtime-slice technical artifacts.
+- Finish infrastructure cleanup: human dashboard, concise procedure, CI, and local build helpers.
+- Keep MADRE product architecture in `docs/tex/MADRE-AgenticSystem.tex`.
+- Keep agent procedure in `AGENTS.md`, `agents/workflow.md`, and `agents/def/**`.
 
-## Authority
+## Human Attention
 
-- Product architecture: `docs/tex/MADRE-AgenticSystem.tex`.
-- Agent procedure: `AGENTS.md`, `agents/workflow.md`, and `agents/def/**`.
-- Current coordination: this file and `devboard/index.html`.
-- Private/research input: `dev/**`, `docs/raw/**`, and `*.inform.md`.
+- Strategic architecture and thesis-direction decisions.
+- Domain framing that cannot be derived from the canonical dossier.
+- Repository settings that require owner access.
 
-## Runtime Implementation Rule
+## Agent Autonomy
 
-Runtime code requires the engineering readiness gate, not manual review of this file:
-
-- Owned behavior definition.
-- First-slice scope.
-- Expected trace/evidence.
-- Known negative paths.
-- Explicit non-goals.
-
-## Open Questions
-
-- First runtime-slice technical artifact.
-- Local hardware validation profile.
-- Kernel boundary/language decision if not already settled.
-
-## Next Agent Action
-
-- Repair MADREdev governance: artifact taxonomy, branch/PR discipline, CI checks, and dashboard/state alignment.
-- After the taxonomy is accepted by current task context, create runtime-slice technical contracts under `docs/technical/**`.
-- If later asked to implement runtime code, first check the readiness gate and the owning technical contract.
+- Prepare technical details, validation plans, security/logging/recovery proposals, and routine engineering evidence.
+- Use `docs/technical/**` for implementation contracts when requested or needed.
+- Keep dashboard and state files advisory, concise, and free of product authority.

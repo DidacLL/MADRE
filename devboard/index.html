@@ -4,319 +4,188 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>MADREdev Dashboard</title>
-  <style>
-    :root {
-      color-scheme: light;
-      --ink: #202124;
-      --muted: #5f6368;
-      --line: #d8dee4;
-      --panel: #ffffff;
-      --soft: #f6f8fa;
-      --accent: #0f766e;
-      --warn: #9a6700;
-      --block: #b42318;
-      --ok: #1a7f37;
-    }
-
-    * {
-      box-sizing: border-box;
-    }
-
-    body {
-      margin: 0;
-      font-family: "Segoe UI", Arial, sans-serif;
-      color: var(--ink);
-      background: var(--soft);
-      line-height: 1.45;
-    }
-
-    header {
-      background: var(--panel);
-      border-bottom: 1px solid var(--line);
-      padding: 20px clamp(16px, 4vw, 48px);
-    }
-
-    main {
-      max-width: 1180px;
-      margin: 0 auto;
-      padding: 24px clamp(16px, 4vw, 48px) 48px;
-    }
-
-    h1, h2, h3, p {
-      margin-top: 0;
-    }
-
-    h1 {
-      font-size: 28px;
-      margin-bottom: 4px;
-    }
-
-    h2 {
-      font-size: 18px;
-      margin-bottom: 12px;
-    }
-
-    h3 {
-      font-size: 14px;
-      margin-bottom: 6px;
-    }
-
-    a {
-      color: var(--accent);
-      text-decoration: none;
-    }
-
-    a:hover {
-      text-decoration: underline;
-    }
-
-    .subtitle {
-      color: var(--muted);
-      margin-bottom: 0;
-    }
-
-    .notice {
-      margin-top: 14px;
-      max-width: 920px;
-      color: var(--muted);
-    }
-
-    .grid {
-      display: grid;
-      gap: 16px;
-    }
-
-    .summary {
-      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-      margin-bottom: 20px;
-    }
-
-    .columns {
-      grid-template-columns: minmax(0, 1.3fr) minmax(280px, .7fr);
-      align-items: start;
-    }
-
-    .panel {
-      background: var(--panel);
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 16px;
-    }
-
-    .metric {
-      min-height: 116px;
-    }
-
-    .label {
-      color: var(--muted);
-      font-size: 12px;
-      text-transform: uppercase;
-      letter-spacing: .06em;
-    }
-
-    .value {
-      font-size: 22px;
-      font-weight: 700;
-      margin: 6px 0;
-    }
-
-    .tag {
-      display: inline-block;
-      border: 1px solid var(--line);
-      border-radius: 999px;
-      padding: 2px 8px;
-      font-size: 12px;
-      font-weight: 600;
-      background: var(--soft);
-    }
-
-    .ok {
-      color: var(--ok);
-    }
-
-    .warn {
-      color: var(--warn);
-    }
-
-    .block {
-      color: var(--block);
-    }
-
-    ul {
-      margin: 0;
-      padding-left: 20px;
-    }
-
-    li + li {
-      margin-top: 8px;
-    }
-
-    .task {
-      display: grid;
-      grid-template-columns: 110px minmax(0, 1fr);
-      gap: 12px;
-      padding: 10px 0;
-      border-top: 1px solid var(--line);
-    }
-
-    .task:first-of-type {
-      border-top: 0;
-      padding-top: 0;
-    }
-
-    .links {
-      display: grid;
-      gap: 8px;
-    }
-
-    .note {
-      color: var(--muted);
-      font-size: 14px;
-    }
-
-    @media (max-width: 760px) {
-      .columns {
-        grid-template-columns: 1fr;
-      }
-
-      .task {
-        grid-template-columns: 1fr;
-        gap: 4px;
-      }
-    }
-  </style>
+  <link rel="stylesheet" href="devboard.css">
 </head>
 <body>
-  <header>
-    <h1>MADREdev Dashboard</h1>
-    <p class="subtitle">Read-only development evidence surface for the MADRE repository.</p>
-    <p class="notice">This dashboard is not product authority. Product architecture belongs to the canonical TeX dossier; this page only helps a human inspect current development state without reading a large generated document set.</p>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">MADRE Agentic System</p>
+      <h1>MADRE Development Dashboard</h1>
+      <p class="lede">Human-readable project status, active work, evidence, and strategic attention points. Advisory only; product truth stays in the canonical dossier.</p>
+    </div>
+    <div class="status-pill ok">Topic branch workflow</div>
   </header>
 
-  <main>
-    <section class="grid summary" aria-label="Project summary">
-      <div class="panel metric">
-        <div class="label">Phase</div>
-        <div class="value">Governance repair</div>
-        <span class="tag warn">MADREdev</span>
+  <main class="dashboard">
+    <section class="hero-card span-7" aria-labelledby="focus-title">
+      <div class="section-head">
+        <p class="eyebrow">Current focus</p>
+        <h2 id="focus-title">Infrastructure and visibility</h2>
       </div>
-      <div class="panel metric">
-        <div class="label">Product authority</div>
-        <div class="value">TeX dossier</div>
-        <span class="tag ok">Isolated</span>
-      </div>
-      <div class="panel metric">
-        <div class="label">Implementation</div>
-        <div class="value">Gate required</div>
-        <span class="tag block">Gate required</span>
-      </div>
-      <div class="panel metric">
-        <div class="label">Next agent action</div>
-        <div class="value">Repair governance</div>
-        <span class="tag warn">Actionable</span>
+      <p class="big-statement">The environment is being shaped so agents can work autonomously while the human sees progress, evidence, risks, and strategic decisions without diving into full agent backlogs and artifacts.</p>
+      <div class="fact-grid">
+        <div>
+          <span class="label">Latest useful evidence</span>
+          <strong>CI, local TeX helper, dashboard repair</strong>
+        </div>
+        <div>
+          <span class="label">Human role</span>
+          <strong>Architecture, thesis, domain direction</strong>
+        </div>
+        <div>
+          <span class="label">Agent role</span>
+          <strong>Routine engineering details and validation</strong>
+        </div>
       </div>
     </section>
 
-    <section class="grid columns">
-      <div class="grid">
-        <section class="panel">
-          <h2>Repository Governance</h2>
-          <ul>
-            <li>Work branch required for non-trivial changes.</li>
-            <li>PR integration expected before `main`.</li>
-            <li>CI required before merge.</li>
-            <li>`main` is not the normal work branch.</li>
-          </ul>
-        </section>
-
-        <section class="panel">
-          <h2>Artifact Ownership</h2>
-          <ul>
-            <li><code>agents/def/**</code>: stable procedure only.</li>
-            <li><code>docs/technical/**</code>: technical contracts.</li>
-            <li><code>agents/state/**</code>: advisory state.</li>
-            <li><code>agents/reports/**</code> or <code>agents/backlog/**</code>: generated analysis and reports.</li>
-          </ul>
-        </section>
-
-        <section class="panel">
-          <h2>Implementation Readiness Gates</h2>
-          <div class="task">
-            <strong>Definition</strong>
-            <span>Owned behavior has an accepted product or technical definition.</span>
+    <section class="panel span-5" aria-labelledby="decision-title">
+      <div class="section-head">
+        <p class="eyebrow">Strategic attention</p>
+        <h2 id="decision-title">Decision Queue</h2>
+      </div>
+      <div class="decision-list">
+        <article class="decision">
+          <span class="badge human">Human</span>
+          <div>
+            <strong>Thesis and product architecture direction</strong>
+            <p>Creative system design remains the human focus.</p>
           </div>
-          <div class="task">
-            <strong>Slice</strong>
-            <span>First-slice scope and explicit non-goals are named.</span>
+        </article>
+        <article class="decision">
+          <span class="badge agent">Agents</span>
+          <div>
+            <strong>Engineering proposals</strong>
+            <p>Agents prepare contracts, validation, security, logging, recovery, and evidence details.</p>
           </div>
-          <div class="task">
-            <strong>Evidence</strong>
-            <span>Expected trace records and acceptance evidence are defined.</span>
+        </article>
+        <article class="decision">
+          <span class="badge later">Later</span>
+          <div>
+            <strong>Hardware profile</strong>
+            <p>Only escalates when measurements affect product claims.</p>
           </div>
-          <div class="task">
-            <strong>Negative path</strong>
-            <span>At least one unsafe or unsupported path must fail safely.</span>
-          </div>
-        </section>
+        </article>
+      </div>
+    </section>
 
-        <section class="panel">
-          <h2>Current Readiness Questions</h2>
-          <ul>
-            <li><span class="block">Runtime implementation:</span> requires readiness gate.</li>
-            <li><span class="warn">Kernel boundary:</span> implementation language and boundary remain future decisions.</li>
-            <li><span class="warn">Hardware baseline:</span> local-first validation target is not fixed.</li>
-            <li><span class="warn">First slice:</span> technical artifact must define behavior, evidence, negative paths, and non-goals.</li>
-          </ul>
-        </section>
-
-        <section class="panel">
-          <h2>Open Questions</h2>
-          <ul>
-            <li>Select the first technical artifact for runtime-slice definition.</li>
-            <li>Choose the local hardware profile for early validation.</li>
-            <li>Resolve kernel boundary/language decision if required by the selected slice.</li>
-          </ul>
-        </section>
+    <section class="panel span-12" aria-labelledby="board-title">
+      <div class="section-head inline">
+        <div>
+          <p class="eyebrow">Execution view</p>
+          <h2 id="board-title">Work Board</h2>
+        </div>
+        <p class="note">Keep cards short. Link evidence instead of turning this page into a plan.</p>
       </div>
 
-      <aside class="grid">
-        <section class="panel">
-          <h2>Agent Fast-Check Links</h2>
-          <div class="links">
-            <a href="../AGENTS.md">Root agent entrypoint</a>
-            <a href="../agents/def/product-orientation.md">Product orientation digest</a>
-            <a href="../agents/def/artifact-taxonomy.md">Artifact taxonomy</a>
-            <a href="../agents/def/repository-governance.md">Repository governance</a>
-            <a href="../agents/workflow.md">MADREdev workflow</a>
-            <a href="../agents/def/technical-artifacts.md">Technical artifact policy</a>
-            <a href="../agents/def/agenticdocumentation.md">Agent Markdown rules</a>
-          </div>
+      <div class="kanban" aria-label="Kanban board">
+        <section class="lane">
+          <h3>Backlog <span>2</span></h3>
+          <article class="task-card">
+            <strong>Architecture-to-contract pass</strong>
+            <p>Extract implementation contracts after infrastructure cleanup.</p>
+            <div class="tags"><span>agents</span><span>docs/technical</span></div>
+          </article>
+          <article class="task-card">
+            <strong>Trace evidence design</strong>
+            <p>Define how future runs expose decisions and validation.</p>
+            <div class="tags"><span>evidence</span></div>
+          </article>
         </section>
 
-        <section class="panel">
-          <h2>Authority Links</h2>
-          <div class="links">
-            <a href="../docs/tex/MADRE-AgenticSystem.tex">Canonical dossier source</a>
-            <a href="../agents/LaTeXdocumentation.md">LaTeX guidance</a>
-            <a href="../agents/state/current.md">Current development state</a>
-          </div>
+        <section class="lane">
+          <h3>Ready <span>2</span></h3>
+          <article class="task-card">
+            <strong>Branch protection setup</strong>
+            <p>Configure repository settings to match documented branch policy.</p>
+            <div class="tags"><span>owner setting</span></div>
+          </article>
+          <article class="task-card">
+            <strong>Java-first posture</strong>
+            <p>Keep native helpers evidence-driven.</p>
+            <div class="tags"><span>agent proposal</span></div>
+          </article>
         </section>
 
-        <section class="panel">
-          <h2>Technical Artifact Policy</h2>
-          <ul>
-            <li>Specs and ADRs are allowed when owned, scoped, and linked.</li>
-            <li>They must derive from the canonical dossier or an explicit accepted task.</li>
-            <li>Runtime-slice contracts belong under <code>docs/technical/**</code>.</li>
-            <li>They must not become a parallel product dossier.</li>
-          </ul>
+        <section class="lane active">
+          <h3>In Progress <span>1</span></h3>
+          <article class="task-card">
+            <strong>Dashboard repair</strong>
+            <p>Human status surface with dark layout and low maintenance cost.</p>
+            <div class="tags"><span>devboard</span><span>current branch</span></div>
+          </article>
         </section>
 
-        <section class="panel">
-          <h2>Dashboard Rule</h2>
-          <p class="note">Update this page as a compact projection of current evidence. Do not turn it into a planning log, product specification, or hidden source of architecture.</p>
+        <section class="lane">
+          <h3>Blocked <span>0</span></h3>
+          <article class="task-card muted-card">
+            <strong>No active blocker</strong>
+            <p>Infrastructure work continues through the topic branch and PR checks.</p>
+          </article>
         </section>
-      </aside>
+
+        <section class="lane">
+          <h3>Done <span>2</span></h3>
+          <article class="task-card">
+            <strong>Repository governance</strong>
+            <p>Branch, PR, artifact, and CI rules are documented.</p>
+          </article>
+          <article class="task-card">
+            <strong>Local TeX helper</strong>
+            <p>PDF output and auxiliary cleanup are scripted.</p>
+          </article>
+        </section>
+      </div>
+    </section>
+
+    <section class="panel span-4" aria-labelledby="agent-title">
+      <div class="section-head">
+        <p class="eyebrow">Autonomous work</p>
+        <h2 id="agent-title">Agent Workstream</h2>
+      </div>
+      <ul class="compact-list">
+        <li>Prepare implementation contracts when requested.</li>
+        <li>Handle routine authority, logging, security, recovery, and validation details.</li>
+        <li>Escalate only strategic or non-derivable tradeoffs.</li>
+      </ul>
+    </section>
+
+    <section class="panel span-4" aria-labelledby="evidence-title">
+      <div class="section-head">
+        <p class="eyebrow">Evidence</p>
+        <h2 id="evidence-title">Recent Validation</h2>
+      </div>
+      <ul class="evidence-list">
+        <li><strong>Policy checks:</strong> CI workflow added.</li>
+        <li><strong>TeX:</strong> local PDF compile verified.</li>
+        <li><strong>Dashboard:</strong> static page, no JavaScript required.</li>
+      </ul>
+    </section>
+
+    <section class="panel span-4" aria-labelledby="risk-title">
+      <div class="section-head">
+        <p class="eyebrow">Watchlist</p>
+        <h2 id="risk-title">Risks</h2>
+      </div>
+      <ul class="compact-list">
+        <li>Dashboard grows into a planning document.</li>
+        <li>Agent procedure leaks into human summaries.</li>
+        <li>Generated reports become product authority.</li>
+      </ul>
+    </section>
+
+    <section class="panel span-12 references" aria-labelledby="links-title">
+      <div>
+        <p class="eyebrow">References</p>
+        <h2 id="links-title">Where To Look</h2>
+      </div>
+      <nav class="link-grid" aria-label="Repository links">
+        <a href="../docs/tex/MADRE-AgenticSystem.tex">Canonical dossier source</a>
+        <a href="../docs/MADRE-AgenticSystem.pdf">Compiled dossier PDF</a>
+        <a href="../README.md">Repository overview</a>
+        <a href="../agents/state/current.md">Advisory current state</a>
+        <a href="README.md">Dashboard maintenance</a>
+      </nav>
     </section>
   </main>
 </body>
