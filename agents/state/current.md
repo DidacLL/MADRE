@@ -21,5 +21,11 @@ Advisory current-state note for MADREdev. It is never product authority and cann
 ## Agent Autonomy
 
 - Prepare technical details, validation plans, security/logging/recovery proposals, and routine engineering evidence.
-- Use `docs/technical/**` for implementation contracts when requested or needed.
+- Use `agents/state/technical/**` for implementation contracts when requested or needed.
 - Keep dashboard and state files advisory, concise, and free of product authority.
+
+## State 
+
+- Current correction focus: align artifact taxonomy so temporal implementation artifacts live under `agents/state/**`.
+- Next runtime-slice contract, when requested, should be created at:  `agents/state/runtime-slices/runtime-slice-001.md`
+- This file remains advisory and cannot block current user-authorized work by itself.

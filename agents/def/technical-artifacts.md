@@ -9,7 +9,7 @@ This file is agent procedure only. It defines when subordinate technical specs o
 
 Technical specs and ADRs are not banned. They are forbidden only when they become unmanaged parallel authority. Valid artifacts derive implementation contracts from `docs/tex/MADRE-AgenticSystem.tex` or an explicit accepted task and never replace the canonical dossier.
 
-Technical artifacts live under `docs/technical/**` by default. ADRs or decision records, when needed, live under `docs/decisions/**`. Generated analysis and reports live under `agents/reports/**` or `agents/backlog/**`, not under `agents/def/**`.
+Technical artifacts live under `agents/state/technical/**` by default. ADRs or decision records, when needed, live under `agents/state/decisions/**`. Generated analysis and reports live under `agents/reports/**` or `agents/backlog/**`, not under `agents/def/**`.
 
 `agents/def/**` may define technical-artifact policy but must not contain the generated technical artifacts themselves.
 
@@ -42,9 +42,17 @@ Technical artifacts live under `docs/technical/**` by default. ADRs or decision 
 
 ## Acceptance Rules
 
-- No artifact may contradict `docs/tex/MADRE-AgenticSystem.tex`.
+- No artifact may contradict `docs/tex/MADRE-AgenticSystem.tex` without previous notification to human owner.
 - ADRs must be short and decision-specific.
 - Specs must be concise, contract-oriented, and define implementable contracts instead of narrative product vision.
 - Runtime-facing artifacts must include expected evidence and at least one negative safe-failure path.
 - Generated content must not self-mark as `consolidated`. Use `draft`, `proposed`, or `accepted` according to the current task context and evidence.
 - If a technical artifact becomes product truth, summarize/promote it into the dossier or link it from the dossier according to repository convention.
+- Working technical artifacts live under `agents/state/**`.
+- Runtime-slice contracts live under `agents/state/runtime-slices/**` by default.
+- Decision working notes live under `agents/state/decisions/**` by default.
+- Generated reports live under `agents/reports/**` or `agents/backlog/**` if tracked.
+- Human-facing technical documentation belongs in `docs/**` only when explicitly promoted as human documentation.
+- A working technical artifact can guide implementation but is not product authority.
+- Runtime code may use an `agents/state/**` contract as the owned implementation definition when the current user request authorizes implementation and the implementation definition check is satisfied.
+- Generated content must not self-mark as consolidated final product truth.
