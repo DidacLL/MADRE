@@ -16,12 +16,32 @@ This file is the stable operating contract for MADREdev agents. It owns durable 
 
 If sources conflict, keep product architecture in the dossier, operating rules here, and task state in mutable state files.
 
+## Scope Lattice
+
+- MADRE product: human-facing product truth and deliverables. Owned by `README.md`, `docs/tex/**`, and rendered documents. Product truth is consolidated and non-temporal; it never contains MADREdev procedure or private conversation content.
+- MADREdev stable procedure: durable rules for how agents work in the development environment. Owned by `AGENTS.md` and `agents/def/**`. It states the current operating model only.
+- MADREdev mutable working state: agent-created plans, backlogs, runtime-slice drafts, readiness notes, working decisions, generated reports, and explicitly needed logs. Owned by `agents/state/**`; it is not product truth.
+- MADREdev human projection: concise current, next, completed, or blocking development status shown to the human developer. Owned by `devboard/**`; it may summarize product status but does not own product truth or expose agent working material wholesale.
+- Private conversation layer: user/assistant corrections, frustration, failed attempts, critique, and raw conversational history. It is not tracked repository content.
+
+Classify information by scope before selecting its owning path. No MADREdev procedure or mutable working state may leak into MADRE product artifacts.
+
+## Private Conversation Exclusion
+
+Do not commit private conversation content, user frustration, correction dialogue, or assistant failure analysis. Extract only neutral current rules, product decisions, or working-state facts into their owning scope.
+
 ## Path Lattice
 
 - `docs/**`: human documentation and deliverables only.
 - `docs/tex/**`: canonical product dossier source.
 - `agents/def/**`: stable agent operating instructions only.
-- `agents/state/**`: mutable agent working artifacts, runtime-slice drafts, working decisions, readiness notes, generated review material, and coordination state. Use `agents/state/runtime-slices/**` for runtime-slice definitions, `agents/state/technical/**` for other working technical specifications, and `agents/state/decisions/**` for working decision records when needed.
+- `agents/state/**`: mutable agent working material only, organized by the subpaths below.
+- `agents/state/current.md`: short advisory coordination snapshot only.
+- `agents/state/runtime-slices/**`: runtime-slice working definitions and their required technical contracts.
+- `agents/state/decisions/**`: working decision records.
+- `agents/state/backlog/**`: agent-owned pending work items.
+- `agents/state/reports/**`: generated reviews or analysis worth tracking.
+- `agents/state/logs/**`: agent execution logs only when explicitly needed.
 - `devboard/**`: human status projection only.
 - `scripts/**`: repository maintenance and build helpers.
 - `dev/**`: scratch or private inputs.
@@ -45,13 +65,13 @@ Stable files must be compact, current, and rule-owning. Mutable files may record
 - Identify the owning file or path class before editing and keep adjacent surfaces out of scope unless the change requires them.
 - Make the smallest coherent change; do not create another artifact to avoid locating the owner.
 - Before deleting or relocating information-bearing material, inspect it and retain needed content in the correct owner.
-- Use current constraints and evidence; do not preserve correction history as durable instruction.
+- Use current constraints and evidence; apply the Private Conversation Exclusion before recording rules or state.
 
 ## File-Creation Gate
 
 Before creating a file, answer internally:
 
-- Is this human documentation, stable agent instruction, mutable agent working material, dashboard projection, script, or runtime code?
+- Is this MADRE product information, MADREdev stable procedure, MADREdev mutable working state, private conversation content, dashboard projection, script, or runtime code?
 - Which path owns that class?
 - Is the target path stable or mutable?
 - What existing file should be edited instead of creating a new one?

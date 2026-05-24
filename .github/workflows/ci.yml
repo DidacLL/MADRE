@@ -57,11 +57,8 @@ jobs:
           set -euo pipefail
           required=(
             "AGENTS.md"
-            "agents/workflow.md"
+            "agents/def/operating-contract.md"
             "agents/def/product-orientation.md"
-            "agents/def/technical-artifacts.md"
-            "agents/def/artifact-taxonomy.md"
-            "agents/def/repository-governance.md"
             "docs/tex/MADRE-AgenticSystem.tex"
           )
 
