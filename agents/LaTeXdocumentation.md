@@ -13,6 +13,8 @@ This file is agent procedure only. Product truth belongs in `docs/tex/MADRE-Agen
 - Prefer targeted edits over generated rewrites.
 - Preserve diagrams, tables, labels, and traceability unless the task explicitly changes them.
 - Use a diagram only when it communicates architecture or runtime boundaries more clearly than prose.
+- Use longtable when writting tables that could expand more than 70% of a page.
+- NEVER ADD FORMATING LINE WRAP, lines should not be truncated.
 
 ## Shared Support
 
@@ -24,7 +26,7 @@ This file is agent procedure only. Product truth belongs in `docs/tex/MADRE-Agen
 Useful local helpers currently include `\MADRETABLE`, `\MADRETABLEv`, `\MTABLE`, `\MROW`, `\MHEAD`, `\LIST`, `\madreChapter`, `\code`, TikZ helpers, and MADRE logo/name commands.
 
 ## Validation
-
+Verify no text is truncated.
 Use the local compile script for recently modified TeX files:
 
 ```powershell
