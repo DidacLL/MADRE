@@ -294,6 +294,62 @@
 }
 
 \def\US{User stories}
+\newtcolorbox{classbox}[1]{colback=gray!7!,colframe=gray!15!, title=\footnotesize \madreLogoH\hspace{\fill}#1,coltitle=gray!75!}
+\newtcolorbox{whitebox}[1]{colback=white!,colframe=gray!7!, title=#1, left skip=-1em,coltitle=black, boxsep=1em}
+\NewDocumentCommand{\printClass}{s O{} m +m}{
+	\bigskip
+	\begin{classbox}{\IfBlankF{#2}{\normalsize\emph{\bfseries <#2>}\hspace*{\fill}}\parbox{.2\linewidth}{ \raggedleft\tiny Class Definition\\\texttt{\small#3}}}
+			\vspace*{1em}
+			\begin{itemize}
+				\item[]{\PULL2 \texttt{\bfseries\Large\underline{#3}\label{uml:#3}}\hlf:}%
+				\item[]\small \textbf{Attributes:}\PUSH2 \parbox[c][][b]{.75\linewidth}{\ttfamily\printAttributes{#3}}%
+				\IfBooleanF{#1}{\item[] \item[] \small \textbf{Operations:}\PUSH2 \parbox[c][][c]{.75\linewidth}{\ttfamily\printOperations{#3}}}%
+				\IfBlankF{#4}{
+					\item[]
+					\begin{whitebox}{ \small \textbf{Notes:}}
+						\parbox[t][][b]{\linewidth}{#4}
+					\end{whitebox}
+				}
+			\end{itemize}
+	\end{classbox}
+	\bigskip
+}
+\def\hlf{\hspace{.5ex}}
+\NewDocumentCommand{\printInterface}{s m +m}{
+	\begin{itemize}
+		\itemV{\hspace*{\fill}\emph{\small<interface>}}[\hspace*{1em}\textbf{\ttfamily\Large\underline{#2}\label{uml:#2}}\textbf{\hlf:}]\\[-.5em]
+		\subitembf \small Description:\hspace{2em}\BOX.7:{#3}\\[-.5em]
+		\subitembf \small Operations:\hspace{2em}\BOX.7:{\ttfamily\pxUMLOperations{#2}}
+	\end{itemize}\bigskip
+}
+
+\NewDocumentCommand{\VLbox}{O{6} m +m}{\resizebox{.9\linewidth}{!}{\hspace{-.1em}\pbox#1:\raggedright #2\hlf:\vspace{.5em}\foreach \ITVBOXel in {#3}{\\\small~\ITVBOXel};}}
+\NewDocumentCommand{\itemV}{O{5} m O{}}{\item[\pBOX#1(t,t){\raggedleft #2}~]{#3}}
+\def\itemVF#1[#2]#3:{\IfBlankTF{#1}{\item[\pbox4:#2;~]{\textbf{#3:}}}{\item[\pbox#1:#2;~]{\textbf{#3:}}}}
+\def\itemVL#1[#2]#3:#4{\IfBlankTF{#1}{\item[\pbox4:#2;~]{\textbf{#3:}}}{\item[\pbox#1:#2;~]{\textbf{#3:}}}\foreach \SUBITVL in {#4}{\subitem\BOX:{\SUBITVL}}}
+\def\pbox#1:#2;{\parbox{#1em}{\centering #2}}
+\def\pBOX#1(#2,#3)#4{\parbox[#2][\fill][#3]{#1em}{#4}}
+\NewDocumentCommand{\itemBox}{s m +m}{
+	\IfBooleanTF{#1}{\textbf{\item[]#2}}{\textbf{\item#2}}\IfBlankF{#3}{\par\vspace{1em}\hspace*{1em}\BOX1:{#3}}
+}
+\def\itemTv#1:#2:{\item[ ]\textbf{#1:}\IfBlankF{#2}{\\\hspace*{1em}\BOX:{#2:}}}
+\def\subitemT#1:#2{\subitem\textbf{#1:}\IfBlankF{#2}{\\\hspace*{1em}\BOX:{#2:}}}
+\ExplSyntaxOn
+\NewDocumentCommand{\pxReplace}{mmm}
+{
+	\tl_clear_new:N \l__pxreplace_tl
+	\tl_set:Nn \l__pxreplace_tl {#3}
+	\tl_replace_all:Nnn \l__pxreplace_tl {#1} {#2}
+	\tl_use:N \l__pxreplace_tl
+}
+\ExplSyntaxOff
+\def\UMLAt#1#2:#3 {\IfBlankF{#1}{#1~}#2:~{#3}}
+\def\bF #1:#2 {#1:\textbf{#2}}
+\def\Bf #1:{\textbf{#1:}}
+\def\bf #1 {\textbf{#1}}
+\def\aClass:#1	#2	[#3]{\drawclass*[text width= #1em]{#2}[#3]\drawclass[text width= #1em, opacity= 0]{#2}[#3]}
+\def\Class#1:#2	#3	[#4]{\IfBlankTF{#2}{\IfBlankTF{#1}{\drawclass{#3}[#4]}{\drawclass*{#3}[#4]}}{\IfBlankTF{#1}{\drawclass[text width={#2em}]{#3}[#4]}{\drawclass*[text width={#2em}]{#3}[#4]}}}
+
 
 %%%%%%%%%%%%%%%%%%% BEGIN DOCUMENT
 \AtBeginDocument{

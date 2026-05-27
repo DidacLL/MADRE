@@ -24,7 +24,7 @@ MADRE is a local-first, model-agnostic runtime kernel for governed agentic syste
 
 ## Core Invariants
 
-- Local-first, not cloud-first.
+- Local-first, never cloud.
 - Model-agnostic by contract.
 - Foreground response separated from durable delayed reasoning.
 - Context is governed, sourced, minimized, classified, scoped, and revocable.
