@@ -15,6 +15,7 @@
 \RequirePackage{tcolorbox}
 \RequirePackage{cleveref}
 \RequirePackage{lastpage}
+\RequirePackage{bookmark}
 \newgeometry{hmargin=.8in,vmargin=1in}
 \usetikzlibrary{arrows.meta,positioning,calc,fit,shapes.geometric}
 %%%%%%%%%%%%%%%%%%% DEFINITIONS
@@ -148,7 +149,7 @@
 }
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%	LIST
 %\LIST{P:p,p,p,p;A:a,a,a,a;T:t,t,t,t,t;A:a;T:t;A:a}
-\ProvideDocumentCommand{\LIST}{s o >{\SplitList{;}} +m }{%
+\ProvideDocumentCommand{\LIST}{s o >{\SplitList{#4}} +m O{;}}{%
 \IfBooleanTF{#1}{%
 \begin{enumerate}%
 \ProcessList{#3}{\ItemListProcessor}%
@@ -158,6 +159,24 @@
 \ProcessList{#3}{\ItemListProcessor}%
 \end{itemize}%
 }%
+}
+\ProvideDocumentCommand{\UList}{s O{;} >{\SplitList{#2}} +m O{}}{%
+	\begin{itemize}%
+		\IfBooleanTF{#1}{
+			\IfBlankTF{#4}{\ProcessList{#3}{\itmbf}}{\ProcessList{#3}{\itmbf[#4]}}
+		}{
+			\IfBlankTF{#4}{\ProcessList{#3}{\item}}{\ProcessList{#3}{\item[#4]}}
+		}
+	\end{itemize}
+}
+\ProvideDocumentCommand{\OList}{s O{;} >{\SplitList{#2}} +m O{}}{%
+	\begin{enumerate}
+		\IfBooleanTF{#1}{
+			\IfBlankTF{#4}{\ProcessList{#3}{\item\titbf }}{\ProcessList{#3}{\item[#4]\titbf }}%
+		}{
+			\IfBlankTF{#4}{\ProcessList{#3}{\item}}{\ProcessList{#3}{\item[#4]}}
+		}
+	\end{enumerate}
 }
 
 \ProvideDocumentCommand{\ItemProcessor}{ m +m }{%
@@ -294,22 +313,26 @@
 }
 
 \def\US{User stories}
-\newtcolorbox{classbox}[1]{colback=gray!7!,colframe=gray!15!, title=\footnotesize \madreLogoH\hspace{\fill}#1,coltitle=gray!75!}
-\newtcolorbox{whitebox}[1]{colback=white!,colframe=gray!7!, title=#1, left skip=-1em,coltitle=black, boxsep=1em}
-\NewDocumentCommand{\printClass}{s O{} m +m}{
+\newtcolorbox{classbox}[1]{colback=gray!10!,colframe=gray!40!, title=\vspace*{-.5em}\textbf{\Large\madreLogoH}\hspace{\fill}#1,coltitle=white, boxsep=-.05em}
+\newtcolorbox{whitebox}[1]{colback=white!,colframe=gray!10!, title=#1}
+% #1 bool Print Operations
+% #2 optional classtype
+% #3 classname
+% #4 Additional Attributes
+% #5 Notes
+% #6 Additional Operations
+
+\def\umltag:#1 {\vspace*{-.75em}\hspace{-2.5em}\texttt{\itshape<#1>}\\}
+\NewDocumentCommand{\printClass}{s O{} m o +m o D<>{}}{
 	\bigskip
-	\begin{classbox}{\IfBlankF{#2}{\normalsize\emph{\bfseries <#2>}\hspace*{\fill}}\parbox{.2\linewidth}{ \raggedleft\tiny Class Definition\\\texttt{\small#3}}}
+	\begin{classbox}{\IfBlankF{#2}{\normalsize\emph{\bfseries\large\textcolor{white}{<#2>}}\hspace*{\fill}}\parbox{.2\linewidth}{\bfseries\raggedleft{\tiny Class Definition}\\[-.5em]\texttt{\normalsize#3}}, bookmark=#3 }
 			\vspace*{1em}
 			\begin{itemize}
-				\item[]{\PULL2 \texttt{\bfseries\Large\underline{#3}\label{uml:#3}}\hlf:}%
-				\item[]\small \textbf{Attributes:}\PUSH2 \parbox[c][][b]{.75\linewidth}{\ttfamily\printAttributes{#3}}%
-				\IfBooleanF{#1}{\item[] \item[] \small \textbf{Operations:}\PUSH2 \parbox[c][][c]{.75\linewidth}{\ttfamily\printOperations{#3}}}%
-				\IfBlankF{#4}{
-					\item[]
-					\begin{whitebox}{ \small \textbf{Notes:}}
-						\parbox[t][][b]{\linewidth}{#4}
-					\end{whitebox}
-				}
+				\item[]{\PULL2.3 \texttt{\bfseries\Large\underline{#3}\label{uml:#3}}\hlf:}%
+				\IfBlankF{#7}{\PUSH1.3 \parbox[t][][b]{.7\linewidth}{\vspace{-1em}\small#7}}
+				\item[]\small\PULL2.5 \textbf{Attributes:}\PULL1 \parbox[c][][b]{.95\linewidth}{\ttfamily\printAttributes{#3}\IfNoValueF{#4}{\begin{itemize}\foreach\addattr in{#4}{\item[]{\addattr}}\end{itemize}}}%
+				\IfBooleanF{#1}{\\[-.5em]\PULL4.5 \textcolor{gray!40!}{\vspace{-.5em}\resizebox{.8\linewidth}{2em}{---}}\hspace*{\fill}\\[-4em]\item[]\PULL2.5 \small\textbf{Operations:}\PULL1.25 \parbox[c][][c]{\linewidth}{\ttfamily\printOperations{#3}\IfNoValueF{#6}{\vspace*{-1em}\begin{itemize}\foreach\addop in {#6}{\item[]{\addop}}\end{itemize}}}}%
+				\IfBlankF{#5}{\vspace*{-1em}\PULL1.5 \item[]{\begin{whitebox}{\raisebox{.45em}{\PULL2 \LARGE \textbf{Notes:}}, left skip=-1.5em,coltitle=white!, boxsep=-.5em}\PULL1.5 \parbox[t][][b]{\linewidth}{\footnotesize #5}\end{whitebox}}}
 			\end{itemize}
 	\end{classbox}
 	\bigskip
@@ -325,6 +348,7 @@
 
 \NewDocumentCommand{\VLbox}{O{6} m +m}{\resizebox{.9\linewidth}{!}{\hspace{-.1em}\pbox#1:\raggedright #2\hlf:\vspace{.5em}\foreach \ITVBOXel in {#3}{\\\small~\ITVBOXel};}}
 \NewDocumentCommand{\itemV}{O{5} m O{}}{\item[\pBOX#1(t,t){\raggedleft #2}~]{#3}}
+\NewDocumentCommand{\itmbf}{O{} +m}{\IfBlankTF{#2}{\item\Bf#2}{\item[#1]\Bf#2}}
 \def\itemVF#1[#2]#3:{\IfBlankTF{#1}{\item[\pbox4:#2;~]{\textbf{#3:}}}{\item[\pbox#1:#2;~]{\textbf{#3:}}}}
 \def\itemVL#1[#2]#3:#4{\IfBlankTF{#1}{\item[\pbox4:#2;~]{\textbf{#3:}}}{\item[\pbox#1:#2;~]{\textbf{#3:}}}\foreach \SUBITVL in {#4}{\subitem\BOX:{\SUBITVL}}}
 \def\pbox#1:#2;{\parbox{#1em}{\centering #2}}
@@ -343,10 +367,16 @@
 	\tl_use:N \l__pxreplace_tl
 }
 \ExplSyntaxOff
-\def\UMLAt#1#2:#3 {\IfBlankF{#1}{#1~}#2:~{#3}}
+\def\UMLAt#1#2:#3 {\IfBlankF{#1}{#1~}#2:~\textbf{#3}}
+\def\umlat#1#2:#3{\IfBlankF{#1}{#1~}#2:~\textbf{#3}}
+\def\UMLOp#1#2(#3):#4 {\IfBlankF{#1}{#1~}#2(\IfBlankF{#3}{\itshape\UMLAUX[#3]}):~\textbf{#4}}
+\def\UMLOps#1#2(#3):#4 {\IfBlankF{#1}{#1~}#2(\IfBlankF{#3}{\itshape{#3}}):~\textbf{#4}}
+\def\umlop#1#2(#3):#4{\IfBlankF{#1}{#1~}#2(\IfBlankF{#3}{\itshape\UMLAUX[#3] }):~\textbf{#4}}
+\def\UMLAUX[#1:#2]{#1:~\textbf{#2}}
 \def\bF #1:#2 {#1:\textbf{#2}}
-\def\Bf #1:{\textbf{#1:}}
+\def\Bf#1:{\textbf{#1:}}
 \def\bf #1 {\textbf{#1}}
+\def\titbf#1:#2 {\textbf{#1:} #2 }
 \def\aClass:#1	#2	[#3]{\drawclass*[text width= #1em]{#2}[#3]\drawclass[text width= #1em, opacity= 0]{#2}[#3]}
 \def\Class#1:#2	#3	[#4]{\IfBlankTF{#2}{\IfBlankTF{#1}{\drawclass{#3}[#4]}{\drawclass*{#3}[#4]}}{\IfBlankTF{#1}{\drawclass[text width={#2em}]{#3}[#4]}{\drawclass*[text width={#2em}]{#3}[#4]}}}
 
