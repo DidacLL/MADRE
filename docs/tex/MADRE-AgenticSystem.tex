@@ -1112,41 +1112,37 @@ Deployment assumptions remain conceptual at this level of specification. The pro
 	Values such as status, priority, sensitivity, risk, scope, reversibility, validation state, lifecycle, action kind, and agent profile are value types in this version. They are not classes until a later design proves they need independent behavior.\n
 
 \section{Minimal Canonical Flow}
-
-\MADRETABLEv2:{\textbf{Step} & \textbf{Runtime transition}}{
-	\midrule
-	1 & Access surface submits a \texttt{ReasoningRequest}. \N
-	2 & \texttt{MADREKernel.dispatch(request)} routes the request to a target module or the Core Module role. \N
-	3 & \texttt{ReasoningModule.handle(request)} answers, clarifies, blocks, delegates, or creates a \texttt{ReasoningPlan}. \N
-	4 & Optional \texttt{Workflow} blueprints structure delayed work into \texttt{ReasoningTask} occurrences. \N
-	5 & Ready tasks create \texttt{AgentRequest} objects for selected \texttt{MADREAgent} and \texttt{MADREAction} execution. \N
-	6 & Execution returns an \texttt{Artifact}, delegated \texttt{ReasoningRequest}, or failure material. \N
-	7 & Plan state changes and runtime history are recorded as \texttt{RuntimeEvent} entries in \texttt{RuntimeJournal}. \\
-	\bottomrule
+%% DEPRECATED, SHOULD BE A SEQUENCE DIAGRAM
+\OList[.]{
+	CoreModule submits a \texttt{ReasoningRequest} if detected from AccessSurface user interaction.
+	\texttt{MADREKernel.dispatch(request)} routes the request to the target module.
+	\texttt{ReasoningModule.handle(request)} answers and if needed clarifies, blocks, delegates to other module through a new \texttt{ReasoningRequest} , or creates a \texttt{ReasoningPlan}.
+	Optional \texttt{Workflow} blueprints structure delayed work into \texttt{ReasoningTask} occurrences.
+	Ready tasks create \texttt{AgentRequest} objects for selected \texttt{MADREAgent} and \texttt{MADREAction} execution.
+	Execution returns an \texttt{Artifact}, delegated \texttt{ReasoningRequest}, or failure material.
+	Plan state changes and runtime history are recorded as \texttt{RuntimeEvent} entries in \texttt{RuntimeJournal}
 }
 
-\section{Type Conventions}
-
-\MADRETABLE2:{\centering Type & Meaning}{
-	\centering \texttt{UUID} & Stable identifier. \N
-	\centering \texttt{Text} & Human-readable or structured textual description. \N
-	\centering \texttt{Instant} & Timestamp. \N
-	\centering \texttt{Ref<T>} & Stable reference to another runtime object. \N
-	\centering \texttt{List<T>} & Ordered collection. \N
-	\centering \texttt{Set<T>} & Unordered collection without duplicates. \N
-	\centering \texttt{Map<K,V>} & Key-value structure. \N
-	\centering \texttt{Boolean} & True or false. \N
-	\centering \texttt{Status} & Lifecycle value, not a class. \N
-	\centering \texttt{BoundaryValue} & Scope, privacy, risk, authority, or sensitivity value, not a class. \N
-	\centering \texttt{ActionKind} & Deterministic, routine, inference, artifact generation, research, validation, external, or equivalent value. \N
-	\centering \texttt{AgentProfile} & System, simple, twin, complex, or equivalent value. \N
-	\centering \texttt{ArtifactKind} & Response, file, report, generated output, research result, code, dataset, knowledge material, interaction snapshot, or equivalent value. \\
+\section{Conventions}
+\subsection{Type Conventions}
+\UList*{
+	\texttt{UUID}: Stable identifier.;
+	\texttt{Text}: Human-readable or structured textual description.;
+	\texttt{Instant}: Timestamp.;
+	\texttt{Ref<T>}: Stable reference to another runtime object.;
+	\texttt{List<T>}: Ordered collection.;
+	\texttt{Set<T>}: Unordered collection without duplicates.;
+	\texttt{Map<K,V>}: Key-value structure.;
+	\texttt{Boolean}: True or false
+}
+\subsection{Process Conventions}
+\UList*{
+	minimizeContext: Context adapted to the target scope, replaced or trimmed sensible data.
 }
 
-\section{Class Inventory}
-
+\subsection{Class Inventory}
+%% DEPRECATED, WRONG AGENTIC ASSUMPTIONS LIMITATING CLASS DEFINITION
 \MADRETABLEv2:{\textbf{Included classes} & \textbf{Deferred concepts}}{
-	\midrule
 	\texttt{MADREKernel} & \texttt{SystemAgent} \N
 	\texttt{ReasoningModule} & \texttt{SimpleAgent}, \texttt{TwinAgent}, \texttt{ComplexAgent} \N
 	\texttt{MADREAgent} & \texttt{AgentResponse}, \texttt{ModelAction}, \texttt{AgentRoutine} \N
@@ -1154,34 +1150,36 @@ Deployment assumptions remain conceptual at this level of specification. The pro
 	\texttt{ReasoningPlan}, \texttt{ReasoningTask}, \texttt{Workflow} & \texttt{KnowledgeCandidate}, \texttt{LearningCandidate}, \texttt{ConversationRecord} \N
 	\texttt{MADREAction}, \texttt{ContextBundle}, \texttt{Artifact}, \texttt{KnowledgeRecord} & \texttt{ActionRegistry}, \texttt{Scheduler}, \texttt{ContextSource} \N
 	\texttt{BoundaryProfile}, \texttt{PolicyDecision}, \texttt{RuntimeJournal}, \texttt{RuntimeEvent} & Deferred does not mean rejected; it means the current class map can express the required behavior without freezing those concepts as classes. \\
-	\bottomrule
 }
 
-\section{Structural Relations}
+\subsection{Structural Relations}
 
 \LIST{
 	Kernel:
 		\texttt{MADREKernel} registers \texttt{ReasoningModule} objects.,
 		\texttt{MADREKernel} assigns one registered module as the Core Module role.,
-		{Core Module is a role, not a class.};
+		{Core Module is a role, not a class.},
+		\texttt{MADREKernel} routes \texttt{ReasoningRequest} from one module to another;
 	Module:
-		\texttt{ReasoningModule} owns bounded data, knowledge, context governance, allowed agents, allowed actions, and workflows.,
+		{\texttt{ReasoningModule} owns bounded data, knowledge, context governance, allowed agents, allowed actions, and workflows.},
 		\texttt{ReasoningModule} receives \texttt{ReasoningRequest} objects routed by the kernel.,
-		\texttt{ReasoningModule} may answer directly, block, clarify, delegate, or create a \texttt{ReasoningPlan}.;
+		{\texttt{ReasoningModule} may answer directly, block, clarify, delegate, or create a \texttt{ReasoningPlan}.};
 	Agent and action:
 		\texttt{MADREAgent} coordinates or executes \texttt{AgentRequest} objects.,
-		{System, simple, twin, and complex behavior is represented by \texttt{AgentProfile}, not subclasses.},
+		{\texttt{SimpleAgent} is an agent that directly executes its action in an almost deterministic way, no learning, no double thread.},
+		{\texttt{TwinAgent} is an agent that executes 2 reasoning threads for each action. First one provides a response to the request, but before dispatching this response it is doublechecked by its inner doubleCheck routine, does not learn},
+		{\texttt{ComplexAgent} is an agent that executes 3 reasoning threads for each action. Provides a inmediate answer to any request, why parallel thread analyze the request to detect if a new ReasoningRequest is required. The 3rd reasoning thread is scheduled and it reviews previous responses, results and consumers feedback to improve its learning},
+		{\texttt{SystemAgent} is a \texttt{ComplexAgent} bind to a \texttt{ReasoningModule} so that it could manage scope specific context and learning. SystemAgents might never leave the assigned module. If assigned as moduleManger it is also able to provide metamodule knowledge, responses and configs.},
 		\texttt{MADREAction} is executable behavior available to an agent.,
-		{Inference is represented as \texttt{MADREAction.actionKind = inference} until the model adapter contract is designed.};
+		{Inference is represented as \texttt{MADREAction} until the model adapter contract is designed.};
 	Planning:
-		\texttt{Workflow} is a reusable blueprint, not an action, actor, or scheduled object.,
+		{\texttt{Workflow} is a reusable blueprint, not an action, actor, or scheduled object.},
 		\texttt{ReasoningRequest} is routed.,
 		\texttt{ReasoningPlan} is scheduled.,
 		\texttt{ReasoningTask} is a passive planned occurrence inside exactly one \texttt{ReasoningPlan}.;
 	Artifacts and trace:
-		\texttt{Artifact} is materialized output or retained material.,
+		\texttt{Artifact} is an object generated by an AgentAction,
 		\texttt{KnowledgeRecord} is module-owned known material and is not truth by default.,
-		\texttt{BoundaryProfile} describes composable constraints.,
 		\texttt{PolicyDecision} records a boundary or policy evaluation result.,
 		\texttt{RuntimeJournal} appends \texttt{RuntimeEvent} history.,
 		\texttt{RuntimeEvent} records what happened but does not authorize what happened.
@@ -1199,8 +1197,9 @@ Deployment assumptions remain conceptual at this level of specification. The pro
 		Schedule \texttt{ReasoningPlan} objects.,
 		Expose safe module availability views.,
 		{Own low-level runtime bindings for storage, scheduling, inference availability, device resources, and host services.},
-		Append runtime events through \texttt{RuntimeJournal}.,
-		{Enforce system-level boundary checks before crossing modules, actions, storage, inference, or external services.};
+		Append runtime events through \texttt{RuntimeJournal}.
+%		{Enforce system-level boundary checks before crossing modules, actions, storage, inference, or external services.} NO boundaries get automatically checked by them-self through manifesto logic
+		;
 	Boundaries:
 		The kernel does not reason.,
 		It does not plan module work.,
@@ -1211,17 +1210,17 @@ Deployment assumptions remain conceptual at this level of specification. The pro
 		It does not decide semantic module suitability.
 }
 \pxUMLClass{MADREKernel}{%
-	\UMLAt-kernelId:UUID ,
-	\UMLAt-boundary:BoundaryProfile
+	\UMLAt-coreModule:ReasoningModule ,
+	\UMLAt-dbAccessor:DBAccessor
 }[
 	\UMLOps+registerModule(module:ReasoningModule):RuntimeEvent ,
 	\UMLOps+assignCoreModule(moduleRef:Ref<ReasoningModule>):RuntimeEvent ,
 	\UMLOps+dispatch(request:ReasoningRequest):RuntimeEvent ,
 	\UMLOps+schedule(plan:ReasoningPlan):RuntimeEvent ,
-	\UMLOps+moduleViewFor(requesterBoundary:BoundaryProfile):List<Ref<ReasoningModule>> ,
+	\UMLOps+moduleViewFor(requesterBoundary:BoundaryProfile):List< Ref<ReasoningModule> > ,
 	\UMLOps+record(event:RuntimeEvent):RuntimeEvent
 ]\printClass{MADREKernel}{%
-	\item[] Deterministic local runtime coordinator for registration, routing, scheduling entry points, low-level runtime bindings, and journal coordination.
+	\item[] Deterministic local runtime coordinator for registration, routing, scheduling entry points, low-level runtime bindings, providing access to data and journal coordination.
 	\item[] Relationships: points to the Core Module role, registered modules, scheduled plans, and the runtime journal.
 	\item[] Dispatch delivers requests to a target module or Core Module role; it does not schedule the request.
 }<\texttt{MADREKernel} coordinates local runtime boundaries and trace.>
@@ -1232,7 +1231,7 @@ Deployment assumptions remain conceptual at this level of specification. The pro
 	Responsibilities:
 		Own a bounded data and knowledge scope.,
 		Own module-local context governance.,
-		Own allowed agents, actions, and workflows.,
+		{Own allowed agents, actions, and workflows.},
 		Receive \texttt{ReasoningRequest} objects routed by the kernel.,
 		Answer directly when safe and sufficient.,
 		Create \texttt{ReasoningPlan} objects when structured or delayed work is needed.,
@@ -1243,35 +1242,37 @@ Deployment assumptions remain conceptual at this level of specification. The pro
 		A module does not become the kernel.,
 		It does not own knowledge outside its boundary.,
 		It does not directly access another module's private data.,
-		It does not bypass global policy, context governance, action risk, or journal trace.
+		{It does not bypass global policy, context governance, action risk, or journal trace.}
 }
 \pxUMLClass{ReasoningModule}{%
-	\UMLAt-moduleId:UUID ,
-	\UMLAt-name:Text ,
-	\UMLAt-purpose:Text ,
-	\UMLAt-boundary:BoundaryProfile
+	\UMLAt-moduleId:UUID
 }[
-	\UMLOps+handle(request:ReasoningRequest):Artifact ,
-	\UMLOps+createPlan(request:ReasoningRequest):ReasoningPlan ,
-	\UMLOps+advance(plan:ReasoningPlan):RuntimeEvent ,
-	\UMLOps+createDelegatedRequest({plan:ReasoningPlan, task:ReasoningTask, targetModuleRef:Ref<ReasoningModule>}):ReasoningRequest ,
-	\UMLOps+buildContext(request:ReasoningRequest):ContextBundle
-]\printClass{ReasoningModule}{%
+	\UMLOps+handle(request:ReasoningRequest):ReasoningResponse ,
+	\UMLOps+orchestrate(plan:ReasoningPlan):RuntimeEvent
+]\printClass{ReasoningModule}[
+	\UMLAt-moduleManager:MADREAgent ,
+	\UMLAt-agentCatalog:{Ref<MADREAgent>[]} ,
+	\UMLAt-moduleCatalog:{Ref<ReasoningModule>[]} ,
+	\UMLAt-workflows:{Workflow[]}
+]{%
 	\item[] Bounded reasoning and data-governance unit for a topic, domain, or operational scope.
 	\item[] Relationships: owns or is allowed to use module agents, actions, workflows, and knowledge records.
 	\item[] \texttt{handle} may return a direct response artifact, clarification artifact, block artifact, delegated-request artifact, or plan-created artifact.
-}<\texttt{ReasoningModule} owns module-local behavior and knowledge boundaries.>
+}[
+	\UMLOps-createPlan(request:ReasoningRequest):ReasoningPlan ,
+	\UMLOps-buildContext(request:ReasoningRequest):ContextBundle
+]<\texttt{ReasoningModule} owns module-local behavior and knowledge boundaries.>
 
 \subsection{MADREAgent}
 
 \LIST{
 	Responsibilities:
 		Execute concrete \texttt{AgentRequest} objects.,
-		Use only context explicitly provided through the request.,
-		Invoke allowed \texttt{MADREAction} objects.,
-		Return artifacts or failure material.,
-		Double-check outputs when configured with a twin or complex profile.,
-		Support live conversational flow when configured as the module's system-profile agent.,
+		Use only context explicitly provided through the request in addition of the execution context managed by the own agent.,
+		Invoke owned \texttt{MADREAction} objects that fit into module-agent combined boundaries,
+		Return artifacts or failure material inside the AgentResponse object,
+		Double-check outputs when configured with a twin or complex behaviours.,
+		Support live conversational flow when configured as the module's systemAgent.,
 		Preserve no module-private knowledge outside the owning module boundary.;
 	Boundaries:
 		An agent does not own kernel resources.,
@@ -1279,28 +1280,22 @@ Deployment assumptions remain conceptual at this level of specification. The pro
 		It does not access module knowledge except through provided context.,
 		It does not promote generated material into knowledge or learning.
 }
-\pxUMLClass{MADREAgent}{%
-	\UMLAt-agentId:UUID ,
-	\UMLAt-name:Text ,
-	\UMLAt-purpose:Text ,
-	\UMLAt-profile:AgentProfile ,
-	\UMLAt-boundary:BoundaryProfile
+\pxUMLClass[abstractclass]{MADREAgent}{%
+	\UMLAt-agentId:UUID
 }[
-	\UMLOps+execute(request:AgentRequest):Artifact ,
-	\UMLOps+effectiveBoundary():BoundaryProfile
+	\UMLOps+execute(request:AgentRequest):AgentResponse ,
 ]\printClass{MADREAgent}{%
 	\item[] Runtime actor used by a module to coordinate or execute \texttt{AgentRequest} objects.
 	\item[] Relationships: exposes allowed actions selected by module-owned behavior.
-	\item[] Simple, twin, complex, and system behaviors are represented by \texttt{AgentProfile}, not subclasses.
-}<\texttt{MADREAgent} executes module-authorized requests through declared actions.>
+}<\umltag:AbstractClass \texttt{MADREAgent} executes module-authorized requests through declared actions.>
 
 \subsection{ReasoningRequest}
 
 \LIST{
 	Responsibilities:
 		Preserve the reasoning objective.,
-		Preserve origin and optional target module.,
-		Preserve minimized context references.,
+		Preserve origin and target module.,
+		Preserve minimized originator context references.,
 		Preserve boundary constraints.,
 		Preserve request-chain information sufficient to avoid loops.,
 		Carry the expected result shape at request level.;
@@ -1313,18 +1308,18 @@ Deployment assumptions remain conceptual at this level of specification. The pro
 		It does not reveal originating plan internals.
 }
 \pxUMLClass{ReasoningRequest}{%
-	\UMLAt-requestId:UUID ,
-	\UMLAt-objective:Text ,
-	\UMLAt-boundary:BoundaryProfile ,
-	\UMLAt-expectedResult:Text ,
-	\UMLAt-requestChain:List<UUID> ,
-	\UMLAt-createdAt:Instant
+	\UMLAt-requestId:UUID
 }[
-	\UMLOps+isRoutable():Boolean
-]\printClass{ReasoningRequest}{%
+	\UMLOps+updateRequest(state:RequestState):Boolean
+]\printClass{ReasoningRequest}[
+	\UMLAt-requestState:RequestState ,
+	\UMLAt-author:Ref<ReasoningModule> ,
+	\UMLAt-target:Ref<ReasoningModule> ,
+	\UMLAt-requestChain:List<UUID> ,
+	\UMLAt-objective:Text
+]{%
 	\item[] Passive module-level request routed by the kernel.
 	\item[] Relationships: may reference an originating artifact, module, plan, or task; may target a module; may carry minimized artifact or knowledge context references.
-	\item[] The target module link is optional in the logical model; absence means routing through the Core Module role.
 }<\texttt{ReasoningRequest} records a reasoning need and routing boundary.>
 
 \subsection{ReasoningPlan}
@@ -1333,9 +1328,8 @@ Deployment assumptions remain conceptual at this level of specification. The pro
 	Responsibilities:
 		Represent the selected reasoning strategy.,
 		Own task occurrences.,
-		Preserve applied workflow references.,
 		Preserve delegated request links.,
-		Preserve current plan state, results, failures, and produced artifacts.,
+		{Preserve current plan state, results, failures, and produced artifacts.},
 		Support scheduling by the kernel.,
 		Support inspection through journaled events.;
 	Boundaries:
@@ -1346,24 +1340,18 @@ Deployment assumptions remain conceptual at this level of specification. The pro
 		It does not promote results into knowledge or learning.
 }
 \pxUMLClass{ReasoningPlan}{%
-	\UMLAt-planId:UUID ,
-	\UMLAt-boundary:BoundaryProfile ,
-	\UMLAt-status:Status ,
-	\UMLAt-createdAt:Instant ,
-	\UMLAt-updatedAt:Instant
+	\UMLAt-planId:UUID
 }[
-	\UMLOps+addTask(task:ReasoningTask):RuntimeEvent ,
-	\UMLOps+readyTasks():List<Ref<ReasoningTask>> ,
-	\UMLOps+markScheduled():RuntimeEvent ,
-	\UMLOps+recordTaskResult({taskRef:Ref<ReasoningTask>, artifactRef:Ref<Artifact>}):RuntimeEvent ,
-	\UMLOps+recordTaskFailure({taskRef:Ref<ReasoningTask>, failureRef:Ref<Artifact>}):RuntimeEvent ,
-	\UMLOps+linkDelegatedRequest({taskRef:Ref<ReasoningTask>, requestRef:Ref<ReasoningRequest>}):RuntimeEvent ,
-	\UMLOps+complete(resultRef:Ref<Artifact>):RuntimeEvent
-]\printClass{ReasoningPlan}{%
+	\UMLOps+updatePlan(state:PlanState):Boolean
+]\printClass{ReasoningPlan}[
+	\UMLAt-planState:PlanState
+]{%
 	\item[] Schedulable delayed-work object created from a \texttt{ReasoningRequest}.
 	\item[] Relationships: links to its source request, owning module, task occurrences, applied workflows, and produced result artifacts.
 	\item[] Plan operations record controlled state transitions; task execution is converted into \texttt{AgentRequest} invocations by authorized module-owned behavior.
-}<\texttt{ReasoningPlan} owns delayed reasoning task structure and result links.>
+}[
+	\UMLOps+nextTasks():List< Ref<ReasoningTask> >
+]<\texttt{ReasoningPlan} owns delayed reasoning task structure and result links.>
 
 \subsection{ReasoningTask}
 
@@ -1383,15 +1371,17 @@ Deployment assumptions remain conceptual at this level of specification. The pro
 }
 \pxUMLClass{ReasoningTask}{%
 	\UMLAt-taskId:UUID ,
-	\UMLAt-objective:Text ,
-	\UMLAt-expectedResult:Text ,
-	\UMLAt-blocking:Boolean ,
-	\UMLAt-status:Status
-}\printClass*{ReasoningTask}{%
+	\UMLAt-taskState:TaskState
+}[\UMLOps+dispatchTask(policy:PolicyDecision):AgentResponse ]\printClass{ReasoningTask}[
+	\UMLAt-dependencies:List< Ref<ReasoningTask> > ,
+	\UMLAt-origin:Ref<ReasoningPlan> ,
+	\UMLAt-assignedAgent:Ref<MADREAgent> ,
+	\UMLAt-qualityGates:Unknown ,
+	\UMLAt-results:AgentResponse[]
+]{%
 	\item[] Passive planned occurrence inside exactly one \texttt{ReasoningPlan}.
 	\item[] Relationships: belongs to one plan, binds responsible module, agent, and concrete agent request, and may link dependencies, results, failures, or delegated requests.
-	\item[] Result, failure, and delegated request links are optional in the logical model and are updated through the owning plan.
-}<\texttt{ReasoningTask} records a planned occurrence; it is not an executor.>
+}<\texttt{ReasoningTask} is the wrapper around a specific execution inside a \texttt{ReasoningPlan}, it carries boundaries and policies and stores task results>
 
 \subsection{AgentRequest}
 
@@ -1407,17 +1397,15 @@ Deployment assumptions remain conceptual at this level of specification. The pro
 		It does not make context valid by containing it.
 }
 \pxUMLClass{AgentRequest}{%
-	\UMLAt-agentRequestId:UUID ,
-	\UMLAt-objective:Text ,
+	\UMLAt-agentRequestId:UUID
+}\printClass*{AgentRequest}[
 	\UMLAt-parameters:{Map<Text,Text>} ,
-	\UMLAt-boundary:BoundaryProfile ,
-	\UMLAt-createdAt:Instant
-}[
-	\UMLOps+isExecutable():Boolean
-]\printClass{AgentRequest}{%
+	\UMLAt-prompt:Text ,
+	\UMLAt-context:ContextBundle ,
+	\UMLAt-moduleScope:{Ref<ReasoningModule>}
+]{%
 	\item[] Passive action-level invocation object sent to an agent or action.
-	\item[] Relationships: links caller, target agent, optional target action, and optional context bundle.
-	\item[] \texttt{targetActionRef} and \texttt{contextBundleRef} are optional in the logical model.
+	\item[] Relationships: links caller, target agent, target action, and context bundle.
 }<\texttt{AgentRequest} carries the concrete invocation boundary.>
 
 \subsection{MADREAction}
@@ -1427,7 +1415,7 @@ Deployment assumptions remain conceptual at this level of specification. The pro
 		Declare minimal executable purpose.,
 		Declare its action kind.,
 		Declare its boundary and operational risk.,
-		{Run only when request, context, agent, module, and policy boundaries allow it.},
+		{Run only when request, context, agent, module, and policy boundaries match.},
 		Return an artifact representing result, block, refusal, or failure.;
 	Boundaries:
 		An action does not own scheduling.,
@@ -1436,18 +1424,13 @@ Deployment assumptions remain conceptual at this level of specification. The pro
 		It does not make generated material true or known.
 }
 \pxUMLClass{MADREAction}{%
-	\UMLAt-actionId:UUID ,
-	\UMLAt-name:Text ,
-	\UMLAt-purpose:Text ,
-	\UMLAt-actionKind:ActionKind ,
-	\UMLAt-boundary:BoundaryProfile
+	\UMLAt-actionId:UUID
 }[
-	\UMLOps+run(request:AgentRequest):Artifact
+	\UMLOps+run(request:AgentRequest):AgentResponse
 ]\printClass{MADREAction}{%
 	\item[] Executable capability available to an agent under a concrete \texttt{AgentRequest}.
-	\item[] Relationships: executed through an owning agent and constrained by the invoking module boundary.
-	\item[] Inference remains an action kind in v5; no model-backed action subclass is frozen here.
-}<\texttt{MADREAction} executes bounded behavior and returns artifacts.>
+	\item[] Relationships: executed through an owning agent and constrained by the invoking module scope.
+}<\texttt{MADREAction} executes bounded behavior and returns artifacts through \texttt{AgentResponse}.>
 
 \subsection{Workflow}
 
@@ -1466,15 +1449,8 @@ Deployment assumptions remain conceptual at this level of specification. The pro
 		It does not allocate resources, invoke agents, execute actions, or create delegated requests.
 }
 \pxUMLClass{Workflow}{%
-	\UMLAt-workflowId:UUID ,
-	\UMLAt-name:Text ,
-	\UMLAt-purpose:Text ,
-	\UMLAt-boundary:BoundaryProfile ,
-	\UMLAt-taskTemplates:List<Text> ,
-	\UMLAt-createdAt:Instant
-}[
-	\UMLOps+applicableTo(request:ReasoningRequest):Boolean
-]\printClass{Workflow}{%
+	\UMLAt-workflowId:UUID
+}\printClass*{Workflow}{%
 	\item[] Reusable blueprint for structuring a \texttt{ReasoningPlan}.
 	\item[] Authorized module-owned behavior applies workflows to create or refine task occurrences.
 }<\texttt{Workflow} is reusable structure, not executable runtime work.>
@@ -1495,13 +1471,10 @@ Deployment assumptions remain conceptual at this level of specification. The pro
 		Included material retains its own provenance and trust limitations.
 }
 \pxUMLClass{ContextBundle}{%
-	\UMLAt-bundleId:UUID ,
-	\UMLAt-purpose:Text ,
-	\UMLAt-boundary:BoundaryProfile ,
-	\UMLAt-createdAt:Instant
-}[
-	\UMLOps+isUsableFor(targetBoundary:BoundaryProfile):Boolean
-]\printClass{ContextBundle}{%
+	\UMLAt-bundleId:UUID
+}\printClass*{ContextBundle}[
+	\UMLAt-targetScope:Ref<ReasoningModule>
+]{%
 	\item[] Minimized governed context prepared for one request, task, agent invocation, action, or inference call.
 	\item[] Relationships: created for a request, task, agent request, or action; selects artifact and knowledge material by reference.
 }<\texttt{ContextBundle} references governed context without making it authoritative.>
@@ -1510,34 +1483,26 @@ Deployment assumptions remain conceptual at this level of specification. The pro
 
 \LIST{
 	Responsibilities:
-		Preserve produced or retained material.,
+		Preserve produced material.,
 		Preserve material kind.,
 		Preserve access boundary.,
-		Preserve validation state and lifecycle.,
+		Preserve truth state and lifecycle.,
 		Represent generated output without making it true, known, learned, or authoritative.;
 	Boundaries:
-		An artifact is not knowledge.,
-		It is not truth.,
-		It is not learning.,
+		An artifact is not knowledge by default.,
+		It is not truth by default.,
+		It is not learning by default.,
 		It is not policy.,
 		It is not authority.,
 		It is not executable behavior by default.
 }
-\pxUMLClass{Artifact}{%
-	\UMLAt-artifactId:UUID ,
-	\UMLAt-kind:ArtifactKind ,
-	\UMLAt-contentRef:Text ,
-	\UMLAt-boundary:BoundaryProfile ,
-	\UMLAt-validationStatus:Status ,
-	\UMLAt-lifecycleStatus:Status ,
-	\UMLAt-createdAt:Instant
-}[
-	\UMLOps+requiresValidation():Boolean
-]\printClass{Artifact}{%
+\pxUMLClass[abstractclass]{ReasoningArtifact}{%
+	\UMLAt-artifactId:UUID
+}\printClass{Artifact}{%
 	\item[] Materialized output or retained material with identity, boundary, and lifecycle.
-	\item[] Relationships: may be produced by a request, plan, task, agent request, or action.
-	\item[] Agent responses and generated outputs are represented as artifacts in v5.
-}<\texttt{Artifact} preserves material without granting truth or authority.>
+	\item[] Relationships: may be produced by an action no request, plan, task, agent request, nor action.
+	\item[] Agent responses are wrapping generated artifacts.
+}<\umltag:AbstractClass \texttt{Artifact} preserves material without granting truth or authority.>
 
 \subsection{KnowledgeRecord}
 
@@ -1554,50 +1519,12 @@ Deployment assumptions remain conceptual at this level of specification. The pro
 		Saving known material is not learning.,
 		{Updates, corrections, reclassification, deletion, detachment, or promotion require explicit module authority and journaled events.}
 }
-\pxUMLClass{KnowledgeRecord}{%
-	\UMLAt-knowledgeId:UUID ,
-	\UMLAt-contentRef:Text ,
-	\UMLAt-provenance:Text ,
-	\UMLAt-intendedUse:Text ,
-	\UMLAt-truthLevel:Text ,
-	\UMLAt-truthAuthority:Text ,
-	\UMLAt-boundary:BoundaryProfile ,
-	\UMLAt-createdAt:Instant
+\pxUMLClass{KnowledgeRecord}[ReasoningArtifact]{%
+	\UMLAt-knowledgeId:UUID
 }\printClass*{KnowledgeRecord}{%
 	\item[] Module-owned known material with stronger ownership and truth-governance metadata than a generic artifact.
 	\item[] Relationships: owned by exactly one reasoning module boundary.
 }<\texttt{KnowledgeRecord} is module-owned known material, not automatic truth.>
-
-\subsection{BoundaryProfile}
-
-\LIST{
-	Responsibilities:
-		Describe scope, sensitivity, privacy, risk, authority, locality, reversibility, validation need, and trust.,
-		Support conservative composition across request, module, agent, action, context, and artifact.,
-		Support compatibility checks before exposure or execution.;
-	Boundaries:
-		A boundary profile is not a policy decision.,
-		It describes constraints.,
-		It does not authorize action by itself.
-}
-\pxUMLClass{BoundaryProfile}{%
-	\UMLAt-profileId:UUID ,
-	\UMLAt-scope:BoundaryValue ,
-	\UMLAt-sensitivity:BoundaryValue ,
-	\UMLAt-privacy:BoundaryValue ,
-	\UMLAt-risk:BoundaryValue ,
-	\UMLAt-authority:BoundaryValue ,
-	\UMLAt-locality:BoundaryValue ,
-	\UMLAt-reversibility:BoundaryValue ,
-	\UMLAt-validationRequired:Boolean ,
-	\UMLAt-trustLevel:BoundaryValue
-}[
-	\UMLOps+compatibleWith(consumer:BoundaryProfile):Boolean ,
-	\UMLOps+join(other:BoundaryProfile):BoundaryProfile
-]\printClass{BoundaryProfile}{%
-	\item[] Composable boundary descriptor attached to objects that participate in visibility, context, action, artifact, and intermodule transfer decisions.
-	\item[] \texttt{join} returns a profile at least as restrictive as both inputs.
-}<\texttt{BoundaryProfile} describes constraints for conservative boundary checks.>
 
 \subsection{PolicyDecision}
 
@@ -1636,9 +1563,9 @@ Deployment assumptions remain conceptual at this level of specification. The pro
 		It does not promote, correct, rollback, delete, or detach anything by itself.
 }
 \pxUMLClass{RuntimeJournal}{%
-	\UMLAt-journalId:UUID
+	\UMLAt-dbAccessor:DBAccessor
 }[
-	\UMLOps+append(event:RuntimeEvent):RuntimeEvent ,
+	\UMLOps+append(event:RuntimeEvent):void ,
 	\UMLOps+trace(subjectRef:Ref<any>):List<RuntimeEvent>
 ]\printClass{RuntimeJournal}{%
 	\item[] Append-only local trace mechanism.
@@ -1662,32 +1589,11 @@ Deployment assumptions remain conceptual at this level of specification. The pro
 }
 \pxUMLClass{RuntimeEvent}{%
 	\UMLAt-eventId:UUID ,
-	\UMLAt-type:Text ,
-	\UMLAt-summary:Text ,
 	\UMLAt-createdAt:Instant
 }\printClass*{RuntimeEvent}{%
 	\item[] Append-only record of something that happened or was decided in the runtime.
 	\item[] Relationships: links the affected subject, causal actor, and optional materialized payload artifact.
 }<\texttt{RuntimeEvent} records runtime history without authorizing it.>
-
-\section{Deferred Concepts}
-
-\LIST{
-	Agent profiles:
-		{\texttt{SystemAgent}, \texttt{SimpleAgent}, \texttt{TwinAgent}, and \texttt{ComplexAgent} are represented by \texttt{AgentProfile}.},
-		{A module-bonded agent with \texttt{profile = system} provides live conversational flow and module coordination.};
-	Responses and routines:
-		\texttt{AgentResponse} is represented by \texttt{Artifact}.,
-		\texttt{AgentRoutine} remains a deferred behavior concept until it needs distinct identity, persistence, or lifecycle.;
-	Inference:
-		\texttt{ModelAction}, \texttt{InferenceProfile}, \texttt{InferenceBackend}, \texttt{InferenceRecord}, and \texttt{InferenceOutput} are not classes in v5.,
-		{Inference is represented as \texttt{MADREAction.actionKind = inference}, \texttt{Artifact.kind = generated output}, and a runtime event.};
-	Knowledge and learning:
-		\texttt{KnowledgeCandidate} and \texttt{LearningCandidate} remain deferred until boundary profiles and module-owned authority paths are stable.,
-		\texttt{ConversationRecord} is represented by module-bonded agent behavior, \texttt{AgentRequest}, produced artifacts, and \texttt{RuntimeJournal} projections.;
-	Infrastructure:
-		\texttt{ActionRegistry}, \texttt{Scheduler}, and \texttt{ContextSource} remain implementation or support concepts in this map, not runtime domain classes.
-}
 
 \section{Validation Checklist}
 

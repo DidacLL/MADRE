@@ -15,6 +15,7 @@
 \RequirePackage{tcolorbox}
 \RequirePackage{cleveref}
 \RequirePackage{lastpage}
+\RequirePackage{cancel}
 \RequirePackage{bookmark}
 \newgeometry{hmargin=.8in,vmargin=1in}
 \usetikzlibrary{arrows.meta,positioning,calc,fit,shapes.geometric}
@@ -163,7 +164,7 @@
 \ProvideDocumentCommand{\UList}{s O{;} >{\SplitList{#2}} +m O{}}{%
 	\begin{itemize}%
 		\IfBooleanTF{#1}{
-			\IfBlankTF{#4}{\ProcessList{#3}{\itmbf}}{\ProcessList{#3}{\itmbf[#4]}}
+			\IfBlankTF{#4}{\ProcessList{#3}{\itmbf*}}{\ProcessList{#3}{\itmbf[#4]}}
 		}{
 			\IfBlankTF{#4}{\ProcessList{#3}{\item}}{\ProcessList{#3}{\item[#4]}}
 		}
@@ -348,7 +349,7 @@
 
 \NewDocumentCommand{\VLbox}{O{6} m +m}{\resizebox{.9\linewidth}{!}{\hspace{-.1em}\pbox#1:\raggedright #2\hlf:\vspace{.5em}\foreach \ITVBOXel in {#3}{\\\small~\ITVBOXel};}}
 \NewDocumentCommand{\itemV}{O{5} m O{}}{\item[\pBOX#1(t,t){\raggedleft #2}~]{#3}}
-\NewDocumentCommand{\itmbf}{O{} +m}{\IfBlankTF{#2}{\item\Bf#2}{\item[#1]\Bf#2}}
+\NewDocumentCommand{\itmbf}{s O{} +m}{\IfBlankTF{#2}{\IfBooleanTF{#1}{\item\BF#3 }{\item\Bf#3 }}{\IfBooleanTF{#1}{\item[#2]\BF#3 }{\item[#2]\Bf#3 }}}
 \def\itemVF#1[#2]#3:{\IfBlankTF{#1}{\item[\pbox4:#2;~]{\textbf{#3:}}}{\item[\pbox#1:#2;~]{\textbf{#3:}}}}
 \def\itemVL#1[#2]#3:#4{\IfBlankTF{#1}{\item[\pbox4:#2;~]{\textbf{#3:}}}{\item[\pbox#1:#2;~]{\textbf{#3:}}}\foreach \SUBITVL in {#4}{\subitem\BOX:{\SUBITVL}}}
 \def\pbox#1:#2;{\parbox{#1em}{\centering #2}}
@@ -375,7 +376,9 @@
 \def\UMLAUX[#1:#2]{#1:~\textbf{#2}}
 \def\bF #1:#2 {#1:\textbf{#2}}
 \def\Bf#1:{\textbf{#1:}}
+\def\BF#1:{\textbf{#1:}\pgfmathwidth{"#1"}\hspace{-\pgfmathresult pt}\hspace{80pt}}
 \def\bf #1 {\textbf{#1}}
+\NewDocumentCommand{\hx}{s O{80pt} m}{#3\pgfmathwidth{"#3"}\hspace{-\pgfmathresult pt}\hspace{#2}}
 \def\titbf#1:#2 {\textbf{#1:} #2 }
 \def\aClass:#1	#2	[#3]{\drawclass*[text width= #1em]{#2}[#3]\drawclass[text width= #1em, opacity= 0]{#2}[#3]}
 \def\Class#1:#2	#3	[#4]{\IfBlankTF{#2}{\IfBlankTF{#1}{\drawclass{#3}[#4]}{\drawclass*{#3}[#4]}}{\IfBlankTF{#1}{\drawclass[text width={#2em}]{#3}[#4]}{\drawclass*[text width={#2em}]{#3}[#4]}}}
