@@ -35,7 +35,14 @@
 }
 \definecolor{primaryColor}{RGB}{240,20,180}
 \definecolor{secondaryColor}{RGB}{100,200,200}
-\def\altText#1#2{\texorpdfstring{\BeginAccSupp{method=escape,ActualText=#1}#2\EndAccSupp{}}{#1}}
+%\def\altText#1#2{\texorpdfstring{\BeginAccSupp{method=escape,ActualText=#1}#2\EndAccSupp{}}{#1}}
+\newcommand{\altText}[2]{%
+	\texorpdfstring{%
+		\BeginAccSupp{method=pdfstringdef,unicode,ActualText={#1}}%
+		#2%
+		\EndAccSupp{}%
+	}{#1}%
+}
 
 %%%%%%%%%%%%%%%%%%% PAGE STYLE
 
