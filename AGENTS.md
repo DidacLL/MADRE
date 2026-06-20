@@ -1,25 +1,21 @@
-# AGENTS.md - MADRE
+# MADRE Agent Router
 
-State: read
+Read this file first. Then read the smallest task-specific source set.
 
-## Root Router
+## Fast Path
 
-`docs/tex/MADRE-AgenticSystem.tex` is the canonical MADRE product authority. It owns product terminology, architecture, requirements, traceability, threat model, quality model, benchmark catalogue, glossary, and conceptual sketches.
+1. `agents/def/operating-contract.md`
+2. `agents/state/current.md`
+3. One support file for the task:
+   - product or architecture orientation: `agents/def/product-orientation.md`
+   - classmap discussion: `agents/state/classmap-review/README.md`
+   - TeX editing: `agents/LaTeXdocumentation.md`
 
-`docs/**` is human documentation and deliverable space.
+## Source Map
 
-`agents/def/**` is stable agent instruction space.
+- `docs/tex/MADRE-AgenticSystem.tex`: canonical MADRE product source.
+- `docs/**`: human-facing documentation and preserved behavior references.
+- `agents/def/**`: stable agent operating guidance.
+- `agents/state/**`: active agent working state and discussion continuity.
 
-`agents/state/**` is mutable agent working state.
-
-Do not work directly on `main`; use a topic branch for repository mutation unless the current user explicitly requests an emergency direct edit.
-
-## Fast Check
-
-1. `AGENTS.md`
-2. `agents/def/operating-contract.md`
-3. Task-specific support file only if needed
-
-Use `agents/def/product-orientation.md` only as a compact, non-authoritative product digest. Use `agents/LaTeXdocumentation.md` only for TeX editing tasks.
-
-Do not infer durable operating rules from advisory state, dashboards, generated reports, private notes, or review wording.
+Keep new agent-facing guidance concise, current, and placed in the owning path.

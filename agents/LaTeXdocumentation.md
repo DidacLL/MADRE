@@ -1,39 +1,34 @@
 # MADRE LaTeX Guidance
 
-Author: ag
-State: read
+Use this file for TeX editing and validation tasks. Product truth belongs in `docs/tex/MADRE-AgenticSystem.tex`.
 
-This file is agent procedure only. Product truth belongs in `docs/tex/MADRE-AgenticSystem.tex`.
-
-## Editing Rules
+## Editing
 
 - Keep LaTeX user-facing, professional, and consolidated.
-- Do not add development state, review history, open decisions, or agent procedure.
-- Do not hard-wrap prose at an arbitrary column; rely on editor word wrap.
-- Prefer targeted edits over generated rewrites.
-- Preserve diagrams, tables, labels, and traceability unless the task explicitly changes them.
-- Use a diagram only when it communicates architecture or runtime boundaries more clearly than prose.
-- Use longtable when writting tables that could expand more than 70% of a page.
-- NEVER ADD FORMATING LINE WRAP, lines should not be truncated.
+- Preserve diagrams, tables, labels, traceability, and document structure unless the task changes them.
+- Use targeted edits for existing sections.
+- Rely on editor word wrap for prose.
+- Use diagrams when they communicate architecture or runtime boundaries more clearly than prose.
+- Use `longtable` for tables that may exceed most of a page.
+- Keep repeated table, diagram, or style logic in shared support when it is genuinely reused.
 
 ## Shared Support
 
-- Use `docs/tex/shared/preamble.tex` for shared macros, colors, table helpers, TikZ helpers, and page style.
-- Prefer existing P3CTeX and preamble commands before adding new local formatting.
-- Add repeated table, diagram, or style logic to the shared preamble only when it is genuinely reused.
-- P3CTeX is expected in the local TeX installation; do not vendor it into this repository.
+- `docs/tex/shared/preamble.tex` owns shared macros, colors, table helpers, TikZ helpers, and page style.
+- Prefer existing P3CTeX and preamble commands before adding local formatting.
+- P3CTeX is expected in the local TeX installation.
 
-Useful local helpers currently include `\MADRETABLE`, `\MADRETABLEv`, `\MTABLE`, `\MROW`, `\MHEAD`, `\LIST`, `\madreChapter`, `\code`, TikZ helpers, and MADRE logo/name commands.
+Useful local helpers include `\MADRETABLE`, `\MADRETABLEv`, `\MTABLE`, `\MROW`, `\MHEAD`, `\LIST`, `\madreChapter`, `\code`, TikZ helpers, and MADRE logo/name commands.
 
 ## Validation
-Verify no text is truncated.
-Use the local compile script for recently modified TeX files:
+
+Compile recently modified TeX files:
 
 ```powershell
 .\scripts\compile-recent-tex.ps1
 ```
 
-The script uses local MiKTeX `pdflatex`, writes auxiliary files to `docs/tex/auxfiles`, writes PDFs to `docs`, and removes auxiliary files after a successful compile. P3CTeX is expected in the local MiKTeX installation; do not download it for local work.
+The script uses local MiKTeX `pdflatex`, writes auxiliary files to `docs/tex/auxfiles`, writes PDFs to `docs`, and removes auxiliary files after a successful compile.
 
 Manual single-document compile from `docs/tex`:
 
@@ -42,5 +37,3 @@ pdflatex -interaction=nonstopmode -halt-on-error -file-line-error MADRE-AgenticS
 ```
 
 Run twice when references, labels, diagrams, or the table of contents change.
-
-If TeX was not edited, do not run TeX validation just to prove unrelated work.
