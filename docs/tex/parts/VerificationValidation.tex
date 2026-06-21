@@ -1,0 +1,66 @@
+% !TeX root = ../MADRE-AgenticSystem.tex
+
+\madreChapter{Quality Model}
+
+\section{Quality Attribute Scenarios}
+
+\MADRETABLE3:{\textbf{Attribute}&\textbf{Scenario} & \textbf{Measure or evidence}}{%
+	\MROW{Responsiveness }{ The foreground remains conversational while deeper work is queued. & Foreground latency and clear work status. }
+	\MROW{Recoverability }{ A failed or unsafe delayed task can be inspected and corrected. & \texttt{RuntimeJournal} trace, status transition, and rollback/correction path. }
+	\MROW{Auditability}{ A result can be explained through context, \texttt{RuntimeEvent} evidence, action, \texttt{PolicyDecision}, and verification records. & Complete journaled outcome evidence chain. }
+	\MROW{Maintainability}{ An model backend or action contract can be replaced without changing kernel authority. & Contract and substitution review. }
+	\MROW{Portability }{ A useful subset runs on ordinary local hardware. & Local profile and resource benchmark. }
+	\MROW{Security}{ Untrusted context cannot silently become instruction or policy. & Prompt-injection and data-boundary scenarios. }
+	\MROW{Resource discipline }{ Delayed work is bounded by cost, time, storage, and compute policies. & Queue and resource-use metrics. }
+	\MROW{Privacy}{ Sensitive or unrelated local material is excluded from context and remote transfer unless scoped and policy-allowed. & Context exclusion and remote-transfer scenarios. }
+	\MROW{Model substitutability }{ Boundary behavior is preserved across replaceable model-use profile and model backend choices. & Inference substitution scenario. }
+	\MROW{Context isolation }{ One task's context does not silently bleed into another topic, user, inference execution, action invocation, or candidate. & Context scope and revocation review. }
+	\MROW{Explainability and inspectability }{ Users and developers can see status, \texttt{PolicyDecision}, context evidence, \texttt{RuntimeEvent} evidence, action evidence, candidates, and recovery state. & Local read-first inspection scenario. }
+	\MROWv{Testability }{ Architecture claims can be checked through behavior scenarios and negative paths. & Requirements and decision trace review. }
+}
+
+\madreChapter{Evaluation And Benchmark Specification}
+
+\Madre defines an architectural evaluation surface for testing whether the runtime preserves local authority, governed context, bounded action use, evaluated learning promotion, journaled traceability, and recoverable delayed reasoning.
+
+\section{Benchmark Families}
+
+\MTABLEv(Benchmark family, Purpose) {
+\MROW{Functional correctness}{Confirm expected runtime behavior for foreground-lane continuity and delayed work. }
+\MROW{Delayed reasoning quality}{Evaluate evidence handling, decomposition, verification, and result delivery. }
+\MROW{Foreground triage}{Confirm unsupported evidence-heavy answers are clarified or delayed rather than fabricated. }
+\MROW{Context isolation}{Confirm unrelated or sensitive knowledge does not enter the wrong bundle. }
+\MROW{Inference substitution}{Confirm replaceable model-use profile and model backend choices preserve the same boundary behavior and expose failures. }
+\MROW{Policy enforcement}{Confirm action, data, autonomy, authorization, and recovery rules are enforced. }
+\MROW{Bounded internal action}{Confirm the bounded internal action is policy-gated, recorded, and harmless. }
+\MROW{Blocked unsafe actions}{Confirm remote, host-command, filesystem, mutation, and critical-action attempts do not execute under bounded internal-action authority. }
+\MROW{Inference output non-authority}{Confirm generated material remains generated material, neither authority nor a candidate by itself. }
+\MROW{Known-material truth control}{Confirm a \texttt{KnowledgeRecord} with non-authoritative truth metadata is not used as factual truth. }
+\MROW{Learning promotion control}{Confirm a \texttt{LearningCandidate} remains inactive until evaluated promotion and that saving \texttt{KnowledgeRecord} is not learning. }
+\MROW{Runtime journal traceability}{Confirm \texttt{ReasoningTask}, \texttt{RuntimeEvent}, \texttt{PolicyDecision}, and inference references expose lifecycle and recovery evidence locally. }
+\MROW{Read-first observability}{Confirm CLI/status and local console inspection expose lifecycle, policy, context, inference, action, knowledge/learning transition, and recovery evidence. }
+\MROW{Recovery}{Confirm failed or unsafe outputs can be inspected, corrected, deleted/detached, invalidated, superseded, or rolled back. }
+\MROW{Resource use}{Measure latency, storage, queue time, model cost, and local compute use. }
+\MROW{Reproducibility}{Preserve enough configuration, context, and event history to review outcomes. }
+\MROW{Hallucination resistance}{Confirm generated material does not become truth, knowledge, action authority, routing, behavior, or candidate status by itself. }}
+
+\madreChapter{Benchmark Catalogue}
+
+\begin{tabularx}{.95\linewidth}{@{}lX X@{}}
+	\toprule
+	\textbf{Benchmark} & \textbf{Observed property} & \textbf{Evidence} \\
+	\midrule
+	Foreground response & Conversational continuity under delayed work & Latency and interaction-state record. \N
+	Delayed work durability & \texttt{ReasoningTask} survives interruption and exposes status & \texttt{RuntimeEvent} lifecycle in \texttt{RuntimeJournal}. \N
+	Context isolation & Only scoped material with suitable metadata enters a task context & Context bundle and \texttt{KnowledgeRecord} inspection. \N
+	Policy enforcement & Disallowed action remains blocked or requires authorization & Policy decision record. \N
+	Bounded internal action & Bounded internal action remains local, policy-gated, and traceable & Action trace. \N
+	Inference output boundary & generated material remains generated material, not authority or candidate by itself & \texttt{RuntimeEvent} evidence, output-handling, and negative-path trace. \N
+	Knowledge truth authority & Non-authoritative \texttt{KnowledgeRecord} is not used as factual truth & Truth-metadata use and correction trace. \N
+	Learning promotion control & \texttt{LearningCandidate} remains inactive and storing \texttt{KnowledgeRecord} is not learning & Promotion and negative-path trace. \N
+	Runtime journal traceability & Local trace correlates work, events, policies, inference, and recovery & \texttt{RuntimeJournal} inspection trace. \N
+	Read-first inspection & Local console exposes status, trace, policy, context, inference, action, knowledge/learning transition, and recovery evidence & Inspection trace. \N
+	Recovery & Failed or unsafe result can be corrected or rolled back & Recovery trace. \N
+	Model substitution & model backend replacement preserves composed boundary behavior & Model-use boundary comparison. \\
+	\bottomrule
+\end{tabularx}

@@ -1,0 +1,224 @@
+% !TeX root = ../MADRE-AgenticSystem.tex
+
+\madreChapter{Front Matter}
+
+\section*{Abstract}
+\section{Executive Definition}
+
+\begin{pxQuote}
+	\MADRE is a local-first, model-agnostic runtime kernel for building agentic systems that preserve user sovereignty while coordinating reasoning modules, module-owned agents, governed context, bounded actions, known material, evaluated learning, recovery, and inspectable execution.
+\end{pxQuote}
+\madreLogoH*[21em] exists because the current AI market is normalizing a dangerous bargain: users receive convenient language interfaces, while their data, dependency chain, costs, and decision power move into remote platforms they do not control. That bargain is technically unnecessary and politically unacceptable for many individuals, teams, public-interest organizations, researchers, creators, and small developers.\n
+
+The project does not treat a language model as a complete intelligence. A model is a powerful linguistic function: useful, fallible, statistically trained, expensive in context, and unsafe when it is allowed to become the whole system. \Madre puts that function inside an engineered runtime. The runtime decides what may be known, what may be sent, what may be stored, what may be acted on, and what must wait for stronger evidence or human authority.
+
+The product objective is one coherent assistant experience backed by a durable kernel. Visible interaction can remain fast and conversational while module-local reasoning and reflection lanes decompose, schedule, check, record, and resume deeper work. This is the practical meaning of Model Agnostic Delayed Reasoning Effort: useful local intelligence should come from architecture, context discipline, and bounded autonomy, not from blind dependence on one remote provider or one large model.\n
+
+\Madre is therefore not a chatbot, not a prompt collection, not a wrapper around one vendor API, and not a task-management application. It is the runtime layer that applications use to coordinate models, internal actions, conversation and knowledge records, policies, and interfaces without surrendering the user's private domain to cloud-first AI infrastructure.
+
+\section*{Specification Scope}
+
+\Madre is a local-first, model-agnostic runtime kernel for constructing agentic systems whose useful behavior is produced by software architecture rather than by treating language models as autonomous intelligence. The runtime assigns a Core Module, permits its Main Agent role to provide foreground continuity through a module-owned \texttt{SystemAgent}, governs context before \texttt{ModelAction} or other actions, keeps \texttt{KnowledgeRecord} handling inspectable, records local traces through \texttt{RuntimeJournal}, and requires learning to pass through evaluation, promotion, and rollback boundaries.
+\n
+This specification defines the research, product, and architecture baseline for \madre. It states the system problem, expected contribution, stakeholder concerns, requirement domains, architecture views, safety model, policy model, and evaluation surface used to assess runtime behavior. The product is an open, extensible foundation for private and affordable agentic software on ordinary local devices, with optional remote services and integrations treated as governed risk boundaries rather than defaults.\n
+
+The scope of \Madre comprises runtime purpose, system boundary, requirement families, architecture obligations, risk model, quality attributes, validation strategy, and product-level authority semantics.\n
+
+The design identifiers D-001 through D-013 are internal traceability anchors inside this dossier. They identify product rationale, runtime obligations, safety boundaries, and evaluation surfaces at architecture level without making prior side specifications authoritative.
+
+\section*{Canonical Terms}
+
+\MADRETABLEv2:{\centering Term & Meaning in \madre}{
+	\centering \texttt{MADREKernel} & Deterministic local coordinator that registers \texttt{ReasoningModule} objects, assigns the Core Module, routes requests, schedules work, coordinates resources, applies policy, and records runtime activity through \texttt{RuntimeJournal}. \N
+	\centering \texttt{ReasoningModule} & Governed reasoning unit for a bounded domain or scope. It owns module records, workflows, routines, actions, agents, knowledge and learning boundaries, and allowed model/inference scope. \N
+	\centering Core Module & Kernel registration role held by a compatible \texttt{ReasoningModule} that receives ordinary interaction first; it is not a separate module type. \N
+	\centering \texttt{MADREAgent} / Main Agent role & A \texttt{MADREAgent} is a concrete module-owned runtime actor constrained by \texttt{ModelBinding}; Main Agent role is the role held by one module-owned \texttt{ComplexAgent}, while other \texttt{ComplexAgent} objects need not hold that role. \N
+	\centering \texttt{SimpleAgent}, \texttt{TwinAgent}, \texttt{ComplexAgent} & Agent profiles for direct execution, review/evaluation over a produced result, and foreground/reasoning/reflection capability respectively; none gains authority outside its owning module. \N
+	\centering \texttt{ReasoningPlan}, \texttt{Workflow}, \texttt{AgentRoutine} & A request-derived reasoning plan may select reusable module workflow and agent routine capabilities without turning either into a second plan or a new authority layer. \N
+	\centering Access surface & A CLI, local console, GUI, speech surface, or application interface that exposes the kernel without becoming runtime authority. \N
+	\centering \texttt{ReasoningTask}, \texttt{RuntimeEvent}, \texttt{RuntimeJournal} & \texttt{ReasoningTask} tracks delayed-work lifecycle; \texttt{RuntimeEvent} is append-only runtime history; \texttt{RuntimeJournal} is the local trace mechanism that stores or references them and related payloads. \N
+	\centering \texttt{PolicyDecision} & Explicit allow, block, or authorization-required outcome for an affected action or data class and authority boundary. \N
+	\centering Foreground lane & A possible \texttt{ComplexAgent} capability used by a module's Main Agent role to preserve flow, clarify intent, answer within safe context, and create delayed work when stronger evidence is required. \N
+	\centering Reasoning lane & Durable module-local work used for analysis, evidence gathering, verification, internal action invocation, or higher-effort inference. \N
+	\centering source material / \texttt{ContextBundle} & Source descriptor and bounded, classified, minimized, revocable selection of material prepared for an agent request, action, or inference execution. \N
+	\centering \texttt{AgentAction}, \texttt{ModelAction}, \texttt{ModelBinding}, model-use profile, model backend & An executable capability and its inference-backed specialization; a model-backed action executes only through the binding allowed for its module-owned agent, with configured and replaceable inference execution. \N
+	\centering \texttt{RuntimeEvent} evidence / generated material & One recorded inference execution and its generated material. generated material is not truth, policy, memory, knowledge, behavior, routing, authority, or a candidate by itself. \N
+	\centering \texttt{KnowledgeRecord} / \texttt{KnowledgeCandidate} & Known material held by a module with provenance, scope, sensitivity, intended use, truth-level/authority, correction, and lifecycle metadata; only a pending knowledge-boundary change is a \texttt{KnowledgeCandidate}. \N
+	\centering \texttt{LearningCandidate} / retained interaction material & An evaluated proposed module improvement and retained interaction material respectively. Saving known material is not learning, and conversation is not knowledge by default. \N
+	\centering Artifact & A materialized output such as a file, document, code patch, report, image, dataset, PDF, snapshot, or final buffer/document. Ordinary conversation text is not an artifact unless materialized. \N
+}
+
+
+\section*{Specification Baseline}
+
+\begin{tabularx}{.95\linewidth}{@{}lX@{}}
+	\toprule
+	\textbf{Version} & \textbf{Status} \\
+	\midrule
+	\madreV & Research, product, and architecture specification baseline for local-first, model-agnostic delayed reasoning. The baseline covers product requirements, architecture obligations, safety boundaries, traceability, and evaluation criteria. \n
+	\bottomrule
+\end{tabularx}
+
+\madreChapter{Research Foundation}
+
+\section{Research Problem}
+
+Modern language-model systems often combine private data, model calls, action execution, retained interaction, known material, and remote infrastructure inside opaque conversational interfaces. This makes useful demonstrations easy to produce, but it weakens local ownership, traceability, autonomy control, error recovery, and the ability to replace models or providers.
+
+\Madre addresses this as a Software Engineering problem: how to design a local-first runtime in which language models remain fallible replaceable functions, while the software system owns policy, context, knowledge, internal actions, runtime trace, recovery, and learning boundaries. The research problem is not to prove that models reason, but to define an architecture that extracts useful language behavior without surrendering system authority to generated material.
+
+\section{Research Questions}
+
+\begin{tabularx}{.95\linewidth}{@{}lX@{}}
+	\toprule
+	\textbf{ID} & \textbf{Research question} \\
+	\midrule
+	RQ-1 & How can a local-first runtime separate immediate interaction from delayed reasoning without losing continuity, accountability, or user control? \n
+	RQ-2 & How can model-agnostic contracts prevent provider-specific assumptions from entering policy, knowledge handling, action authority, and truth management? \n
+	RQ-3 & What traceability structure is sufficient to connect \Madre's product claims, stakeholder concerns, runtime requirements, architecture decisions, and validation evidence? \n
+	RQ-4 & How can context, retained interaction material, \texttt{KnowledgeRecord}, \texttt{KnowledgeCandidate}, and \texttt{LearningCandidate} remain useful while preserving provenance, truth authority, minimization, revocation, correction, promotion, and rollback boundaries? \n
+	RQ-5 & What integrated behavior demonstrates that \Madre is a governed runtime rather than a conversational wrapper? \n
+	\bottomrule
+\end{tabularx}
+
+\section{Hypotheses}
+
+\begin{tabularx}{.95\linewidth}{@{}lX@{}}
+	\toprule
+	\textbf{ID} & \textbf{Hypothesis} \\
+	\midrule
+	H-1 & Module-local foreground, reasoning, and reflection lanes can preserve conversational responsiveness while improving reliability for tasks that require evidence, verification, action execution, or stronger context. \n
+	H-2 & Model-agnostic contracts can reduce provider lock-in when policy, knowledge handling, context, and action execution remain owned by the runtime. \n
+	H-3 & Context governance with provenance, classification, minimization, and revocation can reduce leakage and misuse without eliminating useful specialized reasoning. \n
+	H-4 & Evaluated \texttt{LearningCandidate} promotion can improve system adaptation while preventing generated material or ordinary \texttt{KnowledgeRecord} storage from silently rewriting protected behavior or factual authority. \n
+	H-5 & \texttt{RuntimeJournal}, \texttt{ReasoningTask}, and append-only \texttt{RuntimeEvent} history can make delayed reasoning inspectable and recoverable enough for ordinary local operation. \n
+	\bottomrule
+\end{tabularx}
+
+\section{Expected Contributions}
+
+\Madre's expected contribution is a reference architecture for local-first, model-agnostic delayed reasoning. The contribution combines module-owned agents, optional Complex Agent lane profiles, governed context bundles, explicit \texttt{ModelAction} and internal action contracts, \texttt{RuntimeEvent} evidence/generated material separation, controlled learning, and traceable recovery paths.
+
+The novelty is not a new language model. It is the engineering arrangement that keeps language models useful while preventing them from becoming sources of truth, authority, policy, knowledge, or action. The architecture is intended to be useful for personal assistants, developer systems, organizational knowledge workers, domain systems, and local interfaces that require control over private knowledge.
+
+\section{Novelty And Validation Strategy}
+
+The first research claim is that a useful agentic system can be validated as a software architecture before it is validated as a broad automation product. \Madre's novelty is the conjunction of local-first execution, replaceable inference and action boundaries, delayed reasoning, governed context, explicit \texttt{PolicyDecision} outcomes, evaluated learning promotion, and journaled recovery.
+
+The validation strategy examines whether a local request can enter through bounded access surfaces, be triaged without unsupported claims, become a durable \texttt{ReasoningTask} when stronger evidence is needed, obtain a governed context bundle, cross a replaceable model backend, invoke a bounded internal action after a permitting \texttt{PolicyDecision}, produce an generated material that remains non-authoritative, expose \texttt{RuntimeJournal} trace evidence, and support correction, invalidation, supersession, rollback, or deletion/detachment.
+
+The validation strategy treats negative paths as first-class evidence. Prompt or source injection must remain source data. Known material used with an incorrect \texttt{truthLevel} or \texttt{truthAuthority} must be rejected or corrected. Sensitive or unrelated material must be excluded from context. generated material must not become truth, policy, action authority, memory, knowledge, behavior, routing, or a candidate by itself. A \texttt{KnowledgeCandidate} changes a knowledge boundary only through promotion, and a \texttt{LearningCandidate} changes module behavior only after defined evaluation and promotion.
+
+\section{Related Work And Evidence Map}
+
+\begin{tabularx}{.95\linewidth}{@{}lX X@{}}
+	\toprule
+	\textbf{Evidence family} & \textbf{Relevance to \madre} & \textbf{Specification use} \\
+	\midrule
+	Local-first software & Establishes user ownership, offline usefulness, privacy, longevity, and optional synchronization as product concerns. & Supports data sovereignty and local-first architecture claims. \n
+	Requirements engineering & Provides structure for measurable requirements, acceptance criteria, verification methods, and source traceability. & Supports the SRS and traceability model. \n
+	Architecture description & Provides stakeholder, concern, viewpoint, view, correspondence, and decision-rationale concepts. & Supports multi-view architecture description. \n
+	LLM and agent security & Identifies prompt injection, sensitive disclosure,	supply-chain risk, data poisoning, excessive agency, vector weakness, misinformation, and resource consumption. & Supports threat and policy modeling. \n
+	Software quality models & Provide vocabulary for reliability, maintainability, portability, security, performance efficiency, usability, and quality-in-use evaluation. & Supports the quality attribute model. \n
+	AI evaluation research & Provides multi-metric and evidence-oriented evaluation patterns for generated material, retrieval quality, and agentic task performance. & Supports MADRE-native benchmark families. \\
+	\bottomrule
+\end{tabularx}
+
+\madreChapter{Product Definition}
+
+\section{Executive Definition}
+
+\Madre is a runtime foundation rather than a single assistant interface. The kernel assigns ordinary interaction to a Core Module, records delayed lifecycle and runtime history locally, and keeps policy, knowledge, action, and recovery authority outside inference. Language models run through module-constrained \texttt{ModelAction} execution; each generated material is generated material from an \texttt{RuntimeEvent} evidence, not authority or a candidate by itself.
+
+\section{Product Rationale}
+\begin{center}
+	\madreLogoH
+\end{center}
+\begin{tabularx}{.95\linewidth}{@{}lX@{}}
+	\toprule
+	\textbf{Rationale} & \textbf{Product implication} \\
+	\midrule
+	Local control & Private data, local knowledge, and sensitive work remain under local authority unless a policy-governed transfer is explicitly permitted. \n
+	Model substitutability & No model provider, host, prompt convention, or output format defines runtime truth, policy, knowledge, or action authority. \n
+	Delayed reasoning & Work that requires evidence, verification, resource control, or stronger context is represented as a traceable \texttt{ReasoningTask} rather than as an unsupported foreground answer. \n
+	Context governance & Context is selected, minimized, classified, sourced, scoped, provenanced, and revocable before it is provided to a \texttt{ModelAction}, internal action, or reasoning task. \n
+	Bounded action use & Internal actions, external actions, knowledge change, and workflow execution are allowed only through declared authority boundaries, \texttt{PolicyDecision} outcomes, trace evidence, and recovery expectations. \n
+	Known material and learning & A \texttt{KnowledgeRecord} is not factual truth by default; a \texttt{KnowledgeCandidate} is reserved for pending knowledge-boundary change, while a \texttt{LearningCandidate} is an evaluated proposed module improvement. \\
+	\bottomrule
+\end{tabularx}
+
+\subsection{Extended Rationale}
+\begin{itemize}
+	\itembf Data Sovereignty:
+	\subitem The first design obligation of \Madre is to keep the user's data under the user's control. Contemporary AI services often make private life, professional work, organizational knowledge, and creative material flow through remote systems by default. That default is not neutral. It concentrates power in the companies that own the infrastructure, the logs, the model services, the policy switches, and the billing relation.
+	\subitem \Madre refuses to make surveillance a prerequisite for assistance. Local-first operation is a security boundary, a political boundary, and an engineering discipline. Private conversation, module-owned known material, organizational records, and sensitive work must remain local unless an explicit policy, classification, minimization, and trace path says otherwise.
+	\subitem Internet access is treated as a risk boundary. Prompt injection, credential exposure, external action abuse, provider lock-in, and remote data retention are normal failure modes of cloud-first agentic systems; \Madre's architecture must make those failures harder by default and visible when they cannot be eliminated.
+	\itembf Free Software Duty:
+	\subitem \Madre is released under \texttt{\license} because source availability alone is not enough. The project aims to provide usable agentic infrastructure for people and organizations that cannot, or should not, depend on platform owners for every intelligent interface they build.
+	\subitem The current generation of AI models draws on a broad inheritance of human language, labor, research, art, software, and social knowledge. A public-interest response requires practical, inspectable infrastructure outside exclusive corporate channels.
+	\subitem \Madre supports developers and creators running useful systems on ordinary machines, inspecting decisions, replacing inference backends and authorized integrations, and sharing improvements without requiring platform permission.
+	\itembf Model Agnosticism:
+	\subitem No single model, host, vendor, format, or prompt convention should define \Madre's architecture. Models improve, fail, disappear, become expensive, change license terms, and carry different bias and safety profiles.
+	\subitem \Madre treats inference as a governed \texttt{ModelAction}. The runtime may choose different permitted model-use profile and model backend combinations without letting any model become authority over policy, knowledge, actions, or truth.
+	\itembf Resource Discipline:
+	\subitem Local-first AI must remain useful on ordinary commercial devices and degrade intelligently when resources are scarce.
+	\subitem Optional Complex Agent lanes, task decomposition, caching, context minimization, repeated checks where they matter, and durable records make stronger reasoning selective rather than an unlimited default.
+	\itembf Knowledge Governance:
+	\subitem Agentic systems become dangerous when they blur text, known material, retained interaction, instruction, evidence, and action. A conversation turn is not a verified fact, an generated material is not a source or authority, and an action result is not an instruction.
+	\subitem A \texttt{KnowledgeRecord} carries provenance, sensitivity, intended use, \texttt{truthLevel}, and \texttt{truthAuthority}; a \texttt{LearningCandidate} is an evaluated module-improvement proposal, not ordinary stored knowledge.
+	\itembf Distributed Reasoning:
+	\subitem Interaction can remain coherent while module-owned agents defer hard work, retrieve permitted material, test hypotheses, revise plans, and learn from evaluated outcomes without treating language models as minds.
+	\subitem Every agent, \texttt{RuntimeEvent} evidence, action invocation, \texttt{KnowledgeRecord} change, and \texttt{LearningCandidate} must remain accountable to an explicit runtime boundary.
+\end{itemize}
+
+\section{Product Design}
+
+\subsection{Product Scope}
+
+\Madre provides a disciplined coordination layer underneath agentic applications. The kernel routes interaction, registers the Core Module, records delayed work through \texttt{RuntimeJournal}, coordinates bounded context and actions, records \texttt{PolicyDecision} outcomes, and exposes recovery semantics.
+
+The primary audience is developers and organizations building private, domain-aware, extensible assistant systems. Applications built on \Madre may vary in interface, domain, and policy, but they inherit the same authority model: modules own their agents and known material, model execution is constrained by \texttt{ModelBinding}, and policy, trace, action, and recovery boundaries remain runtime-controlled.
+
+\subsection{What \Madre Is}
+
+\begin{itemize}
+	\item A local-first runtime kernel for agentic systems.
+	\item A model-agnostic coordination layer for multiple model families.
+	\item A delayed-reasoning architecture that keeps conversation responsive while deeper work happens through module-local agents and \texttt{ReasoningTask} lifecycle.
+	\item A policy-aware boundary for context, internal actions, knowledge, learning, and remote transfer.
+	\item A developer foundation for building assistants, domain systems, and workflow-capable applications on top of governed local intelligence.
+\end{itemize}
+
+\subsection{What \Madre Is Not}
+
+\begin{itemize}
+	\item \Madre is not a chatbot product. Chat is one possible surface over the kernel, not the kernel's definition.
+	\item \Madre is not a prompt wrapper. Prompts are runtime inputs, not an architecture.
+	\item \Madre is not a vendor abstraction layer whose purpose is merely to swap API providers.
+	\item \Madre is not an unrestricted automation agent. Internal actions, external actions, knowledge-boundary change, and learning require explicit boundaries.
+	\item \Madre is not a passive record of interaction history. The product is the governed runtime kernel and its architectural obligations.
+\end{itemize}
+
+\subsection{Core User Value}
+
+\Madre lets an application answer quickly without pretending every answer can be safe, complete, or well-reasoned in the foreground. The Core Module can assign a Main Agent role with a Complex Agent profile whose foreground lane clarifies intent, uses appropriately classified material, names uncertainty, and triggers deeper work. Module-local reasoning lanes perform work requiring decomposition, evidence, internal actions, verification, or stronger context.
+
+This separation gives users a better contract. They are not forced to choose between a quick hallucination and a slow black box. They get immediate conversation when that is appropriate, delayed reasoning when that is necessary, and inspectable boundaries when the system touches sensitive data or meaningful actions.
+
+\subsection{Design Principles}
+
+\begin{itemize}
+	\itembf Local-first, not local-only: Local execution is the default because privacy, cost, resilience, and agency require a strong local base. Remote services may exist only as explicitly governed integrations with classification, minimization, policy, provenance, and journaled trace.
+	\itembf Model-agnostic by contract: Models are replaceable runtime functions. The kernel must not let any model provider define the system's truth model, policy boundary, knowledge representation, or action authority.
+	\itembf Foreground lane, durable reasoning: A Main Agent role may use a Complex Agent foreground lane to preserve conversational flow. Expensive, uncertain, risky, or evidence-heavy work should become a scheduled \texttt{ReasoningTask} that can be resumed, inspected, verified, and delivered asynchronously.
+	\itembf Context is a governed asset: Context is not just text stuffed into a prompt. It is selected, minimized, classified, sourced, scoped, and revoked according to the purpose of the task and the authority of the actor using it.
+	\itembf Autonomy is bounded: \Madre must support unattended delayed work, but autonomy is legitimate only when the action has an applicable \texttt{PolicyDecision}, is recorded through \texttt{RuntimeEvent}, is recoverable for its risk level, and is blocked from crossing stronger boundaries without authorization.
+	\itembf Learning is evaluated: Useful systems should improve from use, but a \texttt{LearningCandidate} cannot quietly rewrite protected behavior. Saving a \texttt{KnowledgeRecord} is not learning; knowledge-boundary and behavior changes must be reviewable, promotable, reversible, and separable.
+	\itembf Interfaces do not own the architecture:	The \texttt{madre} CLI, local read-first inspection console, graphical UI, speech surfaces, or domain applications are access surfaces. They must expose and operate the kernel without becoming the source of runtime authority.
+\end{itemize}
+
+\subsection{Product Boundaries}
+
+The product boundary covers runtime responsibilities and architecture obligations: local-first operation, model-agnostic inference, module-owned agent coordination, governed context, bounded internal actions, knowledge handling, evaluated learning, runtime traceability, and recovery.
+
+\Madre may expose many application forms: personal assistants, research systems, developer environments, organizational knowledge workers, or domain-specific automation environments. Those applications may differ in interface and policy, but they must inherit the same kernel commitments: local-first operation, replaceable inference, governed context, bounded internal actions, inspectable retained interaction material and \texttt{KnowledgeRecord} handling, evaluated learning, journaled runtime history, and recovery.

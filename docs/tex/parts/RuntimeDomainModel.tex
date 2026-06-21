@@ -1,0 +1,509 @@
+% !TeX root = ../MADRE-AgenticSystem.tex
+
+\madreChapter{Runtime Domain Model}
+
+\Madre principles are rooted in the domain architecture rather than brute computation. The runtime class map below is intentionally conservative: a class appears only when it owns stable identity, lifecycle, ownership boundary, responsibility, canonical-flow participation, or boundary participation that cannot safely be collapsed into another object.\n
+
+This chapter incorporates the accepted classmap baseline. It removes storage adapters, inference records, inference outputs, generic boundary-contract containers, and conversational record classes from the runtime domain map. Those concepts remain possible infrastructure, product wording, retained material, or event payloads, but they are not accepted runtime classes here.\n
+
+\section{Design Rule}
+
+A class exists in this map only when it has stable runtime identity, stable ownership boundary, stable lifecycle, stable responsibility that cannot be expressed as a value inside another class, required participation in the canonical \Madre flow, or boundary participation needed for valid composition. Attributes preserve identity, ownership, lifecycle, relation, traceability, or accepted invariants. Operations appear only when caller, preconditions, postconditions, and side effects are clear enough at architecture level.\n
+
+\section{Minimal Canonical Flow}
+\OList[,]{
+	{An access surface submits a user, system, module, or agent-originated reasoning need to the kernel. The surface is not authority.},
+	{\texttt{MADREKernel} resolves an explicit valid target module when present; otherwise it falls back to the Core Module role. The kernel does not semantically choose the best module.},
+	{A \texttt{ReasoningModule} receives a \texttt{ReasoningRequest} and answers, clarifies, blocks, delegates, creates a plan, or fails inside its own boundary.},
+	{Structured or delayed work becomes a \texttt{ReasoningPlan} containing \texttt{ReasoningTask} occurrences.},
+	{A \texttt{Workflow} may be applied by module-owned planning to generate or refine tasks. It is a planning-time blueprint, not an executable action.},
+	{Execution-time tasks invoke a module-owned \texttt{MADREAgent}, \texttt{AgentRoutine}, \texttt{AgentAction}, or \texttt{ModelAction} through a concrete \texttt{AgentRequest}.},
+	{\texttt{ModelAction} uses an allowed \texttt{ModelBinding}; generated material returns through \texttt{AgentResponse} and, when materialized, \texttt{ReasoningArtifact}.},
+	{\texttt{KnowledgeRecord}, \texttt{KnowledgeCandidate}, and \texttt{LearningCandidate} remain separate lifecycle concepts. Produced material does not become knowledge or learning by itself.},
+	{\texttt{PolicyDecision} records boundary outcomes. \texttt{RuntimeEvent} records runtime evidence. \texttt{RuntimeJournal} appends the local trace.}
+}
+
+\section{Conventions}
+\subsection{Type Conventions}
+\UList*[,]{
+	\texttt{UUID}: Stable identifier,
+	\texttt{Text}: Human-readable or structured textual description,
+	\texttt{Instant}: Timestamp,
+	\texttt{Ref<T>}: Stable reference to another runtime object,
+	\texttt{List<T>}: Ordered collection,
+	\texttt{Set<T>}: Unordered collection without duplicates,
+	{\texttt{Map<K,V>}: Key-value structure},
+	\texttt{Optional<T>}: Absent or present value
+}
+
+\subsection{Process Conventions}
+\MADRETABLEv2:{\textbf{Term} & \textbf{Meaning}}{
+	\texttt{minimizeContext} & Context adapted to the target scope, with sensitive or unrelated material omitted. \N
+	Boundary composition & Construction of valid planning or execution paths from declared module, agent, workflow, routine, action, model, context, storage, privacy, and learning constraints. \N
+	Planning-time compatibility & Compatibility used when \texttt{Workflow} creates or refines \texttt{ReasoningTask} objects. \N
+	Execution-time compatibility & Compatibility required before \texttt{AgentRoutine}, \texttt{AgentAction}, or \texttt{ModelAction} invocation. \N
+	State transition & A guarded process recorded through \texttt{RuntimeEvent}, not a plain enum assignment. \\
+}
+
+\subsection{Class Inventory}
+\MADRETABLEv2:{\textbf{Accepted classes} & \textbf{Open runtime areas}}{
+	\texttt{MADREKernel}, \texttt{ReasoningModule} & Scheduler internals, storage ports, access-surface adapters, device-resource bindings. \N
+	\texttt{MADREAgent}, \texttt{SimpleAgent}, \texttt{TwinAgent}, \texttt{ComplexAgent}, \texttt{SystemAgent} & Concrete lane scheduling, review implementation, live-interaction adapter methods. \N
+	\texttt{Workflow}, \texttt{AgentRoutine}, \texttt{AgentAction}, \texttt{ModelAction}, \texttt{ModelBinding} & Capability metadata taxonomy, model backend adapter details, resource profiles, action subtype catalogues. \N
+	\texttt{ReasoningRequest}, \texttt{ReasoningResponse}, \texttt{ReasoningPlan}, \texttt{ReasoningTask}, \texttt{AgentRequest}, \texttt{AgentResponse} & Request status taxonomy, task transition operations, dependency resolution, quality-gate internals. \N
+	\texttt{ContextBundle}, \texttt{ReasoningArtifact}, \texttt{KnowledgeRecord}, \texttt{KnowledgeCandidate}, \texttt{LearningCandidate} & Truth taxonomy, lifecycle taxonomy, artifact subtype catalogue, promotion and rollback mechanics. \N
+	\texttt{PolicyDecision}, \texttt{RuntimeJournal}, \texttt{RuntimeEvent} & Event taxonomy, policy-rule engine internals, query/index implementation, evidence payload schema. \\
+}
+
+\section{Accepted UML Registry}
+
+\pxUMLClass{MADREKernel}{%
+	\UMLAt-kernelId:UUID
+}
+\pxUMLClass{ReasoningModule}{%
+	\UMLAt-moduleId:UUID
+}
+\pxUMLClass[abstractclass]{MADREAgent}{%
+	\UMLAt-agentId:UUID
+}
+\pxUMLClass{SimpleAgent}[MADREAgent]{~}
+\pxUMLClass{TwinAgent}[MADREAgent]{~}
+\pxUMLClass{ComplexAgent}[MADREAgent]{~}
+\pxUMLClass{SystemAgent}[ComplexAgent]{~}
+\pxUMLClass{Workflow}{%
+	\UMLAt-workflowId:UUID
+}
+\pxUMLClass{AgentRoutine}{%
+	\UMLAt-routineId:UUID
+}
+\pxUMLClass{AgentAction}{%
+	\UMLAt-actionId:UUID
+}
+\pxUMLClass{ModelAction}[AgentAction]{%
+	\UMLAt-modelBinding:Ref<ModelBinding>
+}
+\pxUMLClass{ModelBinding}{%
+	\UMLAt-bindingId:UUID
+}
+\pxUMLClass{ReasoningRequest}{%
+	\UMLAt-requestId:UUID
+}
+\pxUMLClass{ReasoningResponse}{%
+	\UMLAt-responseId:UUID
+}
+\pxUMLClass{ReasoningPlan}{%
+	\UMLAt-planId:UUID
+}
+\pxUMLClass{ReasoningTask}{%
+	\UMLAt-taskId:UUID
+}
+\pxUMLClass{AgentRequest}{%
+	\UMLAt-agentRequestId:UUID
+}
+\pxUMLClass{AgentResponse}{%
+	\UMLAt-agentResponseId:UUID
+}
+\pxUMLClass{ContextBundle}{%
+	\UMLAt-bundleId:UUID
+}
+\pxUMLClass{ReasoningArtifact}{%
+	\UMLAt-artifactId:UUID
+}
+\pxUMLClass{KnowledgeRecord}{%
+	\UMLAt-knowledgeId:UUID
+}
+\pxUMLClass{KnowledgeCandidate}{%
+	\UMLAt-candidateId:UUID
+}
+\pxUMLClass{LearningCandidate}{%
+	\UMLAt-candidateId:UUID
+}
+\pxUMLClass{PolicyDecision}{%
+	\UMLAt-decisionId:UUID
+}
+\pxUMLClass{RuntimeJournal}{%
+	\UMLAt-journalId:UUID
+}
+\pxUMLClass{RuntimeEvent}{%
+	\UMLAt-eventId:UUID
+}
+
+\section{Structural Relations}
+
+\subsection{Runtime Ownership}
+\pxUMLDiagram{
+	\drawclass[text width=14em]{MADREKernel}[0,0]
+	\drawclass[text width=15em]{ReasoningModule}[10,0]
+	\drawclass[text width=13em]{RuntimeJournal}[0,-7]
+	\drawclass[text width=13em]{RuntimeEvent}[10,-7]
+	\composition{MADREKernel}{1}{modules}{ReasoningModule}
+	\composition{MADREKernel}{1}{journal}{RuntimeJournal}
+	\composition{RuntimeJournal}{many}{events}{RuntimeEvent}
+	\unidirectionalAssociation{ReasoningModule}{records}{events}{RuntimeEvent}
+}[.95\linewidth]<-1em>
+
+\subsection{Agent Family}
+\pxUMLDiagram{
+	\drawclass[text width=13em]{MADREAgent}[8,0]
+	\drawclass[text width=12em]{SimpleAgent}[0,-5]
+	\drawclass[text width=12em]{TwinAgent}[6,-5]
+	\drawclass[text width=12em]{ComplexAgent}[12,-5]
+	\drawclass[text width=12em]{SystemAgent}[12,-10]
+	\drawclass[text width=15em]{ReasoningModule}[8,5]
+	\association{ReasoningModule}{1}{owns}{MADREAgent}{1..*}{agents}
+}[.95\linewidth]<-1em>
+
+\subsection{Planning And Invocation}
+\pxUMLDiagram{
+	\drawclass[text width=13em]{ReasoningRequest}[0,0]
+	\drawclass[text width=13em]{ReasoningResponse}[8.5,0]
+	\drawclass[text width=13em]{ReasoningPlan}[0,-5]
+	\drawclass[text width=13em]{ReasoningTask}[8.5,-5]
+	\drawclass[text width=13em]{Workflow}[17,-5]
+	\drawclass[text width=13em]{AgentRequest}[0,-10]
+	\drawclass[text width=13em]{AgentResponse}[8.5,-10]
+	\drawclass[text width=13em]{AgentRoutine}[17,-10]
+	\drawclass[text width=13em]{AgentAction}[0,-15]
+	\drawclass[text width=13em]{ModelAction}[8.5,-15]
+	\drawclass[text width=13em]{ModelBinding}[17,-15]
+	\unidirectionalAssociation{ReasoningRequest}{handled}{module}{ReasoningResponse}
+	\composition{ReasoningPlan}{many}{tasks}{ReasoningTask}
+	\unidirectionalAssociation{Workflow}{refines}{tasks}{ReasoningTask}
+	\unidirectionalAssociation{ReasoningTask}{invokes}{request}{AgentRequest}
+	\unidirectionalAssociation{AgentRequest}{returns}{result}{AgentResponse}
+	\unidirectionalAssociation{AgentRoutine}{returns}{result}{AgentResponse}
+	\unidirectionalAssociation{AgentAction}{returns}{response}{AgentResponse}
+	\unidirectionalAssociation{ModelAction}{uses}{binding}{ModelBinding}
+}[.98\linewidth]<-1em>
+
+\subsection{Context, Material, Knowledge, And Learning}
+\pxUMLDiagram{
+	\drawclass[text width=13em]{ContextBundle}[0,0]
+	\drawclass[text width=13em]{ReasoningArtifact}[9,0]
+	\drawclass[text width=13em]{KnowledgeRecord}[18,0]
+	\drawclass[text width=13em]{KnowledgeCandidate}[4.5,-6]
+	\drawclass[text width=13em]{LearningCandidate}[13.5,-6]
+	\drawclass[text width=13em]{RuntimeEvent}[9,-12]
+	\unidirectionalAssociation{ContextBundle}{selects}{sources}{ReasoningArtifact}
+	\unidirectionalAssociation{ReasoningArtifact}{informs}{handling}{KnowledgeRecord}
+	\unidirectionalAssociation{KnowledgeCandidate}{targets}{change}{KnowledgeRecord}
+	\unidirectionalAssociation{LearningCandidate}{uses}{evidence}{RuntimeEvent}
+	\unidirectionalAssociation{KnowledgeRecord}{journals}{event}{RuntimeEvent}
+}[.98\linewidth]<-1em>
+
+\subsection{Trace And Authority Evidence}
+\pxUMLDiagram{
+	\drawclass[text width=13em]{PolicyDecision}[0,0]
+	\drawclass[text width=13em]{RuntimeEvent}[9,0]
+	\drawclass[text width=13em]{RuntimeJournal}[18,0]
+	\drawclass[text width=13em]{AgentRequest}[0,-6]
+	\drawclass[text width=13em]{AgentAction}[9,-6]
+	\drawclass[text width=13em]{ModelAction}[18,-6]
+	\unidirectionalAssociation{PolicyDecision}{records}{outcome}{RuntimeEvent}
+	\composition{RuntimeJournal}{many}{events}{RuntimeEvent}
+	\unidirectionalAssociation{AgentRequest}{requires}{policy}{PolicyDecision}
+	\unidirectionalAssociation{AgentAction}{records}{evidence}{RuntimeEvent}
+	\unidirectionalAssociation{ModelAction}{records}{evidence}{RuntimeEvent}
+}[.98\linewidth]<-1em>
+
+\section{Class Definitions}
+
+\subsection{MADREKernel}
+\printClass{MADREKernel}[
+	\UMLAt-coreModule:Ref<ReasoningModule> ,
+	\UMLAt-moduleRegistry:Set<Ref<ReasoningModule>> ,
+	\UMLAt-runtimeJournal:RuntimeJournal
+]{%
+	\item[] Deterministic local runtime coordinator.
+	\item[] Registers modules, assigns the Core Module role, resolves explicit module targets, falls back to the Core Module when a target is missing or invalid, schedules delayed work, provides scoped runtime services, and appends events.
+	\item[] It does not reason, semantically route, inspect module-private knowledge, execute actions, invoke models, promote knowledge, or learn.
+	\item[] Storage assignments, scheduler internals, access-surface adapters, and hardware bindings are implementation-defined infrastructure.
+}<\texttt{MADREKernel} coordinates valid targets and runtime trace without becoming the reasoning actor.>
+
+\subsection{ReasoningModule}
+\printClass{ReasoningModule}[
+	\UMLAt-mainAgent:Ref<SystemAgent> ,
+	\UMLAt-agents:Set<Ref<MADREAgent>> ,
+	\UMLAt-workflows:Set<Workflow> ,
+	\UMLAt-actions:Set<AgentAction>
+]{%
+	\item[] Governed reasoning and data-governance unit for a bounded domain, topic, user scope, system scope, or operational scope.
+	\item[] Owns module knowledge, local context governance, allowed agents, workflows, routines, actions, model bindings, learning boundaries, and risk limits.
+	\item[] Handles requests by answering, clarifying, blocking, delegating, creating a plan, or failing.
+	\item[] It does not become the kernel, directly access another module's private data, or widen the authority of its agents and actions.
+}<\texttt{ReasoningModule} owns semantic reasoning and local governance inside a module boundary.>
+
+\subsection{MADREAgent}
+\printClass{MADREAgent}{%
+	\item[] Abstract module-owned runtime actor that executes concrete \texttt{AgentRequest} objects under module boundaries.
+	\item[] Uses provided context and runtime-constructed execution context, invokes only allowed routines or actions, and returns \texttt{AgentResponse} material.
+	\item[] It does not own kernel resources, widen its own authority, or promote produced material into knowledge or learning.
+}<\umltag:AbstractClass \texttt{MADREAgent} executes module-authorized invocations.>
+
+\subsection{SimpleAgent}
+\printClass*{SimpleAgent}{%
+	\item[] Concrete \texttt{MADREAgent} for direct execution where no mandatory review or complex lane behavior is required.
+	\item[] It returns one \texttt{AgentResponse} and does not gain reflection, review, or learning authority.
+}<\texttt{SimpleAgent} directly executes valid requests.>
+
+\subsection{TwinAgent}
+\printClass*{TwinAgent}{%
+	\item[] Concrete \texttt{MADREAgent} whose invariant is response production plus mandatory review before final dispatch.
+	\item[] The review path does not widen action authority and unchecked material cannot satisfy a task that requires checked output.
+}<\texttt{TwinAgent} is justified by the checked-output postcondition.>
+
+\subsection{ComplexAgent}
+\printClass*{ComplexAgent}{%
+	\item[] Concrete \texttt{MADREAgent} capable of foreground continuity, deeper reasoning supervision, and reflective/evaluative work.
+	\item[] Foreground, reasoning, and reflection lanes are behavioral capacities; scheduling and threading are not class attributes.
+	\item[] Reflection may propose \texttt{LearningCandidate} objects but cannot activate learning.
+}<\texttt{ComplexAgent} coordinates deeper behavior without gaining extra authority.>
+
+\subsection{SystemAgent}
+\printClass*{SystemAgent}{%
+	\item[] Module-bound \texttt{ComplexAgent} that serves as the module's main operational agent.
+	\item[] Its distinguishing property is strong local binding to one \texttt{ReasoningModule}, not global authority.
+	\item[] The Main Agent is a role held by one module-owned \texttt{SystemAgent}; it is not a separate class.
+}<\texttt{SystemAgent} is the module-bound complex agent used for ordinary module operation.>
+
+\subsection{Workflow}
+\printClass*{Workflow}[
+	\UMLAt-ownerModule:Ref<ReasoningModule> ,
+	\UMLAt-purpose:Text
+]{%
+	\item[] Module-level planning blueprint that generates or refines \texttt{ReasoningTask} occurrences inside a \texttt{ReasoningPlan}.
+	\item[] It is not an actor, not an action, not an agent routine, and not a scheduled object by itself.
+	\item[] Compatibility is planning-time compatibility under accumulated request constraints.
+}<\texttt{Workflow} is reusable module planning structure.>
+
+\subsection{AgentRoutine}
+\printClass*{AgentRoutine}[
+	\UMLAt-ownerAgent:Ref<MADREAgent> ,
+	\UMLAt-purpose:Text
+]{%
+	\item[] Agent-level compound executable capability.
+	\item[] It receives \texttt{AgentRequest}, may coordinate several lower-level steps or actions, and returns \texttt{AgentResponse}.
+	\item[] It is execution-time capability, not a module workflow and not a replacement for \texttt{ReasoningPlan}.
+}<\texttt{AgentRoutine} is compound executable agent behavior.>
+
+\subsection{AgentAction}
+\printClass{AgentAction}[
+	\UMLAt-ownerModule:Ref<ReasoningModule> ,
+	\UMLAt-purpose:Text
+]{%
+	\item[] Smallest executable capability available under module or agent authority.
+	\item[] Executes deterministic, model-backed, integration-backed, or other bounded behavior only through a valid invocation path.
+	\item[] It does not authorize itself, execute from raw user text, or bypass runtime trace.
+}<\texttt{AgentAction} is the smallest bounded executable capability.>
+
+\subsection{ModelAction}
+\printClass*{ModelAction}{%
+	\item[] Specialized \texttt{AgentAction} that uses a model binding as part of execution.
+	\item[] It prepares model-backed input from \texttt{AgentRequest} and governed context, uses only allowed \texttt{ModelBinding}, and returns produced material through ordinary response or artifact paths.
+	\item[] Runtime evidence for model-backed execution is recorded through \texttt{RuntimeEvent}; no separate output class is accepted here.
+}<\texttt{ModelAction} is model-backed action execution under binding constraints.>
+
+\subsection{ModelBinding}
+\printClass*{ModelBinding}[
+	\UMLAt-description:Text
+]{%
+	\item[] Configuration boundary that constrains which model-backed execution options a model-backed action or agent may use.
+	\item[] Preserves model substitutability, local-first or authorized-remote limits, reproducibility expectations, and resource discipline.
+	\item[] It is not the model, not a runtime actor, not authority, and does not execute inference.
+}<\texttt{ModelBinding} constrains model-backed execution without becoming model authority.>
+
+\subsection{ReasoningRequest}
+\printClass*{ReasoningRequest}[
+	\UMLAt-objective:Text ,
+	\UMLAt-originRef:Ref<?> ,
+	\UMLAt-targetModule:Optional<Ref<ReasoningModule>> ,
+	\UMLAt-contextRef:Optional<Ref<ContextBundle>> ,
+	\UMLAt-scope:Text ,
+	\UMLAt-constraints:Text
+]{%
+	\item[] Passive request object for a reasoning need. It may originate from a user interaction, system event, module, agent, plan, or delegated task.
+	\item[] Carries objective, origin, explicit target when known, scope, constraints, and context references.
+	\item[] It does not build plans, schedule itself, execute work, authorize actions, or carry module-private knowledge directly across delegation boundaries.
+}<\texttt{ReasoningRequest} represents module-level reasoning or delegation need.>
+
+\subsection{ReasoningResponse}
+\printClass*{ReasoningResponse}[
+	\UMLAt-outcome:Text ,
+	\UMLAt-materialRef:Optional<Ref<?>> ,
+	\UMLAt-artifactRefs:List<Ref<ReasoningArtifact>> ,
+	\UMLAt-planRef:Optional<Ref<ReasoningPlan>>
+]{%
+	\item[] Passive module-level response to a \texttt{ReasoningRequest}.
+	\item[] Represents answer, clarification, block, delegation, plan-created, or failure material.
+	\item[] It does not execute work, authorize actions, or promote contained material into knowledge or learning.
+}<\texttt{ReasoningResponse} carries module-level handling output.>
+
+\subsection{ReasoningPlan}
+\printClass*{ReasoningPlan}[
+	\UMLAt-ownerModule:Ref<ReasoningModule> ,
+	\UMLAt-sourceRequest:Ref<ReasoningRequest> ,
+	\UMLAt-tasks:List<Ref<ReasoningTask>>
+]{%
+	\item[] Durable reasoning-continuity object for structured or delayed work.
+	\item[] Owns task occurrences and preserves enough plan structure for scheduling, inspection, dependency management, failure handling, and resumption.
+	\item[] It does not execute itself, allocate kernel resources, bypass module ownership, or promote results into knowledge or learning.
+}<\texttt{ReasoningPlan} owns delayed reasoning task structure.>
+
+\subsection{ReasoningTask}
+\printClass*{ReasoningTask}[
+	\UMLAt-targetKind:Text ,
+	\UMLAt-targetRef:Optional<Ref<?>> ,
+	\UMLAt-dependencies:List<Ref<ReasoningTask>> ,
+	\UMLAt-contextRequirement:Text ,
+	\UMLAt-boundaryRequirement:Text
+]{%
+	\item[] Passive planned execution occurrence inside a \texttt{ReasoningPlan}.
+	\item[] Targets a delegated \texttt{ReasoningRequest}, an executable agent capability, an \texttt{AgentRoutine}, an \texttt{AgentAction}, a \texttt{ModelAction}, or a \texttt{Workflow} only when planning expansion or refinement is intended.
+	\item[] It does not contain a prebuilt \texttt{AgentRequest} before execution selection and does not execute itself.
+}<\texttt{ReasoningTask} records planned work before concrete invocation.>
+
+\subsection{AgentRequest}
+\printClass*{AgentRequest}[
+	\UMLAt-objective:Text ,
+	\UMLAt-contextRef:Ref<ContextBundle> ,
+	\UMLAt-targetAgent:Optional<Ref<MADREAgent>> ,
+	\UMLAt-targetCapability:Optional<Ref<?>> ,
+	\UMLAt-effectiveConstraints:Text
+]{%
+	\item[] Concrete executable invocation context constructed by module orchestration.
+	\item[] Carries only the minimized context and effective constraints needed for one valid agent, routine, action, or model-backed execution.
+	\item[] It does not replace \texttt{ReasoningRequest}, schedule work, or make context valid merely by containing it.
+}<\texttt{AgentRequest} is the concrete invocation envelope.>
+
+\subsection{AgentResponse}
+\printClass*{AgentResponse}[
+	\UMLAt-outcome:Text ,
+	\UMLAt-artifactRefs:List<Ref<ReasoningArtifact>> ,
+	\UMLAt-eventRefs:List<Ref<RuntimeEvent>>
+]{%
+	\item[] Concrete invocation result returned by a \texttt{MADREAgent}, \texttt{AgentRoutine}, \texttt{AgentAction}, or \texttt{ModelAction}.
+	\item[] Carries result material, artifact references, block material, refusal material, or failure material.
+	\item[] It is not knowledge, policy, authority, learning, or routing by itself.
+}<\texttt{AgentResponse} wraps concrete execution output.>
+
+\subsection{ContextBundle}
+\printClass*{ContextBundle}[
+	\UMLAt-ownerModule:Ref<ReasoningModule> ,
+	\UMLAt-sourceRefs:List<Ref<?>> ,
+	\UMLAt-scope:Text ,
+	\UMLAt-sensitivity:Text ,
+	\UMLAt-intendedUse:Text
+]{%
+	\item[] Governed context prepared for one request, task, agent invocation, routine invocation, action invocation, or model-backed execution.
+	\item[] Carries selected material or references while preserving source, scope, sensitivity, purpose, minimization, and revocation semantics.
+	\item[] Source material does not become instruction or authority by inclusion.
+}<\texttt{ContextBundle} carries minimized selected context without making it authoritative.>
+
+\subsection{ReasoningArtifact}
+\printClass*{ReasoningArtifact}[
+	\UMLAt-ownerModule:Ref<ReasoningModule> ,
+	\UMLAt-contentRef:Ref<?> ,
+	\UMLAt-originEventRef:Ref<RuntimeEvent> ,
+	\UMLAt-intendedUse:Text
+]{%
+	\item[] Materialized output or captured result produced by reasoning or action execution.
+	\item[] Represents produced material that may be returned, inspected, exported, referenced, corrected, discarded, or used as input to later handling.
+	\item[] It is not knowledge, truth, learning, policy, or action authority by default.
+}<\texttt{ReasoningArtifact} preserves produced material without granting truth or authority.>
+
+\subsection{KnowledgeRecord}
+\printClass*{KnowledgeRecord}[
+	\UMLAt-ownerModule:Ref<ReasoningModule> ,
+	\UMLAt-contentRef:Ref<?> ,
+	\UMLAt-provenanceRefs:List<Ref<?>> ,
+	\UMLAt-scope:Text ,
+	\UMLAt-sensitivity:Text ,
+	\UMLAt-intendedUse:Text ,
+	\UMLAt-truthLevel:Text ,
+	\UMLAt-truthAuthority:Text ,
+	\UMLAt-confidence:Text ,
+	\UMLAt-lifecycleState:Text
+]{%
+	\item[] Module-owned retained material that may later be used as known context, evidence, preference, style, fiction, procedure, hypothesis, correction, memory, or working belief under explicit metadata.
+	\item[] It is broad uncertain knowledge, not factual truth by default and not a subclass of \texttt{ReasoningArtifact} in this baseline.
+	\item[] It does not authorize actions, promote itself across module boundaries, or become learning by being stored.
+}<\texttt{KnowledgeRecord} is uncertain retained module knowledge.>
+
+\subsection{KnowledgeCandidate}
+\printClass*{KnowledgeCandidate}[
+	\UMLAt-ownerModule:Ref<ReasoningModule> ,
+	\UMLAt-proposedChange:Text ,
+	\UMLAt-sourceRefs:List<Ref<?>> ,
+	\UMLAt-targetKnowledgeRef:Optional<Ref<KnowledgeRecord>> ,
+	\UMLAt-status:Text
+]{%
+	\item[] Pending change to a module knowledge boundary.
+	\item[] Represents proposed inclusion, reclassification, correction, ownership transfer, trust-level change, intended-use change, promotion, detachment, invalidation, or related mutation.
+	\item[] It is not active knowledge, not learning, and does not authorize future use until resolved.
+}<\texttt{KnowledgeCandidate} quarantines pending knowledge-boundary change.>
+
+\subsection{LearningCandidate}
+\printClass*{LearningCandidate}[
+	\UMLAt-ownerModule:Ref<ReasoningModule> ,
+	\UMLAt-proposedImprovement:Text ,
+	\UMLAt-evidenceRefs:List<Ref<?>> ,
+	\UMLAt-scope:Text ,
+	\UMLAt-rollbackRefs:List<Ref<?>> ,
+	\UMLAt-status:Text
+]{%
+	\item[] Evaluated proposed improvement to module behavior, evaluation, routing, workflows, routines, context selection, trust calibration, model selection, or other module function.
+	\item[] Remains inactive until promoted through the applicable learning boundary.
+	\item[] Saving \texttt{KnowledgeRecord} material is not learning by itself.
+}<\texttt{LearningCandidate} stores proposed behavior improvement without activating it.>
+
+\subsection{PolicyDecision}
+\printClass*{PolicyDecision}[
+	\UMLAt-outcome:Text ,
+	\UMLAt-reason:Text ,
+	\UMLAt-affectedRef:Optional<Ref<?>> ,
+	\UMLAt-eventRef:Optional<Ref<RuntimeEvent>>
+]{%
+	\item[] Passive record of an explicit boundary or authorization outcome.
+	\item[] Records allow, block, or authorization-required outcomes and links them to affected action, data, autonomy, or boundary evidence when known.
+	\item[] It does not execute policy logic, authorize by itself, or override the composed boundary mechanism.
+}<\texttt{PolicyDecision} records a boundary outcome without granting authority by itself.>
+
+\subsection{RuntimeJournal}
+\printClass{RuntimeJournal}{%
+	\item[] Append-only local runtime trace mechanism.
+	\item[] Appends \texttt{RuntimeEvent} entries and stores or references payloads needed to inspect request handling, plan lifecycle, task execution, context construction, model-backed action execution, action execution, produced material, policy outcomes, failures, candidates, correction, rollback, deletion, and recovery.
+	\item[] It is not a reasoning actor, knowledge repository, general logging framework, or authorization mechanism.
+}<\texttt{RuntimeJournal} preserves append-only runtime history.>
+
+\subsection{RuntimeEvent}
+\printClass*{RuntimeEvent}[
+	\UMLAt-occurredAt:Instant ,
+	\UMLAt-eventType:Text ,
+	\UMLAt-actorRef:Optional<Ref<?>> ,
+	\UMLAt-affectedRef:Optional<Ref<?>> ,
+	\UMLAt-summary:Text ,
+	\UMLAt-payloadRef:Optional<Ref<?>>
+]{%
+	\item[] Append-only record of something relevant that happened in the runtime.
+	\item[] Records request receipt, target resolution, plan creation, scheduling, task transition, context construction, boundary outcome, action execution, model-backed execution, artifact creation, response production, failure, correction, rollback, invalidation, supersession, deletion, detachment, knowledge-candidate transition, or learning-candidate transition.
+	\item[] It does not authorize what happened, execute behavior, make material true, or replace domain objects.
+}<\texttt{RuntimeEvent} records runtime evidence without authorizing it.>
+
+\section{Validation Checklist}
+
+\OList[,]{
+	{The accepted class inventory contains exactly the 26 baseline runtime classes.},
+	{The kernel remains deterministic coordination and target resolution, not semantic reasoning.},
+	{Core Module and Main Agent remain roles, not separate classes.},
+	{Modules own reasoning, knowledge, agents, workflows, routines, actions, and local governance.},
+	{\texttt{Workflow} is planning-time task generation or refinement, not executable work.},
+	{\texttt{AgentRoutine}, \texttt{AgentAction}, and \texttt{ModelAction} are execution-time capabilities invoked through concrete \texttt{AgentRequest}.},
+	{\texttt{ReasoningTask} does not contain a prebuilt \texttt{AgentRequest} before execution selection.},
+	{Model-backed execution is \texttt{ModelAction} plus \texttt{ModelBinding}, ordinary produced material, and \texttt{RuntimeEvent} evidence.},
+	{Produced material does not become knowledge, truth, policy, action authority, routing, behavior, or learning by itself.},
+	{\texttt{KnowledgeRecord}, \texttt{KnowledgeCandidate}, and \texttt{LearningCandidate} preserve separate lifecycle semantics.},
+	{Boundary enforcement is not reduced to a loose policy flag or generic container.},
+	{Storage mechanisms remain implementation-defined infrastructure until a stable domain boundary is proven.}
+}
+
+\appendix

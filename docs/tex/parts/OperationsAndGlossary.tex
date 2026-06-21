@@ -1,0 +1,86 @@
+% !TeX root = ../MADRE-AgenticSystem.tex
+
+\madreChapter{UX, Observability, And Recovery}
+
+\section{Interaction Contract}
+
+\begin{tabularx}{.95\linewidth}{@{}lX@{}}
+	\toprule
+	\textbf{State} & \textbf{User-visible meaning} \\
+	\midrule
+	Immediate answer & The foreground has enough safe local context to answer. \N
+	Clarification needed & Intent, scope, risk, or context is insufficient. \N
+	Queued reasoning & Work has been recorded for delayed execution. \N
+	Running task & Delayed reasoning or action work is active. \N
+	Blocked by policy & A policy boundary prevents execution or promotion. \N
+	Authorization required & The action crosses a configured authority boundary. \N
+	Failed task & Work ended without acceptable result or recovery. \N
+	Completed task & Result is available with \texttt{RuntimeJournal} trace evidence. \N
+	Corrected or rolled back & A previous result or knowledge-boundary change
+	has been revised or reverted. \N
+	Invalidated or superseded & Prior evidence, source, or result is no longer
+	active because it was corrected, revoked, reclassified, or replaced. \N
+	Deleted or detached & Active generated material is removed from use where
+	allowed while accountable \texttt{RuntimeEvent} history remains distinguishable. \N
+	Learning candidate & An evaluated \texttt{LearningCandidate} proposal exists but is not active. \\
+	\bottomrule
+\end{tabularx}
+
+\section{Observability Surfaces}
+
+The local inspection surface must expose sessions, \texttt{ReasoningTask}, \texttt{RuntimeEvent}, context bundles, \texttt{RuntimeEvent} evidence and generated material, internal action evidence, \texttt{PolicyDecision}, failures, metrics, checkpoints, rollbacks, invalidations, supersessions, deleted/detached active material, \texttt{KnowledgeCandidate}, \texttt{LearningCandidate}, and recovery actions. The inspection surface is not a privileged bypass; it is a read-first view over the same policy-governed runtime.
+
+\madreChapter{Governance, Deployment, And Limits}
+
+\section{Secure Engineering Principles}
+
+\Madre requires secure defaults for local credentials, dependency selection, governed external boundaries, secrets handling, reviewable release records, and vulnerability response. Security evidence must cover both conventional software risks and model-mediated risks such as prompt injection, poisoned retrieval, unsafe output handling, excessive agency, and remote disclosure.
+
+\section{Open-Source Governance}
+
+\Madre is released under \texttt{\license}. The open-source governance model must preserve license clarity, dependency review, contribution rules, security disclosure, release integrity, and community responsibility. Openness is part of the project value only when users and developers can inspect, adapt, and verify the runtime without surrendering private data to a platform owner.
+
+\section{Deployment And Operational Assumptions}
+
+The baseline deployment target is an ordinary local device with local storage, local configuration, optional local model execution, and optional remote integrations governed by policy. The operational profile includes storage paths, model setup assumptions, backup and restore, migration, diagnostics, log retention, offline behavior, and upgrade or rollback expectations.
+
+Deployment assumptions remain conceptual at this level of specification. The product architecture defines authority, locality, inspection, recovery, model-use boundaries, and action boundaries without reducing deployment to a single operational shape.
+
+\section{Risks, Limitations, And Excluded Functions}
+
+\Madre limits active executable behavior by authority class. Workflow authoring, self-learning, speech interaction, graphical product surfaces, distributed inference, organization-scale deployment, and model fine-tuning remain governed by the same local-first, policy-governed, model-agnostic, auditable, and recoverable runtime boundary as the rest of the product.
+
+\madreChapter{Glossary}
+
+\MADRETABLE2:{\textbf{Term} & \textbf{Definition}}{%
+	\textbf{AgentAction} & Smallest executable capability available under module or agent authority. \N
+	\textbf{AgentRequest} & Concrete invocation envelope constructed for an agent, routine, action, or model-backed action. \N
+	\textbf{AgentResponse} & Concrete result envelope returned by an agent, routine, or action. \N
+	\textbf{AgentRoutine} & Agent-owned compound executable capability that receives \texttt{AgentRequest} and returns \texttt{AgentResponse}. \N
+	\textbf{Boundary composition} & Runtime construction of a valid path from accumulated module, agent, workflow, routine, action, model-use, context, storage, privacy, and learning constraints. \N
+	\textbf{Core Module} & Kernel-assigned role held by one compatible \texttt{ReasoningModule} for ordinary interaction fallback; it is not a module subtype. \N
+	\textbf{ComplexAgent} & \texttt{MADREAgent} subtype capable of foreground continuity, deeper reasoning supervision, and reflection without gaining extra authority. \N
+	\textbf{ContextBundle} & Minimized selected context for a specific runtime purpose; inclusion does not make source material instruction or authority. \N
+	\textbf{KnowledgeCandidate} & Pending change to a module knowledge boundary, not active knowledge and not learning. \N
+	\textbf{KnowledgeRecord} & Broad uncertain retained module knowledge with provenance, scope, sensitivity, intended use, truth authority, confidence, correction, and lifecycle metadata. \N
+	\textbf{LearningCandidate} & Evaluated proposed module improvement that remains inactive until promoted through the learning boundary. \N
+	\textbf{MADREKernel} & Deterministic local coordinator for module registration, target resolution, Core Module assignment, scheduling, runtime services, and event append. \N
+	\textbf{MADREAgent} & Abstract module-owned runtime actor that executes concrete invocations under module boundaries. \N
+	\textbf{Main Agent} & Role held by one module-owned \texttt{SystemAgent}; it is not a separate class and grants no cross-module authority. \N
+	\textbf{ModelAction} & \texttt{AgentAction} specialization that uses an allowed \texttt{ModelBinding} and returns ordinary produced material with \texttt{RuntimeEvent} evidence. \N
+	\textbf{ModelBinding} & Configuration boundary constraining model-backed execution options without becoming the model or authority. \N
+	\textbf{PolicyDecision} & Passive record of an allow, block, or authorization-required boundary outcome. \N
+	\textbf{ReasoningArtifact} & Produced or materialized output; not knowledge, truth, policy, authority, or learning by default. \N
+	\textbf{ReasoningModule} & Governed reasoning and data-governance unit that owns module knowledge, agents, workflows, routines, actions, context governance, and local boundaries. \N
+	\textbf{ReasoningPlan} & Durable reasoning-continuity object containing planned task occurrences. \N
+	\textbf{ReasoningRequest} & Passive module-level reasoning or delegation need. \N
+	\textbf{ReasoningResponse} & Passive module-level response representing answer, clarification, block, delegation, plan-created, or failure material. \N
+	\textbf{ReasoningTask} & Planned execution occurrence inside a \texttt{ReasoningPlan}; concrete \texttt{AgentRequest} is built later at execution selection. \N
+	\textbf{RuntimeEvent} & Append-only runtime fact or evidence record. \N
+	\textbf{RuntimeJournal} & Append-only local trace mechanism for runtime events and inspection payload references. \N
+	\textbf{SimpleAgent} & Direct-execution \texttt{MADREAgent} subtype. \N
+	\textbf{SystemAgent} & Module-bound \texttt{ComplexAgent} used for ordinary module operation and Main Agent role assignment. \N
+	\textbf{TwinAgent} & \texttt{MADREAgent} subtype justified by mandatory checked-output behavior. \N
+	\textbf{Workflow} & Module-owned planning blueprint that creates or refines \texttt{ReasoningTask} occurrences; not executable work. \N
+	\textbf{Read-first console} & Local inspection surface that exposes status and trace without becoming a privileged mutation path. \N
+	\textbf{Recovery path} & Defined correction, rollback, deletion, compensation, blocking, invalidation, supersession, or detachment behavior for an outcome or state transition.}
