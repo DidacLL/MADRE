@@ -6,7 +6,7 @@ Use this order to reduce rework during class-by-class discussion.
 
 | Bunch | Scope | Status | Depends on | Notes |
 |---|---|---|---|---|
-| B0 | Boundary model orientation | pending |  | Use `agents/state/classmap-review/boundary-model.md` and `agents/state/classmap-review/b0-boundary-algebra.md`. |
+| B0 | Boundary model orientation | pending |  | Use `agents/state/classmap-review/boundary-model.md` first. |
 | B1 | `MADREKernel`, `ReasoningModule` | pending | B0 | Use `agents/state/classmap-review/packets/B1-runtime-ownership-entry.md`. |
 | B2 | `MADREAgent`, `SimpleAgent`, `TwinAgent`, `ComplexAgent`, `SystemAgent` | pending | B1 | Use `agents/state/classmap-review/packets/B2-agent-family.md`. |
 | B3 | `Workflow`, `AgentRoutine`, `AgentAction`, `ModelAction`, `ModelBinding` | pending | B0, B1, B2 | Use `agents/state/classmap-review/packets/B3-capability-taxonomy.md`. |
