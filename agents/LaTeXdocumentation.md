@@ -11,6 +11,11 @@ Use this file for TeX editing and validation tasks. Product truth belongs in `do
 - Use diagrams when they communicate architecture or runtime boundaries more clearly than prose.
 - Use `longtable` for tables that may exceed most of a page.
 - Keep repeated table, diagram, or style logic in shared support when it is genuinely reused.
+- Preserve UML and class definitions unless a specific review decision rejects
+  them.
+- Prefer concise engineering claims over decorative architecture prose.
+- Keep agent debate, review notes, and uncertainty ledgers out of TeX
+  deliverables.
 
 ## Shared Support
 

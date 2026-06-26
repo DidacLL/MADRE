@@ -1,13 +1,13 @@
 # MADRE Product Orientation
 
-Authority: compact derived digest. The TeX dossier at `docs/tex/MADRE-AgenticSystem.tex` wins for product truth.
+Authority: compact derived digest. The TeX dossier at `docs/tex/MADRE-AgenticSystem.tex` wins for product truth. This file orients agents; it is not replacement prose for the dossier.
 
 MADRE is a local-first, model-agnostic runtime kernel for governed agentic systems. It coordinates foreground conversation, delayed reasoning, context selection, model invocation, bounded internal actions, memory, learning, audit, recovery, and user authority boundaries through software architecture.
 
 ## Runtime Thesis
 
 - The language model is one replaceable runtime component inside MADRE.
-- Modules own domain reasoning, knowledge, agents, workflows, routines, actions, and local governance.
+- Modules own domain reasoning, knowledge, workflows, routines, actions, and local governance. Agents are used through module-owned paths; `SystemAgent` is the module-bound exception.
 - The kernel coordinates valid targets and execution flow.
 - User authority, privacy, context, model usage, action scope, storage, learning, and remote transfer are runtime boundaries.
 - Model output becomes useful material through governed runtime structures, trace, and review.
@@ -32,6 +32,9 @@ Keep a class when it owns at least one stable runtime role:
 - boundary participation needed for valid composition
 
 Attributes preserve identity, ownership, lifecycle, relation, traceability, or accepted invariants. Operations need clear caller, preconditions, postconditions, and side effects.
+
+When rewriting documentation, preserve mature UML and class structure unless the
+specific class or relation fails this admission rule.
 
 ## Classmap Orientation
 

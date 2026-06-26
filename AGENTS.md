@@ -10,6 +10,7 @@ Read this file first. Then read the smallest task-specific source set.
    - product or architecture orientation: `agents/def/product-orientation.md`
    - classmap discussion: `agents/state/classmap-review/README.md`
    - TeX editing: `agents/LaTeXdocumentation.md`
+   - documentation cleanup decisions: `agents/state/documentation-rewrite-ledger.md`
 
 ## Source Map
 
@@ -19,3 +20,5 @@ Read this file first. Then read the smallest task-specific source set.
 - `agents/state/**`: active agent working state and discussion continuity.
 
 Keep new agent-facing guidance concise, current, and placed in the owning path.
+Use the MADRE baseline guideline to judge existing text; do not paste it into
+product documents as replacement prose.

@@ -10,24 +10,26 @@
 \madreChapter{Front Matter}
 
 \section*{Abstract}
-\section{Executive Definition}
 
 \begin{pxQuote}
 	\MADRE is a local-first, model-agnostic runtime kernel for building agentic systems that preserve user sovereignty while coordinating reasoning modules, module-owned agents, governed context, bounded actions, known material, evaluated learning, recovery, and inspectable execution.
 \end{pxQuote}
-\madreLogoH*[21em] exists because the current AI market is normalizing a dangerous bargain: users receive convenient language interfaces, while their data, dependency chain, costs, and decision power move into remote platforms they do not control. That bargain is technically unnecessary and politically unacceptable for many individuals, teams, public-interest organizations, researchers, creators, and small developers.\n
+\begin{center}
+	\madreLogoH*[21em]
+\end{center}
+\Madre exists because the current AI market is normalizing a dangerous bargain: users receive convenient language interfaces, while their data, dependency chain, costs, and decision power move into remote platforms they do not control. That bargain is technically unnecessary and politically unacceptable for individuals, teams, public-interest organizations, researchers, creators, and small developers.
 
 The project does not treat a language model as a complete intelligence. A model is a powerful linguistic function: useful, fallible, statistically trained, expensive in context, and unsafe when it is allowed to become the whole system. \Madre puts that function inside an engineered runtime. The runtime decides what may be known, what may be sent, what may be stored, what may be acted on, and what must wait for stronger evidence or human authority.
 
-The product objective is one coherent assistant experience backed by a durable kernel. Visible interaction can remain fast and conversational while module-local reasoning and reflection lanes decompose, schedule, check, record, and resume deeper work. This is the practical meaning of Model Agnostic Delayed Reasoning Effort: useful local intelligence should come from architecture, context discipline, and bounded autonomy, not from blind dependence on one remote provider or one large model.\n
+The product objective is one coherent assistant experience backed by a durable kernel. Visible interaction can remain fast and conversational while module-local reasoning and reflection lanes decompose, schedule, check, record, and resume deeper work. This is the practical meaning of Model Agnostic Delayed Reasoning Effort: useful local intelligence should come from architecture, context discipline, and bounded autonomy, not from blind dependence on one remote provider or one large model.
 
 \Madre is therefore not a chatbot, not a prompt collection, not a wrapper around one vendor API, and not a task-management application. It is the runtime layer that applications use to coordinate models, internal actions, conversation and knowledge records, policies, and interfaces without surrendering the user's private domain to cloud-first AI infrastructure.
 
 \section*{Specification Scope}
 
 \Madre is a local-first, model-agnostic runtime kernel for constructing agentic systems whose useful behavior is produced by software architecture rather than by treating language models as autonomous intelligence. The runtime assigns a Core Module, permits its Main Agent role to provide foreground continuity through a module-owned \texttt{SystemAgent}, governs context before \texttt{ModelAction} or other actions, keeps \texttt{KnowledgeRecord} handling inspectable, records local traces through \texttt{RuntimeJournal}, and requires learning to pass through evaluation, promotion, and rollback boundaries.
-\n
-This specification defines the research, product, and architecture baseline for \madre. It states the system problem, expected contribution, stakeholder concerns, requirement domains, architecture views, safety model, policy model, and evaluation surface used to assess runtime behavior. The product is an open, extensible foundation for private and affordable agentic software on ordinary local devices, with optional remote services and integrations treated as governed risk boundaries rather than defaults.\n
+
+This specification defines the research, product, and architecture baseline for \madre. It states the system problem, expected contribution, stakeholder concerns, requirement domains, architecture views, authority model, and evaluation surface used to assess runtime behavior. Optional remote services and integrations are governed risk boundaries, not architectural defaults.
 
 The scope of \Madre comprises runtime purpose, system boundary, requirement families, architecture obligations, risk model, quality attributes, validation strategy, and product-level authority semantics.\n
 
@@ -39,17 +41,17 @@ The design identifiers D-001 through D-013 are internal traceability anchors ins
 	\centering \texttt{MADREKernel} & Deterministic local coordinator that registers \texttt{ReasoningModule} objects, assigns the Core Module, routes requests, schedules work, coordinates resources, applies policy, and records runtime activity through \texttt{RuntimeJournal}. \N
 	\centering \texttt{ReasoningModule} & Governed reasoning unit for a bounded domain or scope. It owns module records, workflows, routines, actions, agents, knowledge and learning boundaries, and allowed model/inference scope. \N
 	\centering Core Module & Kernel registration role held by a compatible \texttt{ReasoningModule} that receives ordinary interaction first; it is not a separate module type. \N
-	\centering \texttt{MADREAgent} / Main Agent role & A \texttt{MADREAgent} is a concrete module-owned runtime actor constrained by \texttt{ModelBinding}; Main Agent role is the role held by one module-owned \texttt{ComplexAgent}, while other \texttt{ComplexAgent} objects need not hold that role. \N
+	\centering \texttt{MADREAgent} / Main Agent role & A \texttt{MADREAgent} is a module-owned runtime actor. Main Agent role is held by one module-owned \texttt{SystemAgent}; other agent profiles do not gain that role by default. \N
 	\centering \texttt{SimpleAgent}, \texttt{TwinAgent}, \texttt{ComplexAgent} & Agent profiles for direct execution, review/evaluation over a produced result, and foreground/reasoning/reflection capability respectively; none gains authority outside its owning module. \N
 	\centering \texttt{ReasoningPlan}, \texttt{Workflow}, \texttt{AgentRoutine} & A request-derived reasoning plan may select reusable module workflow and agent routine capabilities without turning either into a second plan or a new authority layer. \N
 	\centering Access surface & A CLI, local console, GUI, speech surface, or application interface that exposes the kernel without becoming runtime authority. \N
-	\centering \texttt{ReasoningTask}, \texttt{RuntimeEvent}, \texttt{RuntimeJournal} & \texttt{ReasoningTask} tracks delayed-work lifecycle; \texttt{RuntimeEvent} is append-only runtime history; \texttt{RuntimeJournal} is the local trace mechanism that stores or references them and related payloads. \N
+	\centering \texttt{ReasoningTask}, \texttt{RuntimeEvent}, \texttt{RuntimeJournal} & \texttt{ReasoningTask} is the plan-level unit for delayed work; \texttt{RuntimeEvent} is append-only runtime history; \texttt{RuntimeJournal} is the local trace mechanism that stores or references events and related payloads. \N
 	\centering \texttt{PolicyDecision} & Explicit allow, block, or authorization-required outcome for an affected action or data class and authority boundary. \N
 	\centering Foreground lane & A possible \texttt{ComplexAgent} capability used by a module's Main Agent role to preserve flow, clarify intent, answer within safe context, and create delayed work when stronger evidence is required. \N
 	\centering Reasoning lane & Durable module-local work used for analysis, evidence gathering, verification, internal action invocation, or higher-effort inference. \N
 	\centering source material / \texttt{ContextBundle} & Source descriptor and bounded, classified, minimized, revocable selection of material prepared for an agent request, action, or inference execution. \N
 	\centering \texttt{AgentAction}, \texttt{ModelAction}, \texttt{ModelBinding}, model-use profile, model backend & An executable capability and its inference-backed specialization; a model-backed action executes only through the binding allowed for its module-owned agent, with configured and replaceable inference execution. \N
-	\centering \texttt{RuntimeEvent} evidence / generated material & One recorded inference execution and its generated material. generated material is not truth, policy, memory, knowledge, behavior, routing, authority, or a candidate by itself. \N
+	\centering \texttt{RuntimeEvent} evidence / generated material & One recorded inference execution and its generated material. Generated material is not truth, policy, memory, knowledge, behavior, routing, authority, or a candidate by itself. \N
 	\centering \texttt{KnowledgeRecord} / \texttt{KnowledgeCandidate} & Known material held by a module with provenance, scope, sensitivity, intended use, truth-level/authority, correction, and lifecycle metadata; only a pending knowledge-boundary change is a \texttt{KnowledgeCandidate}. \N
 	\centering \texttt{LearningCandidate} / retained interaction material & An evaluated proposed module improvement and retained interaction material respectively. Saving known material is not learning, and conversation is not knowledge by default. \N
 	\centering Artifact & A materialized output such as a file, document, code patch, report, image, dataset, PDF, snapshot, or final buffer/document. Ordinary conversation text is not an artifact unless materialized. \N
@@ -83,7 +85,7 @@ Modern language-model systems often combine private data, model calls, action ex
 	RQ-1 & How can a local-first runtime separate immediate interaction from delayed reasoning without losing continuity, accountability, or user control? \n
 	RQ-2 & How can model-agnostic contracts prevent provider-specific assumptions from entering policy, knowledge handling, action authority, and truth management? \n
 	RQ-3 & What traceability structure is sufficient to connect \Madre's product claims, stakeholder concerns, runtime requirements, architecture decisions, and validation evidence? \n
-	RQ-4 & How can context, retained interaction material, \texttt{KnowledgeRecord}, \texttt{KnowledgeCandidate}, and \texttt{LearningCandidate} remain useful while preserving provenance, truth authority, minimization, revocation, correction, promotion, and rollback boundaries? \n
+	RQ-4 & How can context and retained material remain useful while preserving provenance, truth authority, minimization, revocation, and correction boundaries? \n
 	RQ-5 & What integrated behavior demonstrates that \Madre is a governed runtime rather than a conversational wrapper? \n
 	\bottomrule
 \end{tabularx}
@@ -112,9 +114,9 @@ The novelty is not a new language model. It is the engineering arrangement that 
 
 The first research claim is that a useful agentic system can be validated as a software architecture before it is validated as a broad automation product. \Madre's novelty is the conjunction of local-first execution, replaceable inference and action boundaries, delayed reasoning, governed context, explicit \texttt{PolicyDecision} outcomes, evaluated learning promotion, and journaled recovery.
 
-The validation strategy examines whether a local request can enter through bounded access surfaces, be triaged without unsupported claims, become a durable \texttt{ReasoningTask} when stronger evidence is needed, obtain a governed context bundle, cross a replaceable model backend, invoke a bounded internal action after a permitting \texttt{PolicyDecision}, produce an generated material that remains non-authoritative, expose \texttt{RuntimeJournal} trace evidence, and support correction, invalidation, supersession, rollback, or deletion/detachment.
+	The validation strategy examines whether a local request can enter through bounded access surfaces, be triaged without unsupported claims, become a durable \texttt{ReasoningTask} when stronger evidence is needed, obtain a governed context bundle, cross a replaceable model backend, invoke a bounded internal action after a permitting \texttt{PolicyDecision}, produce generated material that remains non-authoritative, expose \texttt{RuntimeJournal} trace evidence, and support correction, invalidation, supersession, rollback, or deletion/detachment.
 
-The validation strategy treats negative paths as first-class evidence. Prompt or source injection must remain source data. Known material used with an incorrect \texttt{truthLevel} or \texttt{truthAuthority} must be rejected or corrected. Sensitive or unrelated material must be excluded from context. generated material must not become truth, policy, action authority, memory, knowledge, behavior, routing, or a candidate by itself. A \texttt{KnowledgeCandidate} changes a knowledge boundary only through promotion, and a \texttt{LearningCandidate} changes module behavior only after defined evaluation and promotion.
+	The validation strategy treats negative paths as first-class evidence. Prompt or source injection must remain source data. Known material used with an incorrect \texttt{truthLevel} or \texttt{truthAuthority} must be rejected or corrected. Sensitive or unrelated material must be excluded from context. Generated material must not become truth, policy, action authority, memory, knowledge, behavior, routing, or a candidate by itself. A \texttt{KnowledgeCandidate} changes a knowledge boundary only through promotion, and a \texttt{LearningCandidate} changes module behavior only after defined evaluation and promotion.
 
 \section{Related Work And Evidence Map}
 
@@ -135,7 +137,7 @@ The validation strategy treats negative paths as first-class evidence. Prompt or
 
 \section{Executive Definition}
 
-\Madre is a runtime foundation rather than a single assistant interface. The kernel assigns ordinary interaction to a Core Module, records delayed lifecycle and runtime history locally, and keeps policy, knowledge, action, and recovery authority outside inference. Language models run through module-constrained \texttt{ModelAction} execution; each generated material is generated material from an \texttt{RuntimeEvent} evidence, not authority or a candidate by itself.
+\Madre is a runtime foundation rather than a single assistant interface. The kernel assigns ordinary interaction to a Core Module, records delayed lifecycle and runtime history locally, and keeps policy, knowledge, action, and recovery authority outside inference. Language models run through module-constrained \texttt{ModelAction} execution; generated material is recorded through \texttt{RuntimeEvent} evidence and does not become authority or a candidate by itself.
 
 \section{Product Rationale}
 \begin{center}
@@ -149,7 +151,7 @@ The validation strategy treats negative paths as first-class evidence. Prompt or
 	Model substitutability & No model provider, host, prompt convention, or output format defines runtime truth, policy, knowledge, or action authority. \n
 	Delayed reasoning & Work that requires evidence, verification, resource control, or stronger context is represented as a traceable \texttt{ReasoningTask} rather than as an unsupported foreground answer. \n
 	Context governance & Context is selected, minimized, classified, sourced, scoped, provenanced, and revocable before it is provided to a \texttt{ModelAction}, internal action, or reasoning task. \n
-	Bounded action use & Internal actions, external actions, knowledge change, and workflow execution are allowed only through declared authority boundaries, \texttt{PolicyDecision} outcomes, trace evidence, and recovery expectations. \n
+	Bounded action use & Internal actions, external actions, and knowledge-boundary changes are allowed only through declared authority boundaries, \texttt{PolicyDecision} outcomes, trace evidence, and recovery expectations. Workflows remain planning structure. \n
 	Known material and learning & A \texttt{KnowledgeRecord} is not factual truth by default; a \texttt{KnowledgeCandidate} is reserved for pending knowledge-boundary change, while a \texttt{LearningCandidate} is an evaluated proposed module improvement. \\
 	\bottomrule
 \end{tabularx}
@@ -171,7 +173,7 @@ The validation strategy treats negative paths as first-class evidence. Prompt or
 	\subitem Local-first AI must remain useful on ordinary commercial devices and degrade intelligently when resources are scarce.
 	\subitem Optional Complex Agent lanes, task decomposition, caching, context minimization, repeated checks where they matter, and durable records make stronger reasoning selective rather than an unlimited default.
 	\itembf Knowledge Governance:
-	\subitem Agentic systems become dangerous when they blur text, known material, retained interaction, instruction, evidence, and action. A conversation turn is not a verified fact, an generated material is not a source or authority, and an action result is not an instruction.
+	\subitem Agentic systems become dangerous when they blur text, known material, retained interaction, instruction, evidence, and action. A conversation turn is not a verified fact, generated material is not a source or authority, and an action result is not an instruction.
 	\subitem A \texttt{KnowledgeRecord} carries provenance, sensitivity, intended use, \texttt{truthLevel}, and \texttt{truthAuthority}; a \texttt{LearningCandidate} is an evaluated module-improvement proposal, not ordinary stored knowledge.
 	\itembf Distributed Reasoning:
 	\subitem Interaction can remain coherent while module-owned agents defer hard work, retrieve permitted material, test hypotheses, revise plans, and learn from evaluated outcomes without treating language models as minds.
@@ -243,8 +245,8 @@ The product boundary covers runtime responsibilities and architecture obligation
 	Delayed research / evidence required & Core Module and research module & \texttt{ReasoningPlan}, \texttt{ReasoningTask}, \texttt{ContextBundle}, optional \texttt{ModelAction} & Routing, data scope, and each action require applicable \texttt{PolicyDecision}. & Work lifecycle and evidence references in \texttt{RuntimeJournal}; \texttt{RuntimeEvent} evidence when inference runs. & Unverified or disallowed sources do not become accepted knowledge or authoritative response. \N
 	Knowledge handling / material selected for module use & Owning reasoning module & \texttt{KnowledgeRecord}; \texttt{KnowledgeCandidate} only for pending boundary change & Provenance, scope, sensitivity, intended use, \texttt{truthLevel}, \texttt{truthAuthority}, correction, and lifecycle metadata govern use. & Knowledge creation/correction/detachment \texttt{RuntimeEvent} and related \texttt{PolicyDecision}. & Known material with unsuitable truth metadata is not presented as factual authority; saving it is not learning. \N
 	Specialized interaction / domain assistance requested & Core Module and selected domain module & retained interaction material, \texttt{ContextBundle}, module-owned \texttt{MADREAgent}, \texttt{ModelBinding} & A transferred or delegated scope does not transfer policy or knowledge authority. & Routing event, selected module, binding reference, context reference, and policy outcome. & Domain-specific output remains generated material until explicitly handled; it does not self-route or self-promote. \N
-	Workflow execution / reusable behavior invoked & Owning reasoning module & \texttt{Workflow}, \texttt{AgentRoutine}, \texttt{AgentAction}, \texttt{ReasoningTask} & Each executable action and external crossing is policy-gated with recovery expectation. & Action, work, policy, failure, and recovery \texttt{RuntimeEvent} history. & A hidden prompt chain or unauthorized side effect is blocked or authorization-required. \N
-	Evaluated improvement / repeated outcome suggests change & Owning reasoning module & \texttt{LearningCandidate}, evaluation evidence, optional \texttt{KnowledgeRecord} input & Promotion changes module behavior only after declared evaluation and promotion authority. & Candidate creation, evaluation, promotion/rejection, and rollback events. & generated material, conversation retention, or \texttt{KnowledgeRecord} storage alone never activates learning. \\
+	Workflow-guided execution / reusable behavior invoked & Owning reasoning module & \texttt{Workflow}, \texttt{AgentRoutine}, \texttt{AgentAction}, \texttt{ReasoningTask} & Workflow helps plan work; each executable action and external crossing is policy-gated with recovery expectation. & Action, work, policy, failure, and recovery \texttt{RuntimeEvent} history. & A hidden prompt chain or unauthorized side effect is blocked or authorization-required. \N
+	Evaluated improvement / repeated outcome suggests change & Owning reasoning module & \texttt{LearningCandidate}, evaluation evidence, optional \texttt{KnowledgeRecord} input & Promotion changes module behavior only after declared evaluation and promotion authority. & Candidate creation, evaluation, promotion/rejection, and rollback events. & Generated material, conversation retention, or \texttt{KnowledgeRecord} storage alone never activates learning. \\
 	\bottomrule
 \end{tabularx}
 \normalsize
@@ -307,6 +309,13 @@ The reference user stories preserve behavior pressure for the runtime class map.
 	\item Responds immediately with queued-work status.
 	\item Schedules execution as resources become available.
 	\item Preserves lifecycle events and final artifacts for recovery and inspection.
+}
+
+\usCard{UC-20}{user}{Background supersession}{Background reasoning finds a better answer}{to receive a corrected or superseding result without losing traceability}{
+	\item Keeps the foreground answer separate from delayed reasoning evidence.
+	\item Records the background result as a new runtime transition.
+	\item Marks the earlier answer as superseded rather than silently replacing it.
+	\item Preserves the reason, source, and artifact links for inspection.
 }
 
 \usCard{UC-26}{student}{Cross-module dependency chain}{LaTeX worksheet with math and research}{to produce a worksheet that combines solved examples, recent references, and LaTeX output}{
@@ -405,7 +414,7 @@ This pattern may exist in any reasoning module. The Core Module may use it for g
 
 \section{Runtime Data Flow}
 
-Runtime data flow in \Madre is concurrent, governed, and module-centered. A local request enters through an access surface and is submitted to the kernel. The kernel records the request, applies the relevant entry policy, and routes it to the Core Module by registration or to another registered module when routing evidence supports that decision.
+Runtime data flow in \Madre is concurrent, governed, and module-centered. A local request enters through an access surface and is submitted to the kernel. The kernel records the request, applies the relevant entry constraints, resolves an explicit valid module target when one exists, and otherwise falls back to the Core Module role. Semantic delegation to a more specialized module belongs to module-level reasoning, not to model preference or prompt routing.
 
 Within the selected module, its Main Agent role may produce an immediate foreground response, create or continue delayed reasoning work, invoke internal actions, request inference through an allowed \texttt{ModelAction}, and reflect on recent outcomes. These activities are coordinated inside a module-owned agent and constrained by module policy, kernel policy, \texttt{ModelBinding}, resource assignment, durable state, \texttt{RuntimeJournal}, and recovery rules.
 
@@ -417,16 +426,15 @@ The canonical user request begins when an access surface submits a local request
 
 The receiving module evaluates the request through its module-local Main Agent role. If a configured foreground lane has enough safe local context, it may produce an immediate answer. If intent, scope, or risk is unclear, it asks for clarification. If the request requires evidence, stronger reasoning, internal actions, model inference, or broader context, the reasoning lane creates or continues a \texttt{ReasoningTask}. Reflection may run after the response or after delayed outcomes to propose a \texttt{LearningCandidate}. Knowledge-boundary change is separately represented as a \texttt{KnowledgeCandidate}.
 
-Every significant step emits a \texttt{RuntimeEvent} through \texttt{RuntimeJournal}. Context bundles, actions, \texttt{RuntimeEvent} evidence and generated material objects, \texttt{PolicyDecision} outcomes, failures,
-corr ection, rollback, invalidation, supersession, and deletion/detachment remain inspectable through read-first surfaces.
+Every significant step emits a \texttt{RuntimeEvent} through \texttt{RuntimeJournal}. Context bundles, actions, \texttt{RuntimeEvent} evidence, materialized generated artifacts, \texttt{PolicyDecision} outcomes, failures, correction, rollback, invalidation, supersession, and deletion/detachment remain inspectable through read-first surfaces.
 
 \subsection{Governed Model And Action Sequence}
 
 When module work requires executable behavior, the module invokes an internal typed action. The default action mechanism is local, typed, runtime-defined, policy-gated, and traceable. It is not an open plugin socket and not a network-exposed external action protocol.
 
-A \texttt{ModelAction} is an \texttt{AgentAction} that uses inference. Before it runs, the module supplies a governed \texttt{ContextBundle}, an allowed \texttt{ModelBinding} and model-use profile, and the applicable \texttt{PolicyDecision}. An model backend executes inference without allowing a provider, template, or runtime format to define \Madre's authority model. One execution is captured as an \texttt{RuntimeEvent} evidence; its generated material is an generated material.
+A \texttt{ModelAction} is an \texttt{AgentAction} that uses inference. Before it runs, the module supplies a governed \texttt{ContextBundle}, an allowed \texttt{ModelBinding} and model-use profile, and the boundary authorization needed for that execution. A \texttt{PolicyDecision} records the outcome of that boundary check; it is not the executing authority. A model backend executes inference without allowing a provider, template, or runtime format to define \Madre's authority model. One execution is captured as \texttt{RuntimeEvent} evidence; its generated material is produced material.
 
-Action results may be observations. generated material is generated material and is not a candidate by itself. It may inform a next reasoning step or undergo explicit handling into another record, but it does not authorize actions, create policy, become memory or knowledge, change routing or behavior, or promote learning. Each such transition requires its relevant authority boundary, verification path, \texttt{RuntimeEvent} record, and recovery expectation.
+Action results may be observations. Generated material is produced material and is not a candidate by itself. It may inform a next reasoning step or undergo explicit handling into another record, but it does not authorize actions, create policy, become memory or knowledge, change routing or behavior, or promote learning. Each such transition requires its relevant authority boundary, verification path, \texttt{RuntimeEvent} record, and recovery expectation.
 
 % Shared TikZ requirements
  \usetikzlibrary{positioning,fit,backgrounds,arrows.meta,calc}
@@ -530,7 +538,7 @@ Action results may be observations. generated material is generated material and
 	\label{fig:madre-responsibility-layers}
 \end{figure}
 
-Figure~\ref{fig:madre-responsibility-layers} defines the top-level responsibility model. Access surfaces are intentionally outside runtime authority: they submit requests and inspect state, but they do not own policy, knowledge, routing, scheduling, or action-authority decisions. The kernel is the only system-level coordinator. It registers modules, assigns the Core Module, routes requests, assigns resources, applies global policy boundaries, records through \texttt{RuntimeJournal}, and maintains durable lifecycle state.
+Figure~\ref{fig:madre-responsibility-layers} defines the top-level responsibility model. Access surfaces are intentionally outside runtime authority: they submit requests and inspect state, but they do not own policy, knowledge, routing, scheduling, or action-authority decisions. The kernel is the only system-level coordinator. It registers modules, assigns the Core Module, resolves valid targets, assigns resources, coordinates global boundary checks, records through \texttt{RuntimeJournal}, and maintains durable lifecycle state.
 
 The module layer is the reasoning layer. The Core Module is shown first because ordinary interaction is routed there by registration, not because it is outside the module system. Research, knowledge, code, media, or domain modules are peers selected when the registry, policies, and current reasoning plan indicate a better fit. Internal actions and inference appear below the module layer because they are invoked by authorized module behavior, not by access surfaces or generated material directly.
 
@@ -549,7 +557,7 @@ The module layer is the reasoning layer. The Core Module is shown first because 
 			\node[madreData, below=0.85cm of module, minimum width=3.2cm] (mstate)
 			{Module records\\knowledge, work, journal links};
 			\node[madreModule, below right=0.85cm and -0.2cm of module, minimum width=3.2cm] (workflows)
-			{Workflow library\\routines, plans, strategies};
+			{Workflow library\\planning blueprints};
 
 			% Agent
 			\node[madreAgent, below=2.25cm of module, minimum width=8.6cm, minimum height=0.95cm] (agent)
@@ -567,7 +575,7 @@ The module layer is the reasoning layer. The Core Module is shown first because 
 			\node[madreData, below=1.1cm of deep, minimum width=3.2cm] (knowledge)
 			{KnowledgeRecord / KnowledgeCandidate\\known material / pending change};
 			\node[madreData, left=0.8cm of knowledge, minimum width=3.2cm] (output)
-			{generated material\\generated material};
+			{generated material\\non-authoritative payload};
 			\node[madreData, right=0.8cm of knowledge, minimum width=3.2cm] (learning)
 			{LearningCandidate\\evaluated improvement};
 			\node[madreData, below=1.05cm of knowledge, minimum width=7.4cm] (journal)
@@ -632,7 +640,7 @@ The foreground lane, reasoning lane, and reflection lane may operate concurrentl
 			\node[madreData, below=0.95cm of action, minimum width=3.2cm] (profile)
 			{model-use profile\\configuration, budget};
 			\node[madrePolicy, below right=0.95cm and 0.1cm of action, minimum width=3.2cm] (policy)
-			{PolicyDecision\\allow, block, authorization-required};
+			{Boundary authorization\\allow, block, require};
 
 			\node[madreAction, below=2.35cm of action, minimum width=7.2cm] (binding)
 			{ModelBinding\\allowed profile, files, and backend for the agent};
@@ -644,7 +652,7 @@ The foreground lane, reasoning lane, and reflection lane may operate concurrentl
 			{RuntimeEvent evidence\\one execution: profile, backend, configuration, timing, status};
 
 			\node[madreData, below=of record, minimum width=7.2cm] (result)
-			{generated material\\generated material; not authority or candidate by itself};
+			{generated material\\produced material; not authority or candidate by itself};
 
 			% Flows
 			\draw[madreFlow] (agent) -- (action);
@@ -670,16 +678,16 @@ The foreground lane, reasoning lane, and reflection lane may operate concurrentl
 	\label{fig:madre-model-invocation-action}
 \end{figure}
 
-Figure~\ref{fig:madre-model-invocation-action} describes inference as the governed \texttt{ModelAction} path rather than as an external server call or chat-completion product boundary. A module-owned \texttt{MADREAgent}, including one serving as Main Agent role, can request generation, critique, classification, or verification only under its allowed \texttt{ModelBinding} and an applicable \texttt{PolicyDecision}.
+Figure~\ref{fig:madre-model-invocation-action} describes inference as the governed \texttt{ModelAction} path rather than as an external server call or chat-completion product boundary. A module-owned \texttt{MADREAgent}, including one serving as Main Agent role, can request generation, critique, classification, or verification only under its allowed \texttt{ModelBinding} and a valid boundary authorization; the resulting \texttt{PolicyDecision} is the recorded outcome.
 
-The model-use profile captures execution configuration, and the replaceable model backend executes the permitted inference. Every execution creates an \texttt{RuntimeEvent} evidence; the generated material attached to that execution is generated material. The Local Model Runtime Boundary remains useful as product wording for this controlled local or authorized execution boundary, not as a competing runtime class. generated material is not truth, policy, memory, knowledge, behavior, routing, authority, or a candidate by itself. Explicit module handling can retain it as retained interaction material, save appropriately classified material as \texttt{KnowledgeRecord}, evaluate it toward a \texttt{LearningCandidate}, or discard it, with the transition recorded in \texttt{RuntimeJournal}.
+The model-use profile captures execution configuration, and the replaceable model backend executes the permitted inference. Every execution creates \texttt{RuntimeEvent} evidence; the generated material attached to that execution is produced material. The Local Model Runtime Boundary remains useful as product wording for this controlled local or authorized execution boundary, not as a competing runtime class. Generated material is not truth, policy, memory, knowledge, behavior, routing, authority, or a candidate by itself. Explicit module handling can retain it as retained interaction material, save appropriately classified material as \texttt{KnowledgeRecord}, evaluate it toward a \texttt{LearningCandidate}, or discard it, with the transition recorded in \texttt{RuntimeJournal}.
 \subsection{Data And Authority Rules}
 
 \begin{itemize}
-	\item User input enters as retained interaction material material when retained, not as policy, knowledge, truth, action authority, or model authority.
+	\item User input enters as retained interaction material when retained, not as policy, knowledge, truth, action authority, or model authority.
 	\item Retrieved, extracted, or saved material becomes \texttt{KnowledgeRecord} only with provenance, scope, sensitivity, intended use, \texttt{truthLevel}, \texttt{truthAuthority}, correction, and lifecycle metadata; it is not factual truth by default.
 	\item Context bundles are constructed, minimized, classified, scoped, and revocable before they reach an agent lane, internal action, or \texttt{ModelAction}.
-	\item generated material is generated material from an \texttt{RuntimeEvent} evidence; it does not become an answer, policy decision, memory, knowledge, behavior, routing, authority, or candidate by itself.
+	\item Generated material is produced material from \texttt{RuntimeEvent} evidence; it does not become an answer, policy decision, memory, knowledge, behavior, routing, authority, or candidate by itself.
 	\item Internal action results enter as bounded observations. They become relied-on evidence only according to the action contract, verification path, and \texttt{RuntimeEvent} trace.
 	\item External action surfaces, host commands, remote services, arbitrary filesystem mutation, credentials, and irreversible effects require stronger authority boundaries than ordinary internal actions.
 	\item A \texttt{KnowledgeCandidate} represents only pending knowledge-boundary change; a \texttt{LearningCandidate} represents evaluated proposed module improvement and cannot directly rewrite active runtime behavior.
@@ -707,21 +715,21 @@ The external boundary exists for exceptional external actions: remote services, 
 	\node[zone, fill=primaryColor!8] (boundary) at (5.4,0) {};
 	\node[above] at (boundary.north) {\textbf{Governed external boundary}};
 	\node[box] (classify) at (5.4,1.4) {Classify\\minimize\\redact};
-	\node[box] (authorize) at (5.4,0) {Policy and\\authorization};
+	\node[box] (authorize) at (5.4,0) {Boundary\\authorization};
 	\node[box] (contract) at (5.4,-1.4) {Typed runtime\\contract};
 
 	\node[zone, fill=gray!8] (external) at (10.8,0) {};
 	\node[above] at (external.north) {\textbf{External or risky domain}};
 	\node[box] (remote) at (10.8,1.4) {Remote model\\or service};
 	\node[box] (externalaction) at (10.8,0) {External action\\surface};
-	\node[box] (source) at (10.8,-1.4) {Untrusted\\source material};
+	\node[box] (source) at (10.8,-1.4) {Untrusted source\\data, not instruction};
 
 	\draw[arrow] (kernel) -- (classify);
 	\draw[arrow] (classify) -- (authorize);
 	\draw[arrow] (authorize) -- (contract);
 	\draw[arrow] (contract) -- (remote);
 	\draw[arrow] (contract) -- (externalaction);
-	\draw[arrow] (source) -- (contract);
+	\draw[arrow] (source) -- (classify);
 	\draw[arrow] (contract) -- (audit);
 \end{tikzpicture}
 }
@@ -743,7 +751,7 @@ Graphical, speech, product-specific, or integration surfaces remain access surfa
 
 \subsection{Policy Before Action}
 
-The kernel must not expose executable behavior merely because a model can request it. Internal actions, external calls, knowledge-boundary changes, workflow execution, and learning promotion need an explicit \texttt{PolicyDecision} before execution. The safe path should be the normal path, and safe autonomous improvement should not require constant user interruption. Unsafe paths should be technically isolated, traceable, recoverable where possible, and visible to the responsible developer or operator through \texttt{RuntimeJournal}.
+The kernel must not expose executable behavior merely because a model can request it. Internal actions, external calls, knowledge-boundary changes, workflow application or mutation, and learning promotion need a valid boundary outcome recorded as \texttt{PolicyDecision} before protected state changes. The safe path should be the normal path, and safe autonomous improvement should not require constant user interruption. Unsafe paths should be technically isolated, traceable, recoverable where possible, and visible to the responsible developer or operator through \texttt{RuntimeJournal}.
 
 Typed runtime-defined internal actions represent the canonical bounded action form. They may be allowed only through a policy-gated action boundary. Remote action, host commands, arbitrary filesystem access, mutation actions, provider-backed integrations, active learning promotion, and workflow mutation require stronger authority boundaries than bounded internal action execution.
 
@@ -808,7 +816,7 @@ The deployment domain keeps ordinary local operation viable before optional remo
 
 Each significant product claim in \Madre must be visible as system behavior. A claim such as local-first operation corresponds to local execution paths, storage boundaries, remote-transfer controls, and inspection evidence. A claim such as model agnosticism corresponds to replaceable model-use profile and model backend contracts and tests that prevent provider-specific assumptions from entering the kernel.
 
-The same trace applies to safety claims. Policy before action must appear as an enforceable boundary around internal actions, external calls, knowledge-boundary change, workflow execution, and learning promotion. Governed context must appear as provenance, classification, minimization, scope, revocation, and journaled trace. Delayed reasoning must appear as \texttt{ReasoningTask}, \texttt{RuntimeEvent} transitions, verification, result delivery, and recovery.
+The same trace applies to safety claims. Policy before action must appear as an enforceable boundary around internal actions, external calls, knowledge-boundary change, workflow application or mutation, and learning promotion. Governed context must appear as provenance, classification, minimization, scope, revocation, and journaled trace. Delayed reasoning must appear as \texttt{ReasoningTask}, \texttt{RuntimeEvent} transitions, verification, result delivery, and recovery.
 
 \section{Quality Attributes}
 
@@ -867,7 +875,7 @@ or blocked.
 	SEC-003 & External, destructive, credential, legal, financial, executable, or irreversible effects shall be blocked or separately authorized. & Preserves recoverability and explicit authority over critical action. & Critical-action negative paths; D-007, D-008, D-009.\N
 	DATA-001 & A \texttt{KnowledgeRecord} shall carry provenance, scope, sensitivity, intended use, \texttt{truthLevel}, \texttt{truthAuthority}, correction, and lifecycle metadata; it is not factual truth by default. & Knowledge governance and user control. & Non-authoritative known-material, correction, and revocation scenarios; D-005, D-008, D-011.\N
 	DATA-002 & Active state and accountable \texttt{RuntimeEvent} history shall remain distinguishable. & Allows deletion/detachment without losing required trace history. & Recovery inspection scenarios; D-003, D-008.\N
-	AI-001 & generated material shall remain generated material from an \texttt{RuntimeEvent} evidence, not truth, policy, memory, knowledge, behavior, routing, authority, or a candidate by itself. & Hallucination and false-authority risk. & Output non-authority and non-candidate scenarios; D-001, D-006.\N
+	AI-001 & Generated material shall remain produced material recorded by \texttt{RuntimeEvent} evidence, not truth, policy, memory, knowledge, behavior, routing, authority, or a candidate by itself. & Hallucination and false-authority risk. & Output non-authority and non-candidate scenarios; D-001, D-006.\N
 	AI-002 & Models and generated material shall not create or widen \texttt{PolicyDecision}, authorize actions, establish knowledge truth, alter behavior or routing, or activate learning. & Keeps runtime authority outside generated material. & Model-overreach and promotion-control scenarios; D-006, D-007, D-011.\N
 	UX-001 & Users shall be able to distinguish immediate answers, queued work,	running work, blocked work, failed work, completed work, and authorization requests. & Continuity and user control. & Interaction-state review; D-004, D-010, D-011.\N
 	OPS-001 & Local access surfaces shall submit requests and inspect \texttt{RuntimeJournal} status and trace without becoming runtime authority. & Supports operability while preserving governance. & Local access and inspection scenario; D-010.}
@@ -954,7 +962,7 @@ knowledge-boundary control, and evaluated learning promotion.
 \madreChapter{Runtime Governance}
 \section{Runtime Authority Rule}
 
-Runtime authority belongs to the \Madre kernel and its policy boundaries. User turns, source text, generated material, action results, local inspection, \texttt{KnowledgeCandidate}, and \texttt{LearningCandidate} can inform decisions, but they cannot authorize their own authority, promote themselves, mutate protected state, or widen permissions. Bounded internal action use requires \texttt{PolicyDecision}, local access is read-first where it inspects state, and transitions are recorded through \texttt{RuntimeJournal}.
+Runtime authority belongs to the constructed \Madre boundary path: kernel entry, module ownership, context construction, action contract, model binding, resource limit, and authorization rule. User turns, source text, generated material, action results, local inspection, \texttt{KnowledgeCandidate}, and \texttt{LearningCandidate} can inform decisions, but they cannot authorize their own authority, promote themselves, mutate protected state, or widen permissions. Bounded internal action use requires a valid boundary outcome, recorded as \texttt{PolicyDecision}; local access is read-first where it inspects state, and transitions are recorded through \texttt{RuntimeJournal}.
 
 \section{Policy And Action Gate}
 
@@ -967,20 +975,22 @@ Runtime authority belongs to the \Madre kernel and its policy boundaries. User t
 ]
 	\node[box] (request) at (0,0) {Request, source,\\or generated material};
 	\node[box] (classify) at (4,0) {Classify action,\\data, autonomy};
-	\node[gate] (policy) at (8,0) {PolicyDecision};
+	\node[gate] (policy) at (8,0) {Boundary compatibility\\+ authorization};
 	\node[box] (allow) at (12,1.8) {Allow bounded\\internal action};
 	\node[box] (block) at (12,0) {Block, fail,\\or require authorization};
 	\node[box] (candidate) at (12,-1.8) {KnowledgeCandidate\\or LearningCandidate};
-	\node[box] (audit) at (16,0) {RuntimeJournal\\status, recovery trace};
+	\node[box] (decision) at (16,0) {PolicyDecision\\outcome record};
+	\node[box] (audit) at (20,0) {RuntimeJournal\\status, recovery trace};
 
 	\draw[arrow] (request) -- (classify);
 	\draw[arrow] (classify) -- (policy);
 	\draw[arrow] (policy) -- (allow);
 	\draw[arrow] (policy) -- (block);
 	\draw[arrow] (policy) -- (candidate);
-	\draw[arrow] (allow) -- (audit);
-	\draw[arrow] (block) -- (audit);
-	\draw[arrow] (candidate) -- (audit);
+	\draw[arrow] (allow) -- (decision);
+	\draw[arrow] (block) -- (decision);
+	\draw[arrow] (candidate) -- (decision);
+	\draw[arrow] (decision) -- (audit);
 \end{tikzpicture}
 }
 \end{center}
@@ -993,7 +1003,7 @@ Read local metadata & Public or low-sensitivity local metadata & Observation & N
 \midrule Draft text & Any allowed context bundle & Draft creation & None	unless sensitive scope is crossed & Retain as conversation or generated material, not authority or candidate by itself. \n
 \midrule Update known material & Scoped module material & Bounded mutation & Required when provenance, truth metadata, scope, or sensitivity changes & Versioned \texttt{KnowledgeRecord} with correction and rollback; \texttt{KnowledgeCandidate} if boundary change is pending. \n
 \midrule Invoke internal action & Small task-scoped non-sensitive input & Bounded internal action & Policy allow required & Requested action, input class, result, policy outcome, and recovery expectation recorded. \n
-\midrule Contact remote service & Minimized and classified transfer set & External action & Explicit policy authorization & Transfer record, provider, purpose, and retention assumption recorded. \n
+\midrule Contact remote service & Minimized and classified transfer set & External action & Explicit policy authorization & Transfer record, provider, purpose, declared retention terms where available, and any retention uncertainty recorded; sensitive transfers block when policy does not accept uncertainty. \n
 \midrule Modify credentials, identity, legal, financial, destructive, or executable state & Sensitive or critical data & Critical action & Strong human authorization	& Block unless recovery or explicit irreversible authorization exists. }
 
 Knowledge-boundary updates, routing mutation, workflow mutation, and learning lifecycle behavior follow the same authority rule: a pending knowledge-boundary change is a \texttt{KnowledgeCandidate}; an evaluated behavior improvement is a \texttt{LearningCandidate}; neither becomes active merely by being produced.
@@ -1017,7 +1027,7 @@ Learning follows a controlled lifecycle: observation, evaluation, \texttt{Learni
 	Remote transfer risk & Local data is sent outside the user's domain without classification, minimization, authorization, or recorded trace. & Local-first default and remote-transfer policy boundary. & Remote-contact blocked scenario. \N
 	Unbounded consumption & Delayed work consumes excessive compute, storage, or cost. & Resource budgets, queue limits, and status inspection. & Resource benchmark. \N
 	Trace/recovery gaps & A result cannot be explained, corrected, invalidated, superseded, rolled back, or detached. & \texttt{RuntimeJournal}, append-only \texttt{RuntimeEvent}, and recovery semantics. & Recovery trace scenario. \N
-	Inference output as false authority & Fluent generated material is treated as truth, policy, knowledge, behavior, routing, authority, or a candidate by itself. & Explicit generated-material handling and \texttt{PolicyDecision} boundary. & Output non-authority/non-candidate scenario.}
+	Inference output as false authority & Fluent generated material is treated as truth, policy, knowledge, behavior, routing, authority, or a candidate by itself. & Explicit generated-material handling and recorded boundary outcome. & Output non-authority/non-candidate scenario.}
 
 \madreChapter{Quality Model}
 
@@ -1026,7 +1036,7 @@ Learning follows a controlled lifecycle: observation, evaluation, \texttt{Learni
 \MADRETABLE3:{\textbf{Attribute}&\textbf{Scenario} & \textbf{Measure or evidence}}{%
 	\MROW{Responsiveness }{ The foreground remains conversational while deeper work is queued. & Foreground latency and clear work status. }
 	\MROW{Recoverability }{ A failed or unsafe delayed task can be inspected and corrected. & \texttt{RuntimeJournal} trace, status transition, and rollback/correction path. }
-	\MROW{Auditability}{ A result can be explained through context, \texttt{RuntimeEvent} evidence, action, \texttt{PolicyDecision}, and verification records. & Complete journaled outcome evidence chain. }
+	\MROW{Auditability}{ A result can be inspected through context, \texttt{RuntimeEvent} evidence, action, \texttt{PolicyDecision}, and verification records. & Complete journaled outcome evidence chain. }
 	\MROW{Maintainability}{ An model backend or action contract can be replaced without changing kernel authority. & Contract and substitution review. }
 	\MROW{Portability }{ A useful subset runs on ordinary local hardware. & Local profile and resource benchmark. }
 	\MROW{Security}{ Untrusted context cannot silently become instruction or policy. & Prompt-injection and data-boundary scenarios. }
@@ -1052,7 +1062,7 @@ Learning follows a controlled lifecycle: observation, evaluation, \texttt{Learni
 	Blocked by policy & A policy boundary prevents execution or promotion. \N
 	Authorization required & The action crosses a configured authority boundary. \N
 	Failed task & Work ended without acceptable result or recovery. \N
-	Completed task & Result is available with \texttt{RuntimeJournal} trace evidence. \N
+	Completed task & Result is available with \texttt{RuntimeJournal} history. \N
 	Corrected or rolled back & A previous result or knowledge-boundary change
 	has been revised or reverted. \N
 	Invalidated or superseded & Prior evidence, source, or result is no longer
@@ -1065,7 +1075,7 @@ Learning follows a controlled lifecycle: observation, evaluation, \texttt{Learni
 
 \section{Observability Surfaces}
 
-The local inspection surface must expose sessions, \texttt{ReasoningTask}, \texttt{RuntimeEvent}, context bundles, \texttt{RuntimeEvent} evidence and generated material, internal action evidence, \texttt{PolicyDecision}, failures, metrics, checkpoints, rollbacks, invalidations, supersessions, deleted/detached active material, \texttt{KnowledgeCandidate}, \texttt{LearningCandidate}, and recovery actions. The inspection surface is not a privileged bypass; it is a read-first view over the same policy-governed runtime.
+The local inspection surface must expose sessions, \texttt{ReasoningTask}, \texttt{RuntimeEvent}, context bundles, \texttt{RuntimeEvent} evidence and generated material, internal action evidence, \texttt{PolicyDecision}, failures, metrics, checkpoints, rollbacks, invalidations, supersessions, deleted/detached active material, \texttt{KnowledgeCandidate}, \texttt{LearningCandidate}, available recovery options, and authorized recovery workflows. The inspection surface is not a privileged bypass; it is a read-first view over the same policy-governed runtime.
 
 \madreChapter{Evaluation And Benchmark Specification}
 
@@ -1080,7 +1090,7 @@ The local inspection surface must expose sessions, \texttt{ReasoningTask}, \text
 \MROW{Context isolation}{Confirm unrelated or sensitive knowledge does not enter the wrong bundle. }
 \MROW{Inference substitution}{Confirm replaceable model-use profile and model backend choices preserve the same boundary behavior and expose failures. }
 \MROW{Policy enforcement}{Confirm action, data, autonomy, authorization, and recovery rules are enforced. }
-\MROW{Bounded internal action}{Confirm the bounded internal action is policy-gated, recorded, and harmless. }
+\MROW{Bounded internal action}{Confirm the bounded internal action is policy-gated, recorded, constrained to declared side effects, and recoverable or explicitly marked non-recoverable. }
 \MROW{Blocked unsafe actions}{Confirm remote, host-command, filesystem, mutation, and critical-action attempts do not execute under bounded internal-action authority. }
 \MROW{Inference output non-authority}{Confirm generated material remains generated material, neither authority nor a candidate by itself. }
 \MROW{Known-material truth control}{Confirm a \texttt{KnowledgeRecord} with non-authoritative truth metadata is not used as factual truth. }
@@ -1111,77 +1121,6 @@ Deployment assumptions remain conceptual at this level of specification. The pro
 \section{Risks, Limitations, And Excluded Functions}
 
 \Madre limits active executable behavior by authority class. Workflow authoring, self-learning, speech interaction, graphical product surfaces, distributed inference, organization-scale deployment, and model fine-tuning remain governed by the same local-first, policy-governed, model-agnostic, auditable, and recoverable runtime boundary as the rest of the product.
-
-
-
-\madreChapter{Requirements Catalogue}
-
-\begin{tabularx}{.95\linewidth}{@{}lX X@{}}
-	\toprule
-	\textbf{ID} & \textbf{Requirement summary} & \textbf{Decision trace} \\
-	\midrule
-	\MROW*[6em]{FR-001}{Preserve foreground-lane conversation while delaying work that requires evidence, verification, internal actions, or stronger context. & D-001, D-004. }
-	\MROW*[6em]{FR-002}{Record delayed reasoning as \texttt{ReasoningTask} with \texttt{RuntimeEvent} lifecycle and recovery path through \texttt{RuntimeJournal}. & D-001, D-003, D-008. }
-	\MROW*[6em]{FR-003}{Construct context bundles from sourced, classified, minimized, scoped, provenanced, and revocable information. & D-001, D-005, D-007. }
-	\MROW*[6em]{FR-004}{Execute model-backed work through \texttt{ModelAction}, allowed \texttt{ModelBinding}, and replaceable model backend, producing \texttt{RuntimeEvent} evidence and non-authoritative generated material. & D-001, D-006. }
-	\MROW*[6em]{FR-005}{Expose executable behavior only as declared, bounded, traceable internal actions or explicitly authorized external actions. & D-007, D-009. }
-	\MROW*[6em]{FR-006}{Keep pending \texttt{KnowledgeCandidate} change separate from evaluated \texttt{LearningCandidate} improvement and require promotion for each. & D-011. }
-	\MROW*[6em]{FR-007}{Expose local request entry and read-first inspection. & D-010. }
-	\MROW*[6em]{FR-008}{Represent recovery outcomes explicitly. & D-003, D-008. }
-	\MROW*[6em]{SEC-001}{Treat prompt/source material as data rather than instruction; treat generated material as produced material rather than authority or candidate by itself. & D-004, D-005, D-007. }
-	\MROW*[6em]{OPS-001}{Keep local access surfaces governed by runtime authority. & D-010.}
-\end{tabularx}
-
-\madreChapter{Traceability Matrix}
-
-\begin{tabularx}{.95\linewidth}{@{}lX X X@{}}
-	\toprule
-	\textbf{Requirement} & \textbf{Concern} & \textbf{Architecture element} &
-	\textbf{Evidence family} \\
-	\midrule
-	\MROW*[6em]{FR-001}{Responsiveness and user control & Complex Agent foreground lane and delayed reasoning split & Interaction and latency scenarios. }
-	\MROW*[6em]{FR-002}{Recoverability and traceability & \texttt{ReasoningTask}, \texttt{RuntimeEvent}, and \texttt{RuntimeJournal} & Recovery and status scenarios. }
-	\MROW*[6em]{FR-003}{Privacy and correctness & Governed context bundle & Context isolation scenarios. }
-	\MROW*[6em]{FR-004}{Provider independence & \texttt{ModelAction}, model backend, \texttt{RuntimeEvent} evidence, and generated material & Inference substitution and output-boundary scenarios. }
-	\MROW*[6em]{FR-005}{Action safety & Agent Action boundary, action contract, and external action policy & Allowed-action and blocked-action scenarios. }
-	\MROW*[6em]{FR-006}{Controlled evolution & Separate knowledge-change and learning-promotion candidates & Knowledge-boundary and learning-promotion review. }
-	\MROW*[6em]{FR-007}{Local operability & CLI plus read-first local console & Local access and inspection scenario. }
-	\MROW*[6em]{FR-008}{Recoverability & \texttt{RuntimeEvent} history and recovery semantics & Recovery trace. }
-\end{tabularx}
-
-\madreChapter{Threat Catalogue}
-
-\MADRETABLE3:{Threat family & \textbf{Primary boundary} & \textbf{Initial response}}{
-	Source as instruction & Context bundle construction & Separate source material from instruction and policy. \N
-	Sensitive disclosure & Data classification and remote transfer & Minimize, redact, authorize, and record disclosures. \N
-	Unsafe action execution & Action and workflow contracts & Require action-class policy, bounded internal-action scope, and recovery expectation. \N
-	Known material used under incorrect truth metadata & \texttt{KnowledgeRecord} use & Enforce provenance, \texttt{truthLevel}, \texttt{truthAuthority}, intended use, correction, and reclassification. \N
-	Inspection bypass & Local console and status surfaces & Read-first inspection with no privileged mutation path. \N
-	Generated-material false authority & generated material boundary & Treat generated material as produced material, not authority or candidate by itself. \N
-	Provider dependency & Local Model Runtime Boundary & model backend substitution and local-first default. \N
-	Unbounded consumption & Scheduler and resource controls & Queue, compute, storage, and cost limits.
-}
-
-\madreChapter{Benchmark Catalogue}
-
-\begin{tabularx}{.95\linewidth}{@{}lX X@{}}
-	\toprule
-	\textbf{Benchmark} & \textbf{Observed property} & \textbf{Evidence} \\
-	\midrule
-	Foreground response & Conversational continuity under delayed work & Latency and interaction-state record. \N
-	Delayed work durability & \texttt{ReasoningTask} survives interruption and exposes status & \texttt{RuntimeEvent} lifecycle in \texttt{RuntimeJournal}. \N
-	Context isolation & Only scoped material with suitable metadata enters a task context & Context bundle and \texttt{KnowledgeRecord} inspection. \N
-	Policy enforcement & Disallowed action remains blocked or requires authorization & Policy decision record. \N
-	Bounded internal action & Bounded internal action remains local, policy-gated, and traceable & Action trace. \N
-	Inference output boundary & generated material remains generated material, not authority or candidate by itself & \texttt{RuntimeEvent} evidence, output-handling, and negative-path trace. \N
-	Knowledge truth authority & Non-authoritative \texttt{KnowledgeRecord} is not used as factual truth & Truth-metadata use and correction trace. \N
-	Learning promotion control & \texttt{LearningCandidate} remains inactive and storing \texttt{KnowledgeRecord} is not learning & Promotion and negative-path trace. \N
-	Runtime journal traceability & Local trace correlates work, events, policies, inference, and recovery & \texttt{RuntimeJournal} inspection trace. \N
-	Read-first inspection & Local console exposes status, trace, policy, context, inference, action, knowledge/learning transition, and recovery evidence & Inspection trace. \N
-	Recovery & Failed or unsafe result can be corrected or rolled back & Recovery trace. \N
-	Model substitution & model backend replacement preserves composed boundary behavior & Model-use boundary comparison. \\
-	\bottomrule
-\end{tabularx}
 
 \madreChapter{Runtime Domain Model}
 
@@ -1336,6 +1275,8 @@ A class exists in this map only when it has stable runtime identity, stable owne
 	\association{ReasoningModule}{1}{owns}{MADREAgent}{1..*}{agents}
 }[.95\linewidth]<-1em>
 
+The diagram shows module ownership. Specialization is defined in the UML registry: \texttt{SimpleAgent}, \texttt{TwinAgent}, and \texttt{ComplexAgent} specialize \texttt{MADREAgent}; \texttt{SystemAgent} specializes \texttt{ComplexAgent} and is reserved for module-bound main-agent responsibility.
+
 \subsection{Planning And Invocation}
 \pxUMLDiagram{
 	\drawclass[text width=13em]{ReasoningRequest}[0,0]
@@ -1352,10 +1293,12 @@ A class exists in this map only when it has stable runtime identity, stable owne
 	\unidirectionalAssociation{ReasoningRequest}{handled}{module}{ReasoningResponse}
 	\composition{ReasoningPlan}{many}{tasks}{ReasoningTask}
 	\unidirectionalAssociation{Workflow}{refines}{tasks}{ReasoningTask}
-	\unidirectionalAssociation{ReasoningTask}{invokes}{request}{AgentRequest}
-	\unidirectionalAssociation{AgentRequest}{returns}{result}{AgentResponse}
+	\unidirectionalAssociation{ReasoningTask}{materializes}{invocation}{AgentRequest}
+	\unidirectionalAssociation{AgentResponse}{responds to}{request}{AgentRequest}
 	\unidirectionalAssociation{AgentRoutine}{returns}{result}{AgentResponse}
 	\unidirectionalAssociation{AgentAction}{returns}{response}{AgentResponse}
+	\unidirectionalAssociation{AgentRequest}{targets}{routine}{AgentRoutine}
+	\unidirectionalAssociation{AgentRequest}{targets}{action}{AgentAction}
 	\unidirectionalAssociation{ModelAction}{uses}{binding}{ModelBinding}
 }[.98\linewidth]<-1em>
 
@@ -1367,11 +1310,11 @@ A class exists in this map only when it has stable runtime identity, stable owne
 	\drawclass[text width=13em]{KnowledgeCandidate}[4.5,-6]
 	\drawclass[text width=13em]{LearningCandidate}[13.5,-6]
 	\drawclass[text width=13em]{RuntimeEvent}[9,-12]
-	\unidirectionalAssociation{ContextBundle}{selects}{sources}{ReasoningArtifact}
+	\unidirectionalAssociation{ContextBundle}{selects governed}{sources}{ReasoningArtifact}
 	\unidirectionalAssociation{ReasoningArtifact}{informs}{handling}{KnowledgeRecord}
 	\unidirectionalAssociation{KnowledgeCandidate}{targets}{change}{KnowledgeRecord}
 	\unidirectionalAssociation{LearningCandidate}{uses}{evidence}{RuntimeEvent}
-	\unidirectionalAssociation{KnowledgeRecord}{journals}{event}{RuntimeEvent}
+	\unidirectionalAssociation{KnowledgeRecord}{references}{provenance/event}{RuntimeEvent}
 }[.98\linewidth]<-1em>
 
 \subsection{Trace And Authority Evidence}
@@ -1382,9 +1325,9 @@ A class exists in this map only when it has stable runtime identity, stable owne
 	\drawclass[text width=13em]{AgentRequest}[0,-6]
 	\drawclass[text width=13em]{AgentAction}[9,-6]
 	\drawclass[text width=13em]{ModelAction}[18,-6]
-	\unidirectionalAssociation{PolicyDecision}{records}{outcome}{RuntimeEvent}
+	\unidirectionalAssociation{PolicyDecision}{is evidenced by}{event}{RuntimeEvent}
 	\composition{RuntimeJournal}{many}{events}{RuntimeEvent}
-	\unidirectionalAssociation{AgentRequest}{requires}{policy}{PolicyDecision}
+	\unidirectionalAssociation{AgentRequest}{carries}{boundary outcome}{PolicyDecision}
 	\unidirectionalAssociation{AgentAction}{records}{evidence}{RuntimeEvent}
 	\unidirectionalAssociation{ModelAction}{records}{evidence}{RuntimeEvent}
 }[.98\linewidth]<-1em>
@@ -1488,7 +1431,10 @@ A class exists in this map only when it has stable runtime identity, stable owne
 
 \subsection{ModelBinding}
 \printClass*{ModelBinding}[
-	\UMLAt-description:Text
+	\UMLAt-bindingId:UUID ,
+	\UMLAt-allowedBackend:Text ,
+	\UMLAt-modelUseProfile:Text ,
+	\UMLAt-localityMode:Text
 ]{%
 	\item[] Configuration boundary that constrains which model-backed execution options a model-backed action or agent may use.
 	\item[] Preserves model substitutability, local-first or authorized-remote limits, reproducibility expectations, and resource discipline.
@@ -1502,10 +1448,10 @@ A class exists in this map only when it has stable runtime identity, stable owne
 	\UMLAt-targetModule:Optional<Ref<ReasoningModule>> ,
 	\UMLAt-contextRef:Optional<Ref<ContextBundle>> ,
 	\UMLAt-scope:Text ,
-	\UMLAt-constraints:Text
+	\UMLAt-declaredBoundary:Text
 ]{%
 	\item[] Passive request object for a reasoning need. It may originate from a user interaction, system event, module, agent, plan, or delegated task.
-	\item[] Carries objective, origin, explicit target when known, scope, constraints, and context references.
+	\item[] Carries objective, origin, explicit target when known, scope, declared boundary summary, and context references.
 	\item[] It does not build plans, schedule itself, execute work, authorize actions, or carry module-private knowledge directly across delegation boundaries.
 }<\texttt{ReasoningRequest} represents module-level reasoning or delegation need.>
 
@@ -1537,8 +1483,8 @@ A class exists in this map only when it has stable runtime identity, stable owne
 	\UMLAt-targetKind:Text ,
 	\UMLAt-targetRef:Optional<Ref<?>> ,
 	\UMLAt-dependencies:List<Ref<ReasoningTask>> ,
-	\UMLAt-contextRequirement:Text ,
-	\UMLAt-boundaryRequirement:Text
+	\UMLAt-requiredContextScope:Text ,
+	\UMLAt-requiredBoundaryOutcome:Text
 ]{%
 	\item[] Passive planned execution occurrence inside a \texttt{ReasoningPlan}.
 	\item[] Targets a delegated \texttt{ReasoningRequest}, an executable agent capability, an \texttt{AgentRoutine}, an \texttt{AgentAction}, a \texttt{ModelAction}, or a \texttt{Workflow} only when planning expansion or refinement is intended.
@@ -1551,10 +1497,11 @@ A class exists in this map only when it has stable runtime identity, stable owne
 	\UMLAt-contextRef:Ref<ContextBundle> ,
 	\UMLAt-targetAgent:Optional<Ref<MADREAgent>> ,
 	\UMLAt-targetCapability:Optional<Ref<?>> ,
-	\UMLAt-effectiveConstraints:Text
+	\UMLAt-effectiveBoundary:Text ,
+	\UMLAt-policyDecisionRef:Optional<Ref<PolicyDecision>>
 ]{%
 	\item[] Concrete executable invocation context constructed by module orchestration.
-	\item[] Carries only the minimized context and effective constraints needed for one valid agent, routine, action, or model-backed execution.
+	\item[] Carries only the minimized context and effective boundary needed for one valid agent, routine, action, or model-backed execution.
 	\item[] It does not replace \texttt{ReasoningRequest}, schedule work, or make context valid merely by containing it.
 }<\texttt{AgentRequest} is the concrete invocation envelope.>
 

@@ -2,12 +2,17 @@
 
 ## Current Focus
 
-Continue the class-by-class MADRE classmap discussion with the compact workflow in `agents/state/classmap-review/README.md`.
+Clean the MADRE documentation without flattening the project.
 
-The active design pressure is boundary composition: executable validity comes from the request path's composed constraints across modules, agents, workflows, routines, actions, model use, context, storage, and learning.
+Preserve MADRE philosophy, motivation, UML/class design, scenario pressure,
+requirements, and validation depth while removing bloated prose, unsupported
+assumptions, and AI-industry framing.
+
+The MADRE baseline guideline is a review lens, not product replacement prose.
 
 ## Next Action
 
-1. Review `agents/state/classmap-review/boundary-model.md`.
-2. Continue through `agents/state/classmap-review/class-review-index.md` in order.
-3. Use `docs/classmap-baseline.md`, `docs/classmap-v2.md`, and `docs/usecases-baseline.md` as preserved behavior and classmap discussion references.
+1. Use `docs/tex/MADRE-AgenticSystem.tex` as the canonical dossier.
+2. Use `docs/classmap-baseline.md` and `docs/usecases-baseline.md` as preserved design pressure.
+3. Record compact cleanup decisions in `agents/state/documentation-rewrite-ledger.md`.
+4. Keep agent debate out of human-facing product text.

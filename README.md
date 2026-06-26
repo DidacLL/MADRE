@@ -2,7 +2,7 @@
 
 MADRE is a local-first, model-agnostic runtime architecture for governed agentic systems.
 
-Its central claim is that useful agentic behavior should come from software architecture, not from treating a language model as the whole system. MADRE places replaceable model runtimes inside a governed kernel that owns context, policy, internal actions, memory, learning, audit, recovery, and user authority.
+Its central claim is that useful agentic behavior should come from software architecture, not from treating a language model, chat session, prompt stack, or tool wrapper as the system. MADRE places replaceable model runtimes inside a governed local runtime that owns context construction, module boundaries, internal actions, knowledge handling, learning promotion, trace, recovery, and user authority.
 
 ## Canonical Dossier
 
@@ -12,7 +12,13 @@ The authoritative MADRE architecture source is:
 docs/tex/MADRE-AgenticSystem.tex
 ```
 
-That dossier defines product identity, architectural views, requirements, traceability, threat model, quality model, benchmark catalogue, glossary, and conceptual module and agent sketches.
+That dossier defines product identity, architectural views, requirements, traceability, threat model, quality model, benchmark catalogue, glossary, and runtime domain model.
+
+Supporting sources:
+
+- `docs/classmap-baseline.md`: basic class and entity design pressure.
+- `docs/usecases-baseline.md`: scenario pressure and use-case coverage.
+- `agents/**`: agent routing and working-state guidance only; it is not product authority.
 
 ## Build
 
