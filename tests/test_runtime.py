@@ -187,9 +187,7 @@ def test_restart_marks_incomplete_attempt_as_interrupted(tmp_path, monkeypatch):
     assert work["attempts"][0]["failure"]["code"] == "interrupted"
 
 
-def test_delayed_work_survives_restart_and_scheduler_executes_at_eligibility(
-    tmp_path, monkeypatch
-):
+def test_delayed_work_survives_restart_and_scheduler_executes_at_eligibility(tmp_path, monkeypatch):
     monkeypatch.setenv("MADRE_API_TOKEN", "test-token")
     runtime_settings = settings(tmp_path)
     current = [datetime(2035, 1, 1, 12, 0, tzinfo=UTC)]
