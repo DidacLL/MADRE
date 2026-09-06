@@ -71,24 +71,16 @@ def open_database(data_dir: Path) -> Iterator[sqlite3.Connection]:
         connection.row_factory = sqlite3.Row
         try:
             version = connection.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (0, 1, 2, SCHEMA_VERSION):
-                raise RuntimeError(f"unsupported runtime schema version: {version}")
+            if version not in (0, SCHEMA_VERSION):
+                raise RuntimeError(
+                    f"unsupported runtime schema version: {version}; "
+                    "delete the development runtime data directory and restart MADRE"
+                )
             connection.execute("PRAGMA foreign_keys=ON")
             connection.execute("PRAGMA journal_mode=WAL")
-            if version in (0, 1):
+            if version == 0:
                 with connection:
                     connection.executescript(_WORK_SCHEMA)
-                    connection.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
-            elif version == 2:
-                with connection:
-                    connection.execute("ALTER TABLE runtime_work ADD COLUMN idempotency_key TEXT")
-                    connection.execute(
-                        """
-                        CREATE UNIQUE INDEX runtime_work_idempotency
-                        ON runtime_work(application_id, idempotency_key)
-                        WHERE idempotency_key IS NOT NULL
-                        """
-                    )
                     connection.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
             yield connection
         finally:
