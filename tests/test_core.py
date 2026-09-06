@@ -75,6 +75,8 @@ def test_core_conversation_uses_runtime_http_boundary_and_stable_identity(tmp_pa
     first_messages, second_messages = observed_messages
     assert first_messages[0]["role"] == "system"
     assert "fast interaction behavior" in first_messages[0]["content"]
+    assert "Use `fast` by default" in first_messages[0]["content"]
+    assert "same chat capability" in first_messages[0]["content"]
     assert first_messages[1:] == [{"role": "user", "content": "first question"}]
     assert second_messages[0]["role"] == "system"
     assert second_messages[1:] == [
@@ -216,6 +218,36 @@ def test_core_missing_reasoning_marker_conservatively_recommends_deeper():
     assert turn.text == "useful answer without protocol marker"
     assert turn.reasoning == "deeper"
     assert submissions == 1
+
+
+def test_core_marker_only_fast_response_becomes_deeper_fallback():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            201,
+            json={
+                "id": "work-1",
+                "status": "succeeded",
+                "result": {"text": "[[MADRE_REASONING:fast]]"},
+                "failure": None,
+            },
+        )
+
+    client = CoreClient(
+        "http://127.0.0.1:8731",
+        "test-token",
+        "local-chat",
+        transport=httpx.MockTransport(handler),
+    )
+    conversation = CoreConversation(client)
+    turn = asyncio.run(conversation.send("patata"))
+
+    assert turn.text == "I couldn't produce a usable fast response."
+    assert turn.reasoning == "deeper"
+    assert conversation.deeper_available
+    assert conversation.messages == (
+        {"role": "user", "content": "patata"},
+        {"role": "assistant", "content": "I couldn't produce a usable fast response."},
+    )
 
 
 def test_core_surfaces_durable_capability_failure(tmp_path, monkeypatch):
