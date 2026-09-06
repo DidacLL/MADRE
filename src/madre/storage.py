@@ -11,7 +11,7 @@ from filelock import FileLock, Timeout
 
 from madre.contracts import WorkAttempt, WorkFailure, WorkRecord, WorkSubmission
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 _WORK_SCHEMA = """
 CREATE TABLE IF NOT EXISTS runtime_work (
@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS runtime_work (
     input_json TEXT NOT NULL,
     eligible_at TEXT,
     constraints_json TEXT NOT NULL,
+    idempotency_key TEXT,
     status TEXT NOT NULL CHECK (status IN ('accepted', 'running', 'succeeded', 'failed')),
     submitted_at TEXT NOT NULL,
     started_at TEXT,
@@ -29,6 +30,10 @@ CREATE TABLE IF NOT EXISTS runtime_work (
     error_code TEXT,
     error_message TEXT
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS runtime_work_idempotency
+ON runtime_work(application_id, idempotency_key)
+WHERE idempotency_key IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS runtime_attempt (
     work_id TEXT NOT NULL REFERENCES runtime_work(id) ON DELETE CASCADE,
@@ -66,13 +71,24 @@ def open_database(data_dir: Path) -> Iterator[sqlite3.Connection]:
         connection.row_factory = sqlite3.Row
         try:
             version = connection.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (0, 1, SCHEMA_VERSION):
+            if version not in (0, 1, 2, SCHEMA_VERSION):
                 raise RuntimeError(f"unsupported runtime schema version: {version}")
             connection.execute("PRAGMA foreign_keys=ON")
             connection.execute("PRAGMA journal_mode=WAL")
-            if version < SCHEMA_VERSION:
+            if version in (0, 1):
                 with connection:
                     connection.executescript(_WORK_SCHEMA)
+                    connection.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
+            elif version == 2:
+                with connection:
+                    connection.execute("ALTER TABLE runtime_work ADD COLUMN idempotency_key TEXT")
+                    connection.execute(
+                        """
+                        CREATE UNIQUE INDEX runtime_work_idempotency
+                        ON runtime_work(application_id, idempotency_key)
+                        WHERE idempotency_key IS NOT NULL
+                        """
+                    )
                     connection.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
             yield connection
         finally:
@@ -85,25 +101,48 @@ class WorkStore:
     def __init__(self, connection: sqlite3.Connection):
         self.connection = connection
 
-    def create(self, work_id: str, submission: WorkSubmission, submitted_at: datetime) -> None:
-        with self.connection:
-            self.connection.execute(
-                """
-                INSERT INTO runtime_work (
-                    id, application_id, capability_id, input_json, eligible_at,
-                    constraints_json, status, submitted_at
-                ) VALUES (?, ?, ?, ?, ?, ?, 'accepted', ?)
-                """,
-                (
-                    work_id,
-                    submission.application_id,
-                    submission.capability_id,
-                    _json(submission.input),
-                    submission.eligible_at.isoformat() if submission.eligible_at else None,
-                    submission.constraints.model_dump_json(),
-                    submitted_at.isoformat(),
-                ),
-            )
+    def create(
+        self,
+        work_id: str,
+        submission: WorkSubmission,
+        submitted_at: datetime,
+        *,
+        idempotency_key: str | None = None,
+    ) -> bool:
+        try:
+            with self.connection:
+                self.connection.execute(
+                    """
+                    INSERT INTO runtime_work (
+                        id, application_id, capability_id, input_json, eligible_at,
+                        constraints_json, idempotency_key, status, submitted_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, 'accepted', ?)
+                    """,
+                    (
+                        work_id,
+                        submission.application_id,
+                        submission.capability_id,
+                        _json(submission.input),
+                        submission.eligible_at.isoformat() if submission.eligible_at else None,
+                        submission.constraints.model_dump_json(),
+                        idempotency_key,
+                        submitted_at.isoformat(),
+                    ),
+                )
+        except sqlite3.IntegrityError:
+            if (
+                idempotency_key is None
+                or self._idempotency_work_id(submission.application_id, idempotency_key) is None
+            ):
+                raise
+            return False
+        return True
+
+    def get_by_idempotency_key(
+        self, application_id: str, idempotency_key: str
+    ) -> WorkRecord | None:
+        work_id = self._idempotency_work_id(application_id, idempotency_key)
+        return self.get(work_id) if work_id is not None else None
 
     def next_eligible(self, now: datetime) -> str | None:
         row = self.connection.execute(
@@ -292,6 +331,17 @@ class WorkStore:
                 for attempt in attempts
             ],
         )
+
+    def _idempotency_work_id(self, application_id: str, idempotency_key: str) -> str | None:
+        row = self.connection.execute(
+            """
+            SELECT id
+            FROM runtime_work
+            WHERE application_id = ? AND idempotency_key = ?
+            """,
+            (application_id, idempotency_key),
+        ).fetchone()
+        return str(row["id"]) if row is not None else None
 
     @staticmethod
     def _failure(row: sqlite3.Row) -> WorkFailure | None:
