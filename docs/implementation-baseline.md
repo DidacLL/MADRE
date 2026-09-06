@@ -19,50 +19,61 @@ durability, recovery and inspection. Capabilities provide bounded computation.
 ## What executes today
 
 Explicit TOML configuration, package/CLI entry points, authenticated loopback
-`/health`, and exclusive runtime-data ownership are implemented. Service lifespan
-owns a local SQLite database; the OS releases its ownership lock after process
-exit. Startup rejects unknown schema versions. Schema version 1 initializes the
-database envelope; work storage, scheduling and submission remain to be implemented.
+service access, and exclusive runtime-data ownership are implemented. Service
+lifespan owns a local SQLite database; the OS releases its ownership lock after
+process exit. Startup rejects unknown schema versions and migrates the original
+schema-1 envelope to schema 2, which owns durable runtime work and attempt records.
+
+`POST /v1/work` accepts currently eligible `WorkSubmission` values. MADRE records
+the application-selected input and execution constraints, invokes the configured
+chat-completion capability through the reusable runtime layer, and durably records
+the attempt plus generated result or classified failure. `GET /v1/work/{id}` reads
+that durable record. Unknown capabilities and capability-specific input errors are
+also durable failures. A restart converts an unfinished running attempt to an
+`interrupted` failure whose evidence states that the capability outcome may be
+unknown; it does not infer success or retry the invocation.
+
+Future `eligible_at` values use the same submission vocabulary but currently return
+HTTP 409 before work is accepted. Delayed scheduling, queued-work restart recovery,
+retry and cancellation remain later behaviors rather than partial semantics hidden
+behind the immediate endpoint.
 
 The configured chat-completion adapter invokes real local inference and returns
 generated text, model, finish reason and timing, or a classified failure. It enforces
 a total invocation timeout and local-only transfer constraints. Local declarations
 require literal loopback destinations; HTTP clients disable proxies and redirects.
-Timeout bounds MADRE's wait for the endpoint. The executable behavior and validation
-rules live in code/tests; README owns setup and developer commands.
+The executable behavior and validation rules live in code/tests; README owns setup,
+HTTP examples and the real end-to-end acceptance command.
 
-`invoke_chat` is the initial chat-completion adapter, not MADRE's general work API.
-The verified llama.cpp path needs no provider credential. The service-access token
-authenticates local applications only; the inference adapter sends no authorization
-header. Future authenticated capabilities should follow the credential-ownership
-preference in `MADRE.md`, using a provider-supported client/host integration where
-appropriate. MCP or another transport alone does not establish model access; such
-integrations remain to be validated when needed.
+`invoke_chat` remains the initial chat-completion capability adapter, not MADRE's
+general work API. The verified llama.cpp path needs no provider credential. The
+service-access token authenticates local applications only; the inference adapter
+sends no authorization header. Future authenticated capabilities should follow the
+credential-ownership preference in `MADRE.md`, using a provider-supported client or
+host integration where appropriate.
 
-## Initial work direction and next behavior
+## Runtime-work direction and next behavior
 
-Immediate and delayed execution share a runtime-work concept. `WorkSubmission`
-provides initial vocabulary for application identity, selected capability/input,
-eligibility intent and execution constraints. SQLite will retain enough execution
-intent and outcome evidence to recover and inspect work across interruption.
-Recovery guarantees must reflect what actually occurred at the capability boundary.
+Immediate and delayed execution share `WorkSubmission`, durable work state and
+attempt evidence. The application owns domain meaning; MADRE persists only the
+selected execution material and lifecycle evidence needed to execute and inspect
+runtime work.
 
-**Implement real immediate work execution next:** application → local HTTP → MADRE
-runtime → configured local inference → durable, inspectable result or accurate
-failure. Build on the existing service, database ownership and `invoke_chat` adapter.
-Keep runtime execution reusable beneath HTTP and validate the path with a separate
-client, real inference and deterministic failure cases.
+**Implement delayed eligibility and restart recovery next:** accept future-eligible
+work durably, discover it after process restart, execute it when eligible, and expose
+its eventual result or recoverable failure through the existing inspection model.
+Use the current runtime execution path beneath the scheduler so immediate and
+delayed work do not diverge into different execution semantics.
 
-The implementing session should choose and test the detailed endpoint/response
-shapes, work/attempt storage, lifecycle transitions and recovery mechanics while
-building that behavior. Later scheduling, retry, cancellation and concurrency policy
-should follow the behavior being implemented.
+Choose the smallest scheduling mechanism that establishes that behavior. Retry,
+cancellation, richer concurrency/resource policy and additional capabilities should
+follow later behaviors rather than being designed speculatively into this slice.
 
-The dependency/value order is:
+The dependency/value order is now:
 
 1. Real immediate runtime work execution.
 2. Delayed eligibility and recovery.
-3. Real independent-application integration.
+3. Real independent-application integration beyond the acceptance client.
 4. Capabilities, execution controls and further behavior grown from actual use.
 
 ## Verified development evidence — 2026-09-06
@@ -72,9 +83,11 @@ GTX 1050 Ti / 4 GiB VRAM. The optional CPU fixture uses llama.cpp `b10809` and
 Qwen2.5-0.5B-Instruct Q4_K_M outside the checkout. Exact revisions, URLs and verified
 SHA-256 hashes are preserved in `tools/install-smoke-model.ps1`.
 
-Real inference returned a greeting in 0.932 seconds. The small model also failed
-an exact-output instruction: the probe establishes connectivity/computation rather
-than application-quality reasoning. Clean locked bootstrap, external wheel import,
-live authenticated HTTP, exclusive SQLite ownership/reopening, deterministic tests
-and static checks passed. Bootstrap CI passed on Windows and Linux. These are dated
-results; current implementation evidence comes from current checks and runtime use.
+The original capability probe returned real inference in 0.932 seconds. The small
+model also failed an exact-output instruction: the probe establishes connectivity
+and computation rather than application-quality reasoning. Clean locked bootstrap,
+external wheel import, live authenticated HTTP, exclusive SQLite ownership/reopening,
+deterministic tests and static checks passed. Bootstrap CI passed on Windows and
+Linux. These dated results predate the immediate-work HTTP slice; current acceptance
+for that complete path is the independent-client command in README and should be
+reported from the environment where it is executed.

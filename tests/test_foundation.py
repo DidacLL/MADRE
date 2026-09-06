@@ -45,14 +45,28 @@ def test_import_has_no_filesystem_side_effects(tmp_path):
     assert list(tmp_path.iterdir()) == []
 
 
-def test_exclusive_database_reopen_and_unknown_schema(tmp_path):
+def test_exclusive_database_reopen_migration_and_unknown_schema(tmp_path):
     with open_database(tmp_path) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 1
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 2
         with pytest.raises(RuntimeError, match="another MADRE"):
             with open_database(tmp_path):
                 pytest.fail("second owner accepted")
     with open_database(tmp_path) as connection:
         assert connection.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+
+    legacy = tmp_path / "legacy"
+    legacy.mkdir()
+    with sqlite3.connect(legacy / "runtime.sqlite3") as connection:
+        connection.execute("PRAGMA user_version=1")
+    with open_database(legacy) as connection:
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 2
+        assert (
+            connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='runtime_work'"
+            ).fetchone()[0]
+            == "runtime_work"
+        )
+
     with sqlite3.connect(tmp_path / "runtime.sqlite3") as connection:
         connection.execute("PRAGMA user_version=999")
     with pytest.raises(RuntimeError, match="unsupported"):
@@ -88,7 +102,7 @@ def test_process_exit_releases_ownership(tmp_path):
         process.communicate(timeout=10)
 
 
-def test_health_auth_lifecycle_and_no_placeholder_work_api(tmp_path, monkeypatch):
+def test_health_auth_and_lifecycle(tmp_path, monkeypatch):
     monkeypatch.setenv("MADRE_API_TOKEN", "test-token")
     settings = Settings(data_dir=tmp_path / "runtime")
     app = create_app(settings)
@@ -97,9 +111,8 @@ def test_health_auth_lifecycle_and_no_placeholder_work_api(tmp_path, monkeypatch
         assert client.get("/health").status_code == 401
         assert client.get("/health", headers={"Authorization": "Bearer wrong"}).status_code == 401
         response = client.get("/health", headers={"Authorization": "Bearer test-token"})
-        assert response.json() == {"status": "ok", "schema_version": 1}
+        assert response.json() == {"status": "ok", "schema_version": 2}
         assert "access-control-allow-origin" not in response.headers
-        assert client.post("/v1/work").status_code == 404
         with pytest.raises(RuntimeError, match="another MADRE"):
             with open_database(settings.data_dir):
                 pytest.fail("service did not own storage")
