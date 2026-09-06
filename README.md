@@ -113,7 +113,7 @@ python -m uv run --locked madre-core --runtime-url http://127.0.0.1:8731 --capab
 
 Enter a message at `you>` and CORE submits ordinary authenticated MADRE work as application `madre-core`. Assistant text is printed at `core>`, followed by `reasoning> fast` when the foreground answer is considered sufficient or `reasoning> deeper` when CORE recommends stronger follow-up reasoning. A deeper recommendation also exposes `deeper> /deeper`. Entering `/deeper` explicitly submits one second ordinary MADRE work item with a deeper-analysis instruction and the larger `--deeper-max-tokens` budget; its result is printed at `core(deeper)>` and replaces the fast draft in process-local conversation history. CORE never escalates automatically. Runtime/capability failures are printed explicitly and are not appended to conversation history.
 
-The deterministic suite proves those software semantics. The quality of the real model's `fast`/`deeper` recommendation and whether `/deeper` materially improves an answer require real owner-side use. [`docs/core.md`](docs/core.md#local-product-acceptance) contains a PowerShell acceptance procedure using the pinned local model, a dedicated runtime database, and direct inspection of the durable `madre-core` work records before and after `/deeper`.
+This terminal interaction is an executable development surface, not a stable MADRE UX contract. The deterministic suite proves its software semantics; owner-side model runs have shown useful execution through the real path while also showing that current fast/deeper judgement and chat presentation remain experimental. [`docs/core.md`](docs/core.md#local-product-acceptance) records that evidence and the local acceptance procedure.
 
 CORE does not import the runtime scheduler, storage or capability invocation path. It does not contact llama.cpp directly. The runtime has no CORE-specific scheduling or admission behavior.
 
@@ -160,6 +160,8 @@ Fixtures and mocked inference establish deterministic protocol and failure behav
 
 ## Continue implementation
 
-CORE now has one concrete two-stage reasoning path: a fast foreground response can recommend deeper handling, and the user can explicitly turn that recommendation into one stronger follow-up through ordinary MADRE work. The next substantive behavior should be chosen from evidence produced by using this path with the real local model. Do not prebuild a generalized Agent, Planner, workflow engine, memory system or capability router merely to continue development.
+The first-party CORE path and its experimental fast/deeper follow-up have now produced enough real-model evidence for this stage. Further chatbot UX, classifier/prompt tuning and model-floor exploration are intentionally deferred.
+
+Development returns to the reliable shared execution framework. Read `docs/implementation-baseline.md`, inspect current runtime code/tests, and select one concrete generic reliability behavior that materially improves dependable execution for applications and CORE alike. Do not prebuild a generalized Agent, Planner, workflow engine, memory system or capability router merely to continue development; broaden an abstraction only when a real behavior requires it.
 
 GPL-3.0. See [`LICENSE`](LICENSE).
