@@ -28,7 +28,11 @@ def test_core_conversation_uses_runtime_http_boundary_and_stable_identity(tmp_pa
 
     async def fake_invoke(capability, request, constraints):
         observed_messages.append([message.model_dump() for message in request.messages])
-        reply = "first answer" if len(observed_messages) == 1 else "second answer"
+        reply = (
+            "first answer\n[[MADRE_REASONING:fast]]"
+            if len(observed_messages) == 1
+            else "second answer\n[[MADRE_REASONING:deeper]]"
+        )
         return ChatResult(
             text=reply,
             model="test-model",
@@ -57,27 +61,66 @@ def test_core_conversation_uses_runtime_http_boundary_and_stable_identity(tmp_pa
     first, second, history = asyncio.run(exercise())
 
     assert CORE_APPLICATION_ID == "madre-core"
-    assert first == "first answer"
-    assert second == "second answer"
+    assert first.text == "first answer"
+    assert first.reasoning == "fast"
+    assert second.text == "second answer"
+    assert second.reasoning == "deeper"
     assert history == (
         {"role": "user", "content": "first question"},
         {"role": "assistant", "content": "first answer"},
         {"role": "user", "content": "second question"},
         {"role": "assistant", "content": "second answer"},
     )
-    assert observed_messages == [
-        [{"role": "user", "content": "first question"}],
-        [
-            {"role": "user", "content": "first question"},
-            {"role": "assistant", "content": "first answer"},
-            {"role": "user", "content": "second question"},
-        ],
+
+    first_messages, second_messages = observed_messages
+    assert first_messages[0]["role"] == "system"
+    assert "fast interaction behavior" in first_messages[0]["content"]
+    assert first_messages[1:] == [{"role": "user", "content": "first question"}]
+    assert second_messages[0]["role"] == "system"
+    assert second_messages[1:] == [
+        {"role": "user", "content": "first question"},
+        {"role": "assistant", "content": "first answer"},
+        {"role": "user", "content": "second question"},
     ]
 
     with sqlite3.connect(runtime_settings.data_dir / "runtime.sqlite3") as connection:
         rows = connection.execute("SELECT application_id, status FROM runtime_work").fetchall()
     assert len(rows) == 2
     assert all(row == ("madre-core", "succeeded") for row in rows)
+
+
+def test_core_missing_reasoning_marker_conservatively_recommends_deeper():
+    submissions = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal submissions
+        assert request.method == "POST"
+        submissions += 1
+        submission = json.loads(request.content)
+        messages = submission["input"]["messages"]
+        assert messages[0]["role"] == "system"
+        return httpx.Response(
+            201,
+            json={
+                "id": "work-1",
+                "status": "succeeded",
+                "result": {"text": "useful answer without protocol marker"},
+                "failure": None,
+            },
+        )
+
+    client = CoreClient(
+        "http://127.0.0.1:8731",
+        "test-token",
+        "local-chat",
+        transport=httpx.MockTransport(handler),
+    )
+    conversation = CoreConversation(client)
+    turn = asyncio.run(conversation.send("complex request"))
+
+    assert turn.text == "useful answer without protocol marker"
+    assert turn.reasoning == "deeper"
+    assert submissions == 1
 
 
 def test_core_surfaces_durable_capability_failure(tmp_path, monkeypatch):

@@ -98,8 +98,8 @@ sends no authorization header. Future authenticated capabilities should follow t
 credential-ownership preference in `MADRE.md`, using a provider-supported client or
 host integration where appropriate.
 
-The source tree now also contains CORE as the first real first-party application in a
-separate `madre_core` package with its own `madre-core` entry point. CORE connects to a
+The source tree contains CORE as the first real first-party application in a separate
+`madre_core` package with its own `madre-core` entry point. CORE connects to a
 separately running MADRE service through authenticated loopback HTTP and submits
 ordinary chat work with stable `application_id = "madre-core"`. Its production code
 does not import `WorkRuntime`, `invoke_chat`, storage, scheduler or service internals.
@@ -118,6 +118,26 @@ to the user. Current immediate `POST /v1/work` behavior still returns only after
 immediate execution path finishes, so an immediate work ID is not available to CORE
 while that original POST is itself waiting for scarce-resource admission; this is a
 property of the generic HTTP contract, not a CORE special case.
+
+The first CORE application boundary is canonical on `main` as of
+`fc3a5c4f670013fe234b5ef33281df1b7f965087`.
+
+CORE now separates HTTP transport (`CoreClient`) from interaction behavior
+(`CoreConversation`). Each foreground turn remains exactly one ordinary runtime work
+item. The interaction layer adds a transient system instruction asking the configured
+chat capability for both a concise immediate answer and one bounded recommendation:
+`fast` when the foreground answer is sufficient or `deeper` when materially stronger
+handling would require deeper multi-step reasoning, verification, research, planning
+or tools.
+
+CORE strips the internal recommendation marker before displaying or remembering the
+assistant response. A missing or malformed marker conservatively yields `deeper` while
+preserving useful generated text. The recommendation is observable in the CLI and
+returned as part of `CoreTurn`; it has no execution authority. It does not schedule a
+second job, deploy an agent, choose another capability, or invoke a Planner. "Fast"
+therefore names the foreground interaction responsibility rather than promising
+wall-clock latency; ordinary runtime admission can still delay the one submitted work
+item.
 
 ## Runtime-work direction and next behavior
 
@@ -164,13 +184,14 @@ Runtime owns execution, and capabilities perform computation.
 
 The dependency/value order is now:
 
-1. Real immediate runtime work execution — implemented and accepted.
+1. Real immediate runtime work execution — implemented, accepted and canonical.
 2. Delayed eligibility and restart recovery — implemented, accepted and canonical.
 3. Minimal global local-inference admission — implemented, accepted and canonical.
 4. Canonical product-definition realignment — implemented, accepted and canonical.
-5. Minimal CORE interaction through the ordinary runtime HTTP boundary — implemented in the current source tree.
-6. Give CORE's interaction behavior an explicit fast-response responsibility and one observable decision that a request deserves deeper reasoning, without yet introducing a generalized agent framework or Planner.
-7. Further application integration, capabilities and execution controls grow from actual use.
+5. Minimal CORE interaction through the ordinary runtime HTTP boundary — implemented, accepted and canonical.
+6. Explicit CORE fast-response responsibility plus observable `fast`/`deeper` recommendation — implemented in the current source tree.
+7. Give a `deeper` recommendation one concrete user-controlled execution consequence through ordinary MADRE work before introducing a generalized agent or Planner abstraction.
+8. Further application integration, capabilities and execution controls grow from actual use.
 
 ## Verified development evidence — 2026-09-06
 
