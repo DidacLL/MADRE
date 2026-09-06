@@ -1,0 +1,30 @@
+name: checks
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  validate:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.12.10"
+      - run: uv sync --locked
+      - run: uv run --locked pytest
+      - run: uv run --locked ruff check .
+      - run: uv run --locked ruff format --check .
+      - run: uv run --locked mypy
+      - run: uv build --python .venv --no-build-isolation
+      - name: Install wheel over editable package
+        shell: bash
+        run: uv pip install --no-deps --reinstall dist/*.whl
+      - name: Verify wheel outside checkout
+        shell: bash
+        run: |
+          project_python="$(uv python find)"
+          cd "$RUNNER_TEMP"
+          "$project_python" -I -c "import madre; from pathlib import Path; assert 'site-packages' in Path(madre.__file__).parts; print(madre.__file__)"
