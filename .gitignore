@@ -18,5 +18,6 @@ __pycache__/
 *.db
 *-shm
 *-wal
+*.worker.lock
 .idea/
 .cursor/
