@@ -140,14 +140,14 @@ the submitted work item.
 The explicit fast/deeper recommendation behavior is canonical on `main` as of
 `b71e244e39fe81e3a2db02b73e5a219fb64702b1`.
 
-The current source gives `deeper` one execution consequence. Only when the latest fast
-turn recommended deeper reasoning, the user may enter `/deeper`. CORE then submits one
-second ordinary MADRE work item through the same HTTP client, capability and stable
-application identity. It supplies the process-local conversation, the fast answer as a
-draft, a transient deeper-analysis instruction, a transient final request to produce
-the replacement answer, and a larger token budget (768 by default versus 256 for the
-fast interaction). This represents stronger reasoning intent using the capability that
-exists today; it does not define a new work type or capability class.
+The canonical CORE behavior gives `deeper` one execution consequence. Only when the
+latest fast turn recommended deeper reasoning, the user may enter `/deeper`. CORE then
+submits one second ordinary MADRE work item through the same HTTP client, capability
+and stable application identity. It supplies the process-local conversation, the fast
+answer as a draft, a transient deeper-analysis instruction, a transient final request
+to produce the replacement answer, and a larger token budget (768 by default versus
+256 for the fast interaction). This represents stronger reasoning intent using the
+capability that exists today; it does not define a new work type or capability class.
 
 A successful deeper result replaces the fast draft in CORE's process-local history and
 consumes the opportunity. Sending another ordinary user message abandons the previous
@@ -155,6 +155,18 @@ opportunity. If deeper work fails, the fast draft and explicit retry opportunity
 CORE never escalates automatically. No runtime, scheduler, storage, admission or
 capability code changes are required, and `/deeper` does not deploy an agent, invoke a
 Planner, create a workflow or select a different capability.
+
+The user-controlled `/deeper` behavior is canonical on `main` as of
+`0b7c36c2bcc987d215f19ad5429a07fd41c7fc3a`.
+
+The deterministic suite proves the software semantics of that two-stage path. It does
+not prove that the current small real model recommends `deeper` at useful times or that
+the larger second inference reliably improves the answer. The next evidence therefore
+comes from owner-side local product acceptance with the real configured model. The
+procedure in `docs/core.md` uses a dedicated ignored runtime database so one can verify
+that a `deeper` recommendation creates no automatic work and that entering `/deeper`
+creates exactly one additional ordinary durable `madre-core` work item with the larger
+token budget.
 
 ## Runtime-work direction and next behavior
 
@@ -207,8 +219,8 @@ The dependency/value order is now:
 4. Canonical product-definition realignment — implemented, accepted and canonical.
 5. Minimal CORE interaction through the ordinary runtime HTTP boundary — implemented, accepted and canonical.
 6. Explicit CORE fast-response responsibility plus observable `fast`/`deeper` recommendation — implemented, accepted and canonical.
-7. User-controlled `/deeper` stronger follow-up through ordinary MADRE work — implemented in the current source tree.
-8. Choose the next CORE/runtime behavior from evidence produced by this working two-stage path rather than prebuilding a generalized agent, Planner, workflow engine, memory system or capability router.
+7. User-controlled `/deeper` stronger follow-up through ordinary MADRE work — implemented, accepted and canonical.
+8. Exercise the two-stage CORE path with the real local model and use that product evidence to choose the next behavior; do not infer the next abstraction from tests alone.
 
 ## Verified development evidence — 2026-09-06
 
