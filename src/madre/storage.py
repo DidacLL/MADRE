@@ -73,7 +73,7 @@ def open_database(data_dir: Path) -> Iterator[sqlite3.Connection]:
             version = connection.execute("PRAGMA user_version").fetchone()[0]
             if version not in (0, SCHEMA_VERSION):
                 raise RuntimeError(
-                    f"unsupported runtime schema version: {version}; "
+                    f"unsupported persisted SQLite runtime format version: {version}; "
                     "delete the development runtime data directory and restart MADRE"
                 )
             connection.execute("PRAGMA foreign_keys=ON")
