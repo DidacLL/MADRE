@@ -1,44 +1,37 @@
 # MADREdev now
 
-- Phase: First durable runtime slice validated on Windows and Linux
-- Objective: Integrate the bounded slice without expanding runtime or development scope.
-- State: Windows validation passed without runtime or test changes; ready for repository integration.
-- Branch: `agentic/durable-work-slice`
-- Last verified evidence: 2026-09-06: Windows suite passed all 11 tests in 2.145s; README immediate/delayed CLI examples passed; diff check clean.
-- Next actor: CLASSIC
-- Next action: Integrate the validated slice through the normal repository workflow.
-- Owner attention: NONE
-- Drift signal: Validation follows the changed surface. Documentation updates do not justify full runtime test runs or CI expansion.
+- Phase: Bootstrap and first runtime slice complete; integration pending.
+- Objective: Put the simplified development environment and tested runtime slice on main.
+- State: Published on `agentic/durable-work-slice`; not yet merged. Main was verified at pre-bootstrap `d4361d3` on 2026-09-06.
+- Branch: `agentic/durable-work-slice` includes both the bootstrap and runtime implementation.
+- Last verified evidence: All 11 runtime tests passed on Windows; Linux pass reported by the implementation executor. README CLI examples passed. Runtime/test code remains at `3c74bac`.
+- Next actor: CLASSIC with GitHub access.
+- Next action: Open or update one PR from this branch to main and complete integration under repository protections.
+- Owner attention: Send the packet below to CLASSIC. No product decision or manual QA is needed.
+- Drift signal: Integration is the next task. Do not start another feature, broad review, CI project or repeat platform validation.
 
-## Current evidence
+## Current evidence and limit
 
-- Runtime and test code validated at `3c74bac57586e10713fe474860459732730ec502`; subsequent changes only record evidence and clarify documentation validation.
-- Windows 10 build 19045, Python 3.13.3, SQLite 3.49.1: `python -m unittest discover -s tests -v` -> 11 tests, OK, 2.145s. The native `msvcrt` branch executed, including a second live worker returning busy without mutation and OS lock release after process death.
-- Real subprocess termination before submission commit, after running commit and after inference before terminal commit passed. Recovery retained interrupted attempts, exposed recovered state, and produced one terminal result only after a later explicit worker invocation.
-- README commands using a temporary database: submit -> queued/acknowledged; worker -> completed; inspect -> completed with `FAKE_A:hello MADRE` labelled generated. The delayed 2030 example remained queued across a fresh worker process.
-- Implementation executor reported the same 11-test suite passing on Linux/POSIX, Python 3.13.5, SQLite 3.46.1. That run exercised `fcntl`; this validation independently exercised Windows.
-- No runtime portability fix was needed. No CI was added. Documentation changes receive content/link and diff checks only.
+The runtime durably queues immediate/delayed work, executes deterministic fake inference, records lifecycle/output and recovers after process interruption. Windows 10 build 19045 / Python 3.13.3 / SQLite 3.49.1 passed `python -m unittest discover -s tests -v`: 11 tests in 2.145s, including native worker exclusion and actual process termination. Linux/POSIX / Python 3.13.5 / SQLite 3.46.1 passed the same suite according to the implementation executor. Windows README immediate/delayed CLI examples also passed. No runtime portability fix or CI was needed.
 
-## Current risk
+Recovery covers process interruption on healthy local storage; attempts may repeat, with one committed terminal result. Power-loss safety and exactly-once inference are not claimed. No observed blocker remains for integration. Recheck remote state before acting because another executor may have integrated the branch.
 
-No observed platform blocker remains for this slice on the tested Windows/Linux environments. Recovery is limited to process interruption on healthy local storage: attempts may repeat, with one committed terminal result; exactly-once inference and power-loss safety are not claimed. Integration must preserve the validated behavior.
-
-## Next-agent packet
+## Copy this entire packet to CLASSIC
 
 ```text
-NEXT ACTOR: CLASSIC
-WHY THIS ACTOR: The slice has implementation and platform evidence; the remaining work is bounded repository integration.
+NEXT ACTOR: CLASSIC with GitHub access.
+WHY THIS ACTOR: Implementation and Windows/Linux validation are complete; only repository integration remains.
 
-TASK: Integrate the first durable scheduled-inference slice through the repository's normal PR workflow.
-START FROM: Fetch origin and use the latest agentic/durable-work-slice branch. Preserve unrelated changes and inspect the current main/PR state before acting.
-READ: AGENTS.md; DEVSTATE.md; docs/runtime-first-slice.md; README.md; the branch diff against main.
+TASK: Integrate the MADREdev bootstrap and first durable runtime slice into main in DidacLL/MADRE.
+START FROM: https://github.com/DidacLL/MADRE, latest agentic/durable-work-slice branch. Fetch current remote state; do not start from the old main implementation.
+READ: AGENTS.md, DEVSTATE.md and docs/runtime-first-slice.md on that branch; inspect its diff against current main.
 
-DO: Create or update one focused PR for the slice and its handoff. Use the recorded Windows/Linux evidence for unchanged runtime/test code. Resolve only straightforward integration conflicts. Complete integration when repository permissions and protections allow, then update DEVSTATE with the integration result and a bounded next task. Route selection of the next runtime behavior to ASTRA rather than inventing new scope.
-DO NOT: Bypass protections; force-push; expand runtime behavior; add CI, documentation builds or review machinery. Do not repeat the runtime suite for documentation-only changes.
+DO: Find an existing PR for this branch or create one targeting main. The branch includes both bootstrap cleanup and runtime implementation. Merge when repository permissions/protections allow. If already integrated, verify that and continue the handoff. Update DEVSTATE to reflect the result. Leave one copyable prompt for ASTRA to choose and define the next bounded runtime behavior; do not choose that scope yourself.
+DO NOT: Add features, CI, documentation builds or review machinery; force-push; bypass protections; rerun the runtime suite for documentation-only changes.
 
-DONE WHEN: The slice is integrated with a correct DEVSTATE, or a concrete repository restriction is recorded with a directly executable next action.
-VALIDATE WITH: git diff --check and checks for changed links/content. Run python -m unittest discover -s tests -v if integration changes runtime/test code or creates relevant behavioral uncertainty; report actual outcomes and reuse existing evidence otherwise.
+DONE WHEN: Main contains the bootstrap and slice, and DEVSTATE clearly identifies the next actor and exact prompt; otherwise record the specific integration blocker and required action.
+VALIDATE WITH: git diff --check and affected content/link checks. Reuse recorded runtime evidence unless integration changes runtime/test code or exposes a concrete behavioral uncertainty; then run python -m unittest discover -s tests -v.
 
-ESCALATE IF: Conflicts require lifecycle/policy changes, current main invalidates the evidence, or a repository restriction prevents integration. Route architecture uncertainty to ASTRA; involve OWNER only for required authorization or product intent.
-OWNER DECISION NEEDED: NONE.
+ESCALATE IF: A conflict requires lifecycle/policy changes (ASTRA), or repository permissions require Owner action. Do not ask Owner to reconstruct the task.
+OWNER DECISION NEEDED: NONE unless an actual permission restriction prevents integration.
 ```
