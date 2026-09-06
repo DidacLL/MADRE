@@ -53,7 +53,7 @@ def _format_id() -> int:
     return fingerprint & 0x7FFFFFFF or 1
 
 
-STORAGE_FORMAT_ID = _format_id()
+_STORAGE_FORMAT_ID = _format_id()
 
 
 def utc_now() -> datetime:
@@ -89,7 +89,7 @@ def open_database(data_dir: Path) -> Iterator[sqlite3.Connection]:
         connection = _connect(database)
         try:
             format_id = connection.execute("PRAGMA user_version").fetchone()[0]
-            if format_id not in (0, STORAGE_FORMAT_ID):
+            if format_id not in (0, _STORAGE_FORMAT_ID):
                 connection.close()
                 _discard_incompatible_development_storage(database)
                 connection = _connect(database)
@@ -100,7 +100,7 @@ def open_database(data_dir: Path) -> Iterator[sqlite3.Connection]:
             if format_id == 0:
                 with connection:
                     connection.executescript(_STORAGE_DDL)
-                    connection.execute(f"PRAGMA user_version={STORAGE_FORMAT_ID}")
+                    connection.execute(f"PRAGMA user_version={_STORAGE_FORMAT_ID}")
             yield connection
         finally:
             connection.close()
