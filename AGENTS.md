@@ -8,7 +8,11 @@ Read `MADRE.md` before making architectural assumptions. Its **Product invariant
 
 Git history, deleted documents, old architecture files, research reports, issues, pull requests and previous conversations may provide historical evidence, but they do not restore product requirements or concepts that are absent from the active definition. Do not infer that an old class, subsystem, workflow or policy model still exists because it appears in history.
 
-The `Current realization strategy` in `MADRE.md` is an implementation order, not an invariant. It may be revised from code and evidence without redefining the product. Do not promote a current language, library, transport, database, provider, class name or implementation technique into product architecture unless the product invariants actually require the responsibility.
+The `Current realization strategy` in `MADRE.md` is an implementation order, not an invariant. It may be revised from code and evidence without redefining the product.
+
+Concrete implementation choices are allowed and expected. A language, library, transport, database, provider, class structure or other technology may be selected, depended on, and architected around when the current implementation genuinely needs it. This rule does not require gratuitous abstraction, technology-neutral wrappers, or avoiding stable implementation commitments.
+
+What must not happen is treating a concrete implementation choice as an **invariant product requirement** merely because the current implementation uses it. Product invariants define the responsibilities and authority MADRE must preserve; implementation architecture is free to choose the simplest suitable mechanisms that realize them.
 
 For a new responsibility, apply the ownership test in `MADRE.md`: domain meaning belongs to the application; runtime scheduling/execution/recovery belongs to MADRE; computation belongs behind a replaceable capability; generated output is data.
 
