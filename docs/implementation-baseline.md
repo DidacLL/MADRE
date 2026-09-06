@@ -16,6 +16,18 @@ for capability transport, and SQLite for runtime persistence. Applications own t
 meaning and consequence of their inputs and outputs; MADRE owns work execution,
 durability, recovery and inspection. Capabilities provide bounded computation.
 
+Delayed execution does not introduce a second job abstraction or storage model.
+`accepted` work in the existing schema is the durable queue state. One service-owned
+scheduler task queries the next persisted eligibility time and sleeps until that time,
+while an in-process event wakes it when a new submission may change the schedule.
+Restart recovery comes from the persisted `accepted` records rather than from the
+in-memory wake mechanism.
+
+The accepted-to-running transition is conditional and durable before capability
+invocation begins. This allows accepted work with no started attempt to remain safely
+recoverable after restart while preserving the existing conservative rule for a
+previously running attempt whose capability outcome may be unknown.
+
 ## What executes today
 
 Explicit TOML configuration, package/CLI entry points, authenticated loopback
@@ -24,19 +36,24 @@ lifespan owns a local SQLite database; the OS releases its ownership lock after
 process exit. Startup rejects unknown schema versions and migrates the original
 schema-1 envelope to schema 2, which owns durable runtime work and attempt records.
 
-`POST /v1/work` accepts currently eligible `WorkSubmission` values. MADRE records
-the application-selected input and execution constraints, invokes the configured
-chat-completion capability through the reusable runtime layer, and durably records
-the attempt plus generated result or classified failure. `GET /v1/work/{id}` reads
-that durable record. Unknown capabilities and capability-specific input errors are
-also durable failures. A restart converts an unfinished running attempt to an
-`interrupted` failure whose evidence states that the capability outcome may be
-unknown; it does not infer success or retry the invocation.
+`POST /v1/work` accepts both immediate and future-eligible `WorkSubmission` values.
+MADRE durably records the application-selected input and execution constraints before
+execution. Already-eligible work follows the configured chat-completion capability
+path immediately. Future-eligible work returns as `accepted` without waiting for
+execution and remains in that durable state across service restart.
 
-Future `eligible_at` values use the same submission vocabulary but currently return
-HTTP 409 before work is accepted. Delayed scheduling, queued-work restart recovery,
-retry and cancellation remain later behaviors rather than partial semantics hidden
-behind the immediate endpoint.
+The service scheduler discovers accepted work from SQLite and executes it only once
+its `eligible_at` is reached. Immediate and delayed work converge on the same runtime
+execution method: capability lookup, capability-specific input validation, durable
+attempt start, `invoke_chat`, and durable success or classified failure. There is no
+scheduler-specific execution path and no separate delayed-work record type.
+
+`GET /v1/work/{id}` reads the same durable record before and after execution. Unknown
+capabilities and capability-specific input errors are durable failures. A restart
+preserves accepted work that has not started an attempt. A restart converts an
+unfinished running attempt to an `interrupted` failure whose evidence states that
+the capability outcome may be unknown; it does not infer success or retry the
+invocation.
 
 The configured chat-completion adapter invokes real local inference and returns
 generated text, model, finish reason and timing, or a classified failure. It enforces
@@ -54,26 +71,26 @@ host integration where appropriate.
 
 ## Runtime-work direction and next behavior
 
-Immediate and delayed execution share `WorkSubmission`, durable work state and
-attempt evidence. The application owns domain meaning; MADRE persists only the
-selected execution material and lifecycle evidence needed to execute and inspect
-runtime work.
+Immediate and delayed execution now share `WorkSubmission`, durable work state,
+attempt evidence and capability execution. The application owns domain meaning;
+MADRE persists only the selected execution material and lifecycle evidence needed
+to execute and inspect runtime work.
 
-**Implement delayed eligibility and restart recovery next:** accept future-eligible
-work durably, discover it after process restart, execute it when eligible, and expose
-its eventual result or recoverable failure through the existing inspection model.
-Use the current runtime execution path beneath the scheduler so immediate and
-delayed work do not diverge into different execution semantics.
+**Exercise a real independent application next:** integrate an application that
+selects its own domain context, submits immediate or delayed work through the local
+HTTP boundary, and consumes the eventual result while retaining domain state and
+interpretation. That is the next acceptance step in `MADRE.md` and will provide
+concrete evidence for whatever runtime controls should follow.
 
-Choose the smallest scheduling mechanism that establishes that behavior. Retry,
-cancellation, richer concurrency/resource policy and additional capabilities should
-follow later behaviors rather than being designed speculatively into this slice.
+Retry, cancellation, richer concurrency/resource policy and additional capabilities
+remain intentionally outside the current slice until an application or experiment
+demonstrates a requirement for them.
 
 The dependency/value order is now:
 
-1. Real immediate runtime work execution.
-2. Delayed eligibility and recovery.
-3. Real independent-application integration beyond the acceptance client.
+1. Real immediate runtime work execution — implemented and accepted.
+2. Delayed eligibility and restart recovery — implemented with deterministic runtime evidence.
+3. Real independent-application integration beyond the acceptance client — next.
 4. Capabilities, execution controls and further behavior grown from actual use.
 
 ## Verified development evidence — 2026-09-06
@@ -102,3 +119,17 @@ durably recorded as failed with capability failure code `connection` and the mes
 `could not communicate with capability endpoint`. Together with green Ubuntu PR CI,
 this establishes real immediate execution and accurate durable failure on the
 supported local path.
+
+The delayed-work slice was validated on Ubuntu at code head
+`f12e8e13398bef0d30de9f96519f8d637cef6418`. All 27 tests passed, including a
+controlled-clock restart test that closes and reopens the runtime database, runs the
+actual recovered scheduler loop, proves no capability invocation before eligibility,
+and records invocation and durable success when the clock reaches `eligible_at`.
+The HTTP test also proves future work returns a durable `accepted` record without
+invocation. `ruff check`, `ruff format --check`, strict `mypy`, wheel build/install,
+and isolated wheel import all passed.
+
+No additional real-model run or Windows matrix was executed for the delayed slice.
+The schema and capability adapter are unchanged; the preceding immediate-work slice
+provides Windows SQLite/restart and real-model capability evidence, while the new
+scheduler/recovery behavior is covered by the deterministic current Linux CI suite.
