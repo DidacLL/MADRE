@@ -76,22 +76,29 @@ attempt evidence and capability execution. The application owns domain meaning;
 MADRE persists only the selected execution material and lifecycle evidence needed
 to execute and inspect runtime work.
 
-**Exercise a real independent application next:** integrate an application that
-selects its own domain context, submits immediate or delayed work through the local
-HTTP boundary, and consumes the eventual result while retaining domain state and
-interpretation. That is the next acceptance step in `MADRE.md` and will provide
-concrete evidence for whatever runtime controls should follow.
+This delayed/restart behavior is implemented on the current PR branch but is not
+canonical product behavior until the Owner merges it into `main`.
 
-Retry, cancellation, richer concurrency/resource policy and additional capabilities
-remain intentionally outside the current slice until an application or experiment
-demonstrates a requirement for them.
+**After delayed/restart recovery is canonical, implement minimal global local-inference
+admission next:** multiple applications may hold durable eligible work concurrently,
+but at most one heavyweight local LLM capability execution is admitted at once.
+Accepted work remains durable and inspectable; admission must operate on the existing
+work/attempt/capability execution path and preserve deterministic ordering.
+
+Do not generalize this into a resource scheduler. Introduce only the smallest explicit
+capability classification needed to identify heavyweight local LLM execution. Keep
+unrelated cheap/deterministic capability work concurrent when the current architecture
+can distinguish it without speculative abstractions. GPU percentages, reservations,
+preemption, fair-share scheduling, model matrices, model routing, retry, cancellation,
+CORE and workflow/DAG machinery remain outside that next slice.
 
 The dependency/value order is now:
 
 1. Real immediate runtime work execution — implemented and accepted.
-2. Delayed eligibility and restart recovery — implemented with deterministic runtime evidence.
-3. Real independent-application integration beyond the acceptance client — next.
-4. Capabilities, execution controls and further behavior grown from actual use.
+2. Delayed eligibility and restart recovery — implemented on the current PR; Owner merge pending.
+3. Minimal global local-inference admission — next after step 2 is canonical on `main`.
+4. CORE development may begin only after the admission invariant is canonical.
+5. Further application integration, capabilities and execution controls grow from actual use.
 
 ## Verified development evidence — 2026-09-06
 
