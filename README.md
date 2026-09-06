@@ -9,7 +9,7 @@ Start here:
 - [`MADRE.md`](MADRE.md) — canonical product definition and behavioral acceptance path.
 - [`AGENTS.md`](AGENTS.md) — minimal repository harness for coding agents.
 - [`docs/implementation-baseline.md`](docs/implementation-baseline.md) — implementation decisions, dated environment evidence, and the next behavior.
-- [`docs/core.md`](docs/core.md) — the first interactive CORE application behavior and how to run it.
+- [`docs/core.md`](docs/core.md) — interactive CORE behavior, usage, and real local product acceptance.
 
 ## What runs today
 
@@ -111,7 +111,9 @@ With the MADRE service running and the same `MADRE_API_TOKEN` available in a sec
 python -m uv run --locked madre-core --runtime-url http://127.0.0.1:8731 --capability local-chat
 ```
 
-Enter a message at `you>` and CORE submits ordinary authenticated MADRE work as application `madre-core`. Assistant text is printed at `core>`, followed by `reasoning> fast` when the foreground answer is considered sufficient or `reasoning> deeper` when CORE recommends stronger follow-up reasoning. A deeper recommendation also exposes `deeper> /deeper`. Entering `/deeper` explicitly submits one second ordinary MADRE work item with a deeper-analysis instruction and the larger `--deeper-max-tokens` budget; its result is printed at `core(deeper)>` and replaces the fast draft in process-local conversation history. CORE never escalates automatically. Runtime/capability failures are printed explicitly and are not appended to conversation history. See [`docs/core.md`](docs/core.md) for the exact behavior and options.
+Enter a message at `you>` and CORE submits ordinary authenticated MADRE work as application `madre-core`. Assistant text is printed at `core>`, followed by `reasoning> fast` when the foreground answer is considered sufficient or `reasoning> deeper` when CORE recommends stronger follow-up reasoning. A deeper recommendation also exposes `deeper> /deeper`. Entering `/deeper` explicitly submits one second ordinary MADRE work item with a deeper-analysis instruction and the larger `--deeper-max-tokens` budget; its result is printed at `core(deeper)>` and replaces the fast draft in process-local conversation history. CORE never escalates automatically. Runtime/capability failures are printed explicitly and are not appended to conversation history.
+
+The deterministic suite proves those software semantics. The quality of the real model's `fast`/`deeper` recommendation and whether `/deeper` materially improves an answer require real owner-side use. [`docs/core.md`](docs/core.md#local-product-acceptance) contains a PowerShell acceptance procedure using the pinned local model, a dedicated runtime database, and direct inspection of the durable `madre-core` work records before and after `/deeper`.
 
 CORE does not import the runtime scheduler, storage or capability invocation path. It does not contact llama.cpp directly. The runtime has no CORE-specific scheduling or admission behavior.
 
@@ -158,6 +160,6 @@ Fixtures and mocked inference establish deterministic protocol and failure behav
 
 ## Continue implementation
 
-CORE now has one concrete two-stage reasoning path: a fast foreground response can recommend deeper handling, and the user can explicitly turn that recommendation into one stronger follow-up through ordinary MADRE work. The next behavior should be chosen from evidence produced by using this path rather than by prebuilding a generalized Agent, Planner, workflow engine, memory system or capability router.
+CORE now has one concrete two-stage reasoning path: a fast foreground response can recommend deeper handling, and the user can explicitly turn that recommendation into one stronger follow-up through ordinary MADRE work. The next substantive behavior should be chosen from evidence produced by using this path with the real local model. Do not prebuild a generalized Agent, Planner, workflow engine, memory system or capability router merely to continue development.
 
 GPL-3.0. See [`LICENSE`](LICENSE).
