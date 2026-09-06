@@ -164,7 +164,9 @@ def test_restart_reconciles_eligible_unstarted_work_but_preserves_future(tmp_pat
     monkeypatch.setenv("MADRE_API_TOKEN", "test-token")
     runtime_settings = settings(tmp_path)
     submission = WorkSubmission.model_validate(SUBMISSION)
-    future_submission = submission.model_copy(update={"eligible_at": utc_now() + timedelta(hours=1)})
+    future_submission = submission.model_copy(
+        update={"eligible_at": utc_now() + timedelta(hours=1)}
+    )
 
     with open_database(runtime_settings.data_dir) as connection:
         store = WorkStore(connection)
