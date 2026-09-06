@@ -162,35 +162,3 @@ class CoreClient:
             return _WorkRecord.model_validate(response.json())
         except (ValueError, ValidationError) as exc:
             raise CoreRuntimeError("MADRE runtime returned invalid work data") from exc
-
-
-class CoreConversation:
-    """Process-local conversation history for the minimal interactive CORE surface."""
-
-    def __init__(
-        self,
-        client: CoreClient,
-        *,
-        max_tokens: int = 256,
-        timeout_seconds: float = 120,
-    ) -> None:
-        self.client = client
-        self.max_tokens = max_tokens
-        self.timeout_seconds = timeout_seconds
-        self._messages: list[dict[str, str]] = []
-
-    @property
-    def messages(self) -> tuple[dict[str, str], ...]:
-        return tuple(dict(message) for message in self._messages)
-
-    async def send(self, user_message: str) -> str:
-        if not user_message.strip():
-            raise ValueError("user message is empty")
-        pending = [*self._messages, {"role": "user", "content": user_message}]
-        assistant_text = await self.client.complete(
-            pending,
-            max_tokens=self.max_tokens,
-            timeout_seconds=self.timeout_seconds,
-        )
-        self._messages = [*pending, {"role": "assistant", "content": assistant_text}]
-        return assistant_text
