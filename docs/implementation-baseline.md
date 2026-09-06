@@ -122,7 +122,7 @@ property of the generic HTTP contract, not a CORE special case.
 The first CORE application boundary is canonical on `main` as of
 `fc3a5c4f670013fe234b5ef33281df1b7f965087`.
 
-CORE now separates HTTP transport (`CoreClient`) from interaction behavior
+CORE separates HTTP transport (`CoreClient`) from interaction behavior
 (`CoreConversation`). Each foreground turn remains exactly one ordinary runtime work
 item. The interaction layer adds a transient system instruction asking the configured
 chat capability for both a concise immediate answer and one bounded recommendation:
@@ -133,11 +133,28 @@ or tools.
 CORE strips the internal recommendation marker before displaying or remembering the
 assistant response. A missing or malformed marker conservatively yields `deeper` while
 preserving useful generated text. The recommendation is observable in the CLI and
-returned as part of `CoreTurn`; it has no execution authority. It does not schedule a
-second job, deploy an agent, choose another capability, or invoke a Planner. "Fast"
-therefore names the foreground interaction responsibility rather than promising
-wall-clock latency; ordinary runtime admission can still delay the one submitted work
-item.
+returned as part of `CoreTurn`. "Fast" names the foreground interaction responsibility
+rather than promising wall-clock latency; ordinary runtime admission can still delay
+the submitted work item.
+
+The explicit fast/deeper recommendation behavior is canonical on `main` as of
+`b71e244e39fe81e3a2db02b73e5a219fb64702b1`.
+
+The current source gives `deeper` one execution consequence. Only when the latest fast
+turn recommended deeper reasoning, the user may enter `/deeper`. CORE then submits one
+second ordinary MADRE work item through the same HTTP client, capability and stable
+application identity. It supplies the process-local conversation, the fast answer as a
+draft, a transient deeper-analysis instruction, a transient final request to produce
+the replacement answer, and a larger token budget (768 by default versus 256 for the
+fast interaction). This represents stronger reasoning intent using the capability that
+exists today; it does not define a new work type or capability class.
+
+A successful deeper result replaces the fast draft in CORE's process-local history and
+consumes the opportunity. Sending another ordinary user message abandons the previous
+opportunity. If deeper work fails, the fast draft and explicit retry opportunity remain.
+CORE never escalates automatically. No runtime, scheduler, storage, admission or
+capability code changes are required, and `/deeper` does not deploy an agent, invoke a
+Planner, create a workflow or select a different capability.
 
 ## Runtime-work direction and next behavior
 
@@ -189,9 +206,9 @@ The dependency/value order is now:
 3. Minimal global local-inference admission — implemented, accepted and canonical.
 4. Canonical product-definition realignment — implemented, accepted and canonical.
 5. Minimal CORE interaction through the ordinary runtime HTTP boundary — implemented, accepted and canonical.
-6. Explicit CORE fast-response responsibility plus observable `fast`/`deeper` recommendation — implemented in the current source tree.
-7. Give a `deeper` recommendation one concrete user-controlled execution consequence through ordinary MADRE work before introducing a generalized agent or Planner abstraction.
-8. Further application integration, capabilities and execution controls grow from actual use.
+6. Explicit CORE fast-response responsibility plus observable `fast`/`deeper` recommendation — implemented, accepted and canonical.
+7. User-controlled `/deeper` stronger follow-up through ordinary MADRE work — implemented in the current source tree.
+8. Choose the next CORE/runtime behavior from evidence produced by this working two-stage path rather than prebuilding a generalized agent, Planner, workflow engine, memory system or capability router.
 
 ## Verified development evidence — 2026-09-06
 
