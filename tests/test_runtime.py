@@ -1,4 +1,6 @@
+import asyncio
 import sqlite3
+from contextlib import suppress
 from datetime import UTC, datetime, timedelta
 
 from fastapi.testclient import TestClient
@@ -7,6 +9,7 @@ from madre import Settings, create_app
 from madre.config import CapabilityConfig
 from madre.contracts import WorkSubmission
 from madre.inference import CapabilityError, ChatResult
+from madre.runtime import WorkRuntime
 from madre.storage import WorkStore, open_database, utc_now
 
 AUTH = {"Authorization": "Bearer test-token"}
@@ -122,8 +125,21 @@ def test_unknown_capability_and_invalid_input_are_durable_failures(tmp_path, mon
         assert invalid["attempts"] == []
 
 
-def test_future_eligibility_is_rejected_without_creating_work(tmp_path, monkeypatch):
+def test_future_eligibility_is_durably_accepted_without_execution(tmp_path, monkeypatch):
     monkeypatch.setenv("MADRE_API_TOKEN", "test-token")
+    invoked = False
+
+    async def fake_invoke(capability, request, constraints):
+        nonlocal invoked
+        invoked = True
+        return ChatResult(
+            text="should not run yet",
+            model="test-model",
+            finish_reason="stop",
+            elapsed_seconds=0.01,
+        )
+
+    monkeypatch.setattr("madre.runtime.invoke_chat", fake_invoke)
     runtime_settings = settings(tmp_path)
     future = datetime.now(UTC) + timedelta(hours=1)
 
@@ -133,11 +149,22 @@ def test_future_eligibility_is_rejected_without_creating_work(tmp_path, monkeypa
             headers=AUTH,
             json={**SUBMISSION, "eligible_at": future.isoformat()},
         )
-        assert response.status_code == 409
+        assert response.status_code == 201
+        work = response.json()
+        assert work["status"] == "accepted"
+        assert work["attempts"] == []
+        assert work["failure"] is None
 
+        inspected = client.get(f"/v1/work/{work['id']}", headers=AUTH)
+        assert inspected.status_code == 200
+        assert inspected.json() == work
+
+    assert not invoked
     with sqlite3.connect(runtime_settings.data_dir / "runtime.sqlite3") as connection:
-        count = connection.execute("SELECT COUNT(*) FROM runtime_work").fetchone()[0]
-    assert count == 0
+        row = connection.execute(
+            "SELECT status, eligible_at FROM runtime_work WHERE id = ?", (work["id"],)
+        ).fetchone()
+    assert row == ("accepted", future.isoformat())
 
 
 def test_restart_marks_incomplete_attempt_as_interrupted(tmp_path, monkeypatch):
@@ -160,26 +187,83 @@ def test_restart_marks_incomplete_attempt_as_interrupted(tmp_path, monkeypatch):
     assert work["attempts"][0]["failure"]["code"] == "interrupted"
 
 
-def test_restart_reconciles_eligible_unstarted_work_but_preserves_future(tmp_path, monkeypatch):
+def test_delayed_work_survives_restart_and_scheduler_executes_at_eligibility(tmp_path, monkeypatch):
     monkeypatch.setenv("MADRE_API_TOKEN", "test-token")
     runtime_settings = settings(tmp_path)
-    submission = WorkSubmission.model_validate(SUBMISSION)
-    future_submission = submission.model_copy(
-        update={"eligible_at": utc_now() + timedelta(hours=1)}
-    )
+    current = [datetime(2035, 1, 1, 12, 0, tzinfo=UTC)]
+    eligible_at = current[0] + timedelta(minutes=5)
+    invoked_at = []
+
+    async def fake_invoke(capability, request, constraints):
+        invoked_at.append(current[0])
+        return ChatResult(
+            text="recovered delayed result",
+            model="test-model",
+            finish_reason="stop",
+            elapsed_seconds=0.01,
+        )
+
+    monkeypatch.setattr("madre.runtime.invoke_chat", fake_invoke)
+    delayed = WorkSubmission.model_validate({**SUBMISSION, "eligible_at": eligible_at.isoformat()})
 
     with open_database(runtime_settings.data_dir) as connection:
-        store = WorkStore(connection)
-        store.create("unstarted-work", submission, utc_now())
-        store.create("future-work", future_submission, utc_now())
+        runtime = WorkRuntime(runtime_settings, WorkStore(connection), clock=lambda: current[0])
+        accepted = asyncio.run(runtime.submit(delayed))
+        assert accepted.status == "accepted"
+        assert accepted.attempts == []
+        work_id = accepted.id
 
-    with TestClient(create_app(runtime_settings)) as client:
-        unstarted = client.get("/v1/work/unstarted-work", headers=AUTH).json()
-        future = client.get("/v1/work/future-work", headers=AUTH).json()
+    current[0] += timedelta(minutes=1)
 
-    assert unstarted["status"] == "failed"
-    assert unstarted["failure"]["code"] == "interrupted_before_attempt"
-    assert unstarted["attempts"] == []
-    assert future["status"] == "accepted"
-    assert future["failure"] is None
-    assert future["attempts"] == []
+    with open_database(runtime_settings.data_dir) as connection:
+
+        async def exercise_recovered_scheduler():
+            recovered = WorkRuntime(
+                runtime_settings,
+                WorkStore(connection),
+                clock=lambda: current[0],
+            )
+            scheduler = asyncio.create_task(recovered.run_scheduler())
+            try:
+                await asyncio.sleep(0)
+                before = recovered.inspect(work_id)
+                assert before is not None
+                assert before.status == "accepted"
+                assert invoked_at == []
+
+                current[0] = eligible_at - timedelta(minutes=1)
+                wake_before = delayed.model_copy(
+                    update={"eligible_at": eligible_at + timedelta(hours=1)}
+                )
+                assert (await recovered.submit(wake_before)).status == "accepted"
+                for _ in range(3):
+                    await asyncio.sleep(0)
+                still_waiting = recovered.inspect(work_id)
+                assert still_waiting is not None
+                assert still_waiting.status == "accepted"
+                assert invoked_at == []
+
+                current[0] = eligible_at
+                wake_due = delayed.model_copy(
+                    update={"eligible_at": eligible_at + timedelta(hours=2)}
+                )
+                assert (await recovered.submit(wake_due)).status == "accepted"
+                for _ in range(10):
+                    completed = recovered.inspect(work_id)
+                    if completed is not None and completed.status == "succeeded":
+                        return completed
+                    await asyncio.sleep(0)
+                raise AssertionError("eligible recovered work was not executed by scheduler")
+            finally:
+                scheduler.cancel()
+                with suppress(asyncio.CancelledError):
+                    await scheduler
+
+        completed = asyncio.run(exercise_recovered_scheduler())
+
+    assert invoked_at == [eligible_at]
+    assert completed.status == "succeeded"
+    assert completed.started_at == eligible_at
+    assert completed.result is not None
+    assert completed.result["text"] == "recovered delayed result"
+    assert completed.attempts[0].status == "succeeded"

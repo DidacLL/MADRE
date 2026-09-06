@@ -12,11 +12,11 @@ Start here:
 
 ## What runs today
 
-MADRE provides an installable typed Python package, explicit TOML configuration, an authenticated loopback HTTP service, exclusive SQLite runtime ownership, durable immediate-work records, and a real chat-completion capability adapter.
+MADRE provides an installable typed Python package, explicit TOML configuration, an authenticated loopback HTTP service, exclusive SQLite runtime ownership, durable runtime-work records, and a real chat-completion capability adapter.
 
-An independent application can submit currently eligible work to `POST /v1/work`. MADRE durably records the submission, invokes the configured capability, records the attempt and generated result or classified failure, and returns the resulting work record. `GET /v1/work/{id}` returns the same durable record for inspection. A process restart converts any previously in-flight attempt into an `interrupted` failure whose message explicitly says the capability outcome may be unknown; MADRE does not retry it.
+An independent application submits work to `POST /v1/work`. Work that is already eligible is durably accepted and executed through the configured capability before the response returns. Work whose `eligible_at` is in the future is durably accepted with status `accepted` and returned without waiting for execution. The service scheduler uses those same persisted work records, executes them no earlier than eligibility, and rediscovers accepted work after runtime restart. Immediate and delayed work use the same validation, attempt, capability invocation, result/failure persistence and inspection path.
 
-`eligible_at` remains part of the same work-submission vocabulary. Future eligibility is rejected with HTTP 409 until delayed scheduling and recovery are implemented rather than being accepted with semantics the runtime does not yet provide.
+`GET /v1/work/{id}` returns the durable record at any point in that lifecycle. A process restart preserves accepted work that has not started a capability attempt. A previously in-flight attempt becomes an `interrupted` failure whose evidence states that the capability outcome may be unknown; MADRE does not retry it.
 
 Python is the current implementation language, not a permanent product boundary. The application API is language-neutral HTTP; C/C++ implementations can be introduced where concrete runtime responsibilities benefit.
 
@@ -80,7 +80,7 @@ The authenticated endpoints are:
 
 All require `Authorization: Bearer <token>`. `/health` returns `{"status":"ok","schema_version":2}`. Missing or incorrect credentials return 401. Stop the foreground service with Ctrl+C. A second runtime using the same data directory is rejected; process exit releases ownership. Runtime files, local configuration, model weights, build output and credentials are not committed.
 
-A current chat-completion submission is shaped like:
+A chat-completion submission is shaped like:
 
 ```json
 {
@@ -92,6 +92,7 @@ A current chat-completion submission is shaped like:
     ],
     "max_tokens": 64
   },
+  "eligible_at": "2035-01-01T12:05:00Z",
   "constraints": {
     "timeout_seconds": 120,
     "local_only": true
@@ -99,7 +100,7 @@ A current chat-completion submission is shaped like:
 }
 ```
 
-The application owns the prompt and interpretation of the generated result. MADRE stores that selected execution material because durable work needs enough intent and evidence to be inspected and, for later delayed work, recovered.
+Omit `eligible_at` (or use `null`) for immediate eligibility. A future value returns a durable `accepted` record immediately; poll `GET /v1/work/{id}` to inspect eventual success or failure. The application owns the prompt and interpretation of the generated result. MADRE stores only the application-selected execution material and runtime evidence required to execute, recover and inspect the work.
 
 ## Optional real local-model fixture
 
@@ -144,6 +145,6 @@ Fixtures and mocked inference establish deterministic protocol and failure behav
 
 ## Continue implementation
 
-Implement delayed eligibility and restart recovery for queued work next, using the same durable work and attempt model rather than a separate scheduler-specific job type. Define only the scheduling mechanics needed to accept future-eligible work, discover it after restart, execute it when eligible, and expose the eventual result or recoverable failure. Retry, cancellation and broader concurrency policy should grow from subsequent behavior.
+Merge the delayed eligibility/restart-recovery slice first. After it is canonical on `main`, implement the smallest global local-inference admission rule: multiple applications may hold durable eligible work concurrently, but at most one heavyweight local LLM capability execution is admitted at once. Keep unrelated cheap/deterministic capability work concurrent when the existing architecture can distinguish it without speculative abstractions. Do not add generalized resource scheduling, model routing, retry/cancellation, CORE, or application integration in the same slice.
 
 GPL-3.0. See [`LICENSE`](LICENSE).

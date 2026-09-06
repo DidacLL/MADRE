@@ -105,23 +105,54 @@ class WorkStore:
                 ),
             )
 
-    def start_attempt(self, work_id: str, started_at: datetime) -> int:
+    def next_eligible(self, now: datetime) -> str | None:
         row = self.connection.execute(
-            "SELECT COALESCE(MAX(number), 0) + 1 AS number FROM runtime_attempt WHERE work_id = ?",
-            (work_id,),
+            """
+            SELECT id
+            FROM runtime_work
+            WHERE status = 'accepted' AND (eligible_at IS NULL OR eligible_at <= ?)
+            ORDER BY COALESCE(eligible_at, submitted_at), submitted_at, id
+            LIMIT 1
+            """,
+            (now.isoformat(),),
         ).fetchone()
-        number = int(row["number"])
+        return str(row["id"]) if row is not None else None
+
+    def next_eligibility(self) -> datetime | None:
+        row = self.connection.execute(
+            """
+            SELECT MIN(eligible_at) AS eligible_at
+            FROM runtime_work
+            WHERE status = 'accepted' AND eligible_at IS NOT NULL
+            """
+        ).fetchone()
+        value = row["eligible_at"]
+        return datetime.fromisoformat(value) if value is not None else None
+
+    def start_attempt(self, work_id: str, started_at: datetime) -> int | None:
         with self.connection:
-            self.connection.execute(
+            updated = self.connection.execute(
                 """
                 UPDATE runtime_work
                 SET status = 'running', started_at = COALESCE(started_at, ?),
                     completed_at = NULL, result_json = NULL,
                     error_code = NULL, error_message = NULL
-                WHERE id = ?
+                WHERE id = ? AND status = 'accepted'
                 """,
                 (started_at.isoformat(), work_id),
             )
+            if updated.rowcount != 1:
+                return None
+
+            row = self.connection.execute(
+                """
+                SELECT COALESCE(MAX(number), 0) + 1 AS number
+                FROM runtime_attempt
+                WHERE work_id = ?
+                """,
+                (work_id,),
+            ).fetchone()
+            number = int(row["number"])
             self.connection.execute(
                 """
                 INSERT INTO runtime_attempt (work_id, number, status, started_at)
@@ -194,19 +225,12 @@ class WorkStore:
                 (completed_at.isoformat(), failure.code, failure.message, work_id),
             )
 
-    def fail_interrupted(self, completed_at: datetime) -> int:
-        running_failure = WorkFailure(
+    def fail_interrupted_attempts(self, completed_at: datetime) -> int:
+        failure = WorkFailure(
             code="interrupted",
             message=(
                 "runtime stopped before durable completion was recorded; "
                 "capability outcome may be unknown"
-            ),
-        )
-        accepted_failure = WorkFailure(
-            code="interrupted_before_attempt",
-            message=(
-                "runtime stopped after accepting eligible work but before a capability attempt "
-                "was durably started"
             ),
         )
         completed = completed_at.isoformat()
@@ -214,21 +238,13 @@ class WorkStore:
             running = self.connection.execute(
                 "SELECT COUNT(*) AS count FROM runtime_work WHERE status = 'running'"
             ).fetchone()["count"]
-            accepted = self.connection.execute(
-                """
-                SELECT COUNT(*) AS count
-                FROM runtime_work
-                WHERE status = 'accepted' AND (eligible_at IS NULL OR eligible_at <= ?)
-                """,
-                (completed,),
-            ).fetchone()["count"]
             self.connection.execute(
                 """
                 UPDATE runtime_attempt
                 SET status = 'failed', completed_at = ?, error_code = ?, error_message = ?
                 WHERE status = 'running'
                 """,
-                (completed, running_failure.code, running_failure.message),
+                (completed, failure.code, failure.message),
             )
             self.connection.execute(
                 """
@@ -236,17 +252,9 @@ class WorkStore:
                 SET status = 'failed', completed_at = ?, error_code = ?, error_message = ?
                 WHERE status = 'running'
                 """,
-                (completed, running_failure.code, running_failure.message),
+                (completed, failure.code, failure.message),
             )
-            self.connection.execute(
-                """
-                UPDATE runtime_work
-                SET status = 'failed', completed_at = ?, error_code = ?, error_message = ?
-                WHERE status = 'accepted' AND (eligible_at IS NULL OR eligible_at <= ?)
-                """,
-                (completed, accepted_failure.code, accepted_failure.message, completed),
-            )
-        return int(running) + int(accepted)
+        return int(running)
 
     def get(self, work_id: str) -> WorkRecord | None:
         row = self.connection.execute(
