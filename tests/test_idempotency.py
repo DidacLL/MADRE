@@ -114,7 +114,9 @@ def test_http_idempotency_replays_running_and_terminal_work_without_duplicate_ex
         assert connection.execute("SELECT COUNT(*) FROM runtime_attempt").fetchone()[0] == 1
 
 
-def test_idempotency_conflict_rejects_different_work_without_mutating_original(tmp_path, monkeypatch):
+def test_idempotency_conflict_rejects_different_work_without_mutating_original(
+    tmp_path, monkeypatch
+):
     monkeypatch.setenv("MADRE_API_TOKEN", "test-token")
     future = datetime.now(UTC) + timedelta(hours=1)
     original_submission = {**SUBMISSION, "eligible_at": future.isoformat()}
@@ -148,6 +150,34 @@ def test_idempotency_conflict_rejects_different_work_without_mutating_original(t
         inspected = client.get(f"/v1/work/{original['id']}", headers=AUTH)
         assert inspected.status_code == 200
         assert inspected.json() == original
+
+
+def test_idempotency_compares_normalized_submission_values(tmp_path, monkeypatch):
+    monkeypatch.setenv("MADRE_API_TOKEN", "test-token")
+    first_submission = {
+        **SUBMISSION,
+        "eligible_at": "2035-01-01T12:00:00+02:00",
+    }
+    equivalent_submission = {
+        **SUBMISSION,
+        "eligible_at": "2035-01-01T10:00:00Z",
+    }
+
+    with TestClient(create_app(settings(tmp_path))) as client:
+        first = client.post(
+            "/v1/work",
+            headers=headers("normalized-key"),
+            json=first_submission,
+        )
+        replay = client.post(
+            "/v1/work",
+            headers=headers("normalized-key"),
+            json=equivalent_submission,
+        )
+
+    assert first.status_code == 201
+    assert replay.status_code == 201
+    assert replay.json() == first.json()
 
 
 def test_idempotency_key_is_scoped_to_application_and_omission_keeps_distinct_work(
@@ -209,7 +239,6 @@ def test_idempotent_accepted_work_replays_after_service_restart(tmp_path, monkey
 def test_idempotency_key_header_is_bounded(tmp_path, monkeypatch):
     monkeypatch.setenv("MADRE_API_TOKEN", "test-token")
     future = datetime.now(UTC) + timedelta(hours=1)
-    response = None
 
     with TestClient(create_app(settings(tmp_path))) as client:
         response = client.post(
