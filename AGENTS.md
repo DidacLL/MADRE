@@ -1,6 +1,6 @@
 # MADRE Agent Harness
 
-This file is the standing execution contract for coding agents working in this repository. Keep it short, stable and grounded in recurring project needs.
+MADRE is a personal, single-owner research and software project. Optimize for durable product progress, repository legibility and working behavior.
 
 ## Sources of truth
 
@@ -10,60 +10,64 @@ Use `MADRE.md` for product meaning and ownership boundaries.
 
 Use the current code, tests and runtime evidence for implementation truth.
 
-Repository history and supporting documents are evidence to inspect when a task needs them; current product semantics come from `MADRE.md`.
+Use repository history and supporting documents when provenance or a concrete unresolved question makes them relevant. Recover current product semantics from `MADRE.md`.
 
 ## Context loading
 
 Start with `MADRE.md` and the smallest code surface that can answer the task.
 
-Expand context through concrete dependencies, failing behavior, interfaces or tests. Prefer targeted repository search and direct file inspection over broad ingestion.
+Expand context just in time through concrete dependencies, interfaces, failing behavior and tests. Prefer targeted repository search and direct inspection over broad ingestion.
 
-Keep standing context focused. A durable product conclusion belongs in `MADRE.md`; recurring repository-wide operating knowledge belongs here; recurring software behavior is best captured by executable code or tests.
+Keep persistent context only where it reduces future reasoning: durable product meaning in `MADRE.md`, recurring repository-wide operating knowledge here, and software behavior in code and tests.
 
-## Task horizon
+## Unit of work
 
-Match the implementation horizon to the explicit user goal.
+The explicit user request controls scope.
 
-For a bounded request, make the smallest coherent change that satisfies it.
+Otherwise, one development session should complete one substantive coherent behavior, or a tightly coupled set of behaviors, that leaves the repository working and materially advances MADRE.
 
-For a broad end-to-end request, use small vertical slices as the internal execution strategy and continue through successive validated slices in the same run until the requested product behavior is working or a genuine external blocker prevents further execution. A completed intermediate slice is progress, not the completion criterion for a broader task.
+Larger goals are realized through successive coherent changes. Finish the current behavior end to end, leave its evidence in the repository, and let later sessions continue from that evidence.
 
-Use the product acceptance path in `MADRE.md` to order work when it helps, while treating the user's requested outcome as the finish line.
+Keep working plans in the active session unless the plan itself becomes durable product or architecture knowledge.
 
 ## Engineering loop
 
 For each task:
 
-1. Identify the observable behavior or product decision the task requires.
-2. Inspect the current implementation and the nearest relevant evidence.
-3. Choose a coherent implementation path and concrete technologies suited to the present system.
-4. Build through working vertical behavior rather than architecture prose or disconnected scaffolding.
-5. Validate each meaningful step with the strongest practical evidence available and use failures to steer the next change.
-6. Continue until the task horizon is reached or a real permission, environment, safety or product-meaning blocker remains.
-7. Complete ordinary branch, commit, pull-request and merge work when permissions and repository rules allow it.
-8. Leave the repository itself sufficient for the next agent to continue from latest `main`.
+1. Identify the observable behavior or product decision required.
+2. Inspect the current implementation and nearest relevant evidence.
+3. Choose the simplest coherent implementation and concrete technologies suited to the present system.
+4. Implement the behavior end to end.
+5. Validate it with evidence proportional to the changed surface and use failures to steer corrections.
+6. Inspect the changed surface for correctness, unnecessary complexity and consistency with the ownership model in `MADRE.md`.
+7. Complete ordinary branch, commit and pull-request work when useful. Treat integration into the default branch as an Owner-controlled action unless the current request explicitly delegates it.
+8. Leave the repository in a usable state from which another fresh session can continue.
 
-When the user asks simply to continue, inspect the current code against the product acceptance path in `MADRE.md` and advance the earliest behavior that is not yet demonstrated.
+When the user asks simply to continue, inspect the current code against the product acceptance path in `MADRE.md` and implement the next coherent behavior that most directly advances a useful MADRE system.
 
 ## Design decisions
 
 Preserve the ownership model in `MADRE.md` while allowing implementation architecture to evolve from evidence.
 
-Prefer direct use of a suitable concrete dependency when it makes the current solution clearer or more reliable. Introduce a distinct abstraction when an observed responsibility becomes clearer, safer, more reusable or easier to test because of it.
+Use suitable concrete dependencies directly when they make the current solution simpler, clearer or more reliable. Introduce a distinct abstraction when an observed responsibility becomes clearer, safer, more reusable or easier to test because of it.
 
-Keep application semantics in the application, runtime execution semantics in MADRE, and provider/tool mechanics at the capability boundary.
+A concrete language, database, library, transport, framework or provider integration may become a stable implementation dependency when the working system benefits from that choice. Product meaning remains defined by `MADRE.md`.
+
+Keep application semantics in the application, runtime execution semantics in MADRE, and provider or tool mechanics at the capability boundary.
 
 Resolve genuine product-meaning ambiguity with the Owner. Resolve implementation uncertainty through code, documentation, experiments and tests whenever those can provide the answer.
 
-## Evidence
+## Evidence and review
 
 Acceptance follows real behavior.
 
-A successful real execution path is evidence for real execution. Controlled fixtures and mocks are useful for deterministic edge cases, protocol behavior and failure handling.
+Use real execution for claims about real execution. Use controlled fixtures and mocks for deterministic edge cases, protocol behavior and failure handling.
 
-Run validation proportional to the changed surface. Record exactly what was executed and what the result established. Distinguish implemented behavior from behavior that could not be exercised in the available environment.
+Run validation proportional to the changed surface. Record exactly what was executed and what the result established, including behavior that the available environment could not exercise.
 
 Use deterministic tooling before additional model reasoning when a compiler, test, formatter, type checker, runtime probe or repository query can answer the question directly.
+
+Treat review as part of delivering the behavior. Add deeper or independent review only when the risk, uncertainty or blast radius makes it materially useful.
 
 ## Repository learning
 
@@ -72,9 +76,9 @@ Let recurring evidence improve the repository at the narrowest durable owner:
 - product semantics → `MADRE.md`;
 - cross-task agent operating knowledge → `AGENTS.md`;
 - implementation behavior → code and tests;
-- historical rationale → Git history, commit/PR context or a focused design record when the rationale itself remains operationally important.
+- historical rationale → Git history, commit/PR context or a focused design record when that rationale remains operationally useful.
 
-Persistent guidance should reduce future context and repeated reasoning. Keep a rule only while it continues to earn that cost.
+Persistent guidance should reduce future context and repeated reasoning. Keep a rule while it continues to earn that cost.
 
 ## Completion
 
@@ -83,4 +87,4 @@ Finish a task with a concise report of:
 - what can now actually be used;
 - what was executed and verified;
 - any real blocker or unverified behavior;
-- the next substantive missing behavior or genuine product decision, if one remains.
+- the next substantive behavior or genuine product decision, when one remains.
