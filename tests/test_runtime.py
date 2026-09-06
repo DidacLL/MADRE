@@ -1,5 +1,8 @@
 import asyncio
+import json
 import sqlite3
+import threading
+import time
 from contextlib import suppress
 from datetime import UTC, datetime, timedelta
 
@@ -34,13 +37,44 @@ def settings(tmp_path):
     return Settings(data_dir=tmp_path / "runtime", capabilities=CAPABILITIES)
 
 
-def test_http_immediate_work_executes_and_persists_success(tmp_path, monkeypatch):
+def wait_for_terminal(client: TestClient, work_id: str, timeout: float = 2.0) -> dict:
+    deadline = time.monotonic() + timeout
+    while True:
+        response = client.get(f"/v1/work/{work_id}", headers=AUTH)
+        assert response.status_code == 200
+        work = response.json()
+        if work["status"] in {"succeeded", "failed"}:
+            return work
+        if time.monotonic() >= deadline:
+            raise AssertionError(f"work {work_id} did not become terminal: {work}")
+        time.sleep(0.01)
+
+
+def submission_for(application_id: str, label: str) -> dict:
+    return {
+        **SUBMISSION,
+        "application_id": application_id,
+        "input": {
+            "messages": [{"role": "user", "content": label}],
+            "max_tokens": 32,
+        },
+    }
+
+
+def test_http_immediate_work_is_accepted_before_capability_completion_and_persists_success(
+    tmp_path, monkeypatch
+):
     monkeypatch.setenv("MADRE_API_TOKEN", "test-token")
+    entered = threading.Event()
+    release = threading.Event()
 
     async def fake_invoke(capability, request, constraints):
         assert capability.model == "test-model"
         assert request.messages[0].content == "Hello"
         assert constraints.local_only
+        entered.set()
+        while not release.is_set():
+            await asyncio.sleep(0.001)
         return ChatResult(
             text="Hello from inference",
             model="test-model",
@@ -54,16 +88,23 @@ def test_http_immediate_work_executes_and_persists_success(tmp_path, monkeypatch
     with TestClient(create_app(runtime_settings)) as client:
         response = client.post("/v1/work", headers=AUTH, json=SUBMISSION)
         assert response.status_code == 201
-        work = response.json()
-        assert work["status"] == "succeeded"
-        assert work["submission"]["application_id"] == "independent-app"
-        assert work["result"]["text"] == "Hello from inference"
-        assert work["attempts"][0]["status"] == "succeeded"
-        work_id = work["id"]
+        accepted = response.json()
+        assert accepted["status"] == "accepted"
+        assert accepted["submission"]["application_id"] == "independent-app"
+        assert accepted["attempts"] == []
+        assert accepted["result"] is None
+        work_id = accepted["id"]
 
-        inspected = client.get(f"/v1/work/{work_id}", headers=AUTH)
-        assert inspected.status_code == 200
-        assert inspected.json() == work
+        assert entered.wait(1)
+        running = client.get(f"/v1/work/{work_id}", headers=AUTH).json()
+        assert running["status"] == "running"
+        assert running["attempts"][0]["status"] == "running"
+
+        release.set()
+        completed = wait_for_terminal(client, work_id)
+        assert completed["status"] == "succeeded"
+        assert completed["result"]["text"] == "Hello from inference"
+        assert completed["attempts"][0]["status"] == "succeeded"
 
     with sqlite3.connect(runtime_settings.data_dir / "runtime.sqlite3") as connection:
         row = connection.execute(
@@ -72,6 +113,41 @@ def test_http_immediate_work_executes_and_persists_success(tmp_path, monkeypatch
     assert row is not None
     assert row[0] == "succeeded"
     assert "Hello from inference" in row[1]
+
+
+def test_completed_submission_request_does_not_own_accepted_execution(tmp_path, monkeypatch):
+    monkeypatch.setenv("MADRE_API_TOKEN", "test-token")
+    entered = threading.Event()
+    release = threading.Event()
+
+    async def fake_invoke(capability, request, constraints):
+        entered.set()
+        while not release.is_set():
+            await asyncio.sleep(0.001)
+        return ChatResult(
+            text="runtime-owned result",
+            model="test-model",
+            finish_reason="stop",
+            elapsed_seconds=0.01,
+        )
+
+    monkeypatch.setattr("madre.runtime.invoke_chat", fake_invoke)
+
+    with TestClient(create_app(settings(tmp_path))) as client:
+        response = client.post("/v1/work", headers=AUTH, json=SUBMISSION)
+        accepted = response.json()
+        assert accepted["status"] == "accepted"
+        response.close()
+
+        assert entered.wait(1)
+        work_id = accepted["id"]
+        after_request = client.get(f"/v1/work/{work_id}", headers=AUTH).json()
+        assert after_request["status"] == "running"
+
+        release.set()
+        completed = wait_for_terminal(client, work_id)
+        assert completed["status"] == "succeeded"
+        assert completed["result"]["text"] == "runtime-owned result"
 
 
 def test_capability_failure_is_durable_and_inspectable_after_restart(tmp_path, monkeypatch):
@@ -86,7 +162,9 @@ def test_capability_failure_is_durable_and_inspectable_after_restart(tmp_path, m
     with TestClient(create_app(runtime_settings)) as client:
         response = client.post("/v1/work", headers=AUTH, json=SUBMISSION)
         assert response.status_code == 201
-        work = response.json()
+        accepted = response.json()
+        assert accepted["status"] == "accepted"
+        work = wait_for_terminal(client, accepted["id"])
         assert work["status"] == "failed"
         assert work["failure"] == {
             "code": "connection",
@@ -101,26 +179,30 @@ def test_capability_failure_is_durable_and_inspectable_after_restart(tmp_path, m
         assert inspected.json() == work
 
 
-def test_heavyweight_local_inference_is_globally_admitted_across_applications(
+def test_http_second_application_is_accepted_while_local_inference_is_occupied(
     tmp_path, monkeypatch
 ):
-    runtime_settings = settings(tmp_path)
-    first_entered = asyncio.Event()
-    release_first = asyncio.Event()
-    second_persisted = asyncio.Event()
+    monkeypatch.setenv("MADRE_API_TOKEN", "test-token")
+    first_entered = threading.Event()
+    release_first = threading.Event()
+    second_entered = threading.Event()
     invocation_order = []
     active_invocations = 0
+    maximum_active = 0
 
     async def fake_invoke(capability, request, constraints):
-        nonlocal active_invocations
+        nonlocal active_invocations, maximum_active
         label = request.messages[0].content
         active_invocations += 1
-        assert active_invocations == 1
+        maximum_active = max(maximum_active, active_invocations)
         invocation_order.append(f"{label}:entered")
         try:
             if label == "first":
                 first_entered.set()
-                await release_first.wait()
+                while not release_first.is_set():
+                    await asyncio.sleep(0.001)
+            else:
+                second_entered.set()
             invocation_order.append(f"{label}:completed")
             return ChatResult(
                 text=f"{label} result",
@@ -132,65 +214,38 @@ def test_heavyweight_local_inference_is_globally_admitted_across_applications(
             active_invocations -= 1
 
     monkeypatch.setattr("madre.runtime.invoke_chat", fake_invoke)
-    first = WorkSubmission.model_validate(
-        {
-            **SUBMISSION,
-            "application_id": "application-a",
-            "input": {
-                "messages": [{"role": "user", "content": "first"}],
-                "max_tokens": 32,
-            },
-        }
-    )
-    second = WorkSubmission.model_validate(
-        {
-            **SUBMISSION,
-            "application_id": "application-b",
-            "input": {
-                "messages": [{"role": "user", "content": "second"}],
-                "max_tokens": 32,
-            },
-        }
-    )
 
-    with open_database(runtime_settings.data_dir) as connection:
-        store = WorkStore(connection)
-        original_create = store.create
+    with TestClient(create_app(settings(tmp_path))) as client:
+        first = client.post(
+            "/v1/work",
+            headers=AUTH,
+            json=submission_for("application-a", "first"),
+        ).json()
+        assert first["status"] == "accepted"
+        assert first_entered.wait(1)
 
-        def create_with_signal(work_id, submission, submitted_at):
-            original_create(work_id, submission, submitted_at)
-            if submission.application_id == "application-b":
-                second_persisted.set()
+        second = client.post(
+            "/v1/work",
+            headers=AUTH,
+            json=submission_for("application-b", "second"),
+        ).json()
+        assert second["status"] == "accepted"
+        assert second["attempts"] == []
 
-        monkeypatch.setattr(store, "create", create_with_signal)
-        runtime = WorkRuntime(runtime_settings, store)
+        waiting = client.get(f"/v1/work/{second['id']}", headers=AUTH).json()
+        assert waiting["status"] == "accepted"
+        assert waiting["attempts"] == []
+        assert not second_entered.is_set()
+        assert invocation_order == ["first:entered"]
 
-        async def exercise_concurrency():
-            first_task = asyncio.create_task(runtime.submit(first))
-            await first_entered.wait()
-            second_task = asyncio.create_task(runtime.submit(second))
-            await second_persisted.wait()
+        release_first.set()
+        first_completed = wait_for_terminal(client, first["id"])
+        second_completed = wait_for_terminal(client, second["id"])
 
-            rows = connection.execute(
-                "SELECT application_id, status FROM runtime_work ORDER BY application_id"
-            ).fetchall()
-            assert [(row[0], row[1]) for row in rows] == [
-                ("application-a", "running"),
-                ("application-b", "accepted"),
-            ]
-            assert connection.execute("SELECT COUNT(*) FROM runtime_attempt").fetchone()[0] == 1
-            assert invocation_order == ["first:entered"]
-
-            release_first.set()
-            first_record, second_record = await asyncio.gather(first_task, second_task)
-            return first_record, second_record
-
-        first_record, second_record = asyncio.run(exercise_concurrency())
-
-    assert first_record.status == "succeeded"
-    assert second_record.status == "succeeded"
-    assert first_record.submission.application_id == "application-a"
-    assert second_record.submission.application_id == "application-b"
+    assert first_completed["status"] == "succeeded"
+    assert second_completed["status"] == "succeeded"
+    assert second_entered.is_set()
+    assert maximum_active == 1
     assert invocation_order == [
         "first:entered",
         "first:completed",
@@ -199,18 +254,17 @@ def test_heavyweight_local_inference_is_globally_admitted_across_applications(
     ]
 
 
-def test_failing_heavyweight_local_inference_releases_admission(tmp_path, monkeypatch):
-    runtime_settings = settings(tmp_path)
-    first_entered = asyncio.Event()
-    release_failure = asyncio.Event()
-    second_entered = asyncio.Event()
+def test_unexpected_execution_exception_is_durable_and_scheduler_continues(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("MADRE_API_TOKEN", "test-token")
+    raw_exception_detail = "fixture-secret-exception-detail"
+    second_entered = threading.Event()
 
     async def fake_invoke(capability, request, constraints):
         label = request.messages[0].content
-        if label == "first":
-            first_entered.set()
-            await release_failure.wait()
-            raise CapabilityError("connection", "first invocation failed")
+        if label == "explode":
+            raise RuntimeError(raw_exception_detail)
         second_entered.set()
         return ChatResult(
             text="second result",
@@ -220,48 +274,34 @@ def test_failing_heavyweight_local_inference_releases_admission(tmp_path, monkey
         )
 
     monkeypatch.setattr("madre.runtime.invoke_chat", fake_invoke)
-    first = WorkSubmission.model_validate(
-        {
-            **SUBMISSION,
-            "application_id": "application-a",
-            "input": {
-                "messages": [{"role": "user", "content": "first"}],
-                "max_tokens": 32,
-            },
-        }
-    )
-    second = WorkSubmission.model_validate(
-        {
-            **SUBMISSION,
-            "application_id": "application-b",
-            "input": {
-                "messages": [{"role": "user", "content": "second"}],
-                "max_tokens": 32,
-            },
-        }
-    )
 
-    with open_database(runtime_settings.data_dir) as connection:
-        runtime = WorkRuntime(runtime_settings, WorkStore(connection))
+    with TestClient(create_app(settings(tmp_path))) as client:
+        failed_submission = client.post(
+            "/v1/work",
+            headers=AUTH,
+            json=submission_for("application-a", "explode"),
+        ).json()
+        later_submission = client.post(
+            "/v1/work",
+            headers=AUTH,
+            json=submission_for("application-b", "later"),
+        ).json()
 
-        async def exercise_failure_release():
-            first_task = asyncio.create_task(runtime.submit(first))
-            await first_entered.wait()
-            second_task = asyncio.create_task(runtime.submit(second))
-            await asyncio.sleep(0)
-            assert not second_entered.is_set()
+        failed = wait_for_terminal(client, failed_submission["id"])
+        later = wait_for_terminal(client, later_submission["id"])
 
-            release_failure.set()
-            first_record, second_record = await asyncio.gather(first_task, second_task)
-            return first_record, second_record
-
-        first_record, second_record = asyncio.run(exercise_failure_release())
-
-    assert first_record.status == "failed"
-    assert first_record.failure is not None
-    assert first_record.failure.code == "connection"
+    assert failed["status"] == "failed"
+    assert failed["failure"] == {
+        "code": "internal_error",
+        "message": "capability execution failed unexpectedly",
+    }
+    assert len(failed["attempts"]) == 1
+    assert failed["attempts"][0]["status"] == "failed"
+    assert failed["attempts"][0]["failure"] == failed["failure"]
+    assert raw_exception_detail not in json.dumps(failed)
     assert second_entered.is_set()
-    assert second_record.status == "succeeded"
+    assert later["status"] == "succeeded"
+    assert later["result"]["text"] == "second result"
 
 
 def test_unknown_capability_and_invalid_input_are_durable_failures(tmp_path, monkeypatch):
@@ -269,20 +309,24 @@ def test_unknown_capability_and_invalid_input_are_durable_failures(tmp_path, mon
     runtime_settings = settings(tmp_path)
 
     with TestClient(create_app(runtime_settings)) as client:
-        unknown = client.post(
+        unknown_accepted = client.post(
             "/v1/work",
             headers=AUTH,
             json={**SUBMISSION, "capability_id": "missing"},
         ).json()
+        assert unknown_accepted["status"] == "accepted"
+        unknown = wait_for_terminal(client, unknown_accepted["id"])
         assert unknown["status"] == "failed"
         assert unknown["failure"]["code"] == "unknown_capability"
         assert unknown["attempts"] == []
 
-        invalid = client.post(
+        invalid_accepted = client.post(
             "/v1/work",
             headers=AUTH,
             json={**SUBMISSION, "input": {"unexpected": True}},
         ).json()
+        assert invalid_accepted["status"] == "accepted"
+        invalid = wait_for_terminal(client, invalid_accepted["id"])
         assert invalid["status"] == "failed"
         assert invalid["failure"]["code"] == "invalid_input"
         assert invalid["attempts"] == []
@@ -328,6 +372,39 @@ def test_future_eligibility_is_durably_accepted_without_execution(tmp_path, monk
             "SELECT status, eligible_at FROM runtime_work WHERE id = ?", (work["id"],)
         ).fetchone()
     assert row == ("accepted", future.isoformat())
+
+
+def test_immediate_accepted_work_survives_restart_and_executes(tmp_path, monkeypatch):
+    runtime_settings = settings(tmp_path)
+    submission = WorkSubmission.model_validate(SUBMISSION)
+
+    async def fake_invoke(capability, request, constraints):
+        return ChatResult(
+            text="recovered immediate result",
+            model="test-model",
+            finish_reason="stop",
+            elapsed_seconds=0.01,
+        )
+
+    monkeypatch.setattr("madre.runtime.invoke_chat", fake_invoke)
+
+    with open_database(runtime_settings.data_dir) as connection:
+        runtime = WorkRuntime(runtime_settings, WorkStore(connection))
+        accepted = asyncio.run(runtime.submit(submission))
+        assert accepted.status == "accepted"
+        assert accepted.attempts == []
+        work_id = accepted.id
+
+    with open_database(runtime_settings.data_dir) as connection:
+        recovered = WorkRuntime(runtime_settings, WorkStore(connection))
+        assert asyncio.run(recovered.run_eligible()) == 1
+        completed = recovered.inspect(work_id)
+
+    assert completed is not None
+    assert completed.status == "succeeded"
+    assert completed.result is not None
+    assert completed.result["text"] == "recovered immediate result"
+    assert completed.attempts[0].status == "succeeded"
 
 
 def test_restart_marks_incomplete_attempt_as_interrupted(tmp_path, monkeypatch):
