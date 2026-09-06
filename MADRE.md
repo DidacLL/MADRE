@@ -153,6 +153,8 @@ Local execution is a first-class useful path. A useful MADRE installation can op
 
 An application can keep private work on the local machine when its boundary requires that.
 
+Prefer local and free capabilities. For paid cloud services, provider-managed authentication through supported clients or hosts is the preferred connection approach, with authentication mechanics at the capability boundary. Prefer keeping provider-account credentials with that client or host over collecting them in MADRE. Direct API-key integration remains available when explicitly chosen; provider credentials are not a prerequisite for the core runtime.
+
 Remote capabilities can coexist with local ones. Remote use is represented as a real transfer boundary so the runtime can apply the constraints supplied for that work and record the execution accurately.
 
 ### R13 — Evolvable implementation
