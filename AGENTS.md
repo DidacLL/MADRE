@@ -1,33 +1,74 @@
-# Working on MADRE
+# MADRE Agent Harness
 
-This is a single-developer project. ChatGPT Classic + GitHub should be sufficient for normal development; progress must not depend on Astra, Terra, a coordinator session or private conversation history.
+This file is the standing execution contract for coding agents working in this repository. Keep it short, stable and grounded in recurring project needs.
 
-## Product authority
+## Sources of truth
 
-Read `MADRE.md` before making architectural assumptions. Its **Product invariants** are the active authority for what MADRE means and how responsibility is divided.
+Use the current user request as the task goal.
 
-Git history, deleted documents, old architecture files, research reports, issues, pull requests and previous conversations may provide historical evidence, but they do not restore product requirements or concepts that are absent from the active definition. Do not infer that an old class, subsystem, workflow or policy model still exists because it appears in history.
+Use `MADRE.md` for product meaning and ownership boundaries.
 
-The `Current realization strategy` in `MADRE.md` is an implementation order, not an invariant. It may be revised from code and evidence without redefining the product.
+Use the current code, tests and runtime evidence for implementation truth.
 
-Concrete implementation choices are allowed and expected. A language, library, transport, database, provider, class structure or other technology may be selected, depended on, and architected around when the current implementation genuinely needs it. This rule does not require gratuitous abstraction, technology-neutral wrappers, or avoiding stable implementation commitments.
+Repository history and supporting documents are evidence to inspect when a task needs them; current product semantics come from `MADRE.md`.
 
-What must not happen is treating a concrete implementation choice as an **invariant product requirement** merely because the current implementation uses it. Product invariants define the responsibilities and authority MADRE must preserve; implementation architecture is free to choose the simplest suitable mechanisms that realize them.
+## Context loading
 
-For a new responsibility, apply the ownership test in `MADRE.md`: domain meaning belongs to the application; runtime scheduling/execution/recovery belongs to MADRE; computation belongs behind a replaceable capability; generated output is data.
+Start with `MADRE.md` and the smallest code surface that can answer the task.
 
-## Development
+Expand context through concrete dependencies, failing behavior, interfaces or tests. Prefer targeted repository search and direct file inspection over broad ingestion.
 
-Read only the code relevant to the current task after `MADRE.md`. The current user request is the task. If the user simply asks to continue, inspect the code and implement one cohesive behavior from the earliest incomplete realization stage.
+Keep standing context focused. A durable product conclusion belongs in `MADRE.md`; a recurring repository-wide agent instruction belongs here; a recurring software failure is best captured by an executable test or check.
 
-Keep the product boundary intact: applications/modules own domain data, knowledge, learning, workflows, UI, context selection and semantic domain governance; MADRE owns runtime work lifecycle, delayed scheduling, capability execution, recovery and active execution/transfer boundaries.
+## Engineering loop
 
-Prefer the smallest working implementation. Add an abstraction, dependency, service or persistent document only when the behavior being implemented demonstrably needs it. Do not create project-state files, handoff logs, executor hierarchies, dashboards, CI projects or speculative infrastructure.
+For each task:
 
-Make the real usage path work first. Tests support that behavior; they are not the product. Run checks proportional to what changed. A documentation-only edit does not justify the runtime suite, and a mocked inference test does not prove real inference.
+1. Identify the observable behavior or product decision the task requires.
+2. Inspect the current implementation and the nearest relevant evidence.
+3. Choose the smallest coherent change that produces the required behavior end to end.
+4. Use concrete technologies and abstractions that make the current solution simpler, clearer or more reliable.
+5. Validate the changed behavior with the strongest practical evidence available.
+6. Complete ordinary branch, commit, pull-request and merge work when permissions and repository rules allow it.
+7. Leave the repository itself sufficient for the next agent to continue from latest `main`.
 
-Routine Git/GitHub work belongs to the current task. Use a branch/PR when repository protection requires it and merge when permitted; do not make the user dispatch repository chores to another agent.
+When the user asks simply to continue, inspect the current code against the product acceptance path in `MADRE.md` and advance the earliest behavior that is not yet demonstrated.
 
-Ask the user only when a real product-meaning decision, sensitive-data exposure, irreversible external effect or missing permission blocks the work. Otherwise choose the simplest reversible implementation consistent with the product invariants and continue.
+## Design decisions
 
-Finish with: what now works, what was actually verified, and the next substantive missing behavior if one remains.
+Preserve the ownership model in `MADRE.md` while allowing implementation architecture to evolve from evidence.
+
+Prefer direct use of a suitable concrete dependency over an abstraction whose only purpose is hypothetical replaceability. Introduce a distinct abstraction when an observed responsibility becomes clearer, safer, more reusable or easier to test because of it.
+
+Keep application semantics in the application, runtime execution semantics in MADRE, and provider/tool mechanics at the capability boundary.
+
+Resolve genuine product-meaning ambiguity with the Owner. Resolve implementation uncertainty through code, documentation, experiments and tests whenever those can provide the answer.
+
+## Evidence
+
+Acceptance follows real behavior.
+
+A successful real execution path is evidence for real execution. Controlled fixtures and mocks are useful for deterministic edge cases, protocol behavior and failure handling.
+
+Run validation proportional to the changed surface. Record exactly what was executed and what the result established.
+
+Use deterministic tooling before additional model reasoning when a compiler, test, formatter, type checker, runtime probe or repository query can answer the question directly.
+
+## Repository learning
+
+Let recurring evidence improve the repository at the narrowest durable owner:
+
+- product semantics → `MADRE.md`;
+- cross-task agent operating knowledge → `AGENTS.md`;
+- implementation behavior → code and tests;
+- historical rationale → Git history, commit/PR context or a focused design record when the rationale itself remains operationally important.
+
+Persistent guidance should reduce future context and repeated reasoning. Keep a rule only while it continues to earn that cost.
+
+## Completion
+
+Finish a task with a concise report of:
+
+- what can now actually be used;
+- what was executed and verified;
+- the next substantive missing behavior or genuine product decision, if one remains.
