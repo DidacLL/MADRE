@@ -16,6 +16,35 @@ for capability transport, and SQLite for runtime persistence. Applications own t
 meaning and consequence of their inputs and outputs; MADRE owns work execution,
 durability, recovery and inspection. Capabilities provide bounded computation.
 
+### Owner product-direction clarification
+
+The current executable path proves local chat-completion work first; it does not define
+MADRE as a local-LLM runtime or consumer-GPU scheduler. MADRE's broader product purpose
+is to provide one coherent, privacy-aware and user-controlled execution environment
+over the intelligence capabilities that are both available **and permitted** for a
+task. Local deterministic computation and local AI are first-class high-trust,
+offline-capable execution tiers rather than the whole product boundary.
+
+Future permitted capabilities may include local models and tools, remote providers,
+application-provided AI, user-authorized account/subscription access, specialized
+services and other execution providers. Availability never implies authorization:
+application disclosure, user authorization, task need and execution-boundary policy
+must still permit a capability before MADRE may use it.
+
+The refined ownership direction remains: applications own domain authority and what
+domain material may leave; future CORE owns MADRE's default generic/system intelligence;
+MADRE Runtime owns durable execution, scheduling, recovery, admission and ultimately
+the selected permitted execution path; capabilities perform bounded computation and
+provider-specific mechanics. Applications may also invoke the runtime directly without
+CORE. CORE, when implemented, must use the same runtime execution plane.
+
+The current public work contract is already broader than a model request because it
+carries a generic `capability_id` and JSON `input`. The current implementation below
+that contract is intentionally narrower: `CapabilityConfig.kind` supports only
+`chat_completions`, and `WorkRuntime` validates `ChatInput` and calls `invoke_chat`.
+That is an implementation limitation of today's proven capability, not a product
+boundary. Relax it only when a concrete non-chat capability requires the change.
+
 Delayed execution does not introduce a second job abstraction or storage model.
 `accepted` work in the existing schema is the durable queue state. One service-owned
 scheduler task queries the next persisted eligibility time and sleeps until that time,
@@ -83,14 +112,17 @@ canonical product behavior until the Owner merges it into `main`.
 admission next:** multiple applications may hold durable eligible work concurrently,
 but at most one heavyweight local LLM capability execution is admitted at once.
 Accepted work remains durable and inspectable; admission must operate on the existing
-work/attempt/capability execution path and preserve deterministic ordering.
+work/attempt/capability execution path and preserve deterministic ordering. This is
+the first concrete scarce-resource admission rule, not an assumption that MADRE work
+is inherently local LLM inference.
 
-Do not generalize this into a resource scheduler. Introduce only the smallest explicit
-capability classification needed to identify heavyweight local LLM execution. Keep
-unrelated cheap/deterministic capability work concurrent when the current architecture
-can distinguish it without speculative abstractions. GPU percentages, reservations,
-preemption, fair-share scheduling, model matrices, model routing, retry, cancellation,
-CORE and workflow/DAG machinery remain outside that next slice.
+Do not generalize this into a resource scheduler or execution-path selector. Introduce
+only the smallest explicit capability classification needed to identify heavyweight
+local LLM execution. Keep unrelated cheap/deterministic capability work concurrent
+when the current architecture can distinguish it without speculative abstractions.
+GPU percentages, reservations, preemption, fair-share scheduling, model matrices,
+model routing, retry, cancellation, CORE and workflow/DAG machinery remain outside
+that next slice.
 
 The dependency/value order is now:
 
