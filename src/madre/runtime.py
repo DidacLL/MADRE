@@ -37,9 +37,7 @@ class WorkRuntime:
         self, submission: WorkSubmission, *, idempotency_key: str | None = None
     ) -> WorkRecord:
         if idempotency_key is not None:
-            existing = self.store.get_by_idempotency_key(
-                submission.application_id, idempotency_key
-            )
+            existing = self.store.get_by_idempotency_key(submission.application_id, idempotency_key)
             if existing is not None:
                 return self._replay(existing, submission)
 
@@ -53,9 +51,7 @@ class WorkRuntime:
         )
         if not created:
             assert idempotency_key is not None
-            existing = self.store.get_by_idempotency_key(
-                submission.application_id, idempotency_key
-            )
+            existing = self.store.get_by_idempotency_key(submission.application_id, idempotency_key)
             if existing is None:
                 raise RuntimeError("durable idempotent work disappeared")
             return self._replay(existing, submission)
