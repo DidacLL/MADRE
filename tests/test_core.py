@@ -108,7 +108,7 @@ def test_core_surfaces_durable_capability_failure(tmp_path, monkeypatch):
 
     with sqlite3.connect(runtime_settings.data_dir / "runtime.sqlite3") as connection:
         row = connection.execute(
-            "SELECT application_id, status, failure_code FROM runtime_work"
+            "SELECT application_id, status, error_code FROM runtime_work"
         ).fetchone()
     assert row == ("madre-core", "failed", "connection")
 
