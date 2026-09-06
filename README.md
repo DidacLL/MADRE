@@ -81,7 +81,7 @@ The authenticated endpoints are:
 - `POST http://127.0.0.1:8731/v1/work`
 - `GET http://127.0.0.1:8731/v1/work/{id}`
 
-All require `Authorization: Bearer <token>`. `/health` returns `{"status":"ok","schema_version":3}`. Missing or incorrect credentials return 401. Stop the foreground service with Ctrl+C. A second runtime using the same data directory is rejected; process exit releases ownership. Runtime files, local configuration, model weights, build output and credentials are not committed.
+All require `Authorization: Bearer <token>`. `/health` returns `{"status":"ok"}`. Missing or incorrect credentials return 401. Stop the foreground service with Ctrl+C. A second runtime using the same data directory is rejected; process exit releases ownership. Runtime files, local configuration, model weights, build output and credentials are not committed. During active development, a runtime database whose internal storage structure no longer matches the executable is discarded and recreated rather than migrated.
 
 A chat-completion submission is shaped like:
 

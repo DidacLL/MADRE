@@ -1,5 +1,6 @@
 """Exclusive runtime database ownership and durable work storage."""
 
+import hashlib
 import json
 import sqlite3
 from collections.abc import Iterator
@@ -11,10 +12,8 @@ from filelock import FileLock, Timeout
 
 from madre.contracts import WorkAttempt, WorkFailure, WorkRecord, WorkSubmission
 
-SCHEMA_VERSION = 3
-
-_WORK_SCHEMA = """
-CREATE TABLE IF NOT EXISTS runtime_work (
+_STORAGE_DDL = """
+CREATE TABLE runtime_work (
     id TEXT PRIMARY KEY,
     application_id TEXT NOT NULL,
     capability_id TEXT NOT NULL,
@@ -31,11 +30,11 @@ CREATE TABLE IF NOT EXISTS runtime_work (
     error_message TEXT
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS runtime_work_idempotency
+CREATE UNIQUE INDEX runtime_work_idempotency
 ON runtime_work(application_id, idempotency_key)
 WHERE idempotency_key IS NOT NULL;
 
-CREATE TABLE IF NOT EXISTS runtime_attempt (
+CREATE TABLE runtime_attempt (
     work_id TEXT NOT NULL REFERENCES runtime_work(id) ON DELETE CASCADE,
     number INTEGER NOT NULL CHECK (number >= 1),
     status TEXT NOT NULL CHECK (status IN ('running', 'succeeded', 'failed')),
@@ -49,12 +48,31 @@ CREATE TABLE IF NOT EXISTS runtime_attempt (
 """
 
 
+def _format_id() -> int:
+    fingerprint = int.from_bytes(hashlib.sha256(_STORAGE_DDL.encode()).digest()[:4], "big")
+    return fingerprint & 0x7FFFFFFF or 1
+
+
+_STORAGE_FORMAT_ID = _format_id()
+
+
 def utc_now() -> datetime:
     return datetime.now(UTC)
 
 
 def _json(value: object) -> str:
     return json.dumps(value, separators=(",", ":"), sort_keys=True)
+
+
+def _connect(database: Path) -> sqlite3.Connection:
+    connection = sqlite3.connect(database)
+    connection.row_factory = sqlite3.Row
+    return connection
+
+
+def _discard_incompatible_development_storage(database: Path) -> None:
+    for suffix in ("", "-wal", "-shm", "-journal"):
+        Path(f"{database}{suffix}").unlink(missing_ok=True)
 
 
 @contextmanager
@@ -67,21 +85,26 @@ def open_database(data_dir: Path) -> Iterator[sqlite3.Connection]:
     except Timeout as exc:
         raise RuntimeError("another MADRE runtime owns this data directory") from exc
     try:
-        connection = sqlite3.connect(data_dir / "runtime.sqlite3")
-        connection.row_factory = sqlite3.Row
+        database = data_dir / "runtime.sqlite3"
+        database_existed = database.exists()
+        connection = _connect(database)
         try:
-            version = connection.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (0, SCHEMA_VERSION):
-                raise RuntimeError(
-                    f"unsupported persisted SQLite runtime format version: {version}; "
-                    "delete the development runtime data directory and restart MADRE"
-                )
+            format_id = connection.execute("PRAGMA user_version").fetchone()[0]
+            incompatible = format_id not in (0, _STORAGE_FORMAT_ID) or (
+                database_existed and format_id == 0
+            )
+            if incompatible:
+                connection.close()
+                _discard_incompatible_development_storage(database)
+                connection = _connect(database)
+                format_id = 0
+
             connection.execute("PRAGMA foreign_keys=ON")
             connection.execute("PRAGMA journal_mode=WAL")
-            if version == 0:
+            if format_id == 0:
                 with connection:
-                    connection.executescript(_WORK_SCHEMA)
-                    connection.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
+                    connection.executescript(_STORAGE_DDL)
+                    connection.execute(f"PRAGMA user_version={_STORAGE_FORMAT_ID}")
             yield connection
         finally:
             connection.close()
