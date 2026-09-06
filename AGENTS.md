@@ -59,13 +59,15 @@ Keep application semantics in the application, runtime execution semantics in MA
 
 Resolve genuine product-meaning ambiguity with the Owner. Resolve implementation uncertainty through code, documentation, experiments and tests whenever those can provide the answer.
 
-## Development data compatibility
+## Development SQLite compatibility
 
-MADRE is still under active pre-release development. Local runtime data is disposable across schema changes unless the Owner explicitly asks to preserve it.
+MADRE is still under active pre-release development. **Persisted local SQLite runtime databases from obsolete `PRAGMA user_version` values are disposable** unless the Owner explicitly asks to preserve them.
 
-Do not implement database migrations, backward-compatible schema upgrade paths or preservation machinery for old development runtime databases by default. When the current schema changes, bump or replace the schema marker as useful, reject incompatible old development data clearly, and require recreating the local data directory.
+Do not implement SQLite migration scripts, backward-compatible on-disk upgrade paths or preservation machinery for old development database files by default. When the current persisted SQLite format changes, set the current database version as useful, reject incompatible old files clearly, and require recreating the local runtime data directory.
 
-This rule concerns compatibility **between development schema versions**. It does not weaken runtime durability within the current schema: accepted work, restart recovery, idempotency and other current-version persistence semantics must continue to behave as specified.
+This rule is deliberately narrow. It says nothing about whether earlier product definitions, architectural reasoning, contracts, Python data structures or other source-level designs remain useful evidence. Those are reasoned about under the normal sources-of-truth rules: current `MADRE.md` defines product meaning, current code/tests define implementation truth, and prior definitions/history may still matter for provenance or unresolved design questions.
+
+It also does not weaken runtime durability within the **same current SQLite format**: accepted work, restart recovery, idempotency and other current-version persistence semantics must continue to behave as specified.
 
 ## Evidence and review
 
