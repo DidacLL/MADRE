@@ -1,209 +1,211 @@
-# MADRE — Product Definition and Invariants
+# MADRE
 
-This file is the active product authority for MADRE.
+This file is the canonical product definition for **MADRE — Model-Agnostic Delayed Reasoning Effort Agentic System**.
 
-The **Product invariants** below define MADRE independently of any particular implementation, class map, framework, provider, experiment, or previous design. Code and implementation plans may refine how these invariants are realized, but they do not redefine them implicitly.
+MADRE is a local-first execution runtime for independent applications that use AI capabilities. Its distinctive responsibility is to make **reasoning effort itself manageable runtime work**: work can execute immediately or become durable work whose eligibility, execution, recovery and evidence remain under software control.
 
-Historical documents, deleted files, Git history, research reports, issues, pull requests and prior conversations may explain how a conclusion was reached. They are not additional product authority. A concept from those sources is part of current MADRE only when it is represented by the active definition here or is required by working behavior that is consistent with it.
+The product boundary is intentionally simple:
 
-## Identity
+```text
+Application  →  MADRE runtime  →  Capability
+   meaning        execution         computation
+```
 
-MADRE is the **Model-Agnostic Delayed Reasoning Effort Agentic System**: a local-first runtime/kernel that independent applications use to execute AI work under software control, immediately or at another time.
+The application owns the domain. MADRE owns the runtime lifecycle of submitted work. Capabilities perform bounded computation and return results.
 
-Its defining thesis is **Delayed Reasoning Effort (DRE)**. Reasoning is work whose execution effort can be controlled in time rather than being assumed to be one synchronous model call. Work may be accepted, made eligible now or later, persisted when durability is required, executed through configured capabilities, interrupted, recovered, inspected and returned to the originating application.
+## System roles
 
-MADRE sits between independent applications and execution capabilities such as inference engines, model providers and tools. The application owns the domain. MADRE owns the runtime execution lifecycle. Capabilities perform bounded computation.
+### Application / module
 
-## Product invariants
+A MADRE module is an independent application using the runtime. It may be a script, desktop application, service or larger local system.
 
-These are semantic invariants. Their meaning must survive implementation changes.
+The application owns its domain semantics and the state whose purpose is domain work, including as applicable:
 
-### 1. A MADRE module is an independent application
-
-`module` is the architectural role of an application that uses MADRE. It does not imply inheritance from a MADRE base class, containment inside the runtime, a particular process topology, or a mandatory internal object model.
-
-An application owns the meaning of its domain. This includes, when relevant:
-
-- authoritative domain data and its persistence;
+- authoritative domain data and persistence;
 - knowledge, memory, retrieval, provenance and truth semantics;
-- learning, evaluation, adaptation and promotion of improved domain behavior;
+- learning, evaluation and adaptation of domain behavior;
 - domain workflows and task decomposition;
 - domain agents, prompts and interaction logic;
-- UI, artifacts and domain-specific actions;
-- selection of the domain material relevant to a piece of reasoning work;
-- semantic privacy projection, minimization and domain classification.
+- user interface, artifacts and domain operations;
+- selection of material relevant to a reasoning task;
+- semantic privacy projection, minimization and classification;
+- interpretation and acceptance of generated results.
 
-An application may be a script, a desktop application, a service or a larger system such as AAAAT. MADRE does not require these responsibilities to be relocated into the runtime.
+The application decides what its work means. Integration with MADRE preserves that ownership.
 
-### 2. MADRE owns execution, not domain meaning
+### MADRE runtime
 
-MADRE owns the reusable runtime concerns required to execute submitted AI work under software control. Depending on demonstrated needs, these include:
+MADRE provides reusable execution semantics for AI work submitted by applications. Its responsibilities include, as the working system requires them:
 
-- accepting and identifying runtime work;
+- accepting and identifying work;
 - immediate and delayed scheduling;
-- timing, priority, budget and execution constraints;
-- durable runtime work state and recovery after interruption;
-- invoking configured inference and tool capabilities;
-- replaceable capability bindings;
-- enforcement of execution and transfer constraints when a capability is actually used;
-- runtime cancellation, retry and failure handling;
-- resource allocation and concurrency when real workloads require them;
-- trace and inspection of work lifecycle, attempts, capability use and results;
+- eligibility time, priority, budget and execution constraints;
+- durable work state;
+- execution and recovery after interruption;
+- invocation of configured inference and tool capabilities;
+- active execution and transfer-boundary enforcement;
+- cancellation, retry and failure handling;
+- resource allocation and concurrency;
+- runtime trace and inspection;
 - returning results and runtime evidence to the originating application.
 
-MADRE may persist the runtime state needed to perform those responsibilities. That state does not become application knowledge merely because MADRE stores it.
+MADRE state exists to execute, recover and inspect runtime work. Application state exists to represent and operate the domain.
 
-### 3. Capabilities are replaceable and non-authoritative
+### Capability
 
-Inference engines, model providers and tools are execution capabilities. They may be local libraries, local processes, services, remote endpoints or other replaceable implementations.
+A capability is a replaceable implementation that performs bounded computation for MADRE. Inference engines, model providers, tools and external services are capability examples.
 
-A capability may compute, generate, retrieve or transform material only within the execution boundary granted to it. Provider-specific concepts do not become MADRE product semantics merely because an adapter exposes them.
+Capabilities may be local libraries, local processes, services or remote endpoints. Their provider-specific mechanics belong to their integration boundary. MADRE presents the stable runtime semantics required by applications.
 
-Generated model or tool output is **data**. By being generated, it does not acquire permission, policy authority, trusted knowledge status, workflow ownership, mutation authority or the ability to redefine MADRE behavior.
+Capability output is generated data. Software in the application and runtime assigns any subsequent permission, trusted status, mutation or workflow consequence.
 
-### 4. Delayed Reasoning Effort is runtime semantics
+## Product requirements
 
-Immediate and delayed reasoning are scheduling cases of the same product concept: reasoning effort is runtime work whose eligibility and lifecycle are controlled by software.
+### R1 — Application autonomy
 
-An application may submit work that is eligible immediately or at another time. MADRE preserves the execution intent required to run accepted work, executes it when eligible under the applicable runtime constraints, records the runtime outcome when durability or inspection requires it, and makes the result available to the application.
+An application can use MADRE without transferring ownership of its domain model, persistence, knowledge, workflows, UI or domain policy into the runtime.
 
-DRE does not require a cognitive ontology, planner hierarchy, workflow language or multi-agent architecture. Such mechanisms may be used by an application or introduced experimentally when demonstrated behavior requires them; they are not implied by DRE itself.
+The integration surface carries the material and execution intent required for a piece of work while leaving domain interpretation with the application.
 
-### 5. Applications own workflow meaning; MADRE owns submitted-work lifecycle
+### R2 — Runtime work as a first-class concept
 
-An application decides what a domain task means, how a domain workflow is decomposed, what evidence is relevant and what should happen with a result.
+AI execution is represented as runtime work with an identifiable lifecycle. MADRE can know which application submitted the work, whether it is eligible to execute, which capability is used, what execution outcome occurred and what runtime evidence belongs to that work.
 
-MADRE may schedule several submitted jobs that belong to one application workflow, but scheduling those jobs does not transfer ownership of the workflow semantics to MADRE.
+The concrete API and internal types are implementation decisions. The lifecycle semantics are product behavior.
 
-A model may propose a plan, action, classification or next step when an application requests that computation. The proposal remains generated material until ordinary software accepts and uses it through the application's logic and the applicable runtime execution boundary.
+### R3 — Delayed Reasoning Effort
 
-### 6. Context meaning belongs to the application; execution constraints are enforced at use
+Reasoning effort can be controlled in time.
 
-The application selects the domain material submitted for reasoning and owns the semantic interpretation of that material. MADRE must not need to understand what a candidature, experiment, thesis fact, CV field or other domain record means in order to execute work correctly.
+The same runtime concept supports work eligible immediately and work eligible later. Durable delayed work preserves enough execution intent to remain actionable across process interruption and restart.
 
-The application may provide the execution-relevant constraints required for safe handling of submitted material. MADRE enforces constraints where they become operational: for example, when choosing a permitted capability, transferring material across a local/remote boundary, invoking an action, or consuming runtime resources.
+An application may decompose a larger domain workflow into several reasoning jobs. MADRE schedules and executes those submitted jobs while the application retains the semantics connecting them.
 
-Boundary information belongs where it changes active execution or transfer. Its existence is not a reason to duplicate equivalent policy state across every passive request, plan, workflow or record.
+DRE is therefore a scheduling and execution property. Planning and decomposition mechanisms are introduced where an application or runtime behavior demonstrates their value.
 
-### 7. Persistence ownership follows purpose
+### R4 — Replaceable capabilities
 
-The owner of persisted state is determined by **why the state exists**, not by which process happens to write the bytes.
+MADRE can invoke different compatible capability implementations while preserving the application's runtime contract.
 
-- If state exists because the domain must remember, interpret, retrieve, learn from or govern it, the application owns it.
-- If state exists because runtime work must be scheduled, executed, recovered, inspected or controlled, MADRE owns it.
-- If state is an implementation cache or internal detail of an inference/tool capability, that capability owns it unless a stronger product requirement says otherwise.
+A provider, model, inference runtime, transport or framework may shape its adapter and may become a stable implementation dependency when it is the appropriate engineering choice. MADRE product semantics remain defined by the responsibilities in this document rather than by accidental properties of one provider.
 
-This rule prevents runtime persistence from silently becoming a generic memory or knowledge subsystem.
+### R5 — Explicit authority
 
-### 8. Local-first and model-agnostic are architectural properties
+Authority follows software ownership:
 
-MADRE must treat local execution as a first-class path and must not require one remote provider to define the product. A useful local path must be possible without making a cloud account, provider-specific agent platform or hosted control plane the architectural authority.
+1. the user and application establish domain intent;
+2. the application selects domain material and requested operations;
+3. MADRE controls runtime execution according to the submitted intent and execution constraints;
+4. capabilities compute and return results;
+5. the application decides the domain consequence of those results.
 
-Remote inference or remote tools may be supported. Crossing that boundary is an explicit execution decision subject to the relevant transfer constraints; it is not equivalent to local execution merely because both implement the same capability interface.
+A generated proposal can therefore participate in planning, classification or action selection while remaining generated material until software gives it an effect.
 
-Model-agnostic means MADRE product semantics remain stable when a compatible capability implementation is replaced. Provider/framework APIs may influence adapters, never the ownership model above.
+### R6 — Application-governed context
 
-### 9. Product concepts are not automatically software classes
+The application determines which domain material is relevant for a reasoning operation and performs domain-specific projection or minimization before submission when needed.
 
-Names in this document describe responsibilities and semantic roles. They do not require one class, interface, service, registry or database table per noun.
+MADRE receives the selected material together with execution-relevant constraints. Domain vocabulary and privacy semantics stay with the application; the runtime needs only the information required to execute the work correctly.
 
-Architecture is introduced from demonstrated behavior. A new abstraction earns existence only when a working path requires a distinct responsibility that cannot be expressed more simply.
+This allows different applications to use different domain models without requiring MADRE to understand their internal records.
 
-Implementation may rename, merge or split internal types without changing MADRE as long as the product invariants remain true.
+### R7 — Execution and transfer boundaries
 
-## Ownership test for future design decisions
+Execution-relevant constraints are applied where they affect actual capability use.
 
-Before assigning a new responsibility or introducing a new core abstraction, classify it using these questions:
+MADRE can decide whether a configured capability is eligible for a work item, whether submitted material may cross the required transfer boundary, whether an operation may execute and which runtime resources are available.
 
-1. **Does it exist because the domain needs to know, interpret, remember, decide or present something?**  
-   It belongs to the application.
+Boundary representation follows active execution needs. The working design carries each constraint at the narrowest place where it can change runtime behavior.
 
-2. **Does it exist because submitted AI work must be scheduled, executed, constrained, recovered or inspected?**  
-   It belongs to MADRE.
+### R8 — Domain operations remain application-owned
 
-3. **Does it exist because a model, inference runtime, tool or external service performs a particular computation?**  
-   It belongs behind a replaceable capability boundary.
+Applications expose the domain operations they choose to make available to AI-assisted execution. MADRE may invoke such operations through an explicit runtime capability boundary.
 
-4. **Is it produced by a capability?**  
-   It is data until application/runtime software assigns a consequence to it.
+A durable domain mutation is performed by application-owned software. Generated output can supply proposed inputs or decisions while the application operation remains the authority that changes domain state.
 
-5. **Would replacing the provider, model, agent library or transport change the supposed product meaning?**  
-   If yes, implementation detail is leaking into product architecture and the boundary should be reconsidered.
+### R9 — Persistence follows purpose
 
-When a proposed design cannot be classified cleanly by these tests, resolve the ownership question before materializing new architecture.
+State ownership is determined by why the state exists:
 
-## System interaction
+| Purpose | Owner |
+| --- | --- |
+| Represent, remember, retrieve, interpret or learn domain information | Application |
+| Schedule, execute, recover, control or inspect runtime work | MADRE |
+| Implement the internal operation or cache of an inference/tool integration | Capability |
 
-The narrow conceptual path is:
+This rule remains valid regardless of which process or storage engine physically writes the bytes.
+
+### R10 — Durable execution has explicit recovery semantics
+
+When work is durable, restart and interruption have defined runtime outcomes. MADRE records enough state to determine what remains eligible, what attempt occurred and what result or failure is available.
+
+Delivery and retry guarantees match what the invoked capability can actually support. Runtime evidence describes the behavior that occurred rather than promising stronger semantics than the execution boundary can provide.
+
+### R11 — Inspectability
+
+Runtime work can be inspected through evidence proportional to its execution semantics. Evidence can identify lifecycle transitions, attempts, capability use, timing, results and failures as required by the working path.
+
+Inspection serves debugging, recovery, application integration and research reproducibility. It records execution facts rather than replacing application knowledge.
+
+### R12 — Local-first execution
+
+Local execution is a first-class useful path. An application can use MADRE with locally available capabilities while keeping private work on the local machine when its boundary requires that.
+
+Remote capabilities can coexist with local ones. Remote use is represented as a real transfer boundary so the runtime can apply the constraints supplied for that work and record the execution accurately.
+
+### R13 — Evolvable implementation
+
+Concrete technologies are legitimate implementation architecture. Languages, databases, libraries, transports, frameworks and provider integrations can be selected, depended on and optimized around when they provide the clearest working solution.
+
+Product responsibilities remain stable while implementation structures may be added, merged, renamed or replaced as evidence from the running system develops.
+
+A new architectural element earns its place by making an observed responsibility simpler, clearer, safer, more reliable or measurably more capable.
+
+## Ownership test
+
+A future design decision can be located by asking why it exists:
+
+- If it exists to understand, remember, decide, present or mutate the domain, it is application responsibility.
+- If it exists to schedule, execute, constrain, recover or inspect submitted AI work, it is MADRE responsibility.
+- If it exists to perform a particular computation, it belongs to a capability implementation or its adapter.
+- If it is produced by a capability, it is data until application/runtime software assigns an effect.
+
+When a responsibility spans these roles, define the narrow integration boundary between the owners rather than moving the whole concern into one side.
+
+## Reference interaction
 
 ```text
 independent application
     │
-    │ selected domain material + execution intent
+    │ selected domain material
+    │ requested computation
+    │ execution-relevant constraints
     ▼
 MADRE runtime
     │
-    │ bounded capability invocation
+    │ scheduled bounded invocation
     ▼
-inference / tool capability
+capability
     │
-    │ generated result
+    │ generated result / failure
     ▼
 MADRE runtime
     │
     │ result + runtime evidence
     ▼
 originating application
+    │
+    ▼
+domain interpretation / operation
 ```
 
-The exact API and internal data structures are implementation decisions. The invariant is the ownership and authority direction shown above.
+## Product acceptance path
 
-## Architectural posture
+MADRE becomes useful through progressively stronger end-to-end evidence:
 
-MADRE should remain a small, inspectable control plane. It should use existing inference engines, databases, libraries and operating-system facilities behind replaceable boundaries rather than recreate commodity infrastructure without evidence of need.
+1. **Real execution:** an application can invoke a real configured local inference capability through MADRE and receive its result or an accurate runtime error.
+2. **Delayed execution:** the same kind of work can be accepted for later execution, survive runtime restart and expose its eventual result or recoverable failure.
+3. **Independent application integration:** a real application can select its own context, submit work and consume results while retaining its domain state and semantics.
+4. **Boundary growth from use:** additional capabilities, execution controls, resource policies and orchestration patterns extend those working paths as concrete applications or experiments require them.
 
-The shortest coherent execution path is preferred. Additional frameworks, services and layers are justified only by behavior that the current path cannot provide cleanly.
-
-The runtime does not become a knowledge platform, learning platform, domain workflow engine or monolithic application merely because those concerns may participate in AI-assisted systems. Independent applications can implement or reuse those capabilities according to their own domains.
-
-## Current realization strategy
-
-This section records the present implementation order. It is **not a product invariant**. It may change as code and empirical evidence improve without requiring a redefinition of MADRE, provided the invariants above remain true.
-
-Determine the next implementation step from the code that actually exists.
-
-### 1. Real inference path
-
-Build the smallest real path from an application through MADRE to a configured local model and back.
-
-A Python library call and a thin CLI are sufficient as the first access surfaces. Start with one OpenAI-compatible local HTTP adapter and explicit endpoint, model and timeout configuration. The path must return actual generated output or a useful transport/protocol error. No agent framework or provider registry is required.
-
-The first path proves that MADRE owns the invocation boundary while the inference server remains replaceable. A controlled HTTP fixture may verify failure cases, but a fake-only path is not the acceptance result. If a real local model is unavailable in the executor environment, report that limitation instead of treating the fixture as equivalent.
-
-### 2. Durable delayed reasoning
-
-Extend the same real inference request so an application can submit work for later and receive an identifier immediately.
-
-Use a simple local persistence mechanism such as SQLite unless implementation evidence shows a better need. Persist only runtime information required to know what work is pending, when it may run, which configured capability it requires, what attempt occurred and what result or error exists.
-
-Provide a simple foreground worker or run-due command before considering a daemon or service. Pending work must survive restart. Interrupted execution must have an explicit recoverable outcome; do not claim exactly-once inference where the underlying capability cannot provide it.
-
-After this stage, MADRE is already useful: an application can run real inference immediately or schedule reasoning, restart the runtime and later retrieve the result.
-
-### 3. Integrate one real application
-
-Connect an independent application such as AAAAT or another current MADRE consumer without moving its domain state into MADRE.
-
-The application selects its own context, submits reasoning work and consumes the result. Its knowledge, learning, workflow, UI and domain semantics remain application concerns. This stage is the architectural proof that MADRE is a reusable runtime rather than a hidden monolithic application.
-
-### 4. Add runtime controls only when demanded by a real use case
-
-Add capability/action permissions, remote-inference transfer rules, cancellation, richer priorities, budgets, resource scheduling, multiple workers or additional provider adapters when an actual application path requires them.
-
-Each addition should extend an existing working path. Do not create generalized infrastructure merely because it could be useful later.
-
-## Development rule
-
-The repository is the implementation evidence. There is no mutable project-state document.
-
-When continuing development, inspect the current code, identify the earliest incomplete realization stage above, and implement one cohesive behavior that moves that stage toward a working end-to-end path. Routine branch, commit, pull-request and merge operations are part of that task, not a separate workflow for the developer to coordinate.
+These are behavioral acceptance goals. The implementation is free to choose the simplest suitable technologies and structures that realize them.
