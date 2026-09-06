@@ -162,7 +162,9 @@ def test_core_rejects_non_loopback_runtime_url():
 
 
 def test_core_entry_point_help():
-    executable = Path(sys.executable).parent / ("madre-core.exe" if os.name == "nt" else "madre-core")
+    executable = Path(sys.executable).parent / (
+        "madre-core.exe" if os.name == "nt" else "madre-core"
+    )
     result = subprocess.run(
         [str(executable), "--help"],
         capture_output=True,
