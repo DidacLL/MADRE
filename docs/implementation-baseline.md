@@ -62,8 +62,9 @@ previously running attempt whose capability outcome may be unknown.
 Explicit TOML configuration, package/CLI entry points, authenticated loopback
 service access, and exclusive runtime-data ownership are implemented. Service
 lifespan owns a local SQLite database; the OS releases its ownership lock after
-process exit. Startup rejects unknown schema versions and migrates the original
-schema-1 envelope to schema 2, which owns durable runtime work and attempt records.
+process exit. Startup rejects unknown schema versions. The current schema is version 3:
+version 1 creates the durable work/attempt envelope, version 2 remains migratable, and
+version 3 adds durable submission-idempotency metadata without rewriting existing work.
 
 `POST /v1/work` accepts both immediate and future-eligible `WorkSubmission` values.
 For every valid submission MADRE allocates an ID, durably records the application-
@@ -72,6 +73,17 @@ and returns that accepted record. The request does not invoke the capability and
 not wait for scarce-resource admission. Immediate eligibility means the work may be
 executed by the runtime now; future eligibility means the same accepted work remains
 pending until its configured time.
+
+An application may optionally supply `Idempotency-Key` when one logical submission may
+need to be retried after transport uncertainty. The key is runtime acceptance metadata,
+not part of `WorkSubmission`, and is scoped together with `application_id`. Reusing the
+same application/key with the same normalized submission returns the original durable
+work record in whatever state it currently has. Reusing it with different normalized
+work is rejected with HTTP 409. Omitting the key preserves ordinary distinct
+submissions. The durable uniqueness constraint and persisted key survive service
+restart; replay never creates another work record, attempt or scheduler wakeup.
+Idempotency therefore prevents duplicate acceptance but does not retry failed or
+interrupted work.
 
 The service-owned scheduler discovers accepted work from SQLite and executes both
 already-eligible and future-eligible work through the same runtime execution method:
@@ -132,7 +144,9 @@ work states. Its HTTP client treats a newly accepted submission as pending and i
 that work until it becomes terminal. Durable runtime/capability failures are surfaced
 directly to the user. CORE therefore remains an ordinary application choosing to wait
 for a result; the MADRE submission request itself no longer owns capability execution
-or scarce-resource waiting.
+or scarce-resource waiting. CORE currently omits `Idempotency-Key`, so its submissions
+retain the same distinct-work behavior as before; no CORE special case exists in the
+runtime.
 
 The first CORE application boundary is canonical on `main` as of
 `fc3a5c4f670013fe234b5ef33281df1b7f965087`.
@@ -226,6 +240,20 @@ scheduler remains valid for the single implemented heavyweight local-chat capabi
 while conditional attempt start continues to prevent duplicate physical invocation if
 a work item is encountered more than once.
 
+Durable submission idempotency closes the retry-after-lost-acknowledgement gap without
+introducing runtime retry semantics. One optional application-scoped key is persisted
+with the accepted work and protected by a SQLite uniqueness constraint. The runtime
+compares the reconstructed normalized `WorkSubmission` before replay, so semantically
+equivalent normalized timestamps are accepted while key reuse for different work is a
+conflict. A replay returns accepted, running, succeeded, failed or interrupted evidence
+from the original work as-is. It neither resets terminal state nor creates another
+attempt.
+
+This remains a concrete reliability rule rather than a generalized delivery framework.
+MADRE does not claim exactly-once external side effects, automatically retry capability
+execution, retain arbitrary request histories, or deduplicate submissions that do not
+supply a key.
+
 This is still the first concrete scarce-resource rule, not a generalized scheduler. No
 resource registry, semaphore framework, GPU accounting, model-residency plan, priority
 system, retry/cancellation product feature, capability class hierarchy or execution
@@ -242,6 +270,9 @@ The canonical product-definition realignment is on `main` as of
 that applications own domains, CORE owns default generic/system intelligence, MADRE
 Runtime owns execution, and capabilities perform computation.
 
+Runtime-owned submission/execution convergence is canonical on `main` as of
+`459cce2f982f39a8e4d5dc926417f6c2e94ed9bc`.
+
 The dependency/value order is now:
 
 1. Real immediate runtime work execution — implemented, accepted and canonical.
@@ -252,16 +283,18 @@ The dependency/value order is now:
 6. Explicit CORE fast-response responsibility plus observable `fast`/`deeper` recommendation — implemented, accepted and canonical as an experimental interaction behavior.
 7. User-controlled `/deeper` stronger follow-up through ordinary MADRE work — implemented, accepted and canonical as an experimental interaction behavior.
 8. Owner-side CORE model/interaction experiment — completed for this stage; findings recorded, further UX/classifier refinement deferred.
-9. Runtime-owned submission/execution convergence — implemented in the current change: immediate and delayed submissions are durable acknowledgements, service scheduling owns execution, and unexpected ordinary capability exceptions are contained as durable `internal_error` failures.
-10. Continue reliable shared execution work from concrete application/runtime evidence; retry and cancellation remain separate future behaviors rather than implicit consequences of this convergence.
+9. Runtime-owned submission/execution convergence — implemented, accepted and canonical.
+10. Durable submission idempotency — implemented in the current change: optional application-scoped acceptance keys survive restart, replay original work and reject conflicting reuse without adding retry semantics.
+11. Continue reliable shared execution work from concrete application/runtime evidence; cancellation and explicit retry remain separate future behaviors.
 
 For the next slice, do not spend scope on chatbot polish, model-floor hunting,
 fast/deeper prompt tuning, Agent/Planner/workflow abstractions, or speculative capability
 generalization. Use repository truth to select one substantive missing runtime behavior
 that materially improves dependable execution, durability, recovery, admission,
-inspection or application integration. Retry, cancellation, idempotency, priority and
-broader capability/resource scheduling remain legitimate gaps, but should be introduced
-one coherent behavior at a time when their concrete semantics are selected.
+inspection or application integration. Cancellation, explicit retry semantics,
+priority/fairness and broader capability/resource scheduling remain legitimate gaps,
+but should be introduced one coherent behavior at a time when their concrete semantics
+are selected.
 
 ## Verified development evidence — 2026-09-06
 
@@ -314,3 +347,15 @@ therefore closed this interaction experiment for now and clarified that the chat
 terminal flow and its fallback wording do not define MADRE UX. Development returns to
 the reliable framework; later CORE interaction work should build on richer system
 behavior rather than freezing today's diagnostic surface.
+
+The durable-idempotency slice passed 48 deterministic tests on Ubuntu together with
+`ruff check`, `ruff format --check`, strict `mypy`, package build, wheel reinstall and
+isolated wheel import. The suite proves replay while running and after completion,
+application scoping, conflict rejection, normalized-submission comparison, omission
+compatibility, restart persistence and schema-2-to-3 migration. A real Windows HTTP
+acceptance then used the pinned llama.cpp `b10809` / Qwen2.5-0.5B Q4_K_M fixture. The
+initial keyed POST returned accepted work, runtime-owned execution produced non-empty
+`madre-smoke` text in one successful attempt, inspection reached durable success, and
+replaying the identical POST with the same key returned that same durable terminal
+record. The temporary CI job used only to obtain this real execution evidence was
+removed from the final repository diff.
