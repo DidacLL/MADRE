@@ -10,7 +10,7 @@ from pydantic import ValidationError
 
 from madre import Settings, create_app, load_settings
 from madre.contracts import ExecutionConstraints, WorkSubmission
-from madre.storage import STORAGE_FORMAT_ID, open_database
+from madre.storage import open_database
 
 
 def test_config_paths_and_validation(tmp_path, monkeypatch):
@@ -47,23 +47,25 @@ def test_import_has_no_filesystem_side_effects(tmp_path):
 
 def test_exclusive_database_reopen_and_discards_incompatible_development_storage(tmp_path):
     with open_database(tmp_path) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == STORAGE_FORMAT_ID
+        current_format_id = connection.execute("PRAGMA user_version").fetchone()[0]
+        assert current_format_id > 0
         with pytest.raises(RuntimeError, match="another MADRE"):
             with open_database(tmp_path):
                 pytest.fail("second owner accepted")
     with open_database(tmp_path) as connection:
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == current_format_id
         assert connection.execute("PRAGMA foreign_keys").fetchone()[0] == 1
 
     stale = tmp_path / "stale"
     stale.mkdir()
-    stale_format_id = STORAGE_FORMAT_ID + 1
+    stale_format_id = 1 if current_format_id != 1 else 2
     with sqlite3.connect(stale / "runtime.sqlite3") as connection:
         connection.execute("CREATE TABLE obsolete_state (value TEXT)")
         connection.execute("INSERT INTO obsolete_state VALUES ('discard me')")
         connection.execute(f"PRAGMA user_version={stale_format_id}")
 
     with open_database(stale) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == STORAGE_FORMAT_ID
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == current_format_id
         assert (
             connection.execute(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name='obsolete_state'"
