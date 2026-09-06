@@ -1,4 +1,4 @@
-"""Bounded chat-completion adapter used by the environment probe."""
+"""Bounded chat-completion adapter used by runtime work and the environment probe."""
 
 import asyncio
 import time

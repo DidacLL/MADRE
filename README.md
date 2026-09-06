@@ -12,19 +12,17 @@ Start here:
 
 ## What runs today
 
-An installable, typed Python package; explicit TOML configuration; a foreground,
-authenticated local health service with exclusive SQLite ownership; and a real
-chat-completion environment probe. Work submission, scheduling and recovery are
-the next implementation behaviors. There are no placeholder work endpoints.
+MADRE provides an installable typed Python package, explicit TOML configuration, an authenticated loopback HTTP service, exclusive SQLite runtime ownership, durable immediate-work records, and a real chat-completion capability adapter.
 
-Python is the current implementation language, not a permanent product boundary.
-The planned application API is language-neutral HTTP; C/C++ implementations can be
-introduced where concrete runtime responsibilities benefit.
+An independent application can submit currently eligible work to `POST /v1/work`. MADRE durably records the submission, invokes the configured capability, records the attempt and generated result or classified failure, and returns the resulting work record. `GET /v1/work/{id}` returns the same durable record for inspection. A process restart converts any previously in-flight attempt into an `interrupted` failure whose message explicitly says the capability outcome may be unknown; MADRE does not retry it.
+
+`eligible_at` remains part of the same work-submission vocabulary. Future eligibility is rejected with HTTP 409 until delayed scheduling and recovery are implemented rather than being accepted with semantics the runtime does not yet provide.
+
+Python is the current implementation language, not a permanent product boundary. The application API is language-neutral HTTP; C/C++ implementations can be introduced where concrete runtime responsibilities benefit.
 
 ## Bootstrap and checks
 
-Use Python 3.13. Development is pinned to 3.13.3; uv can install that interpreter
-when it is absent. Run from the repository root on Windows or Linux:
+Use Python 3.13. Development is pinned to 3.13.3; uv can install that interpreter when it is absent. Run from the repository root on Windows or Linux:
 
 ```console
 python -m pip install uv==0.12.10
@@ -36,23 +34,11 @@ python -m uv run --locked mypy
 python -m uv build --python .venv --no-build-isolation
 ```
 
-Apply formatting with `python -m uv run --locked ruff format .`. Dependencies and
-development tools are pinned in `uv.lock`; build tooling is installed by the dev
-group; explicitly selecting `.venv` makes `--no-build-isolation` use those locked
-versions even when uv itself was installed in the host Python. CI runs deterministic
-checks, builds the wheel, and verifies its import outside the checkout. Normal
-bootstrap/tests never download a model or require inference.
+Apply formatting with `python -m uv run --locked ruff format .`. Dependencies and development tools are pinned in `uv.lock`; build tooling is installed by the dev group; explicitly selecting `.venv` makes `--no-build-isolation` use those locked versions even when uv itself was installed in the host Python. CI runs deterministic checks, builds the wheel, and verifies its import outside the checkout. Normal bootstrap/tests never download a model or require inference.
 
-Executable PR changes run checks on Linux. Documentation-only PRs skip runtime CI;
-pushes do not duplicate PR checks. For packaging, dependencies, platform-specific
-code, storage/process semantics, or release readiness, request full Windows + Linux
-validation via **Actions → checks → Run workflow**, selecting the branch to validate.
-Manual dispatch becomes available once this workflow is on the default branch.
+Executable PR changes run checks on Linux. Documentation-only PRs skip runtime CI; pushes do not duplicate PR checks. For packaging, dependencies, platform-specific code, storage/process semantics, or release readiness, request full Windows + Linux validation via **Actions → checks → Run workflow**, selecting the branch to validate.
 
-The distribution is `madre-runtime`; the import is `madre`. Other Python projects
-can install the built wheel using `python -m pip install <path-to-wheel>` or install
-this repository at a chosen Git commit. No package-index publication is assumed.
-Import does not start the runtime or create its database:
+The distribution is `madre-runtime`; the import is `madre`. Other Python projects can install the built wheel using `python -m pip install <path-to-wheel>` or install this repository at a chosen Git commit. No package-index publication is assumed. Import does not start the runtime or create its database:
 
 ```python
 from pathlib import Path
@@ -64,12 +50,7 @@ app = create_app(settings)  # Reads the configured token; service lifespan owns 
 
 ## Configuration and service
 
-Copy `madre.example.toml` to `madre.local.toml` and edit explicitly. The local service
-token is an environment-variable reference, never a literal TOML value. Unknown configuration
-keys are errors. Relative data paths resolve beside the TOML file, independent of
-the caller's working directory. Omitting `data_dir` uses the OS user data directory
-(`%LOCALAPPDATA%\madre` on Windows, `$XDG_DATA_HOME/madre` or `~/.local/share/madre`
-on Linux). Use local storage, not a network filesystem.
+Copy `madre.example.toml` to `madre.local.toml` and edit explicitly. The local service token is an environment-variable reference, never a literal TOML value. Unknown configuration keys are errors. Relative data paths resolve beside the TOML file, independent of the caller's working directory. Omitting `data_dir` uses the OS user data directory (`%LOCALAPPDATA%\madre` on Windows, `$XDG_DATA_HOME/madre` or `~/.local/share/madre` on Linux). Use local storage, not a network filesystem.
 
 PowerShell:
 
@@ -89,21 +70,40 @@ python -m uv run --locked madre --config madre.local.toml check-config
 python -m uv run --locked madre --config madre.local.toml serve
 ```
 
-`MADRE_API_TOKEN` is generated locally to control access to your MADRE service.
-It is not a provider API key, requires no paid account, and is not forwarded to
-inference capabilities. Supply it only to the local applications using MADRE.
-The implemented endpoint is
-`GET http://127.0.0.1:8731/health`, with `Authorization: Bearer <token>`. It returns
-`{"status":"ok","schema_version":1}`. Missing/incorrect credentials return 401.
-Stop the foreground service with Ctrl+C. A second runtime using the same data
-directory is rejected; process exit releases ownership. Runtime files, local
-configuration, model weights, build output and credentials are not committed.
+`MADRE_API_TOKEN` is generated locally to control access to your MADRE service. It is not a provider API key, requires no paid account, and is not forwarded to inference capabilities. Supply it only to the local applications using MADRE.
 
-## Optional real local-model probe
+The authenticated endpoints are:
 
-An existing compatible local server can be used by editing the capability's
-endpoint and model. Local endpoints must use literal loopback IP addresses, e.g.
-`127.0.0.1`; the adapter does not inherit proxies or follow redirects.
+- `GET http://127.0.0.1:8731/health`
+- `POST http://127.0.0.1:8731/v1/work`
+- `GET http://127.0.0.1:8731/v1/work/{id}`
+
+All require `Authorization: Bearer <token>`. `/health` returns `{"status":"ok","schema_version":2}`. Missing or incorrect credentials return 401. Stop the foreground service with Ctrl+C. A second runtime using the same data directory is rejected; process exit releases ownership. Runtime files, local configuration, model weights, build output and credentials are not committed.
+
+A current chat-completion submission is shaped like:
+
+```json
+{
+  "application_id": "my-application",
+  "capability_id": "local-chat",
+  "input": {
+    "messages": [
+      {"role": "user", "content": "Reply with a short greeting."}
+    ],
+    "max_tokens": 64
+  },
+  "constraints": {
+    "timeout_seconds": 120,
+    "local_only": true
+  }
+}
+```
+
+The application owns the prompt and interpretation of the generated result. MADRE stores that selected execution material because durable work needs enough intent and evidence to be inspected and, for later delayed work, recovered.
+
+## Optional real local-model fixture
+
+An existing compatible local server can be used by editing the capability's endpoint and model. Local endpoints must use literal loopback IP addresses, e.g. `127.0.0.1`; the adapter does not inherit proxies or follow redirects.
 
 For the reproducible Windows CPU smoke fixture (about 491 MB of model data):
 
@@ -115,28 +115,35 @@ $fixture = Join-Path $env:LOCALAPPDATA 'MADRE\inference'
   --host 127.0.0.1 --port 8080 --alias madre-smoke -c 2048 -ngl 0 -t 4
 ```
 
-Keep that server running and, in another terminal, run:
+Keep that server running. The direct capability probe remains useful for isolating the inference boundary:
 
 ```console
 python -m uv run --locked madre --config madre.example.toml probe local-chat --timeout 60
 ```
 
-The probe does not need the MADRE service or its bearer token. It sends a bounded
-chat-completion request directly through the package adapter and prints JSON with
-generated text, model, finish reason, and elapsed seconds. `finish_reason=length`
-means the generation reached its output limit. Failures print a structured error
-and exit nonzero. The small model establishes connectivity/computation only; choose
-models appropriate to real application quality requirements. Stop the fixture
-server with Ctrl+C when finished. Installation is optional and separate from MADRE
-bootstrap; runtime/model revisions and verified hashes are pinned in the installer.
+The probe does not need the MADRE service or its bearer token. It invokes the configured capability adapter directly and prints generated text, model, finish reason, and elapsed seconds.
+
+## Real immediate-work acceptance
+
+For the product path, run both the local model server above and MADRE itself. Use a local config whose `local-chat` capability points to that model server, then start MADRE:
+
+```powershell
+$env:MADRE_API_TOKEN = (python -c "import secrets; print(secrets.token_urlsafe(32))")
+python -m uv run --locked madre --config madre.local.toml serve
+```
+
+In a third terminal, with the same `MADRE_API_TOKEN`, run the independent client. The script intentionally does not import `madre`:
+
+```console
+python tools/accept-immediate-work.py --capability local-chat
+```
+
+A successful check submits work through HTTP, requires non-empty generated text from the real configured model, then reads the work back through the inspection endpoint and requires the durable record to match the submission response. Capability failures are printed from MADRE's durable work record and cause a nonzero exit.
+
+Fixtures and mocked inference establish deterministic protocol and failure behavior only. This acceptance command is the check for a claim that the complete HTTP runtime path executed a real model.
 
 ## Continue implementation
 
-Implement real immediate work submission and inspection through local HTTP,
-durable SQLite state and the real local capability. Acceptance requires a separate
-application client receiving generated output and persisted execution evidence.
-Then add delayed execution/recovery, validate a real independent application, and
-grow capabilities and controls from use. See the focused baseline for the initial
-architecture and the implementation choices to resolve while building that behavior.
+Implement delayed eligibility and restart recovery for queued work next, using the same durable work and attempt model rather than a separate scheduler-specific job type. Define only the scheduling mechanics needed to accept future-eligible work, discover it after restart, execute it when eligible, and expose the eventual result or recoverable failure. Retry, cancellation and broader concurrency policy should grow from subsequent behavior.
 
 GPL-3.0. See [`LICENSE`](LICENSE).
