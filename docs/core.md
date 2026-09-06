@@ -20,9 +20,11 @@ If MADRE returns work as `accepted` or `running`, CORE polls the ordinary work-i
 
 ## Fast interaction responsibility
 
-Each ordinary user turn creates exactly one CORE chat work item. CORE adds a transient system instruction asking the configured capability for a concise immediate answer and one bounded recommendation: `fast` when that response is sufficient, or `deeper` when materially better handling would require deeper multi-step reasoning, verification, research, planning, or tools.
+Each ordinary user turn creates exactly one CORE chat work item. CORE adds a transient system instruction asking the configured capability for a concise immediate answer and one bounded recommendation. `fast` is the default. `deeper` means one second pass by the same chat capability, using the same conversation and a larger response budget but no new tools or external information, is likely to materially improve correctness or completeness.
 
-CORE software strips that internal marker before displaying or remembering the assistant response. If the capability omits or malforms the marker, CORE preserves the useful response but conservatively reports `deeper` rather than silently assuming the fast answer is sufficient.
+`deeper` therefore does not mean merely that an answer could be longer, or that unavailable research, verification or tools would help. The recommendation must describe the concrete follow-up CORE can actually perform today.
+
+CORE software strips the internal recommendation marker before displaying or remembering the assistant response. If the capability omits or malforms the marker, CORE preserves useful generated text and conservatively reports `deeper`. If the capability emits only a marker and no usable user-facing text, CORE shows `I couldn't produce a usable fast response.` and offers the explicit deeper follow-up rather than reporting a runtime failure.
 
 "Fast" describes CORE's interaction responsibility: one bounded foreground inference intended to answer the current turn promptly. It is not a wall-clock scheduling guarantee. Ordinary MADRE runtime admission may still delay the work when another application occupies the heavyweight local-inference slot.
 
@@ -38,7 +40,7 @@ CORE never escalates automatically. `/deeper` is rejected unless the latest comp
 
 ## Local product acceptance
 
-The deterministic test suite proves the software protocol and runtime boundaries. The current small local model is probabilistic, so whether it recommends `fast` or `deeper` for a particular prompt—and whether the deeper answer is actually better—must be evaluated with the real model. This manual acceptance is product evidence, not routine developer QA.
+The deterministic test suite proves the software protocol and runtime boundaries. The current small local model is probabilistic, so whether it recommends `fast` or `deeper` for a particular prompt—and whether the deeper answer is actually better—must be evaluated with the real model. This manual acceptance is therefore product evidence, not routine developer QA.
 
 The acceptance helper deliberately avoids shell-embedded Python and SQL so the same commands work from Windows PowerShell without native-command quoting ambiguity.
 
@@ -85,7 +87,7 @@ python -m uv run --locked madre-core `
     --capability local-chat
 ```
 
-At `you>`, try an ordinary request. You should receive non-empty `core>` output and then either `reasoning> fast` or `reasoning> deeper`. The exact recommendation is model output, not a deterministic acceptance criterion.
+At `you>`, try ordinary requests naturally. You should receive non-empty `core>` output and then either `reasoning> fast` or `reasoning> deeper`. The exact recommendation is model output, not a deterministic acceptance criterion. A marker-only model response is treated as unusable fast output and becomes the explicit fallback plus `reasoning> deeper`, not a runtime error.
 
 Before testing explicit escalation, open Terminal 4 and record the current durable CORE work status:
 
@@ -95,7 +97,7 @@ python tools/core-acceptance.py status
 
 The helper prints `count=<N>` plus the latest work ID, status, and `latest_max_tokens` when any CORE work exists. Treat the current count as `N`.
 
-Back in Terminal 3, give CORE a request that genuinely benefits from analysis, for example:
+Back in Terminal 3, give CORE a request that genuinely benefits from a second pass by the same model, for example:
 
 ```text
 Design a fault-tolerant migration plan for a stateful service with zero data loss. Compare at least two strategies, identify failure modes, and justify the safer choice.
@@ -125,7 +127,7 @@ The count should now be `N + 2`, the latest work should be `succeeded`, and `lat
 
 You can then ask a normal follow-up question about the deeper answer. Because a successful deeper result replaces the fast draft in process-local history, the next turn should be conditioned on the deeper answer rather than both drafts. This is qualitative model behavior, so record surprising behavior rather than treating exact wording as a pass/fail assertion.
 
-If the model reports `fast` for the complex request, try other genuinely multi-step requests. Before each attempt, run the status helper and treat its count as the new `N`. Repeatedly recommending `fast` for clearly complex work is itself useful product evidence about the classifier prompt/model combination; do not manufacture a `deeper` result merely to make the acceptance look successful.
+If the model reports `fast` for a request where a second same-model pass would clearly improve the answer, try other genuinely multi-step requests. Before each attempt, run the status helper and treat its count as the new `N`. Repeatedly recommending `fast` or `deeper` inappropriately is useful product evidence about the prompt/model combination; do not manufacture a result merely to make the acceptance look successful.
 
 Optional failure evidence: after a successful turn, stop the llama.cpp server in Terminal 1 and submit another CORE message. CORE should report a durable runtime failure such as `CORE error: MADRE work failed [connection]: ...`; `python tools/core-acceptance.py status` should show the additional failed CORE work item. Restart the model server before continuing.
 
