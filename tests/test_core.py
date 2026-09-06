@@ -149,6 +149,7 @@ def test_core_deeper_follow_up_is_explicit_second_runtime_work(tmp_path, monkeyp
     assert deeper_messages[1:] == [
         {"role": "user", "content": "hard question"},
         {"role": "assistant", "content": "fast draft"},
+        {"role": "user", "content": "Provide the deeper replacement answer now."},
     ]
 
     with sqlite3.connect(runtime_settings.data_dir / "runtime.sqlite3") as connection:
