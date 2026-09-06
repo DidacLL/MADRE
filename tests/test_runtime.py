@@ -156,7 +156,7 @@ def test_http_future_work_is_durably_accepted_without_execution(tmp_path, monkey
         work = response.json()
         assert work["status"] == "accepted"
         assert work["attempts"] == []
-        assert work["submission"]["eligible_at"] == future.isoformat()
+        assert datetime.fromisoformat(work["submission"]["eligible_at"]) == future
         work_id = work["id"]
 
         inspected = client.get(f"/v1/work/{work_id}", headers=AUTH)
@@ -191,9 +191,7 @@ def test_restart_marks_incomplete_attempt_as_interrupted(tmp_path, monkeypatch):
     assert work["attempts"][0]["failure"]["code"] == "interrupted"
 
 
-def test_delayed_work_survives_restart_and_executes_only_when_eligible(
-    tmp_path, monkeypatch
-):
+def test_delayed_work_survives_restart_and_executes_only_when_eligible(tmp_path, monkeypatch):
     monkeypatch.setenv("MADRE_API_TOKEN", "test-token")
     runtime_settings = settings(tmp_path)
     accepted_at = datetime(2030, 1, 1, tzinfo=UTC)
