@@ -14,6 +14,10 @@ from madre.inference import CapabilityError, ChatInput, ChatResult, invoke_chat
 from madre.storage import WorkStore, utc_now
 
 
+class IdempotencyConflict(RuntimeError):
+    """An application reused one submission key for different work."""
+
+
 class WorkRuntime:
     def __init__(
         self,
@@ -29,10 +33,33 @@ class WorkRuntime:
         self._heavyweight_local_inference = asyncio.Lock()
         self.store.fail_interrupted_attempts(self._clock())
 
-    async def submit(self, submission: WorkSubmission) -> WorkRecord:
+    async def submit(
+        self, submission: WorkSubmission, *, idempotency_key: str | None = None
+    ) -> WorkRecord:
+        if idempotency_key is not None:
+            existing = self.store.get_by_idempotency_key(
+                submission.application_id, idempotency_key
+            )
+            if existing is not None:
+                return self._replay(existing, submission)
+
         accepted_at = self._clock()
         work_id = uuid4().hex
-        self.store.create(work_id, submission, accepted_at)
+        created = self.store.create(
+            work_id,
+            submission,
+            accepted_at,
+            idempotency_key=idempotency_key,
+        )
+        if not created:
+            assert idempotency_key is not None
+            existing = self.store.get_by_idempotency_key(
+                submission.application_id, idempotency_key
+            )
+            if existing is None:
+                raise RuntimeError("durable idempotent work disappeared")
+            return self._replay(existing, submission)
+
         self._schedule_changed.set()
         return self._require(work_id)
 
@@ -144,6 +171,14 @@ class WorkRuntime:
 
     def inspect(self, work_id: str) -> WorkRecord | None:
         return self.store.get(work_id)
+
+    @staticmethod
+    def _replay(existing: WorkRecord, submission: WorkSubmission) -> WorkRecord:
+        if existing.submission != submission:
+            raise IdempotencyConflict(
+                "idempotency key was already used with a different work submission"
+            )
+        return existing
 
     def _require(self, work_id: str) -> WorkRecord:
         record = self.store.get(work_id)
