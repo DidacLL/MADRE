@@ -25,26 +25,34 @@ async def _interactive(args: argparse.Namespace) -> None:
     conversation = CoreConversation(
         client,
         max_tokens=args.max_tokens,
+        deeper_max_tokens=args.deeper_max_tokens,
         timeout_seconds=args.timeout,
     )
-    print("MADRE CORE — type /exit or /quit to stop.")
+    print("MADRE CORE — type /exit or /quit to stop; /deeper follows a deeper recommendation.")
     while True:
         try:
             user_message = input("you> ")
         except (EOFError, KeyboardInterrupt):
             print()
             return
-        if user_message.strip().lower() in {"/exit", "/quit"}:
+        command = user_message.strip().lower()
+        if command in {"/exit", "/quit"}:
             return
         if not user_message.strip():
             continue
         try:
+            if command == "/deeper":
+                deeper_text = await conversation.deepen()
+                print(f"core(deeper)> {deeper_text}")
+                continue
             turn = await conversation.send(user_message)
         except (CoreRuntimeError, ValueError) as exc:
             print(f"CORE error: {exc}", file=sys.stderr)
             continue
         print(f"core> {turn.text}")
         print(f"reasoning> {turn.reasoning}")
+        if turn.reasoning == "deeper":
+            print("deeper> /deeper")
 
 
 def main() -> None:
@@ -56,6 +64,7 @@ def main() -> None:
     parser.add_argument("--capability", default="local-chat")
     parser.add_argument("--token-env", default="MADRE_API_TOKEN")
     parser.add_argument("--max-tokens", type=int, default=256)
+    parser.add_argument("--deeper-max-tokens", type=int, default=768)
     parser.add_argument("--timeout", type=float, default=120)
     args = parser.parse_args()
     try:
