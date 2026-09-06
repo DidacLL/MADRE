@@ -59,6 +59,14 @@ Keep application semantics in the application, runtime execution semantics in MA
 
 Resolve genuine product-meaning ambiguity with the Owner. Resolve implementation uncertainty through code, documentation, experiments and tests whenever those can provide the answer.
 
+## Development data compatibility
+
+MADRE is still under active pre-release development. Local runtime data is disposable across schema changes unless the Owner explicitly asks to preserve it.
+
+Do not implement database migrations, backward-compatible schema upgrade paths or preservation machinery for old development runtime databases by default. When the current schema changes, bump or replace the schema marker as useful, reject incompatible old development data clearly, and require recreating the local data directory.
+
+This rule concerns compatibility **between development schema versions**. It does not weaken runtime durability within the current schema: accepted work, restart recovery, idempotency and other current-version persistence semantics must continue to behave as specified.
+
 ## Evidence and review
 
 Acceptance follows real behavior.
