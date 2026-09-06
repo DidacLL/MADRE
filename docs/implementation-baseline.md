@@ -11,9 +11,9 @@ with **local HTTP as the initial language-neutral application boundary**. Python
 where the working system benefits. The inference engine already runs in a separate
 C++ process. The Owner authorized a small local model for development validation.
 
-The importable package uses FastAPI/Pydantic for service and data validation, HTTPX
-for capability transport, and SQLite for runtime persistence. Applications own the
-meaning and consequence of their inputs and outputs; MADRE owns work execution,
+The importable runtime package uses FastAPI/Pydantic for service and data validation,
+HTTPX for capability transport, and SQLite for runtime persistence. Applications own
+the meaning and consequence of their inputs and outputs; MADRE owns work execution,
 durability, recovery and inspection. Capabilities provide bounded computation.
 
 ### Owner product-direction clarification
@@ -32,11 +32,11 @@ application disclosure, user authorization, task need and execution-boundary pol
 must still permit a capability before MADRE may use it.
 
 The refined ownership direction remains: applications own domain authority and what
-domain material may leave; future CORE owns MADRE's default generic/system intelligence;
+domain material may leave; CORE owns MADRE's default generic/system intelligence;
 MADRE Runtime owns durable execution, scheduling, recovery, admission and ultimately
 the selected permitted execution path; capabilities perform bounded computation and
 provider-specific mechanics. Applications may also invoke the runtime directly without
-CORE. CORE, when implemented, must use the same runtime execution plane.
+CORE. CORE uses the same runtime execution plane.
 
 The current public work contract is already broader than a model request because it
 carries a generic `capability_id` and JSON `input`. The current implementation below
@@ -98,6 +98,27 @@ sends no authorization header. Future authenticated capabilities should follow t
 credential-ownership preference in `MADRE.md`, using a provider-supported client or
 host integration where appropriate.
 
+The source tree now also contains CORE as the first real first-party application in a
+separate `madre_core` package with its own `madre-core` entry point. CORE connects to a
+separately running MADRE service through authenticated loopback HTTP and submits
+ordinary chat work with stable `application_id = "madre-core"`. Its production code
+does not import `WorkRuntime`, `invoke_chat`, storage, scheduler or service internals.
+The runtime has no CORE-specific branch.
+
+The first CORE surface is an interactive terminal conversation. Successful assistant
+text is kept with user messages in process memory and sent back as ordinary chat input
+on the next turn. Restarting CORE forgets that history. CORE introduces no durable
+session store, memory system, agent abstraction, planner or autonomous/background
+reasoning behavior.
+
+CORE accepts the runtime's ordinary `accepted`, `running`, `succeeded` and `failed`
+work states. When a submission response exposes pending work, CORE inspects that work
+until it becomes terminal. Durable runtime/capability failures are surfaced directly
+to the user. Current immediate `POST /v1/work` behavior still returns only after the
+immediate execution path finishes, so an immediate work ID is not available to CORE
+while that original POST is itself waiting for scarce-resource admission; this is a
+property of the generic HTTP contract, not a CORE special case.
+
 ## Runtime-work direction and next behavior
 
 Immediate and delayed execution share `WorkSubmission`, durable work state, attempt
@@ -107,8 +128,8 @@ canonical on `main` as of `75d88417b34a3959a61ba89452a671fc7d4b39d6`.
 The current admission slice adds one runtime invariant: across one shared MADRE runtime,
 at most one heavyweight local LLM capability invocation may execute at once. The
 service-lifetime `WorkRuntime` owns the admission primitive, so immediate HTTP work,
-delayed scheduler work and future CORE-originated work using the same runtime plane
-share the same limit without application-specific handling.
+delayed scheduler work and CORE-originated work using the same runtime plane share the
+same limit without application-specific handling.
 
 Today's configuration can identify this scarce path without a new capability
 architecture: the only implemented capability kind is `chat_completions`, and local
@@ -136,14 +157,20 @@ not inherently wrap all future work.
 This admission behavior is canonical on `main` as of
 `60ce6eac049fc40fe2db400793d2a00a3a07d745`.
 
+The canonical product-definition realignment is on `main` as of
+`7bd9c979f16597ebb4f49b9d13c58ea7f3a9e404`. It establishes the ownership invariant
+that applications own domains, CORE owns default generic/system intelligence, MADRE
+Runtime owns execution, and capabilities perform computation.
+
 The dependency/value order is now:
 
 1. Real immediate runtime work execution — implemented and accepted.
 2. Delayed eligibility and restart recovery — implemented, accepted and canonical.
 3. Minimal global local-inference admission — implemented, accepted and canonical.
-4. Small canonical `MADRE.md` product-direction realignment — implemented on the current PR; Owner merge pending.
-5. CORE development — next after the Owner merges the product-definition realignment.
-6. Further application integration, capabilities and execution controls grow from actual use.
+4. Canonical product-definition realignment — implemented, accepted and canonical.
+5. Minimal CORE interaction through the ordinary runtime HTTP boundary — implemented in the current source tree.
+6. Give CORE's interaction behavior an explicit fast-response responsibility and one observable decision that a request deserves deeper reasoning, without yet introducing a generalized agent framework or Planner.
+7. Further application integration, capabilities and execution controls grow from actual use.
 
 ## Verified development evidence — 2026-09-06
 
