@@ -111,7 +111,7 @@ With the MADRE service running and the same `MADRE_API_TOKEN` available in a sec
 python -m uv run --locked madre-core --runtime-url http://127.0.0.1:8731 --capability local-chat
 ```
 
-Enter a message at `you>` and CORE submits ordinary authenticated MADRE work as application `madre-core`. Assistant text is printed at `core>`. Successful conversation history is retained only for that CORE process and included in the next chat input; restarting CORE forgets it. Runtime/capability failures are printed explicitly and are not appended to conversation history. See [`docs/core.md`](docs/core.md) for the exact first-slice behavior and options.
+Enter a message at `you>` and CORE submits ordinary authenticated MADRE work as application `madre-core`. Assistant text is printed at `core>`, followed by `reasoning> fast` when the foreground answer is considered sufficient or `reasoning> deeper` when CORE recommends stronger follow-up reasoning. The recommendation is advisory only: it does not create another work item or invoke another behavior yet. Successful conversation history is retained only for that CORE process and included in the next chat input; restarting CORE forgets it. Runtime/capability failures are printed explicitly and are not appended to conversation history. See [`docs/core.md`](docs/core.md) for the exact behavior and options.
 
 CORE does not import the runtime scheduler, storage or capability invocation path. It does not contact llama.cpp directly. The runtime has no CORE-specific scheduling or admission behavior.
 
@@ -158,6 +158,6 @@ Fixtures and mocked inference establish deterministic protocol and failure behav
 
 ## Continue implementation
 
-The first CORE slice proves `User → CORE → MADRE Runtime → Capability` through the ordinary application boundary without introducing an agent framework. The next single behavior should give CORE's interaction path an explicit fast-response responsibility and one observable decision that a request deserves deeper reasoning, while still avoiding a generalized Planner, agent registry, persistent memory or autonomous reasoning system.
+CORE now has one explicit foreground responsibility and can expose whether that fast interaction considers itself sufficient or recommends deeper reasoning. The next single behavior should give a `deeper` recommendation one concrete, user-controlled execution consequence—preferably one bounded stronger follow-up through the same ordinary MADRE runtime—before extracting a generalized agent or Planner abstraction.
 
 GPL-3.0. See [`LICENSE`](LICENSE).
