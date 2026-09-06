@@ -203,9 +203,7 @@ def test_delayed_work_survives_restart_and_executes_at_eligibility(tmp_path, mon
         )
 
     monkeypatch.setattr("madre.runtime.invoke_chat", fake_invoke)
-    delayed = WorkSubmission.model_validate(
-        {**SUBMISSION, "eligible_at": eligible_at.isoformat()}
-    )
+    delayed = WorkSubmission.model_validate({**SUBMISSION, "eligible_at": eligible_at.isoformat()})
 
     with open_database(runtime_settings.data_dir) as connection:
         runtime = WorkRuntime(runtime_settings, WorkStore(connection), clock=lambda: current[0])
