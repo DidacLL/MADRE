@@ -56,28 +56,29 @@ def test_exclusive_database_reopen_and_discards_incompatible_development_storage
         assert connection.execute("PRAGMA user_version").fetchone()[0] == current_format_id
         assert connection.execute("PRAGMA foreign_keys").fetchone()[0] == 1
 
-    stale = tmp_path / "stale"
-    stale.mkdir()
-    stale_format_id = 1 if current_format_id != 1 else 2
-    with sqlite3.connect(stale / "runtime.sqlite3") as connection:
-        connection.execute("CREATE TABLE obsolete_state (value TEXT)")
-        connection.execute("INSERT INTO obsolete_state VALUES ('discard me')")
-        connection.execute(f"PRAGMA user_version={stale_format_id}")
+    different_format_id = 1 if current_format_id != 1 else 2
+    for label, stale_format_id in (("partial", 0), ("different", different_format_id)):
+        stale = tmp_path / label
+        stale.mkdir()
+        with sqlite3.connect(stale / "runtime.sqlite3") as connection:
+            connection.execute("CREATE TABLE obsolete_state (value TEXT)")
+            connection.execute("INSERT INTO obsolete_state VALUES ('discard me')")
+            connection.execute(f"PRAGMA user_version={stale_format_id}")
 
-    with open_database(stale) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == current_format_id
-        assert (
-            connection.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name='obsolete_state'"
-            ).fetchone()
-            is None
-        )
-        assert (
-            connection.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name='runtime_work'"
-            ).fetchone()[0]
-            == "runtime_work"
-        )
+        with open_database(stale) as connection:
+            assert connection.execute("PRAGMA user_version").fetchone()[0] == current_format_id
+            assert (
+                connection.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name='obsolete_state'"
+                ).fetchone()
+                is None
+            )
+            assert (
+                connection.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name='runtime_work'"
+                ).fetchone()[0]
+                == "runtime_work"
+            )
 
 
 def test_process_exit_releases_ownership(tmp_path):
