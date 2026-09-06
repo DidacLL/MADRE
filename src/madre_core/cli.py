@@ -5,7 +5,8 @@ import asyncio
 import os
 import sys
 
-from madre_core.client import CoreClient, CoreConversation, CoreRuntimeError
+from madre_core.client import CoreClient, CoreRuntimeError
+from madre_core.interaction import CoreConversation
 
 
 def _credential(token_env: str) -> str:
@@ -38,11 +39,12 @@ async def _interactive(args: argparse.Namespace) -> None:
         if not user_message.strip():
             continue
         try:
-            assistant_text = await conversation.send(user_message)
+            turn = await conversation.send(user_message)
         except (CoreRuntimeError, ValueError) as exc:
             print(f"CORE error: {exc}", file=sys.stderr)
             continue
-        print(f"core> {assistant_text}")
+        print(f"core> {turn.text}")
+        print(f"reasoning> {turn.reasoning}")
 
 
 def main() -> None:
