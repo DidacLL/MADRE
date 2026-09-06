@@ -158,3 +158,26 @@ def test_restart_marks_incomplete_attempt_as_interrupted(tmp_path, monkeypatch):
     assert work["failure"]["code"] == "interrupted"
     assert work["attempts"][0]["status"] == "failed"
     assert work["attempts"][0]["failure"]["code"] == "interrupted"
+
+
+def test_restart_reconciles_eligible_unstarted_work_but_preserves_future(tmp_path, monkeypatch):
+    monkeypatch.setenv("MADRE_API_TOKEN", "test-token")
+    runtime_settings = settings(tmp_path)
+    submission = WorkSubmission.model_validate(SUBMISSION)
+    future_submission = submission.model_copy(update={"eligible_at": utc_now() + timedelta(hours=1)})
+
+    with open_database(runtime_settings.data_dir) as connection:
+        store = WorkStore(connection)
+        store.create("unstarted-work", submission, utc_now())
+        store.create("future-work", future_submission, utc_now())
+
+    with TestClient(create_app(runtime_settings)) as client:
+        unstarted = client.get("/v1/work/unstarted-work", headers=AUTH).json()
+        future = client.get("/v1/work/future-work", headers=AUTH).json()
+
+    assert unstarted["status"] == "failed"
+    assert unstarted["failure"]["code"] == "interrupted_before_attempt"
+    assert unstarted["attempts"] == []
+    assert future["status"] == "accepted"
+    assert future["failure"] is None
+    assert future["attempts"] == []

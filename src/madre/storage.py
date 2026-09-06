@@ -195,16 +195,32 @@ class WorkStore:
             )
 
     def fail_interrupted(self, completed_at: datetime) -> int:
-        failure = WorkFailure(
+        running_failure = WorkFailure(
             code="interrupted",
             message=(
                 "runtime stopped before durable completion was recorded; "
                 "capability outcome may be unknown"
             ),
         )
+        accepted_failure = WorkFailure(
+            code="interrupted_before_attempt",
+            message=(
+                "runtime stopped after accepting eligible work but before a capability attempt "
+                "was durably started"
+            ),
+        )
+        completed = completed_at.isoformat()
         with self.connection:
             running = self.connection.execute(
                 "SELECT COUNT(*) AS count FROM runtime_work WHERE status = 'running'"
+            ).fetchone()["count"]
+            accepted = self.connection.execute(
+                """
+                SELECT COUNT(*) AS count
+                FROM runtime_work
+                WHERE status = 'accepted' AND (eligible_at IS NULL OR eligible_at <= ?)
+                """,
+                (completed,),
             ).fetchone()["count"]
             self.connection.execute(
                 """
@@ -212,7 +228,7 @@ class WorkStore:
                 SET status = 'failed', completed_at = ?, error_code = ?, error_message = ?
                 WHERE status = 'running'
                 """,
-                (completed_at.isoformat(), failure.code, failure.message),
+                (completed, running_failure.code, running_failure.message),
             )
             self.connection.execute(
                 """
@@ -220,9 +236,17 @@ class WorkStore:
                 SET status = 'failed', completed_at = ?, error_code = ?, error_message = ?
                 WHERE status = 'running'
                 """,
-                (completed_at.isoformat(), failure.code, failure.message),
+                (completed, running_failure.code, running_failure.message),
             )
-        return int(running)
+            self.connection.execute(
+                """
+                UPDATE runtime_work
+                SET status = 'failed', completed_at = ?, error_code = ?, error_message = ?
+                WHERE status = 'accepted' AND (eligible_at IS NULL OR eligible_at <= ?)
+                """,
+                (completed, accepted_failure.code, accepted_failure.message, completed),
+            )
+        return int(running) + int(accepted)
 
     def get(self, work_id: str) -> WorkRecord | None:
         row = self.connection.execute(
