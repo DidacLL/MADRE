@@ -1,20 +1,21 @@
 # MADRE
 
-**MADRE — Model-Agnostic Delayed Reasoning Effort Agentic System** is a local-first runtime for independent applications that need AI work to execute under software control now or later.
+**MADRE — Model-Agnostic Delayed Reasoning Effort Agentic System** provides a shared execution runtime for independent applications and first-party CORE intelligence that need permitted AI work to execute under software control now or later.
 
-Applications own domain meaning, state, workflows and result interpretation. MADRE owns the runtime lifecycle of submitted AI work. Inference engines, model providers and tools are replaceable capabilities behind that execution boundary.
+Applications own domain meaning, state, workflows and result interpretation. CORE owns default generic/system intelligence. MADRE Runtime owns the lifecycle of submitted work. Inference engines, model providers and tools are replaceable capabilities behind that execution boundary.
 
 Start here:
 
 - [`MADRE.md`](MADRE.md) — canonical product definition and behavioral acceptance path.
 - [`AGENTS.md`](AGENTS.md) — minimal repository harness for coding agents.
 - [`docs/implementation-baseline.md`](docs/implementation-baseline.md) — implementation decisions, dated environment evidence, and the next behavior.
+- [`docs/core.md`](docs/core.md) — the first interactive CORE application behavior and how to run it.
 
 ## What runs today
 
-MADRE provides an installable typed Python package, explicit TOML configuration, an authenticated loopback HTTP service, exclusive SQLite runtime ownership, durable runtime-work records, and a real chat-completion capability adapter.
+MADRE provides an installable typed Python distribution, explicit TOML runtime configuration, an authenticated loopback HTTP service, exclusive SQLite runtime ownership, durable runtime-work records, a real chat-completion capability adapter, and CORE as a separate first-party application package/entry point that uses that same HTTP boundary.
 
-An independent application submits work to `POST /v1/work`. Work that is already eligible is durably accepted and executed through the configured capability before the response returns. Work whose `eligible_at` is in the future is durably accepted with status `accepted` and returned without waiting for execution. The service scheduler uses those same persisted work records, executes them no earlier than eligibility, and rediscovers accepted work after runtime restart. Immediate and delayed work use the same validation, attempt, capability invocation, result/failure persistence and inspection path.
+An independent application or CORE submits work to `POST /v1/work`. Work that is already eligible is durably accepted and executed through the configured capability before the response returns. Work whose `eligible_at` is in the future is durably accepted with status `accepted` and returned without waiting for execution. The service scheduler uses those same persisted work records, executes them no earlier than eligibility, and rediscovers accepted work after runtime restart. Immediate and delayed work use the same validation, attempt, capability invocation, result/failure persistence and inspection path.
 
 `GET /v1/work/{id}` returns the durable record at any point in that lifecycle. A process restart preserves accepted work that has not started a capability attempt. A previously in-flight attempt becomes an `interrupted` failure whose evidence states that the capability outcome may be unknown; MADRE does not retry it.
 
@@ -38,7 +39,7 @@ Apply formatting with `python -m uv run --locked ruff format .`. Dependencies an
 
 Executable PR changes run checks on Linux. Documentation-only PRs skip runtime CI; pushes do not duplicate PR checks. For packaging, dependencies, platform-specific code, storage/process semantics, or release readiness, request full Windows + Linux validation via **Actions → checks → Run workflow**, selecting the branch to validate.
 
-The distribution is `madre-runtime`; the import is `madre`. Other Python projects can install the built wheel using `python -m pip install <path-to-wheel>` or install this repository at a chosen Git commit. No package-index publication is assumed. Import does not start the runtime or create its database:
+The distribution is `madre-runtime`; the runtime import is `madre` and the first-party application import is `madre_core`. Other Python projects can install the built wheel using `python -m pip install <path-to-wheel>` or install this repository at a chosen Git commit. No package-index publication is assumed. Import does not start the runtime or create its database:
 
 ```python
 from pathlib import Path
@@ -102,6 +103,18 @@ A chat-completion submission is shaped like:
 
 Omit `eligible_at` (or use `null`) for immediate eligibility. A future value returns a durable `accepted` record immediately; poll `GET /v1/work/{id}` to inspect eventual success or failure. The application owns the prompt and interpretation of the generated result. MADRE stores only the application-selected execution material and runtime evidence required to execute, recover and inspect the work.
 
+## CORE
+
+With the MADRE service running and the same `MADRE_API_TOKEN` available in a second terminal, start the minimal interactive first-party application:
+
+```console
+python -m uv run --locked madre-core --runtime-url http://127.0.0.1:8731 --capability local-chat
+```
+
+Enter a message at `you>` and CORE submits ordinary authenticated MADRE work as application `madre-core`. Assistant text is printed at `core>`. Successful conversation history is retained only for that CORE process and included in the next chat input; restarting CORE forgets it. Runtime/capability failures are printed explicitly and are not appended to conversation history. See [`docs/core.md`](docs/core.md) for the exact first-slice behavior and options.
+
+CORE does not import the runtime scheduler, storage or capability invocation path. It does not contact llama.cpp directly. The runtime has no CORE-specific scheduling or admission behavior.
+
 ## Optional real local-model fixture
 
 An existing compatible local server can be used by editing the capability's endpoint and model. Local endpoints must use literal loopback IP addresses, e.g. `127.0.0.1`; the adapter does not inherit proxies or follow redirects.
@@ -145,6 +158,6 @@ Fixtures and mocked inference establish deterministic protocol and failure behav
 
 ## Continue implementation
 
-Merge the delayed eligibility/restart-recovery slice first. After it is canonical on `main`, implement the smallest global local-inference admission rule: multiple applications may hold durable eligible work concurrently, but at most one heavyweight local LLM capability execution is admitted at once. Keep unrelated cheap/deterministic capability work concurrent when the existing architecture can distinguish it without speculative abstractions. Do not add generalized resource scheduling, model routing, retry/cancellation, CORE, or application integration in the same slice.
+The first CORE slice proves `User → CORE → MADRE Runtime → Capability` through the ordinary application boundary without introducing an agent framework. The next single behavior should give CORE's interaction path an explicit fast-response responsibility and one observable decision that a request deserves deeper reasoning, while still avoiding a generalized Planner, agent registry, persistent memory or autonomous reasoning system.
 
 GPL-3.0. See [`LICENSE`](LICENSE).
