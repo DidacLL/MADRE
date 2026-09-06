@@ -254,9 +254,7 @@ def test_http_second_application_is_accepted_while_local_inference_is_occupied(
     ]
 
 
-def test_unexpected_execution_exception_is_durable_and_scheduler_continues(
-    tmp_path, monkeypatch
-):
+def test_unexpected_execution_exception_is_durable_and_scheduler_continues(tmp_path, monkeypatch):
     monkeypatch.setenv("MADRE_API_TOKEN", "test-token")
     raw_exception_detail = "fixture-secret-exception-detail"
     second_entered = threading.Event()
