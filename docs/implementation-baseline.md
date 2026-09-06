@@ -1,94 +1,362 @@
 # Implementation baseline
 
-`MADRE.md` defines product meaning and ownership boundaries. This file records only the current executable foundation and the constraints that matter for the next implementation step. Historical development rationale belongs in Git history unless it remains operationally relevant.
+`MADRE.md` defines product meaning and application/domain ownership. This baseline
+connects the executable foundation to the next substantive implementation.
 
-## Current architecture
+## Chosen architecture
 
-MADRE is a shared local runtime, independent of application lifetimes, exposed initially through authenticated loopback HTTP. Python 3.13 is the current runtime implementation language; the application boundary is language-neutral. SQLite owns durable runtime state. The implemented inference capability is currently chat-completions through a replaceable provider boundary.
+The Owner selected a **shared local runtime**, independent of application lifetimes,
+with **local HTTP as the initial language-neutral application boundary**. Python
+3.13 is the current implementation language; C or C++ may take over responsibilities
+where the working system benefits. The inference engine already runs in a separate
+C++ process. The Owner authorized a small local model for development validation.
 
-Ownership remains:
+The importable runtime package uses FastAPI/Pydantic for service and data validation,
+HTTPX for capability transport, and SQLite for runtime persistence. Applications own
+the meaning and consequence of their inputs and outputs; MADRE owns work execution,
+durability, recovery and inspection. Capabilities provide bounded computation.
 
-- applications own domain meaning, state, workflows and interpretation;
-- CORE owns MADRE's default generic/system intelligence;
-- MADRE Runtime owns durable work execution, scheduling, recovery, admission and inspection;
-- capabilities perform bounded provider/tool computation.
+### Owner product-direction clarification
 
-The public work contract is already broader than chat because `WorkSubmission` carries a generic `capability_id` and JSON `input`. The implementation below that boundary is intentionally narrower today: configured capabilities support `chat_completions`, validated as `ChatInput`, and execute through `invoke_chat`. Do not generalize the capability architecture until a concrete non-chat behavior requires it.
+The current executable path proves local chat-completion work first; it does not define
+MADRE as a local-LLM runtime or consumer-GPU scheduler. MADRE's broader product purpose
+is to provide one coherent, privacy-aware and user-controlled execution environment
+over the intelligence capabilities that are both available **and permitted** for a
+task. Local deterministic computation and local AI are first-class high-trust,
+offline-capable execution tiers rather than the whole product boundary.
 
-## Runtime work lifecycle
+Future permitted capabilities may include local models and tools, remote providers,
+application-provided AI, user-authorized account/subscription access, specialized
+services and other execution providers. Availability never implies authorization:
+application disclosure, user authorization, task need and execution-boundary policy
+must still permit a capability before MADRE may use it.
 
-`POST /v1/work` durably accepts valid work before physical capability execution. Immediate and future-eligible submissions use the same `WorkSubmission`, durable record and scheduler path. The request does not own capability invocation and does not wait for scarce-resource admission.
+The refined ownership direction remains: applications own domain authority and what
+domain material may leave; CORE owns MADRE's default generic/system intelligence;
+MADRE Runtime owns durable execution, scheduling, recovery, admission and ultimately
+the selected permitted execution path; capabilities perform bounded computation and
+provider-specific mechanics. Applications may also invoke the runtime directly without
+CORE. CORE uses the same runtime execution plane.
 
-Accepted work is the durable queue state. The service-owned scheduler discovers eligible records from SQLite. Once admitted, the accepted-to-running transition and attempt creation are persisted immediately before capability invocation. Completion or classified failure is then persisted on both the attempt and work record.
+The current public work contract is already broader than a model request because it
+carries a generic `capability_id` and JSON `input`. The current implementation below
+that contract is intentionally narrower: `CapabilityConfig.kind` supports only
+`chat_completions`, and `WorkRuntime` validates `ChatInput` and calls `invoke_chat`.
+That is an implementation limitation of today's proven capability, not a product
+boundary. Relax it only when a concrete non-chat capability requires the change.
 
-`GET /v1/work/{id}` is the generic inspection/completion boundary. Applications may wait, poll, continue interacting, submit other work or inspect later. Those choices are application semantics, not runtime foreground/background states.
+Delayed execution does not introduce a second job abstraction or storage model.
+`accepted` work in the existing schema is the durable queue state. One service-owned
+scheduler task queries persisted eligibility and sleeps until work may run, while an
+in-process event wakes it when a new submission may change the schedule. Restart
+recovery comes from persisted `accepted` records rather than from the in-memory wake
+mechanism.
 
-A normal runtime restart using the **current schema** preserves accepted work that has not started and rediscovers it. A work item whose attempt was running when the runtime stopped is conservatively converted on startup to durable `interrupted` failure evidence because the external capability outcome may be unknown. MADRE does not infer success or retry that invocation.
+The accepted-to-running transition is conditional and durable before capability
+invocation begins. This allows accepted work with no started attempt to remain safely
+recoverable after restart while preserving the existing conservative rule for a
+previously running attempt whose capability outcome may be unknown.
 
-Unexpected ordinary Python exceptions raised by capability execution after attempt start are contained as durable `internal_error` failures with a generic non-sensitive message. `BaseException` and `asyncio.CancelledError` are not converted to `internal_error`, preserving shutdown/interruption semantics.
+## What executes today
 
-## Scarce local inference admission
+Explicit TOML configuration, package/CLI entry points, authenticated loopback
+service access, and exclusive runtime-data ownership are implemented. Service
+lifespan owns a local SQLite database; the OS releases its ownership lock after
+process exit. Startup rejects unknown schema versions. The original schema-1 envelope
+predates durable work records; schema 2 introduced durable runtime work and attempt
+records; schema 3 adds durable submission-idempotency metadata while preserving and
+migrating existing schema-2 work.
 
-Across one shared runtime, at most one currently implemented heavyweight local chat-completion invocation executes at a time. Work is persisted before admission, and a waiting work item remains `accepted` with no started attempt. Admission is tied specifically to the current local chat-completion capability path; it is not a generalized resource scheduler and must not automatically wrap future non-heavy capabilities.
+`POST /v1/work` accepts both immediate and future-eligible `WorkSubmission` values.
+For every valid submission MADRE allocates an ID, durably records the application-
+selected input and execution constraints as `accepted`, notifies runtime scheduling,
+and returns that accepted record. The request does not invoke the capability and does
+not wait for scarce-resource admission. Immediate eligibility means the work may be
+executed by the runtime now; future eligibility means the same accepted work remains
+pending until its configured time.
 
-The current scheduler is serial, which is valid for the single implemented heavyweight local-chat path. Do not build GPU accounting, a resource registry, generalized semaphores, priority machinery or a capability hierarchy until concrete execution behavior requires them.
+An application may optionally supply `Idempotency-Key` when one logical submission may
+need to be retried after transport uncertainty. The key is runtime acceptance metadata,
+not part of `WorkSubmission`, and is scoped together with `application_id`. Reusing the
+same application/key with the same normalized submission returns the original durable
+work record in whatever state it currently has. Reusing it with different normalized
+work is rejected with HTTP 409. Omitting the key preserves ordinary distinct
+submissions. The durable uniqueness constraint and persisted key survive service
+restart; replay never creates another work record, attempt or scheduler wakeup.
+Idempotency therefore prevents duplicate acceptance but does not retry failed or
+interrupted work.
 
-## Durable submission idempotency
+The service-owned scheduler discovers accepted work from SQLite and executes both
+already-eligible and future-eligible work through the same runtime execution method:
+capability lookup, capability-specific input validation, scarce-resource admission
+when applicable, conditional durable attempt start, `invoke_chat`, and durable success
+or classified failure. There is no request-owned immediate execution path, no separate
+delayed-work record type, and no second queue/state model.
 
-Applications may optionally send `Idempotency-Key` on `POST /v1/work`. The key is acceptance metadata, not part of `WorkSubmission`, and is scoped by `application_id`.
+`GET /v1/work/{id}` reads the same durable record before, during and after execution
+and is the generic completion boundary for applications that need eventual results.
+Applications may submit and poll immediately, continue foreground interaction, submit
+additional work, or inspect later. Unknown capabilities and capability-specific input
+errors become durable failures when runtime scheduling processes the accepted work.
+A restart preserves accepted work that has not started an attempt and rediscovers it.
+A restart converts an unfinished running attempt to an `interrupted` failure whose
+evidence states that the capability outcome may be unknown; it does not infer success
+or retry the invocation.
 
-For the same application/key:
+The configured chat-completion adapter invokes real local inference and returns
+generated text, model, finish reason and timing, or a classified failure. It enforces
+a total invocation timeout and local-only transfer constraints. Local declarations
+require literal loopback destinations; HTTP clients disable proxies and redirects.
+The executable behavior and validation rules live in code/tests; README owns setup,
+HTTP examples and the real end-to-end acceptance command.
 
-- the same normalized submission returns the original durable work record in its current state;
-- different normalized work is rejected with HTTP 409;
-- replay does not create another work row, attempt or scheduler wakeup;
-- failed or interrupted work is replayed as-is rather than retried.
+Structured `CapabilityError` classifications are preserved. If a scheduler-owned
+capability invocation unexpectedly raises an ordinary Python `Exception` after its
+attempt has started, MADRE durably fails that attempt and work as `internal_error`
+with a generic non-sensitive message, releases admission and continues scheduling.
+Raw exception text is not placed in the durable public work record. `BaseException`
+and `asyncio.CancelledError` are not converted to `internal_error`; runtime shutdown
+therefore preserves the existing unknown-outcome interruption semantics.
 
-Omitting the header preserves ordinary distinct-submission behavior. The runtime uses a SQLite uniqueness constraint to make concurrent same-key acceptance safe. This feature prevents accidental duplicate acceptance after transport uncertainty; it is not execution retry policy and does not claim exactly-once external side effects.
+`invoke_chat` remains the initial chat-completion capability adapter, not MADRE's
+general work API. The verified llama.cpp path needs no provider credential. The
+service-access token authenticates local applications only; the inference adapter
+sends no authorization header. Future authenticated capabilities should follow the
+credential-ownership preference in `MADRE.md`, using a provider-supported client or
+host integration where appropriate.
 
-## Development database policy
+The source tree contains CORE as the first real first-party application in a separate
+`madre_core` package with its own `madre-core` entry point. CORE connects to a
+separately running MADRE service through authenticated loopback HTTP and submits
+ordinary chat work with stable `application_id = "madre-core"`. Its production code
+does not import `WorkRuntime`, `invoke_chat`, storage, scheduler or service internals.
+The runtime has no CORE-specific branch.
 
-MADRE is still in active pre-release development. Runtime durability within the current schema is product behavior; compatibility between obsolete development schemas is not.
+The current CORE surface is an experimental interactive terminal conversation used to
+exercise the first-party path. Successful assistant text is kept with user messages in
+process memory and sent back as ordinary chat input on the next turn. Restarting CORE
+forgets that history. The terminal presentation, commands, fallback text and fast/deeper
+staging are not a MADRE UX contract and must not be used to infer future Agent or
+application architecture. CORE introduces no durable session store, memory system,
+agent abstraction, planner or autonomous/background reasoning behavior.
 
-The current database schema version is 3. A fresh database (`PRAGMA user_version = 0`) is initialized directly as the current schema. A database carrying any other non-current schema version is rejected with an instruction to delete/recreate the development runtime data directory.
+CORE accepts the runtime's ordinary `accepted`, `running`, `succeeded` and `failed`
+work states. Its HTTP client treats a newly accepted submission as pending and inspects
+that work until it becomes terminal. Durable runtime/capability failures are surfaced
+directly to the user. CORE therefore remains an ordinary application choosing to wait
+for a result; the MADRE submission request itself no longer owns capability execution
+or scarce-resource waiting. CORE currently omits `Idempotency-Key`, so its submissions
+retain the same distinct-work behavior as before; no CORE special case exists in the
+runtime.
 
-Do **not** implement migrations, backward-compatible upgrade paths or preservation machinery for development databases unless the Owner explicitly requests that policy. When the schema changes during development, old local data is disposable. Tests should prove current-schema behavior and stale-schema rejection, not migration of obsolete fixtures.
+The first CORE application boundary is canonical on `main` as of
+`fc3a5c4f670013fe234b5ef33281df1b7f965087`.
 
-This distinction is important: deleting an obsolete development database is acceptable; losing accepted work during an ordinary restart of the same current runtime schema is not.
+CORE separates HTTP transport (`CoreClient`) from interaction behavior
+(`CoreConversation`). Each foreground turn remains exactly one ordinary runtime work
+item. The interaction layer asks the configured chat capability for both a concise
+immediate answer and one bounded recommendation. `fast` is the default. `deeper`
+means one second pass by that same chat capability, with the same conversation and a
+larger response budget but no new tools or external information, is likely to
+materially improve correctness or completeness. The recommendation therefore describes
+the concrete follow-up CORE can perform today rather than hypothetical research, tool
+use or a future agent system.
 
-## CORE boundary
+CORE strips the internal recommendation marker before displaying or remembering the
+assistant response. A missing or malformed marker conservatively yields `deeper` while
+preserving useful generated text. A marker-only response is also treated as `deeper`;
+the current CLI supplies an explicit diagnostic fallback rather than turning model
+protocol failure into a runtime error. That fallback is instrumentation, not intended
+conversational semantics. The recommendation remains observable in the CLI and
+returned as part of `CoreTurn`. "Fast" names the foreground interaction responsibility
+rather than promising wall-clock latency; runtime admission can still delay physical
+capability execution and the eventual result that CORE has chosen to await.
 
-CORE is a separate first-party application package and entry point. It uses the same authenticated HTTP runtime boundary and stable `application_id = "madre-core"`; runtime production code has no CORE-specific scheduling or capability branch.
+The first fast/deeper recommendation behavior became canonical on `main` as of
+`b71e244e39fe81e3a2db02b73e5a219fb64702b1`; its recommendation semantics were
+subsequently narrowed from real-model evidence rather than by adding a new architectural
+layer.
 
-The current terminal conversation, fast/deeper marker protocol and `/deeper` interaction are development experiments, not MADRE UX contracts. CORE currently chooses to wait/poll for its submitted work. MADRE itself permits applications to respond immediately, wait, remain silent while reasoning is scheduled, or inspect later.
+The canonical CORE behavior gives `deeper` one execution consequence. Only when the
+latest fast turn recommended deeper reasoning, the user may enter `/deeper`. CORE then
+submits one second ordinary MADRE work item through the same HTTP client, capability
+and stable application identity. It supplies the process-local conversation, the fast
+answer as a draft, a transient deeper-analysis instruction, a transient final request
+to produce the replacement answer, and a larger token budget (768 by default versus
+256 for the fast interaction). This represents stronger reasoning intent using the
+capability that exists today; it does not define a new work type or capability class.
 
-Do not infer Agent, Planner, workflow or memory architecture from the current CORE terminal. In MADRE terminology, an agent is not merely a skill/tool integration. Introduce agentic abstractions only when a concrete inference-chain behavior requires them.
+A successful deeper result replaces the fast draft in CORE's process-local history and
+consumes the opportunity. Sending another ordinary user message abandons the previous
+opportunity. If deeper work fails, the fast draft and explicit retry opportunity remain.
+CORE never escalates automatically. No runtime, scheduler, storage, admission or
+capability code changes are required, and `/deeper` does not deploy an agent, invoke a
+Planner, create a workflow or select a different capability.
 
-## Current canonical milestones
+The user-controlled `/deeper` behavior is canonical on `main` as of
+`0b7c36c2bcc987d215f19ad5429a07fd41c7fc3a`.
 
-The executable foundation on `main` includes:
+The deterministic suite proves the software semantics of that two-stage path. The
+owner-side model runs have now supplied enough product evidence for this slice: the
+0.5B smoke fixture proved the path but was not a credible interaction model; the 1.5B
+acceptance fixture produced usable simple responses but still recommended `deeper` for
+trivial inputs. The current classifier and terminal chat presentation therefore remain
+experiments. Further prompt/classifier/chat UX tuning is intentionally deferred until
+richer CORE behavior gives those choices a concrete product context.
 
-1. durable immediate runtime work execution;
-2. delayed eligibility and restart recovery;
-3. global admission for the current heavyweight local inference path;
-4. the canonical application / CORE / Runtime / capability ownership split;
-5. CORE through the ordinary runtime HTTP boundary;
-6. experimental fast/deeper CORE follow-up behavior;
-7. runtime-owned execution for all accepted work;
-8. durable application-scoped submission idempotency.
+## Runtime-work direction and next behavior
 
-Runtime-owned submission/execution convergence became canonical at `459cce2f982f39a8e4d5dc926417f6c2e94ed9bc`. Durable submission idempotency became canonical at `6c3d82c12a90675cb271122671bb21bf771413e2`.
+Immediate and delayed execution share `WorkSubmission`, durable work state, attempt
+evidence and capability execution. Delayed eligibility and restart recovery are
+canonical on `main` as of `75d88417b34a3959a61ba89452a671fc7d4b39d6`.
 
-## Verified evidence
+The current admission slice adds one runtime invariant: across one shared MADRE runtime,
+at most one heavyweight local LLM capability invocation may execute at once. The
+service-lifetime `WorkRuntime` owns the admission primitive, so already-eligible work,
+delayed work and CORE-originated work using the same runtime plane share the same limit
+without application-specific handling.
 
-The repository's deterministic suite covers configuration, storage ownership, current-schema lifecycle, runtime scheduling/recovery, admission, inference failures, CORE behavior and idempotency. The idempotency milestone was validated with 48 deterministic tests plus Ruff lint/format, strict mypy, package build, wheel reinstall and isolated import.
+Today's configuration can identify this scarce path without a new capability
+architecture: the only implemented capability kind is `chat_completions`, and local
+inference is distinguished by `CapabilityConfig.boundary == "local"`. Admission is
+therefore applied only to that current local-chat path. Remote chat is not part of
+this scarce local resource rule, and future non-chat capabilities must not inherit it
+merely because they are runtime work.
 
-Real Windows acceptance has exercised the authenticated HTTP path against the pinned llama.cpp `b10809` / Qwen2.5-0.5B-Instruct Q4_K_M fixture. For idempotency, one keyed submission executed one real `madre-smoke` attempt, produced non-empty terminal output, and replay of the identical key/body returned that same terminal record without a second invocation.
+Work is persisted before admission. A local-chat work item waiting for the scarce slot
+remains durably `accepted` with no started attempt. Once admitted, the existing
+conditional accepted-to-running transition occurs immediately before the same
+`invoke_chat` path used by immediate and delayed work. The admission slot is released
+when physical invocation returns or raises, before durable result/failure finalization;
+structured capability failure and ordinary contained execution failure therefore cannot
+permanently occupy the slot, while cancellation/shutdown unwinding still releases it
+through the async context manager.
 
-The old development-schema migration evidence is intentionally discarded as a requirement: development schema compatibility is not a product acceptance criterion.
+Immediate and delayed work have now converged fully at the ownership boundary: all
+valid submissions are durable acknowledgements, and all physical capability execution
+belongs to service/runtime scheduling. The submitting HTTP request neither invokes the
+capability nor waits for admission. The existing accepted/running lifecycle remains
+sufficient; no new durable state or dispatcher framework is required. The serial
+scheduler remains valid for the single implemented heavyweight local-chat capability,
+while conditional attempt start continues to prevent duplicate physical invocation if
+a work item is encountered more than once.
 
-## Next implementation direction
+Durable submission idempotency closes the retry-after-lost-acknowledgement gap without
+introducing runtime retry semantics. One optional application-scoped key is persisted
+with the accepted work and protected by a SQLite uniqueness constraint. The runtime
+compares the reconstructed normalized `WorkSubmission` before replay, so semantically
+equivalent normalized timestamps are accepted while key reuse for different work is a
+conflict. A replay returns accepted, running, succeeded, failed or interrupted evidence
+from the original work as-is. It neither resets terminal state nor creates another
+attempt.
 
-Continue reliable shared execution from concrete runtime/application evidence. Substantive remaining gaps include explicit cancellation semantics, explicit retry policy, priority/fairness when a real contention use case demands it, and broader permitted capability/execution-path selection.
+This remains a concrete reliability rule rather than a generalized delivery framework.
+MADRE does not claim exactly-once external side effects, automatically retry capability
+execution, retain arbitrary request histories, or deduplicate submissions that do not
+supply a key.
 
-Do not spend the next slice on chatbot polish, model-floor hunting, speculative Agent/Planner/workflow abstractions, generalized resource scheduling or backward-compatible development database migrations.
+This is still the first concrete scarce-resource rule, not a generalized scheduler. No
+resource registry, semaphore framework, GPU accounting, model-residency plan, priority
+system, retry/cancellation product feature, capability class hierarchy or execution
+router is introduced. Because there is no implemented non-heavy capability yet,
+concurrent cheap-work execution cannot be exercised honestly; the admission boundary
+remains conditional on the existing capability configuration so it does not inherently
+wrap all future work.
+
+The admission behavior is canonical on `main` as of
+`60ce6eac049fc40fe2db400793d2a00a3a07d745`.
+
+The canonical product-definition realignment is on `main` as of
+`7bd9c979f16597ebb4f49b9d13c58ea7f3a9e404`. It establishes the ownership invariant
+that applications own domains, CORE owns default generic/system intelligence, MADRE
+Runtime owns execution, and capabilities perform computation.
+
+Runtime-owned submission/execution convergence is canonical on `main` as of
+`459cce2f982f39a8e4d5dc926417f6c2e94ed9bc`.
+
+The dependency/value order is now:
+
+1. Real immediate runtime work execution — implemented, accepted and canonical.
+2. Delayed eligibility and restart recovery — implemented, accepted and canonical.
+3. Minimal global local-inference admission — implemented, accepted and canonical.
+4. Canonical product-definition realignment — implemented, accepted and canonical.
+5. Minimal CORE interaction through the ordinary runtime HTTP boundary — implemented, accepted and canonical.
+6. Explicit CORE fast-response responsibility plus observable `fast`/`deeper` recommendation — implemented, accepted and canonical as an experimental interaction behavior.
+7. User-controlled `/deeper` stronger follow-up through ordinary MADRE work — implemented, accepted and canonical as an experimental interaction behavior.
+8. Owner-side CORE model/interaction experiment — completed for this stage; findings recorded, further UX/classifier refinement deferred.
+9. Runtime-owned submission/execution convergence — implemented, accepted and canonical.
+10. Durable submission idempotency — implemented in the current change: optional application-scoped acceptance keys survive restart, replay original work and reject conflicting reuse without adding retry semantics.
+11. Continue reliable shared execution work from concrete application/runtime evidence; cancellation and explicit retry remain separate future behaviors.
+
+For the next slice, do not spend scope on chatbot polish, model-floor hunting,
+fast/deeper prompt tuning, Agent/Planner/workflow abstractions, or speculative capability
+generalization. Use repository truth to select one substantive missing runtime behavior
+that materially improves dependable execution, durability, recovery, admission,
+inspection or application integration. Cancellation, explicit retry semantics,
+priority/fairness and broader capability/resource scheduling remain legitimate gaps,
+but should be introduced one coherent behavior at a time when their concrete semantics
+are selected.
+
+## Verified development evidence — 2026-09-06
+
+On Windows, Python 3.13.3 / SQLite 3.49.1 ran on a host with 23.8 GiB RAM and a
+GTX 1050 Ti / 4 GiB VRAM. The optional CPU smoke fixture uses llama.cpp `b10809` and
+Qwen2.5-0.5B-Instruct Q4_K_M outside the checkout. A separate pinned
+Qwen2.5-1.5B-Instruct Q4_K_M fixture is available for CORE product experiments. Exact
+revisions, URLs and verified SHA-256 hashes are preserved in the installer scripts
+under `tools/`.
+
+The original capability probe returned real inference in 0.932 seconds. The small
+model also failed an exact-output instruction: the probe establishes connectivity
+and computation rather than application-quality reasoning. Clean locked bootstrap,
+external wheel import, live authenticated HTTP, exclusive SQLite ownership/reopening,
+deterministic tests and static checks passed. Bootstrap CI passed on Windows and
+Linux.
+
+The immediate-work HTTP slice was subsequently accepted on Windows at commit
+`f53c3e7f3828bae1a104210d7d5b1c520fe70489`. Python 3.13.3 passed all 27 tests,
+`ruff check`, `ruff format --check`, and strict `mypy`. The pinned llama.cpp CPU
+fixture loaded the real Qwen model and the direct `local-chat` probe generated text.
+The standalone client then submitted work through authenticated local HTTP; MADRE
+persisted a successful attempt and real generated result, and `GET /v1/work/{id}`
+reproduced the durable record. After MADRE restart, the successful work remained
+inspectable with the same result. With llama.cpp stopped, a new submission was
+durably recorded as failed with capability failure code `connection` and the message
+`could not communicate with capability endpoint`. Together with green Ubuntu PR CI,
+this establishes real immediate execution and accurate durable failure on the
+supported local path.
+
+The first owner-side CORE product run then exercised the pinned Qwen 0.5B smoke model
+through the actual `madre-core → authenticated HTTP → durable runtime → local-chat`
+path. The model loaded and listened on `127.0.0.1:8080`. A trivial input produced only
+the internal reasoning marker, which the previous parser surfaced as `CORE fast
+interaction returned no user-facing response`. A benign poem request was first refused
+and marked `deeper`; a repeated poem request produced a poem but was again marked
+`deeper`. This was not runtime failure evidence: it demonstrated that the small model
+could execute through the real CORE path while exposing marker-compliance and
+recommendation-quality weaknesses. The parser/recommendation correction made
+marker-only output an inspectable diagnostic fallback and aligned `deeper` with the
+actual second same-capability pass rather than hypothetical tools or research.
+
+A second owner-side run used the dedicated Qwen2.5-1.5B-Instruct acceptance fixture.
+The trivial input `patata` produced the direct answer `Patata is Italian for potato.`;
+a poem request produced a non-empty poem instead of the earlier refusal. Both requests
+were still classified `deeper`. This is sufficient evidence for the present stage:
+basic generated-answer quality improved with the stronger fixture, while the
+fast/deeper judgement remains too weak to treat as settled product behavior. The Owner
+therefore closed this interaction experiment for now and clarified that the chatbot-like
+terminal flow and its fallback wording do not define MADRE UX. Development returns to
+the reliable framework; later CORE interaction work should build on richer system
+behavior rather than freezing today's diagnostic surface.
+
+The durable-idempotency slice passed 48 deterministic tests on Ubuntu together with
+`ruff check`, `ruff format --check`, strict `mypy`, package build, wheel reinstall and
+isolated wheel import. The suite proves replay while running and after completion,
+application scoping, conflict rejection, normalized-submission comparison, omission
+compatibility, restart persistence and schema-2-to-3 migration. A real Windows HTTP
+acceptance then used the pinned llama.cpp `b10809` / Qwen2.5-0.5B Q4_K_M fixture. The
+initial keyed POST returned accepted work, runtime-owned execution produced non-empty
+`madre-smoke` text in one successful attempt, inspection reached durable success, and
+replaying the identical POST with the same key returned that same durable terminal
+record. The temporary CI job used only to obtain this real execution evidence was
+removed from the final repository diff.
