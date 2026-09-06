@@ -47,10 +47,10 @@ boundary. Relax it only when a concrete non-chat capability requires the change.
 
 Delayed execution does not introduce a second job abstraction or storage model.
 `accepted` work in the existing schema is the durable queue state. One service-owned
-scheduler task queries the next persisted eligibility time and sleeps until that time,
-while an in-process event wakes it when a new submission may change the schedule.
-Restart recovery comes from the persisted `accepted` records rather than from the
-in-memory wake mechanism.
+scheduler task queries persisted eligibility and sleeps until work may run, while an
+in-process event wakes it when a new submission may change the schedule. Restart
+recovery comes from persisted `accepted` records rather than from the in-memory wake
+mechanism.
 
 The accepted-to-running transition is conditional and durable before capability
 invocation begins. This allows accepted work with no started attempt to remain safely
@@ -66,23 +66,29 @@ process exit. Startup rejects unknown schema versions and migrates the original
 schema-1 envelope to schema 2, which owns durable runtime work and attempt records.
 
 `POST /v1/work` accepts both immediate and future-eligible `WorkSubmission` values.
-MADRE durably records the application-selected input and execution constraints before
-execution. Already-eligible work follows the configured chat-completion capability
-path immediately. Future-eligible work returns as `accepted` without waiting for
-execution and remains in that durable state across service restart.
+For every valid submission MADRE allocates an ID, durably records the application-
+selected input and execution constraints as `accepted`, notifies runtime scheduling,
+and returns that accepted record. The request does not invoke the capability and does
+not wait for scarce-resource admission. Immediate eligibility means the work may be
+executed by the runtime now; future eligibility means the same accepted work remains
+pending until its configured time.
 
-The service scheduler discovers accepted work from SQLite and executes it only once
-its `eligible_at` is reached. Immediate and delayed work converge on the same runtime
-execution method: capability lookup, capability-specific input validation, durable
-attempt start, `invoke_chat`, and durable success or classified failure. There is no
-scheduler-specific execution path and no separate delayed-work record type.
+The service-owned scheduler discovers accepted work from SQLite and executes both
+already-eligible and future-eligible work through the same runtime execution method:
+capability lookup, capability-specific input validation, scarce-resource admission
+when applicable, conditional durable attempt start, `invoke_chat`, and durable success
+or classified failure. There is no request-owned immediate execution path, no separate
+delayed-work record type, and no second queue/state model.
 
-`GET /v1/work/{id}` reads the same durable record before and after execution. Unknown
-capabilities and capability-specific input errors are durable failures. A restart
-preserves accepted work that has not started an attempt. A restart converts an
-unfinished running attempt to an `interrupted` failure whose evidence states that
-the capability outcome may be unknown; it does not infer success or retry the
-invocation.
+`GET /v1/work/{id}` reads the same durable record before, during and after execution
+and is the generic completion boundary for applications that need eventual results.
+Applications may submit and poll immediately, continue foreground interaction, submit
+additional work, or inspect later. Unknown capabilities and capability-specific input
+errors become durable failures when runtime scheduling processes the accepted work.
+A restart preserves accepted work that has not started an attempt and rediscovers it.
+A restart converts an unfinished running attempt to an `interrupted` failure whose
+evidence states that the capability outcome may be unknown; it does not infer success
+or retry the invocation.
 
 The configured chat-completion adapter invokes real local inference and returns
 generated text, model, finish reason and timing, or a classified failure. It enforces
@@ -90,6 +96,14 @@ a total invocation timeout and local-only transfer constraints. Local declaratio
 require literal loopback destinations; HTTP clients disable proxies and redirects.
 The executable behavior and validation rules live in code/tests; README owns setup,
 HTTP examples and the real end-to-end acceptance command.
+
+Structured `CapabilityError` classifications are preserved. If a scheduler-owned
+capability invocation unexpectedly raises an ordinary Python `Exception` after its
+attempt has started, MADRE durably fails that attempt and work as `internal_error`
+with a generic non-sensitive message, releases admission and continues scheduling.
+Raw exception text is not placed in the durable public work record. `BaseException`
+and `asyncio.CancelledError` are not converted to `internal_error`; runtime shutdown
+therefore preserves the existing unknown-outcome interruption semantics.
 
 `invoke_chat` remains the initial chat-completion capability adapter, not MADRE's
 general work API. The verified llama.cpp path needs no provider credential. The
@@ -114,12 +128,11 @@ application architecture. CORE introduces no durable session store, memory syste
 agent abstraction, planner or autonomous/background reasoning behavior.
 
 CORE accepts the runtime's ordinary `accepted`, `running`, `succeeded` and `failed`
-work states. When a submission response exposes pending work, CORE inspects that work
-until it becomes terminal. Durable runtime/capability failures are surfaced directly
-to the user. Current immediate `POST /v1/work` behavior still returns only after the
-immediate execution path finishes, so an immediate work ID is not available to CORE
-while that original POST is itself waiting for scarce-resource admission; this is a
-property of the generic HTTP contract, not a CORE special case.
+work states. Its HTTP client treats a newly accepted submission as pending and inspects
+that work until it becomes terminal. Durable runtime/capability failures are surfaced
+directly to the user. CORE therefore remains an ordinary application choosing to wait
+for a result; the MADRE submission request itself no longer owns capability execution
+or scarce-resource waiting.
 
 The first CORE application boundary is canonical on `main` as of
 `fc3a5c4f670013fe234b5ef33281df1b7f965087`.
@@ -141,8 +154,8 @@ the current CLI supplies an explicit diagnostic fallback rather than turning mod
 protocol failure into a runtime error. That fallback is instrumentation, not intended
 conversational semantics. The recommendation remains observable in the CLI and
 returned as part of `CoreTurn`. "Fast" names the foreground interaction responsibility
-rather than promising wall-clock latency; ordinary runtime admission can still delay
-the submitted work item.
+rather than promising wall-clock latency; runtime admission can still delay physical
+capability execution and the eventual result that CORE has chosen to await.
 
 The first fast/deeper recommendation behavior became canonical on `main` as of
 `b71e244e39fe81e3a2db02b73e5a219fb64702b1`; its recommendation semantics were
@@ -184,9 +197,9 @@ canonical on `main` as of `75d88417b34a3959a61ba89452a671fc7d4b39d6`.
 
 The current admission slice adds one runtime invariant: across one shared MADRE runtime,
 at most one heavyweight local LLM capability invocation may execute at once. The
-service-lifetime `WorkRuntime` owns the admission primitive, so immediate HTTP work,
-delayed scheduler work and CORE-originated work using the same runtime plane share the
-same limit without application-specific handling.
+service-lifetime `WorkRuntime` owns the admission primitive, so already-eligible work,
+delayed work and CORE-originated work using the same runtime plane share the same limit
+without application-specific handling.
 
 Today's configuration can identify this scarce path without a new capability
 architecture: the only implemented capability kind is `chat_completions`, and local
@@ -200,18 +213,28 @@ remains durably `accepted` with no started attempt. Once admitted, the existing
 conditional accepted-to-running transition occurs immediately before the same
 `invoke_chat` path used by immediate and delayed work. The admission slot is released
 when physical invocation returns or raises, before durable result/failure finalization;
-structured capability failure therefore cannot permanently occupy the slot, and
-exception/cancellation unwinding also releases it through the async context manager.
+structured capability failure and ordinary contained execution failure therefore cannot
+permanently occupy the slot, while cancellation/shutdown unwinding still releases it
+through the async context manager.
 
-This is the first concrete scarce-resource rule, not a generalized scheduler. No
+Immediate and delayed work have now converged fully at the ownership boundary: all
+valid submissions are durable acknowledgements, and all physical capability execution
+belongs to service/runtime scheduling. The submitting HTTP request neither invokes the
+capability nor waits for admission. The existing accepted/running lifecycle remains
+sufficient; no new durable state or dispatcher framework is required. The serial
+scheduler remains valid for the single implemented heavyweight local-chat capability,
+while conditional attempt start continues to prevent duplicate physical invocation if
+a work item is encountered more than once.
+
+This is still the first concrete scarce-resource rule, not a generalized scheduler. No
 resource registry, semaphore framework, GPU accounting, model-residency plan, priority
 system, retry/cancellation product feature, capability class hierarchy or execution
 router is introduced. Because there is no implemented non-heavy capability yet,
-concurrent cheap-work execution cannot be exercised honestly in this slice; the
-boundary is instead conditional on the existing capability configuration so it does
-not inherently wrap all future work.
+concurrent cheap-work execution cannot be exercised honestly; the admission boundary
+remains conditional on the existing capability configuration so it does not inherently
+wrap all future work.
 
-This admission behavior is canonical on `main` as of
+The admission behavior is canonical on `main` as of
 `60ce6eac049fc40fe2db400793d2a00a3a07d745`.
 
 The canonical product-definition realignment is on `main` as of
@@ -229,13 +252,16 @@ The dependency/value order is now:
 6. Explicit CORE fast-response responsibility plus observable `fast`/`deeper` recommendation — implemented, accepted and canonical as an experimental interaction behavior.
 7. User-controlled `/deeper` stronger follow-up through ordinary MADRE work — implemented, accepted and canonical as an experimental interaction behavior.
 8. Owner-side CORE model/interaction experiment — completed for this stage; findings recorded, further UX/classifier refinement deferred.
-9. Return development focus to the reliable shared execution framework. The next orchestrator should inspect current runtime code/tests and select exactly one concrete generic reliability behavior whose value applies to applications and CORE alike.
+9. Runtime-owned submission/execution convergence — implemented in the current change: immediate and delayed submissions are durable acknowledgements, service scheduling owns execution, and unexpected ordinary capability exceptions are contained as durable `internal_error` failures.
+10. Continue reliable shared execution work from concrete application/runtime evidence; retry and cancellation remain separate future behaviors rather than implicit consequences of this convergence.
 
 For the next slice, do not spend scope on chatbot polish, model-floor hunting,
 fast/deeper prompt tuning, Agent/Planner/workflow abstractions, or speculative capability
-generalization. Use repository truth to find the smallest missing runtime behavior that
-materially improves dependable execution, durability, recovery, admission, inspection
-or application integration, and define its observable acceptance before implementation.
+generalization. Use repository truth to select one substantive missing runtime behavior
+that materially improves dependable execution, durability, recovery, admission,
+inspection or application integration. Retry, cancellation, idempotency, priority and
+broader capability/resource scheduling remain legitimate gaps, but should be introduced
+one coherent behavior at a time when their concrete semantics are selected.
 
 ## Verified development evidence — 2026-09-06
 

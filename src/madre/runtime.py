@@ -34,10 +34,7 @@ class WorkRuntime:
         work_id = uuid4().hex
         self.store.create(work_id, submission, accepted_at)
         self._schedule_changed.set()
-
-        if submission.eligible_at is not None and submission.eligible_at > accepted_at:
-            return self._require(work_id)
-        return await self._execute_accepted(work_id)
+        return self._require(work_id)
 
     async def run_eligible(self) -> int:
         """Execute all work eligible at the current runtime clock."""
@@ -112,6 +109,11 @@ class WorkRuntime:
                 result = await invoke_chat(capability, chat_input, record.submission.constraints)
             except CapabilityError as exc:
                 failure = WorkFailure(code=exc.code, message=str(exc))
+            except Exception:
+                failure = WorkFailure(
+                    code="internal_error",
+                    message="capability execution failed unexpectedly",
+                )
 
         if failure is not None:
             self.store.fail(
