@@ -1,5 +1,6 @@
 """Exclusive runtime database ownership and durable work storage."""
 
+import hashlib
 import json
 import sqlite3
 from collections.abc import Iterator
@@ -10,8 +11,6 @@ from pathlib import Path
 from filelock import FileLock, Timeout
 
 from madre.contracts import WorkAttempt, WorkFailure, WorkRecord, WorkSubmission
-
-STORAGE_FORMAT_VERSION = 1
 
 _STORAGE_DDL = """
 CREATE TABLE runtime_work (
@@ -49,6 +48,14 @@ CREATE TABLE runtime_attempt (
 """
 
 
+def _format_id() -> int:
+    fingerprint = int.from_bytes(hashlib.sha256(_STORAGE_DDL.encode()).digest()[:4], "big")
+    return fingerprint & 0x7FFFFFFF or 1
+
+
+STORAGE_FORMAT_ID = _format_id()
+
+
 def utc_now() -> datetime:
     return datetime.now(UTC)
 
@@ -81,19 +88,19 @@ def open_database(data_dir: Path) -> Iterator[sqlite3.Connection]:
         database = data_dir / "runtime.sqlite3"
         connection = _connect(database)
         try:
-            format_version = connection.execute("PRAGMA user_version").fetchone()[0]
-            if format_version not in (0, STORAGE_FORMAT_VERSION):
+            format_id = connection.execute("PRAGMA user_version").fetchone()[0]
+            if format_id not in (0, STORAGE_FORMAT_ID):
                 connection.close()
                 _discard_incompatible_development_storage(database)
                 connection = _connect(database)
-                format_version = 0
+                format_id = 0
 
             connection.execute("PRAGMA foreign_keys=ON")
             connection.execute("PRAGMA journal_mode=WAL")
-            if format_version == 0:
+            if format_id == 0:
                 with connection:
                     connection.executescript(_STORAGE_DDL)
-                    connection.execute(f"PRAGMA user_version={STORAGE_FORMAT_VERSION}")
+                    connection.execute(f"PRAGMA user_version={STORAGE_FORMAT_ID}")
             yield connection
         finally:
             connection.close()
