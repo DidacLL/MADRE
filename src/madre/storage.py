@@ -254,9 +254,7 @@ class WorkStore:
                     status=attempt["status"],
                     started_at=attempt["started_at"],
                     completed_at=attempt["completed_at"],
-                    result=(
-                        json.loads(attempt["result_json"]) if attempt["result_json"] else None
-                    ),
+                    result=(json.loads(attempt["result_json"]) if attempt["result_json"] else None),
                     failure=self._failure(attempt),
                 )
                 for attempt in attempts
