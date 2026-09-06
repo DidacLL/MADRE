@@ -6,17 +6,27 @@ import os
 import time
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
+from uuid import uuid4
 
 
-def request_json(url: str, token: str, *, body: dict[str, object] | None = None) -> dict:
+def request_json(
+    url: str,
+    token: str,
+    *,
+    body: dict[str, object] | None = None,
+    idempotency_key: str | None = None,
+) -> dict:
     data = json.dumps(body).encode() if body is not None else None
+    headers = {
+        "Authorization": f"Bearer {token}",
+        **({"Content-Type": "application/json"} if data is not None else {}),
+    }
+    if idempotency_key is not None:
+        headers["Idempotency-Key"] = idempotency_key
     request = Request(
         url,
         data=data,
-        headers={
-            "Authorization": f"Bearer {token}",
-            **({"Content-Type": "application/json"} if data is not None else {}),
-        },
+        headers=headers,
         method="POST" if data is not None else "GET",
     )
     with urlopen(request, timeout=180) as response:
@@ -30,6 +40,7 @@ def main() -> None:
     parser.add_argument("--application-id", default="madre-http-acceptance")
     parser.add_argument("--prompt", default="Reply with a short greeting.")
     parser.add_argument("--token-env", default="MADRE_API_TOKEN")
+    parser.add_argument("--idempotency-key")
     parser.add_argument("--poll-interval", type=float, default=0.1)
     parser.add_argument("--wait-timeout", type=float, default=180.0)
     args = parser.parse_args()
@@ -42,6 +53,7 @@ def main() -> None:
     if args.wait_timeout <= 0:
         raise SystemExit("wait timeout must be positive")
 
+    idempotency_key = args.idempotency_key or uuid4().hex
     submission = {
         "application_id": args.application_id,
         "capability_id": args.capability,
@@ -52,7 +64,12 @@ def main() -> None:
         "constraints": {"timeout_seconds": 120, "local_only": True},
     }
     try:
-        accepted = request_json(f"{args.url}/v1/work", token, body=submission)
+        accepted = request_json(
+            f"{args.url}/v1/work",
+            token,
+            body=submission,
+            idempotency_key=idempotency_key,
+        )
         work_id = accepted.get("id")
         if not isinstance(work_id, str) or not work_id:
             raise SystemExit("submission did not return a durable work ID")
@@ -74,12 +91,20 @@ def main() -> None:
             raise SystemExit("real inference completed without generated text")
 
         durable = request_json(f"{args.url}/v1/work/{work_id}", token)
+        replay = request_json(
+            f"{args.url}/v1/work",
+            token,
+            body=submission,
+            idempotency_key=idempotency_key,
+        )
     except HTTPError as exc:
         detail = exc.read().decode(errors="replace")
         raise SystemExit(f"MADRE HTTP {exc.code}: {detail}") from exc
 
     if durable != work:
         raise SystemExit("inspection did not reproduce the durable terminal work record")
+    if replay != durable:
+        raise SystemExit("idempotent replay did not return the original durable work record")
     print(json.dumps(durable, indent=2))
 
 
