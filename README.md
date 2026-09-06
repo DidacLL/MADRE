@@ -15,9 +15,9 @@ Start here:
 
 MADRE provides an installable typed Python distribution, explicit TOML runtime configuration, an authenticated loopback HTTP service, exclusive SQLite runtime ownership, durable runtime-work records, a real chat-completion capability adapter, and CORE as a separate first-party application package/entry point that uses that same HTTP boundary.
 
-An independent application or CORE submits work to `POST /v1/work`. Work that is already eligible is durably accepted and executed through the configured capability before the response returns. Work whose `eligible_at` is in the future is durably accepted with status `accepted` and returned without waiting for execution. The service scheduler uses those same persisted work records, executes them no earlier than eligibility, and rediscovers accepted work after runtime restart. Immediate and delayed work use the same validation, attempt, capability invocation, result/failure persistence and inspection path.
+An independent application or CORE submits work to `POST /v1/work`. Every valid submission is durably created as `accepted` before the response returns, regardless of whether it is eligible now or later. The service-owned scheduler executes already-eligible accepted work and waits for future eligibility using those same persisted records. Physical capability execution is not owned by the submitting HTTP request, so applications obtain the durable work ID without waiting for capability completion or scarce-resource admission.
 
-`GET /v1/work/{id}` returns the durable record at any point in that lifecycle. A process restart preserves accepted work that has not started a capability attempt. A previously in-flight attempt becomes an `interrupted` failure whose evidence states that the capability outcome may be unknown; MADRE does not retry it.
+`GET /v1/work/{id}` returns the durable record at any point in that lifecycle and is the generic completion boundary for applications that need the eventual result. A process restart preserves accepted work that has not started a capability attempt. A previously in-flight attempt becomes an `interrupted` failure whose evidence states that the capability outcome may be unknown; MADRE does not retry it.
 
 Python is the current implementation language, not a permanent product boundary. The application API is language-neutral HTTP; C/C++ implementations can be introduced where concrete runtime responsibilities benefit.
 
@@ -101,7 +101,7 @@ A chat-completion submission is shaped like:
 }
 ```
 
-Omit `eligible_at` (or use `null`) for immediate eligibility. A future value returns a durable `accepted` record immediately; poll `GET /v1/work/{id}` to inspect eventual success or failure. The application owns the prompt and interpretation of the generated result. MADRE stores only the application-selected execution material and runtime evidence required to execute, recover and inspect the work.
+Omit `eligible_at` (or use `null`) for immediate eligibility. Immediate and future-eligible submissions both return a durable `accepted` record; the difference is only when the runtime may execute them. Poll `GET /v1/work/{id}` when the application needs eventual success or failure. The application owns whether it waits, continues foreground interaction, submits additional work, or inspects later. MADRE stores only the application-selected execution material and runtime evidence required to execute, recover and inspect the work.
 
 ## CORE
 
@@ -154,7 +154,7 @@ In a third terminal, with the same `MADRE_API_TOKEN`, run the independent client
 python tools/accept-immediate-work.py --capability local-chat
 ```
 
-A successful check submits work through HTTP, requires non-empty generated text from the real configured model, then reads the work back through the inspection endpoint and requires the durable record to match the submission response. Capability failures are printed from MADRE's durable work record and cause a nonzero exit.
+A successful check submits work through HTTP, requires the POST to return a newly accepted durable work ID, polls `GET /v1/work/{id}` while runtime-owned execution proceeds, requires non-empty generated text from the real configured model, and finally re-inspects the durable terminal record. Capability failures are printed from MADRE's durable work record and cause a nonzero exit.
 
 Fixtures and mocked inference establish deterministic protocol and failure behavior only. This acceptance command is the check for a claim that the complete HTTP runtime path executed a real model.
 
@@ -162,6 +162,6 @@ Fixtures and mocked inference establish deterministic protocol and failure behav
 
 The first-party CORE path and its experimental fast/deeper follow-up have now produced enough real-model evidence for this stage. Further chatbot UX, classifier/prompt tuning and model-floor exploration are intentionally deferred.
 
-Development returns to the reliable shared execution framework. Read `docs/implementation-baseline.md`, inspect current runtime code/tests, and select one concrete generic reliability behavior that materially improves dependable execution for applications and CORE alike. Do not prebuild a generalized Agent, Planner, workflow engine, memory system or capability router merely to continue development; broaden an abstraction only when a real behavior requires it.
+Development remains focused on the reliable shared execution framework. Read `docs/implementation-baseline.md`, inspect current runtime code/tests, and select one concrete generic reliability behavior that materially improves dependable execution for applications and CORE alike. Do not prebuild a generalized Agent, Planner, workflow engine, memory system or capability router merely to continue development; broaden an abstraction only when a real behavior requires it.
 
 GPL-3.0. See [`LICENSE`](LICENSE).
