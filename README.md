@@ -145,6 +145,6 @@ Fixtures and mocked inference establish deterministic protocol and failure behav
 
 ## Continue implementation
 
-Exercise the runtime from a real independent application beyond the acceptance client: let the application select its own domain context, submit immediate or delayed work, and consume the durable result while retaining all domain semantics and state. Grow retry, cancellation, resource policy and additional capabilities only when that integration or a later use case establishes a concrete requirement.
+Merge the delayed eligibility/restart-recovery slice first. After it is canonical on `main`, implement the smallest global local-inference admission rule: multiple applications may hold durable eligible work concurrently, but at most one heavyweight local LLM capability execution is admitted at once. Keep unrelated cheap/deterministic capability work concurrent when the existing architecture can distinguish it without speculative abstractions. Do not add generalized resource scheduling, model routing, retry/cancellation, CORE, or application integration in the same slice.
 
 GPL-3.0. See [`LICENSE`](LICENSE).
