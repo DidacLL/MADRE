@@ -42,3 +42,66 @@ jobs:
           project_python="$(uv python find)"
           cd "$RUNNER_TEMP"
           "$project_python" -I -c "import madre; from pathlib import Path; assert 'site-packages' in Path(madre.__file__).parts; print(madre.__file__)"
+
+  real-inference-acceptance:
+    if: github.event_name == 'pull_request'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.12.10"
+      - run: uv sync --locked
+      - name: Run pinned local-model idempotency acceptance
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $fixture = Join-Path $env:RUNNER_TEMP 'madre-inference'
+          ./tools/install-smoke-model.ps1 -Destination $fixture
+          $server = Get-ChildItem -LiteralPath (Join-Path $fixture 'llama-b10809') -Filter llama-server.exe -Recurse | Select-Object -First 1 -ExpandProperty FullName
+          $model = Join-Path $fixture 'qwen2.5-0.5b-instruct-q4_k_m.gguf'
+          $env:MADRE_API_TOKEN = 'ci-runtime-token'
+
+          $llama = Start-Process -PassThru -FilePath $server -ArgumentList @(
+            '-m', $model,
+            '--host', '127.0.0.1',
+            '--port', '8080',
+            '--alias', 'madre-smoke',
+            '-c', '2048',
+            '-ngl', '0',
+            '-t', '4'
+          )
+          try {
+            for ($i = 0; $i -lt 120; $i++) {
+              try {
+                Invoke-WebRequest -UseBasicParsing 'http://127.0.0.1:8080/health' | Out-Null
+                break
+              } catch {
+                if ($i -eq 119) { throw }
+                Start-Sleep -Seconds 1
+              }
+            }
+
+            $madre = Start-Process -PassThru -FilePath 'uv' -ArgumentList @(
+              'run', '--locked', 'madre', '--config', 'madre.example.toml', 'serve'
+            )
+            try {
+              $headers = @{ Authorization = 'Bearer ci-runtime-token' }
+              for ($i = 0; $i -lt 60; $i++) {
+                try {
+                  Invoke-WebRequest -UseBasicParsing -Headers $headers 'http://127.0.0.1:8731/health' | Out-Null
+                  break
+                } catch {
+                  if ($i -eq 59) { throw }
+                  Start-Sleep -Seconds 1
+                }
+              }
+
+              uv run --locked python tools/accept-immediate-work.py --capability local-chat --wait-timeout 120
+              if ($LASTEXITCODE -ne 0) { throw "real inference acceptance failed with exit code $LASTEXITCODE" }
+            } finally {
+              if ($madre -and -not $madre.HasExited) { Stop-Process -Id $madre.Id -Force }
+            }
+          } finally {
+            if ($llama -and -not $llama.HasExited) { Stop-Process -Id $llama.Id -Force }
+          }
