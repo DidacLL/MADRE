@@ -133,16 +133,16 @@ concurrent cheap-work execution cannot be exercised honestly in this slice; the
 boundary is instead conditional on the existing capability configuration so it does
 not inherently wrap all future work.
 
-This admission behavior is implemented on the current PR branch but is not canonical
-product behavior until the Owner merges it into `main`.
+This admission behavior is canonical on `main` as of
+`60ce6eac049fc40fe2db400793d2a00a3a07d745`.
 
 The dependency/value order is now:
 
 1. Real immediate runtime work execution — implemented and accepted.
 2. Delayed eligibility and restart recovery — implemented, accepted and canonical.
-3. Minimal global local-inference admission — implemented on the current PR; Owner merge pending.
-4. Small canonical `MADRE.md` product-direction realignment — next after Owner merge.
-5. CORE development — after that product-direction realignment.
+3. Minimal global local-inference admission — implemented, accepted and canonical.
+4. Small canonical `MADRE.md` product-direction realignment — implemented on the current PR; Owner merge pending.
+5. CORE development — next after the Owner merges the product-definition realignment.
 6. Further application integration, capabilities and execution controls grow from actual use.
 
 ## Verified development evidence — 2026-09-06
