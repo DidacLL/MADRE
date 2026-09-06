@@ -40,7 +40,9 @@ CORE never escalates automatically. `/deeper` is rejected unless the latest comp
 
 The deterministic test suite proves the software protocol and runtime boundaries. The current small local model is probabilistic, so whether it recommends `fast` or `deeper` for a particular prompt—and whether the deeper answer is actually better—must be evaluated with the real model. This manual acceptance is therefore product evidence, not routine developer QA.
 
-The following PowerShell sequence uses the pinned Windows CPU smoke fixture and a dedicated ignored runtime directory so the resulting work records are easy to inspect. Run it from the repository root.
+The following sequence is for **Windows PowerShell** and uses the pinned Windows CPU smoke fixture plus a dedicated ignored runtime directory so the resulting work records are easy to inspect. PowerShell does not use backslash to escape quotes; commands that pass Python source use a single-quoted PowerShell argument and double quotes inside the Python source.
+
+Run it from the repository root.
 
 First update and bootstrap:
 
@@ -48,7 +50,7 @@ First update and bootstrap:
 git switch main
 git pull --ff-only
 python -m uv sync --locked
-python -c "from pathlib import Path; s=Path('madre.example.toml').read_text(encoding='utf-8'); Path('madre.acceptance.local.toml').write_text(s.replace('# data_dir = \"./dev/runtime\"', 'data_dir = \"./dev/core-acceptance\"'), encoding='utf-8')"
+python -c 'from pathlib import Path; s=Path("madre.example.toml").read_text(encoding="utf-8"); Path("madre.acceptance.local.toml").write_text(s.replace("# data_dir = \"./dev/runtime\"", "data_dir = \"./dev/core-acceptance\""), encoding="utf-8")'
 Remove-Item -Recurse -Force .\dev\core-acceptance -ErrorAction SilentlyContinue
 ./tools/install-smoke-model.ps1
 ```
@@ -87,7 +89,7 @@ At `you>`, try an ordinary request. You should receive non-empty `core>` output 
 Before testing explicit escalation, open Terminal 4 and record the current number of durable CORE work items:
 
 ```powershell
-python -c "import sqlite3; c=sqlite3.connect(r'dev/core-acceptance/runtime.sqlite3'); print(c.execute(\"select count(*) from runtime_work where application_id='madre-core'\").fetchone()[0])"
+python -c 'import sqlite3; c=sqlite3.connect(r"dev/core-acceptance/runtime.sqlite3"); print(c.execute("select count(*) from runtime_work where application_id=?", ("madre-core",)).fetchone()[0])'
 ```
 
 Call this number `N`. Back in Terminal 3, give CORE a request that genuinely benefits from analysis, for example:
@@ -99,7 +101,7 @@ Design a fault-tolerant migration plan for a stateful service with zero data los
 If CORE reports `reasoning> deeper`, do not enter `/deeper` yet. In Terminal 4, inspect the count and latest durable CORE work item:
 
 ```powershell
-python -c "import sqlite3,json; c=sqlite3.connect(r'dev/core-acceptance/runtime.sqlite3'); rows=c.execute(\"select id,status,input_json from runtime_work where application_id='madre-core' order by submitted_at\").fetchall(); print('count=',len(rows)); r=rows[-1]; print(r[0],r[1],'max_tokens='+str(json.loads(r[2])['max_tokens']))"
+python -c 'import sqlite3,json; c=sqlite3.connect(r"dev/core-acceptance/runtime.sqlite3"); rows=c.execute("select id,status,input_json from runtime_work where application_id=? order by submitted_at", ("madre-core",)).fetchall(); print("count=",len(rows)); r=rows[-1]; print(r[0],r[1],"max_tokens="+str(json.loads(r[2])["max_tokens"]))'
 ```
 
 The count should now be `N + 1`, and the latest work item should show `max_tokens=256`. This is the observable proof that the complex turn created exactly one ordinary work item and that the `deeper` recommendation did not escalate automatically.
