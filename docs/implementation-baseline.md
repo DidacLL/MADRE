@@ -105,11 +105,13 @@ ordinary chat work with stable `application_id = "madre-core"`. Its production c
 does not import `WorkRuntime`, `invoke_chat`, storage, scheduler or service internals.
 The runtime has no CORE-specific branch.
 
-The first CORE surface is an interactive terminal conversation. Successful assistant
-text is kept with user messages in process memory and sent back as ordinary chat input
-on the next turn. Restarting CORE forgets that history. CORE introduces no durable
-session store, memory system, agent abstraction, planner or autonomous/background
-reasoning behavior.
+The current CORE surface is an experimental interactive terminal conversation used to
+exercise the first-party path. Successful assistant text is kept with user messages in
+process memory and sent back as ordinary chat input on the next turn. Restarting CORE
+forgets that history. The terminal presentation, commands, fallback text and fast/deeper
+staging are not a MADRE UX contract and must not be used to infer future Agent or
+application architecture. CORE introduces no durable session store, memory system,
+agent abstraction, planner or autonomous/background reasoning behavior.
 
 CORE accepts the runtime's ordinary `accepted`, `running`, `succeeded` and `failed`
 work states. When a submission response exposes pending work, CORE inspects that work
@@ -134,16 +136,18 @@ use or a future agent system.
 
 CORE strips the internal recommendation marker before displaying or remembering the
 assistant response. A missing or malformed marker conservatively yields `deeper` while
-preserving useful generated text. A marker-only response is also treated as `deeper`,
-but CORE supplies an explicit user-facing fallback rather than turning model protocol
-failure into a runtime error. The recommendation remains observable in the CLI and
+preserving useful generated text. A marker-only response is also treated as `deeper`;
+the current CLI supplies an explicit diagnostic fallback rather than turning model
+protocol failure into a runtime error. That fallback is instrumentation, not intended
+conversational semantics. The recommendation remains observable in the CLI and
 returned as part of `CoreTurn`. "Fast" names the foreground interaction responsibility
 rather than promising wall-clock latency; ordinary runtime admission can still delay
 the submitted work item.
 
 The first fast/deeper recommendation behavior became canonical on `main` as of
-`b71e244e39fe81e3a2db02b73e5a219fb64702b1`; its recommendation semantics are being
-refined from real-model evidence rather than by adding a new architectural layer.
+`b71e244e39fe81e3a2db02b73e5a219fb64702b1`; its recommendation semantics were
+subsequently narrowed from real-model evidence rather than by adding a new architectural
+layer.
 
 The canonical CORE behavior gives `deeper` one execution consequence. Only when the
 latest fast turn recommended deeper reasoning, the user may enter `/deeper`. CORE then
@@ -164,11 +168,13 @@ Planner, create a workflow or select a different capability.
 The user-controlled `/deeper` behavior is canonical on `main` as of
 `0b7c36c2bcc987d215f19ad5429a07fd41c7fc3a`.
 
-The deterministic suite proves the software semantics of that two-stage path. Real
-owner-side use is the evidence for whether the small model can follow the interaction
-protocol and make useful recommendations. The acceptance helper and procedure in
-`docs/core.md` use a dedicated ignored runtime database so the execution consequences
-remain independently inspectable.
+The deterministic suite proves the software semantics of that two-stage path. The
+owner-side model runs have now supplied enough product evidence for this slice: the
+0.5B smoke fixture proved the path but was not a credible interaction model; the 1.5B
+acceptance fixture produced usable simple responses but still recommended `deeper` for
+trivial inputs. The current classifier and terminal chat presentation therefore remain
+experiments. Further prompt/classifier/chat UX tuning is intentionally deferred until
+richer CORE behavior gives those choices a concrete product context.
 
 ## Runtime-work direction and next behavior
 
@@ -220,16 +226,25 @@ The dependency/value order is now:
 3. Minimal global local-inference admission — implemented, accepted and canonical.
 4. Canonical product-definition realignment — implemented, accepted and canonical.
 5. Minimal CORE interaction through the ordinary runtime HTTP boundary — implemented, accepted and canonical.
-6. Explicit CORE fast-response responsibility plus observable `fast`/`deeper` recommendation — implemented, accepted and canonical.
-7. User-controlled `/deeper` stronger follow-up through ordinary MADRE work — implemented, accepted and canonical.
-8. Refine the two-stage CORE interaction from real local-model evidence, then continue product use before introducing any broader reasoning abstraction.
+6. Explicit CORE fast-response responsibility plus observable `fast`/`deeper` recommendation — implemented, accepted and canonical as an experimental interaction behavior.
+7. User-controlled `/deeper` stronger follow-up through ordinary MADRE work — implemented, accepted and canonical as an experimental interaction behavior.
+8. Owner-side CORE model/interaction experiment — completed for this stage; findings recorded, further UX/classifier refinement deferred.
+9. Return development focus to the reliable shared execution framework. The next orchestrator should inspect current runtime code/tests and select exactly one concrete generic reliability behavior whose value applies to applications and CORE alike.
+
+For the next slice, do not spend scope on chatbot polish, model-floor hunting,
+fast/deeper prompt tuning, Agent/Planner/workflow abstractions, or speculative capability
+generalization. Use repository truth to find the smallest missing runtime behavior that
+materially improves dependable execution, durability, recovery, admission, inspection
+or application integration, and define its observable acceptance before implementation.
 
 ## Verified development evidence — 2026-09-06
 
 On Windows, Python 3.13.3 / SQLite 3.49.1 ran on a host with 23.8 GiB RAM and a
-GTX 1050 Ti / 4 GiB VRAM. The optional CPU fixture uses llama.cpp `b10809` and
-Qwen2.5-0.5B-Instruct Q4_K_M outside the checkout. Exact revisions, URLs and verified
-SHA-256 hashes are preserved in `tools/install-smoke-model.ps1`.
+GTX 1050 Ti / 4 GiB VRAM. The optional CPU smoke fixture uses llama.cpp `b10809` and
+Qwen2.5-0.5B-Instruct Q4_K_M outside the checkout. A separate pinned
+Qwen2.5-1.5B-Instruct Q4_K_M fixture is available for CORE product experiments. Exact
+revisions, URLs and verified SHA-256 hashes are preserved in the installer scripts
+under `tools/`.
 
 The original capability probe returned real inference in 0.932 seconds. The small
 model also failed an exact-output instruction: the probe establishes connectivity
@@ -251,15 +266,25 @@ durably recorded as failed with capability failure code `connection` and the mes
 this establishes real immediate execution and accurate durable failure on the
 supported local path.
 
-The first owner-side CORE product run then exercised the pinned Qwen smoke model through
-the actual `madre-core → authenticated HTTP → durable runtime → local-chat` path. The
-model loaded and listened on `127.0.0.1:8080`. A trivial input produced only the
-internal reasoning marker, which the previous parser surfaced as `CORE fast interaction
-returned no user-facing response`. A benign poem request was first refused and marked
-`deeper`; a repeated poem request produced a poem but was again marked `deeper`. This is
-not runtime failure evidence: it demonstrates that the small model can execute through
-the real CORE path while exposing two interaction weaknesses—marker compliance cannot
-be assumed, and the original `deeper` definition was overly broad relative to the only
-follow-up actually available. The current correction makes marker-only output a usable
-fallback with explicit deeper availability and aligns `deeper` with one possible second
-same-capability pass rather than hypothetical research, tools or future agent behavior.
+The first owner-side CORE product run then exercised the pinned Qwen 0.5B smoke model
+through the actual `madre-core → authenticated HTTP → durable runtime → local-chat`
+path. The model loaded and listened on `127.0.0.1:8080`. A trivial input produced only
+the internal reasoning marker, which the previous parser surfaced as `CORE fast
+interaction returned no user-facing response`. A benign poem request was first refused
+and marked `deeper`; a repeated poem request produced a poem but was again marked
+`deeper`. This was not runtime failure evidence: it demonstrated that the small model
+could execute through the real CORE path while exposing marker-compliance and
+recommendation-quality weaknesses. The parser/recommendation correction made
+marker-only output an inspectable diagnostic fallback and aligned `deeper` with the
+actual second same-capability pass rather than hypothetical tools or research.
+
+A second owner-side run used the dedicated Qwen2.5-1.5B-Instruct acceptance fixture.
+The trivial input `patata` produced the direct answer `Patata is Italian for potato.`;
+a poem request produced a non-empty poem instead of the earlier refusal. Both requests
+were still classified `deeper`. This is sufficient evidence for the present stage:
+basic generated-answer quality improved with the stronger fixture, while the
+fast/deeper judgement remains too weak to treat as settled product behavior. The Owner
+therefore closed this interaction experiment for now and clarified that the chatbot-like
+terminal flow and its fallback wording do not define MADRE UX. Development returns to
+the reliable framework; later CORE interaction work should build on richer system
+behavior rather than freezing today's diagnostic surface.

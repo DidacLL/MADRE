@@ -2,6 +2,8 @@
 
 CORE is MADRE's first-party application. Its current behavior is intentionally small: an interactive terminal conversation that submits ordinary chat work to a separately running MADRE runtime over the authenticated HTTP application boundary.
 
+This terminal conversation is a product-development probe. The `core>`, `reasoning>`, `/deeper` and fallback presentation make the current execution behavior observable; they are not a stable MADRE UX contract. In particular, internal model/protocol failure should not be interpreted as evidence that a future MADRE interaction must expose a chatbot-style failure message. The eventual interaction model remains open to later CORE experimentation.
+
 CORE does not start or bypass the runtime, invoke a capability directly, or own a scheduler. Its submitted work uses the stable application identity `madre-core` and therefore shares the same durable work lifecycle and local-inference admission rules as other applications.
 
 ## Run
@@ -24,7 +26,7 @@ Each ordinary user turn creates exactly one CORE chat work item. CORE adds a tra
 
 `deeper` therefore does not mean merely that an answer could be longer, or that unavailable research, verification or tools would help. The recommendation must describe the concrete follow-up CORE can actually perform today.
 
-CORE software strips the internal recommendation marker before displaying or remembering the assistant response. If the capability omits or malforms the marker, CORE preserves useful generated text and conservatively reports `deeper`. If the capability emits only a marker and no usable user-facing text, CORE shows `I couldn't produce a usable fast response.` and offers the explicit deeper follow-up rather than reporting a runtime failure.
+CORE software strips the internal recommendation marker before displaying or remembering the assistant response. If the capability omits or malforms the marker, CORE preserves useful generated text and conservatively reports `deeper`. If the capability emits only a marker and no usable user-facing text, the current diagnostic CLI shows `I couldn't produce a usable fast response.` and offers the explicit deeper follow-up rather than reporting a runtime failure. That fallback is instrumentation for this experiment, not intended MADRE conversational semantics.
 
 "Fast" describes CORE's interaction responsibility: one bounded foreground inference intended to answer the current turn promptly. It is not a wall-clock scheduling guarantee. Ordinary MADRE runtime admission may still delay the work when another application occupies the heavyweight local-inference slot.
 
@@ -45,6 +47,8 @@ The deterministic test suite proves the software protocol and runtime boundaries
 The original Qwen2.5-0.5B-Instruct fixture remains the lightweight transport/smoke fixture. The first owner-side CORE run showed that it is not suitable as a product-quality CORE interaction fixture: it produced marker-only output for a trivial message, repeatedly refused a benign poem request, and repeatedly recommended `deeper` for that request. Those observations are model-quality evidence, not runtime failures, and CORE should not be tuned around them.
 
 CORE product acceptance therefore uses a separate pinned Qwen2.5-1.5B-Instruct Q4_K_M fixture. It is still intentionally small and is not claimed to be a final CORE model, but it provides a more credible local interaction baseline while keeping the smoke fixture cheap for transport checks.
+
+The owner-side run with the 1.5B fixture improved basic answer usability: `patata` produced a direct factual answer and a poem request produced a poem rather than a refusal. Both trivial requests were still recommended as `deeper`. This establishes that the stronger fixture is more usable as a response generator while the current same-model fast/deeper judgement remains unreliable. The experiment is sufficient for now: further classifier, prompt or chat-surface tuning is deferred until richer CORE behavior gives that interaction a real product context.
 
 The acceptance helper deliberately avoids shell-embedded Python and SQL so the same commands work from Windows PowerShell without native-command quoting ambiguity.
 
@@ -91,7 +95,7 @@ python -m uv run --locked madre-core `
     --capability local-chat
 ```
 
-At `you>`, use CORE naturally. You should receive non-empty `core>` output and then either `reasoning> fast` or `reasoning> deeper`. The exact recommendation is model output, not a deterministic acceptance criterion. A marker-only model response is treated as unusable fast output and becomes the explicit fallback plus `reasoning> deeper`, not a runtime error.
+At `you>`, use CORE naturally. You should receive non-empty `core>` output and then either `reasoning> fast` or `reasoning> deeper`. The exact recommendation is model output, not a deterministic acceptance criterion. A marker-only model response is treated as unusable fast output and becomes the explicit diagnostic fallback plus `reasoning> deeper`, not a runtime error.
 
 Before testing explicit escalation, open Terminal 4 and record the current durable CORE work status:
 
@@ -131,7 +135,7 @@ The count should now be `N + 2`, the latest work should be `succeeded`, and `lat
 
 You can then ask a normal follow-up question about the deeper answer. Because a successful deeper result replaces the fast draft in process-local history, the next turn should be conditioned on the deeper answer rather than both drafts. This is qualitative model behavior, so record surprising behavior rather than treating exact wording as a pass/fail assertion.
 
-Repeatedly inappropriate refusals, marker-only answers, or obviously poor `fast`/`deeper` recommendations from the 1.5B fixture are useful evidence that the product-quality model floor is higher. They are not reasons to add scheduler, Agent, Planner, memory, or capability abstractions.
+Repeatedly inappropriate refusals, marker-only answers, or obviously poor `fast`/`deeper` recommendations from the 1.5B fixture are useful model/interaction evidence. They are not reasons to add scheduler, Agent, Planner, memory, capability abstractions, or to keep polishing this provisional terminal UX.
 
 Optional failure evidence: after a successful turn, stop the llama.cpp server in Terminal 1 and submit another CORE message. CORE should report a durable runtime failure such as `CORE error: MADRE work failed [connection]: ...`; `python tools/core-acceptance.py status` should show the additional failed CORE work item. Restart the model server before continuing.
 
@@ -145,10 +149,10 @@ This acceptance proves:
 - real generated output is used for both stages;
 - runtime/capability failures remain explicit rather than being turned into assistant text.
 
-It does not prove that Qwen2.5-1.5B is an adequate final CORE model or that a larger second inference consistently improves every answer. Those are product-quality questions to answer from use, not deterministic CI assertions.
+It does not prove that Qwen2.5-1.5B is an adequate final CORE model, that the current classifier is product-quality, that a larger second inference consistently improves every answer, or that this terminal flow resembles the eventual MADRE UX. Those are later product-quality questions, not deterministic CI assertions.
 
 ## State
 
 Conversation history exists only in the running CORE process. A successful assistant response, without CORE's internal reasoning marker, is appended to that in-memory history and included in the next chat-completion input. Failed turns are not appended. Restarting CORE forgets the conversation.
 
-There is no persistent CORE session store, memory system, agent abstraction, planner, background reasoning loop, automatic escalation, capability bypass, or runtime special case in this slice.
+There is no persistent CORE session store, memory system, agent abstraction, planner, background reasoning loop, automatic escalation, capability bypass, or runtime special case in this slice. The current terminal interaction and fast/deeper protocol remain an executable experiment layered on the runtime, not a frozen product interface.

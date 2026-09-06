@@ -55,6 +55,8 @@ CORE does not own application domains. It can reason over only the context and a
 
 CORE uses the same MADRE runtime execution plane as applications. Its higher trust does not grant an alternate execution path or unrestricted access to application data.
 
+Current CORE interaction surfaces used to exercise this path are experimental product-development probes, not a stable MADRE user-experience contract. Their prompts, commands, response staging and presentation may change as concrete CORE behavior develops; provisional chat UX must not define or constrain runtime, Agent or application architecture.
+
 ### MADRE runtime
 
 MADRE provides reusable execution semantics for permitted intelligence work submitted by applications or CORE. Its responsibilities include, as the working system requires them:
@@ -259,7 +261,7 @@ MADRE becomes useful through progressively stronger end-to-end evidence:
 
 1. **Real execution:** an application can invoke a real configured local inference capability through MADRE and receive its result or an accurate runtime error.
 2. **Delayed execution and resource authority:** the same kind of work can be accepted for later execution, survive runtime restart and share global scarce-resource admission with immediate work.
-3. **First-party intelligence:** CORE can operate as the first real first-party MADRE application through the ordinary runtime boundary, initially with only the smallest useful interactive behavior.
+3. **First-party intelligence:** CORE can operate as the first real first-party MADRE application through the ordinary runtime boundary, initially with only the smallest useful behavior needed to exercise that path without freezing the eventual user experience.
 4. **Independent application integration:** other applications can select their own context, submit work directly or expose bounded context/actions to CORE while retaining domain state and semantics.
 5. **Boundary growth from use:** additional capabilities, permitted execution-path selection, execution controls and orchestration patterns extend those working paths as concrete applications or experiments require them.
 
