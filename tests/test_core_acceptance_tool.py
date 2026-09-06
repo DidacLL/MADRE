@@ -33,9 +33,7 @@ def test_prepare_writes_dedicated_config_and_clears_data_dir(tmp_path, monkeypat
 
     tool.prepare()
 
-    assert config.read_text(encoding="utf-8").startswith(
-        'data_dir = "./dev/core-acceptance"\n'
-    )
+    assert config.read_text(encoding="utf-8").startswith('data_dir = "./dev/core-acceptance"\n')
     assert not data_dir.exists()
     assert "wrote madre.acceptance.local.toml" in capsys.readouterr().out
 
