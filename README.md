@@ -40,8 +40,14 @@ Apply formatting with `python -m uv run --locked ruff format .`. Dependencies an
 development tools are pinned in `uv.lock`; build tooling is installed by the dev
 group; explicitly selecting `.venv` makes `--no-build-isolation` use those locked
 versions even when uv itself was installed in the host Python. CI runs deterministic
-checks on Windows and Linux, builds the wheel, and verifies its import outside the
-checkout. Normal bootstrap/tests never download a model or require inference.
+checks, builds the wheel, and verifies its import outside the checkout. Normal
+bootstrap/tests never download a model or require inference.
+
+Executable PR changes run checks on Linux. Documentation-only PRs skip runtime CI;
+pushes do not duplicate PR checks. For packaging, dependencies, platform-specific
+code, storage/process semantics, or release readiness, request full Windows + Linux
+validation via **Actions → checks → Run workflow**, selecting the branch to validate.
+Manual dispatch becomes available once this workflow is on the default branch.
 
 The distribution is `madre-runtime`; the import is `madre`. Other Python projects
 can install the built wheel using `python -m pip install <path-to-wheel>` or install
@@ -123,11 +129,11 @@ bootstrap; runtime/model revisions and verified hashes are pinned in the install
 
 ## Continue implementation
 
-Implement immediate `/v1/work` submission and inspection through durable SQLite
-work/attempt records and the real local capability. Acceptance requires a separate
+Implement real immediate work submission and inspection through local HTTP,
+durable SQLite state and the real local capability. Acceptance requires a separate
 application client receiving generated output and persisted execution evidence.
 Then add delayed execution/recovery, validate a real independent application, and
-grow capabilities and controls from use. See the focused baseline for lifecycle,
-transfer, cancellation and retry decisions.
+grow capabilities and controls from use. See the focused baseline for the initial
+architecture and the implementation choices to resolve while building that behavior.
 
 GPL-3.0. See [`LICENSE`](LICENSE).
