@@ -17,6 +17,8 @@ MADRE provides an installable typed Python distribution, explicit TOML runtime c
 
 An independent application or CORE submits work to `POST /v1/work`. Every valid submission is durably created as `accepted` before the response returns, regardless of whether it is eligible now or later. The service-owned scheduler executes already-eligible accepted work and waits for future eligibility using those same persisted records. Physical capability execution is not owned by the submitting HTTP request, so applications obtain the durable work ID without waiting for capability completion or scarce-resource admission.
 
+Applications may optionally send an `Idempotency-Key` header when a logical submission may need to be retried. The key is scoped to `application_id` and persisted with runtime acceptance. Reusing the same key with the same normalized `WorkSubmission` returns the original durable work record, including after restart or completion, rather than creating another invocation. Reusing that key for different work returns HTTP 409. Omitting the header preserves ordinary distinct submissions.
+
 `GET /v1/work/{id}` returns the durable record at any point in that lifecycle and is the generic completion boundary for applications that need the eventual result. A process restart preserves accepted work that has not started a capability attempt. A previously in-flight attempt becomes an `interrupted` failure whose evidence states that the capability outcome may be unknown; MADRE does not retry it.
 
 Python is the current implementation language, not a permanent product boundary. The application API is language-neutral HTTP; C/C++ implementations can be introduced where concrete runtime responsibilities benefit.
@@ -79,7 +81,7 @@ The authenticated endpoints are:
 - `POST http://127.0.0.1:8731/v1/work`
 - `GET http://127.0.0.1:8731/v1/work/{id}`
 
-All require `Authorization: Bearer <token>`. `/health` returns `{"status":"ok","schema_version":2}`. Missing or incorrect credentials return 401. Stop the foreground service with Ctrl+C. A second runtime using the same data directory is rejected; process exit releases ownership. Runtime files, local configuration, model weights, build output and credentials are not committed.
+All require `Authorization: Bearer <token>`. `/health` returns `{"status":"ok","schema_version":3}`. Missing or incorrect credentials return 401. Stop the foreground service with Ctrl+C. A second runtime using the same data directory is rejected; process exit releases ownership. Runtime files, local configuration, model weights, build output and credentials are not committed.
 
 A chat-completion submission is shaped like:
 
@@ -102,6 +104,8 @@ A chat-completion submission is shaped like:
 ```
 
 Omit `eligible_at` (or use `null`) for immediate eligibility. Immediate and future-eligible submissions both return a durable `accepted` record; the difference is only when the runtime may execute them. Poll `GET /v1/work/{id}` when the application needs eventual success or failure. The application owns whether it waits, continues foreground interaction, submits additional work, or inspects later. MADRE stores only the application-selected execution material and runtime evidence required to execute, recover and inspect the work.
+
+When retrying one logical POST after a transport failure, send the same opaque key (1–128 characters) in `Idempotency-Key` and the same work body. The durable work identity is then stable even if the original response was lost. A key is intentionally not part of `WorkSubmission`: it controls acceptance/replay rather than changing what the work means.
 
 ## CORE
 
@@ -154,7 +158,7 @@ In a third terminal, with the same `MADRE_API_TOKEN`, run the independent client
 python tools/accept-immediate-work.py --capability local-chat
 ```
 
-A successful check submits work through HTTP, requires the POST to return a newly accepted durable work ID, polls `GET /v1/work/{id}` while runtime-owned execution proceeds, requires non-empty generated text from the real configured model, and finally re-inspects the durable terminal record. Capability failures are printed from MADRE's durable work record and cause a nonzero exit.
+A successful check submits work through HTTP with a fresh idempotency key, requires the POST to return a newly accepted durable work ID, polls `GET /v1/work/{id}` while runtime-owned execution proceeds, requires non-empty generated text from the real configured model, re-inspects the durable terminal record, and then replays the original POST with the same key and requires the same terminal work record rather than a second work item. Capability failures are printed from MADRE's durable work record and cause a nonzero exit.
 
 Fixtures and mocked inference establish deterministic protocol and failure behavior only. This acceptance command is the check for a claim that the complete HTTP runtime path executed a real model.
 
