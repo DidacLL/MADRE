@@ -20,7 +20,7 @@ def test_prepare_writes_dedicated_config_and_clears_data_dir(tmp_path, monkeypat
     config = tmp_path / "madre.acceptance.local.toml"
     data_dir = tmp_path / "dev" / "core-acceptance"
     example.write_text(
-        '# data_dir = "./dev/runtime"\nhost = "127.0.0.1"\n',
+        '# data_dir = "./dev/runtime"\nhost = "127.0.0.1"\nmodel = "madre-smoke"\n',
         encoding="utf-8",
     )
     data_dir.mkdir(parents=True)
@@ -33,9 +33,13 @@ def test_prepare_writes_dedicated_config_and_clears_data_dir(tmp_path, monkeypat
 
     tool.prepare()
 
-    assert config.read_text(encoding="utf-8").startswith('data_dir = "./dev/core-acceptance"\n')
+    prepared = config.read_text(encoding="utf-8")
+    assert prepared.startswith('data_dir = "./dev/core-acceptance"\n')
+    assert 'model = "madre-core-acceptance"' in prepared
     assert not data_dir.exists()
-    assert "wrote madre.acceptance.local.toml" in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert "wrote madre.acceptance.local.toml" in output
+    assert "model=madre-core-acceptance" in output
 
 
 def test_status_reports_latest_core_work(tmp_path, monkeypatch, capsys):
