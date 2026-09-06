@@ -18,7 +18,17 @@ Start with `MADRE.md` and the smallest code surface that can answer the task.
 
 Expand context through concrete dependencies, failing behavior, interfaces or tests. Prefer targeted repository search and direct file inspection over broad ingestion.
 
-Keep standing context focused. A durable product conclusion belongs in `MADRE.md`; a recurring repository-wide agent instruction belongs here; a recurring software failure is best captured by an executable test or check.
+Keep standing context focused. A durable product conclusion belongs in `MADRE.md`; recurring repository-wide operating knowledge belongs here; recurring software behavior is best captured by executable code or tests.
+
+## Task horizon
+
+Match the implementation horizon to the explicit user goal.
+
+For a bounded request, make the smallest coherent change that satisfies it.
+
+For a broad end-to-end request, use small vertical slices as the internal execution strategy and continue through successive validated slices in the same run until the requested product behavior is working or a genuine external blocker prevents further execution. A completed intermediate slice is progress, not the completion criterion for a broader task.
+
+Use the product acceptance path in `MADRE.md` to order work when it helps, while treating the user's requested outcome as the finish line.
 
 ## Engineering loop
 
@@ -26,11 +36,12 @@ For each task:
 
 1. Identify the observable behavior or product decision the task requires.
 2. Inspect the current implementation and the nearest relevant evidence.
-3. Choose the smallest coherent change that produces the required behavior end to end.
-4. Use concrete technologies and abstractions that make the current solution simpler, clearer or more reliable.
-5. Validate the changed behavior with the strongest practical evidence available.
-6. Complete ordinary branch, commit, pull-request and merge work when permissions and repository rules allow it.
-7. Leave the repository itself sufficient for the next agent to continue from latest `main`.
+3. Choose a coherent implementation path and concrete technologies suited to the present system.
+4. Build through working vertical behavior rather than architecture prose or disconnected scaffolding.
+5. Validate each meaningful step with the strongest practical evidence available and use failures to steer the next change.
+6. Continue until the task horizon is reached or a real permission, environment, safety or product-meaning blocker remains.
+7. Complete ordinary branch, commit, pull-request and merge work when permissions and repository rules allow it.
+8. Leave the repository itself sufficient for the next agent to continue from latest `main`.
 
 When the user asks simply to continue, inspect the current code against the product acceptance path in `MADRE.md` and advance the earliest behavior that is not yet demonstrated.
 
@@ -38,7 +49,7 @@ When the user asks simply to continue, inspect the current code against the prod
 
 Preserve the ownership model in `MADRE.md` while allowing implementation architecture to evolve from evidence.
 
-Prefer direct use of a suitable concrete dependency over an abstraction whose only purpose is hypothetical replaceability. Introduce a distinct abstraction when an observed responsibility becomes clearer, safer, more reusable or easier to test because of it.
+Prefer direct use of a suitable concrete dependency when it makes the current solution clearer or more reliable. Introduce a distinct abstraction when an observed responsibility becomes clearer, safer, more reusable or easier to test because of it.
 
 Keep application semantics in the application, runtime execution semantics in MADRE, and provider/tool mechanics at the capability boundary.
 
@@ -50,7 +61,7 @@ Acceptance follows real behavior.
 
 A successful real execution path is evidence for real execution. Controlled fixtures and mocks are useful for deterministic edge cases, protocol behavior and failure handling.
 
-Run validation proportional to the changed surface. Record exactly what was executed and what the result established.
+Run validation proportional to the changed surface. Record exactly what was executed and what the result established. Distinguish implemented behavior from behavior that could not be exercised in the available environment.
 
 Use deterministic tooling before additional model reasoning when a compiler, test, formatter, type checker, runtime probe or repository query can answer the question directly.
 
@@ -71,4 +82,5 @@ Finish a task with a concise report of:
 
 - what can now actually be used;
 - what was executed and verified;
+- any real blocker or unverified behavior;
 - the next substantive missing behavior or genuine product decision, if one remains.
