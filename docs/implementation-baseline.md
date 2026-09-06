@@ -88,6 +88,17 @@ model also failed an exact-output instruction: the probe establishes connectivit
 and computation rather than application-quality reasoning. Clean locked bootstrap,
 external wheel import, live authenticated HTTP, exclusive SQLite ownership/reopening,
 deterministic tests and static checks passed. Bootstrap CI passed on Windows and
-Linux. These dated results predate the immediate-work HTTP slice; current acceptance
-for that complete path is the independent-client command in README and should be
-reported from the environment where it is executed.
+Linux.
+
+The immediate-work HTTP slice was subsequently accepted on Windows at commit
+`f53c3e7f3828bae1a104210d7d5b1c520fe70489`. Python 3.13.3 passed all 27 tests,
+`ruff check`, `ruff format --check`, and strict `mypy`. The pinned llama.cpp CPU
+fixture loaded the real Qwen model and the direct `local-chat` probe generated text.
+The standalone client then submitted work through authenticated local HTTP; MADRE
+persisted a successful attempt and real generated result, and `GET /v1/work/{id}`
+reproduced the durable record. After MADRE restart, the successful work remained
+inspectable with the same result. With llama.cpp stopped, a new submission was
+durably recorded as failed with capability failure code `connection` and the message
+`could not communicate with capability endpoint`. Together with green Ubuntu PR CI,
+this establishes real immediate execution and accurate durable failure on the
+supported local path.
