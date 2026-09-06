@@ -1,39 +1,38 @@
 # MADRE Agentic System
 
-MADRE is a local-first, model-agnostic runtime architecture for governed agentic systems.
+MADRE is a local-first, model-agnostic runtime architecture for governed agentic systems. Its kernel owns scheduling, context, policy, bounded actions, audit/recovery and user authority; inference remains replaceable and non-authoritative.
 
-Its central claim is that useful agentic behavior should come from software architecture, not from treating a language model as the whole system. MADRE places replaceable model runtimes inside a governed kernel that owns context, policy, internal actions, memory, learning, audit, recovery, and user authority.
+- [DEVSTATE.md](DEVSTATE.md): current position and copyable next-agent task.
+- [AGENTS.md](AGENTS.md): stable development procedure.
+- [First runtime slice](docs/runtime-first-slice.md): bounded implementation contract.
+- [Canonical product dossier](docs/tex/MADRE-AgenticSystem.tex): product terminology, architecture, requirements and traceability.
 
-## Canonical Dossier
+## First executable runtime slice
 
-The authoritative MADRE architecture source is:
+The repository now contains the bounded durable scheduled-inference slice in `madre/`. It uses only Python 3.11+ standard library modules and SQLite. The only inference backends are deterministic fakes; generated output is persisted as generated material and is never interpreted as commands, policy, routing or knowledge.
+
+From a fresh checkout with Python installed, run the complete test suite:
 
 ```text
-docs/tex/MADRE-AgenticSystem.tex
+python -m unittest discover -s tests -v
 ```
 
-That dossier defines product identity, architectural views, requirements, traceability, threat model, quality model, benchmark catalogue, glossary, and conceptual module and agent sketches.
+A minimal CLI lifecycle uses a disposable local database:
 
-## Build
-
-The architecture dossier depends on [P3CTeX](https://github.com/DidacLL/P3CTeX). Local development expects P3CTeX in MiKTeX and uses `pdflatex`.
-
-Compile recently modified TeX files locally:
-
-```powershell
-.\scripts\compile-recent-tex.ps1
+```text
+python -m madre --db .madre-demo.sqlite submit --text "hello MADRE"
+python -m madre --db .madre-demo.sqlite worker
+python -m madre --db .madre-demo.sqlite inspect
 ```
 
-The script writes the deliverable PDF under `docs` and removes auxiliary files after a successful compile.
+`submit` acknowledges only after the queued work and journal event commit. `worker` acquires the per-database OS advisory lock, performs restart recovery, executes at most one eligible item, and exits. `inspect` opens the existing database read-only and never initializes storage or performs recovery. Delete `.madre-demo.sqlite` and `.madre-demo.sqlite.worker.lock` when finished.
 
-Manual single-document compile from `docs/tex`:
+Delayed work requires an explicit timezone-aware `not_before` value, for example:
 
-```powershell
-pdflatex -interaction=nonstopmode -halt-on-error -file-line-error MADRE-AgenticSystem.tex
+```text
+python -m madre --db .madre-demo.sqlite submit --text "later" --mode delayed --not-before 2030-01-01T12:00:00Z
 ```
 
-Run twice when references, labels, or the table of contents change.
+Available fake bindings are `fake-a`, `fake-b`, and `fake-fail`. Any unknown binding or scope other than `local-only` is durably blocked before backend execution.
 
-## License
-
-GPL-3.0. See `LICENSE`.
+GPL-3.0. See [LICENSE](LICENSE).
