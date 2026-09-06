@@ -27,6 +27,7 @@ inventing facts. Do not claim external research, verification, or tool use unles
 conversation shows it actually occurred. Return only the improved user-facing answer and
 do not emit a MADRE reasoning marker.
 """
+_DEEPER_REQUEST = "Provide the deeper replacement answer now."
 _MARKER_PREFIX = "[[MADRE_REASONING:"
 _MARKERS: dict[str, ReasoningRecommendation] = {
     "[[MADRE_REASONING:fast]]": "fast",
@@ -112,7 +113,11 @@ class CoreConversation:
         if not self._deeper_available:
             raise ValueError("no deeper reasoning is available for the latest turn")
         generated = await self.client.complete(
-            [{"role": "system", "content": _DEEPER_INTERACTION_INSTRUCTION}, *self._messages],
+            [
+                {"role": "system", "content": _DEEPER_INTERACTION_INSTRUCTION},
+                *self._messages,
+                {"role": "user", "content": _DEEPER_REQUEST},
+            ],
             max_tokens=self.deeper_max_tokens,
             timeout_seconds=self.timeout_seconds,
         )
