@@ -154,7 +154,8 @@ def test_core_deeper_follow_up_is_explicit_second_runtime_work(tmp_path, monkeyp
 
     with sqlite3.connect(runtime_settings.data_dir / "runtime.sqlite3") as connection:
         rows = connection.execute("SELECT application_id, status FROM runtime_work").fetchall()
-    assert rows == [("madre-core", "succeeded"), ("madre-core", "succeeded")]
+    assert len(rows) == 2
+    assert all(row == ("madre-core", "succeeded") for row in rows)
 
 
 def test_core_deeper_requires_latest_deeper_recommendation():
