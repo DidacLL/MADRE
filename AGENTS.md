@@ -1,5 +1,13 @@
 # MADRE development contract
 
+## Priority: executable runtime behavior
+
+Select work by whether it directly reduces friction toward the current executable runtime slice or makes the minimal development control plane reliable. During bootstrap: remove obstructing process complexity, establish the minimal control surface, define the first slice, then prepare only what its implementation/tests require. Defer everything else. An incomplete repository subsystem is not authorization to complete, harden or modernize it.
+
+The TeX dossier is product-reference material, not a bootstrap engineering target. Read it selectively for semantics; preserve authoritative source. Do not build or improve TeX tooling, CI, PDF publishing or deployment, or install TeX dependencies for bootstrap. Only a direct source edit may justify a quick compile with an already working local command; compilation is never a bootstrap success criterion or blocker.
+
+Do not redesign general CI. Once runtime code exists, prefer the smallest CI that runs its actual build/tests; add checks only for demonstrated needs. Defer documentation sites, releases, publishing, dashboards, broad lint/style infrastructure and unrelated DevOps work. Existing machinery must earn retention against the current implementation goal.
+
 ## Authority and product compass
 
 Follow the current explicit user task, then [the canonical product dossier](docs/tex/MADRE-AgenticSystem.tex) for product semantics, this file for stable development procedure, and [DEVSTATE.md](DEVSTATE.md) for current scope and handoff. Resolve conflicts at the owning source; escalate unresolved product meaning to OWNER. Read only the relevant dossier sections.
