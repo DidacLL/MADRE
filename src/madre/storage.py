@@ -86,10 +86,14 @@ def open_database(data_dir: Path) -> Iterator[sqlite3.Connection]:
         raise RuntimeError("another MADRE runtime owns this data directory") from exc
     try:
         database = data_dir / "runtime.sqlite3"
+        database_existed = database.exists()
         connection = _connect(database)
         try:
             format_id = connection.execute("PRAGMA user_version").fetchone()[0]
-            if format_id not in (0, _STORAGE_FORMAT_ID):
+            incompatible = format_id not in (0, _STORAGE_FORMAT_ID) or (
+                database_existed and format_id == 0
+            )
+            if incompatible:
                 connection.close()
                 _discard_incompatible_development_storage(database)
                 connection = _connect(database)
