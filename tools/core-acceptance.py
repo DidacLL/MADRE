@@ -17,15 +17,20 @@ ACCEPTANCE_DB = ACCEPTANCE_DATA_DIR / "runtime.sqlite3"
 
 def prepare() -> None:
     source = EXAMPLE_CONFIG.read_text(encoding="utf-8")
-    marker = '# data_dir = "./dev/runtime"'
-    replacement = 'data_dir = "./dev/core-acceptance"'
-    if marker not in source:
-        raise RuntimeError(f"expected configuration marker is missing: {marker}")
+    data_marker = '# data_dir = "./dev/runtime"'
+    model_marker = 'model = "madre-smoke"'
+    if data_marker not in source:
+        raise RuntimeError(f"expected configuration marker is missing: {data_marker}")
+    if model_marker not in source:
+        raise RuntimeError(f"expected configuration marker is missing: {model_marker}")
 
-    ACCEPTANCE_CONFIG.write_text(source.replace(marker, replacement, 1), encoding="utf-8")
+    prepared = source.replace(data_marker, 'data_dir = "./dev/core-acceptance"', 1)
+    prepared = prepared.replace(model_marker, 'model = "madre-core-acceptance"', 1)
+    ACCEPTANCE_CONFIG.write_text(prepared, encoding="utf-8")
     shutil.rmtree(ACCEPTANCE_DATA_DIR, ignore_errors=True)
     print(f"wrote {ACCEPTANCE_CONFIG.relative_to(ROOT)}")
     print(f"cleared {ACCEPTANCE_DATA_DIR.relative_to(ROOT)}")
+    print("model=madre-core-acceptance")
 
 
 def status() -> None:
