@@ -157,9 +157,7 @@ class CoreClient:
         try:
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
-            raise CoreRuntimeError(
-                f"MADRE runtime returned HTTP {response.status_code}"
-            ) from exc
+            raise CoreRuntimeError(f"MADRE runtime returned HTTP {response.status_code}") from exc
         try:
             return _WorkRecord.model_validate(response.json())
         except (ValueError, ValidationError) as exc:
