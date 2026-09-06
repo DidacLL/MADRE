@@ -60,10 +60,14 @@ def test_exclusive_database_reopen_and_discards_incompatible_development_storage
     for label, stale_format_id in (("partial", 0), ("different", different_format_id)):
         stale = tmp_path / label
         stale.mkdir()
-        with sqlite3.connect(stale / "runtime.sqlite3") as connection:
-            connection.execute("CREATE TABLE obsolete_state (value TEXT)")
-            connection.execute("INSERT INTO obsolete_state VALUES ('discard me')")
-            connection.execute(f"PRAGMA user_version={stale_format_id}")
+        stale_connection = sqlite3.connect(stale / "runtime.sqlite3")
+        try:
+            stale_connection.execute("CREATE TABLE obsolete_state (value TEXT)")
+            stale_connection.execute("INSERT INTO obsolete_state VALUES ('discard me')")
+            stale_connection.execute(f"PRAGMA user_version={stale_format_id}")
+            stale_connection.commit()
+        finally:
+            stale_connection.close()
 
         with open_database(stale) as connection:
             assert connection.execute("PRAGMA user_version").fetchone()[0] == current_format_id
