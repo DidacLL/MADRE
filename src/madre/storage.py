@@ -131,8 +131,7 @@ class WorkStore:
 
     def start_attempt(self, work_id: str, started_at: datetime) -> int:
         row = self.connection.execute(
-            "SELECT COALESCE(MAX(number), 0) + 1 AS number "
-            "FROM runtime_attempt WHERE work_id = ?",
+            "SELECT COALESCE(MAX(number), 0) + 1 AS number FROM runtime_attempt WHERE work_id = ?",
             (work_id,),
         ).fetchone()
         number = int(row["number"])
@@ -280,9 +279,7 @@ class WorkStore:
                     status=attempt["status"],
                     started_at=attempt["started_at"],
                     completed_at=attempt["completed_at"],
-                    result=(
-                        json.loads(attempt["result_json"]) if attempt["result_json"] else None
-                    ),
+                    result=(json.loads(attempt["result_json"]) if attempt["result_json"] else None),
                     failure=self._failure(attempt),
                 )
                 for attempt in attempts
