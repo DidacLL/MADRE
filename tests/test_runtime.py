@@ -101,6 +101,169 @@ def test_capability_failure_is_durable_and_inspectable_after_restart(tmp_path, m
         assert inspected.json() == work
 
 
+def test_heavyweight_local_inference_is_globally_admitted_across_applications(
+    tmp_path, monkeypatch
+):
+    runtime_settings = settings(tmp_path)
+    first_entered = asyncio.Event()
+    release_first = asyncio.Event()
+    second_persisted = asyncio.Event()
+    invocation_order = []
+    active_invocations = 0
+
+    async def fake_invoke(capability, request, constraints):
+        nonlocal active_invocations
+        label = request.messages[0].content
+        active_invocations += 1
+        assert active_invocations == 1
+        invocation_order.append(f"{label}:entered")
+        try:
+            if label == "first":
+                first_entered.set()
+                await release_first.wait()
+            invocation_order.append(f"{label}:completed")
+            return ChatResult(
+                text=f"{label} result",
+                model="test-model",
+                finish_reason="stop",
+                elapsed_seconds=0.01,
+            )
+        finally:
+            active_invocations -= 1
+
+    monkeypatch.setattr("madre.runtime.invoke_chat", fake_invoke)
+    first = WorkSubmission.model_validate(
+        {
+            **SUBMISSION,
+            "application_id": "application-a",
+            "input": {
+                "messages": [{"role": "user", "content": "first"}],
+                "max_tokens": 32,
+            },
+        }
+    )
+    second = WorkSubmission.model_validate(
+        {
+            **SUBMISSION,
+            "application_id": "application-b",
+            "input": {
+                "messages": [{"role": "user", "content": "second"}],
+                "max_tokens": 32,
+            },
+        }
+    )
+
+    with open_database(runtime_settings.data_dir) as connection:
+        store = WorkStore(connection)
+        original_create = store.create
+
+        def create_with_signal(work_id, submission, submitted_at):
+            original_create(work_id, submission, submitted_at)
+            if submission.application_id == "application-b":
+                second_persisted.set()
+
+        monkeypatch.setattr(store, "create", create_with_signal)
+        runtime = WorkRuntime(runtime_settings, store)
+
+        async def exercise_concurrency():
+            first_task = asyncio.create_task(runtime.submit(first))
+            await first_entered.wait()
+            second_task = asyncio.create_task(runtime.submit(second))
+            await second_persisted.wait()
+
+            rows = connection.execute(
+                "SELECT application_id, status FROM runtime_work ORDER BY application_id"
+            ).fetchall()
+            assert [(row[0], row[1]) for row in rows] == [
+                ("application-a", "running"),
+                ("application-b", "accepted"),
+            ]
+            assert connection.execute("SELECT COUNT(*) FROM runtime_attempt").fetchone()[0] == 1
+            assert invocation_order == ["first:entered"]
+
+            release_first.set()
+            first_record, second_record = await asyncio.gather(first_task, second_task)
+            return first_record, second_record
+
+        first_record, second_record = asyncio.run(exercise_concurrency())
+
+    assert first_record.status == "succeeded"
+    assert second_record.status == "succeeded"
+    assert first_record.submission.application_id == "application-a"
+    assert second_record.submission.application_id == "application-b"
+    assert invocation_order == [
+        "first:entered",
+        "first:completed",
+        "second:entered",
+        "second:completed",
+    ]
+
+
+def test_failing_heavyweight_local_inference_releases_admission(tmp_path, monkeypatch):
+    runtime_settings = settings(tmp_path)
+    first_entered = asyncio.Event()
+    release_failure = asyncio.Event()
+    second_entered = asyncio.Event()
+
+    async def fake_invoke(capability, request, constraints):
+        label = request.messages[0].content
+        if label == "first":
+            first_entered.set()
+            await release_failure.wait()
+            raise CapabilityError("connection", "first invocation failed")
+        second_entered.set()
+        return ChatResult(
+            text="second result",
+            model="test-model",
+            finish_reason="stop",
+            elapsed_seconds=0.01,
+        )
+
+    monkeypatch.setattr("madre.runtime.invoke_chat", fake_invoke)
+    first = WorkSubmission.model_validate(
+        {
+            **SUBMISSION,
+            "application_id": "application-a",
+            "input": {
+                "messages": [{"role": "user", "content": "first"}],
+                "max_tokens": 32,
+            },
+        }
+    )
+    second = WorkSubmission.model_validate(
+        {
+            **SUBMISSION,
+            "application_id": "application-b",
+            "input": {
+                "messages": [{"role": "user", "content": "second"}],
+                "max_tokens": 32,
+            },
+        }
+    )
+
+    with open_database(runtime_settings.data_dir) as connection:
+        runtime = WorkRuntime(runtime_settings, WorkStore(connection))
+
+        async def exercise_failure_release():
+            first_task = asyncio.create_task(runtime.submit(first))
+            await first_entered.wait()
+            second_task = asyncio.create_task(runtime.submit(second))
+            await asyncio.sleep(0)
+            assert not second_entered.is_set()
+
+            release_failure.set()
+            first_record, second_record = await asyncio.gather(first_task, second_task)
+            return first_record, second_record
+
+        first_record, second_record = asyncio.run(exercise_failure_release())
+
+    assert first_record.status == "failed"
+    assert first_record.failure is not None
+    assert first_record.failure.code == "connection"
+    assert second_entered.is_set()
+    assert second_record.status == "succeeded"
+
+
 def test_unknown_capability_and_invalid_input_are_durable_failures(tmp_path, monkeypatch):
     monkeypatch.setenv("MADRE_API_TOKEN", "test-token")
     runtime_settings = settings(tmp_path)
