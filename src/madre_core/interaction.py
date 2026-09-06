@@ -5,18 +5,20 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-from madre_core.client import CoreClient, CoreRuntimeError
+from madre_core.client import CoreClient
 
 ReasoningRecommendation = Literal["fast", "deeper"]
 
 _FAST_INTERACTION_INSTRUCTION = """\
-You are MADRE CORE's fast interaction behavior. Give the user a concise, useful response
-for the current conversational turn. Do not claim to have performed follow-up work that
-has not happened. After the user-facing response, add exactly one final line containing
-[[MADRE_REASONING:fast]] when the fast response is sufficient, or
-[[MADRE_REASONING:deeper]] when materially better handling would require deeper multi-step
-reasoning, verification, research, planning, or tools. The marker is only a recommendation
-for CORE software; do not explain it in the user-facing response.
+You are MADRE CORE's fast interaction behavior. Answer the user's current request directly
+with a concise, useful user-facing response. Handle ordinary benign conversational,
+factual, and creative requests normally. After the response, add exactly one final line:
+[[MADRE_REASONING:fast]] or [[MADRE_REASONING:deeper]]. Use `fast` by default. Use `deeper`
+only when one second pass by this same chat capability, using the same conversation and a
+larger response budget but no new tools or external information, is likely to materially
+improve correctness or completeness. Do not choose `deeper` merely because an answer could
+be longer or because unavailable research or tools would help. Never output the marker
+without a user-facing response, and do not explain the marker.
 """
 _DEEPER_INTERACTION_INSTRUCTION = """\
 You are MADRE CORE's deeper follow-up behavior. Reconsider the most recent user request
@@ -28,6 +30,7 @@ conversation shows it actually occurred. Return only the improved user-facing an
 do not emit a MADRE reasoning marker.
 """
 _DEEPER_REQUEST = "Provide the deeper replacement answer now."
+_NO_FAST_RESPONSE = "I couldn't produce a usable fast response."
 _MARKER_PREFIX = "[[MADRE_REASONING:"
 _MARKERS: dict[str, ReasoningRecommendation] = {
     "[[MADRE_REASONING:fast]]": "fast",
@@ -58,7 +61,7 @@ def _interpret_fast_response(generated: str) -> CoreTurn:
         recommendation = "deeper"
 
     if not text:
-        raise CoreRuntimeError("CORE fast interaction returned no user-facing response")
+        return CoreTurn(text=_NO_FAST_RESPONSE, reasoning="deeper")
     return CoreTurn(text=text, reasoning=recommendation)
 
 
