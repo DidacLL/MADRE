@@ -111,7 +111,7 @@ With the MADRE service running and the same `MADRE_API_TOKEN` available in a sec
 python -m uv run --locked madre-core --runtime-url http://127.0.0.1:8731 --capability local-chat
 ```
 
-Enter a message at `you>` and CORE submits ordinary authenticated MADRE work as application `madre-core`. Assistant text is printed at `core>`, followed by `reasoning> fast` when the foreground answer is considered sufficient or `reasoning> deeper` when CORE recommends stronger follow-up reasoning. The recommendation is advisory only: it does not create another work item or invoke another behavior yet. Successful conversation history is retained only for that CORE process and included in the next chat input; restarting CORE forgets it. Runtime/capability failures are printed explicitly and are not appended to conversation history. See [`docs/core.md`](docs/core.md) for the exact behavior and options.
+Enter a message at `you>` and CORE submits ordinary authenticated MADRE work as application `madre-core`. Assistant text is printed at `core>`, followed by `reasoning> fast` when the foreground answer is considered sufficient or `reasoning> deeper` when CORE recommends stronger follow-up reasoning. A deeper recommendation also exposes `deeper> /deeper`. Entering `/deeper` explicitly submits one second ordinary MADRE work item with a deeper-analysis instruction and the larger `--deeper-max-tokens` budget; its result is printed at `core(deeper)>` and replaces the fast draft in process-local conversation history. CORE never escalates automatically. Runtime/capability failures are printed explicitly and are not appended to conversation history. See [`docs/core.md`](docs/core.md) for the exact behavior and options.
 
 CORE does not import the runtime scheduler, storage or capability invocation path. It does not contact llama.cpp directly. The runtime has no CORE-specific scheduling or admission behavior.
 
@@ -158,6 +158,6 @@ Fixtures and mocked inference establish deterministic protocol and failure behav
 
 ## Continue implementation
 
-CORE now has one explicit foreground responsibility and can expose whether that fast interaction considers itself sufficient or recommends deeper reasoning. The next single behavior should give a `deeper` recommendation one concrete, user-controlled execution consequence—preferably one bounded stronger follow-up through the same ordinary MADRE runtime—before extracting a generalized agent or Planner abstraction.
+CORE now has one concrete two-stage reasoning path: a fast foreground response can recommend deeper handling, and the user can explicitly turn that recommendation into one stronger follow-up through ordinary MADRE work. The next behavior should be chosen from evidence produced by using this path rather than by prebuilding a generalized Agent, Planner, workflow engine, memory system or capability router.
 
 GPL-3.0. See [`LICENSE`](LICENSE).

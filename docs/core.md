@@ -12,21 +12,29 @@ Start the MADRE runtime normally with a configured chat capability and `MADRE_AP
 python -m uv run --locked madre-core --runtime-url http://127.0.0.1:8731 --capability local-chat
 ```
 
-Enter a message at `you>`. Generated assistant text is printed at `core>`. CORE then prints the fast interaction decision as either `reasoning> fast` or `reasoning> deeper`. Use `/exit`, `/quit`, Ctrl+C, or end-of-input to stop.
+Enter a message at `you>`. Generated assistant text is printed at `core>`. CORE then prints the fast interaction decision as either `reasoning> fast` or `reasoning> deeper`. When the latest turn recommends `deeper`, CORE also shows `deeper> /deeper`; entering `/deeper` explicitly requests one stronger follow-up. Use `/exit`, `/quit`, Ctrl+C, or end-of-input to stop.
 
-`--token-env` defaults to `MADRE_API_TOKEN`, `--max-tokens` defaults to 256, and `--timeout` defaults to 120 seconds. The runtime URL must be a literal loopback HTTP(S) origin. CORE never prints the bearer token.
+`--token-env` defaults to `MADRE_API_TOKEN`, `--max-tokens` defaults to 256, `--deeper-max-tokens` defaults to 768, and `--timeout` defaults to 120 seconds. The deeper token budget must exceed the fast token budget. The runtime URL must be a literal loopback HTTP(S) origin. CORE never prints the bearer token.
 
 If MADRE returns work as `accepted` or `running`, CORE polls the ordinary work-inspection endpoint until the work succeeds or fails. Durable runtime/capability failures are shown as `CORE error: ...` rather than being interpreted as assistant output.
 
 ## Fast interaction responsibility
 
-Each user turn creates exactly one ordinary CORE chat work item. CORE adds a transient system instruction asking the configured capability for a concise immediate answer and one bounded recommendation: `fast` when that response is sufficient, or `deeper` when materially better handling would require deeper multi-step reasoning, verification, research, planning, or tools.
+Each ordinary user turn creates exactly one CORE chat work item. CORE adds a transient system instruction asking the configured capability for a concise immediate answer and one bounded recommendation: `fast` when that response is sufficient, or `deeper` when materially better handling would require deeper multi-step reasoning, verification, research, planning, or tools.
 
 CORE software strips that internal marker before displaying or remembering the assistant response. If the capability omits or malforms the marker, CORE preserves the useful response but conservatively reports `deeper` rather than silently assuming the fast answer is sufficient.
 
-The recommendation is observable only. `deeper` does not schedule another job, deploy an agent, invoke a Planner, change capability selection, or claim that deeper reasoning occurred. This slice establishes the decision point before giving it execution consequences.
-
 "Fast" describes CORE's interaction responsibility: one bounded foreground inference intended to answer the current turn promptly. It is not a wall-clock scheduling guarantee. Ordinary MADRE runtime admission may still delay the work when another application occupies the heavyweight local-inference slot.
+
+## User-controlled deeper follow-up
+
+A `deeper` recommendation has exactly one execution consequence, and only when the user explicitly enters `/deeper`. CORE then submits one second ordinary MADRE work item through the same authenticated HTTP boundary and stable `madre-core` application identity.
+
+That work uses the configured chat capability with the current process-local conversation, including the latest fast answer as a draft. A transient deeper-follow-up instruction asks for a materially more thorough replacement answer and uses the larger `--deeper-max-tokens` budget. This is stronger reasoning intent within the currently available chat capability; it is not a new runtime work type or capability class.
+
+A successful deeper answer replaces the fast draft in CORE's process-local conversation history so later turns see one authoritative conversational answer rather than both drafts. The opportunity is then consumed. Sending a new ordinary user message instead abandons the previous opportunity. If the deeper work fails, the fast answer remains in history and the opportunity remains available for an explicit retry.
+
+CORE never escalates automatically. `/deeper` is rejected unless the latest completed fast turn recommended deeper reasoning. The command does not deploy an agent, invoke a Planner, create a workflow, select another capability, or start background execution.
 
 ## State
 
