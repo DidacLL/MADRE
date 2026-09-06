@@ -12,7 +12,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from madre.config import Settings
 from madre.contracts import WorkRecord, WorkSubmission
 from madre.runtime import IdempotencyConflict, WorkRuntime
-from madre.storage import SCHEMA_VERSION, WorkStore, open_database
+from madre.storage import WorkStore, open_database
 
 
 def create_app(settings: Settings) -> FastAPI:
@@ -61,8 +61,8 @@ def create_app(settings: Settings) -> FastAPI:
         return active_runtime
 
     @app.get("/health")
-    def health() -> dict[str, str | int]:
-        return {"status": "ok", "schema_version": SCHEMA_VERSION}
+    def health() -> dict[str, str]:
+        return {"status": "ok"}
 
     @app.post("/v1/work", response_model=WorkRecord, status_code=status.HTTP_201_CREATED)
     async def submit_work(
