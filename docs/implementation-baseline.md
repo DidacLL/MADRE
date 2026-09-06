@@ -100,37 +100,50 @@ host integration where appropriate.
 
 ## Runtime-work direction and next behavior
 
-Immediate and delayed execution now share `WorkSubmission`, durable work state,
-attempt evidence and capability execution. The application owns domain meaning;
-MADRE persists only the selected execution material and lifecycle evidence needed
-to execute and inspect runtime work.
+Immediate and delayed execution share `WorkSubmission`, durable work state, attempt
+evidence and capability execution. Delayed eligibility and restart recovery are
+canonical on `main` as of `75d88417b34a3959a61ba89452a671fc7d4b39d6`.
 
-This delayed/restart behavior is implemented on the current PR branch but is not
-canonical product behavior until the Owner merges it into `main`.
+The current admission slice adds one runtime invariant: across one shared MADRE runtime,
+at most one heavyweight local LLM capability invocation may execute at once. The
+service-lifetime `WorkRuntime` owns the admission primitive, so immediate HTTP work,
+delayed scheduler work and future CORE-originated work using the same runtime plane
+share the same limit without application-specific handling.
 
-**After delayed/restart recovery is canonical, implement minimal global local-inference
-admission next:** multiple applications may hold durable eligible work concurrently,
-but at most one heavyweight local LLM capability execution is admitted at once.
-Accepted work remains durable and inspectable; admission must operate on the existing
-work/attempt/capability execution path and preserve deterministic ordering. This is
-the first concrete scarce-resource admission rule, not an assumption that MADRE work
-is inherently local LLM inference.
+Today's configuration can identify this scarce path without a new capability
+architecture: the only implemented capability kind is `chat_completions`, and local
+inference is distinguished by `CapabilityConfig.boundary == "local"`. Admission is
+therefore applied only to that current local-chat path. Remote chat is not part of
+this scarce local resource rule, and future non-chat capabilities must not inherit it
+merely because they are runtime work.
 
-Do not generalize this into a resource scheduler or execution-path selector. Introduce
-only the smallest explicit capability classification needed to identify heavyweight
-local LLM execution. Keep unrelated cheap/deterministic capability work concurrent
-when the current architecture can distinguish it without speculative abstractions.
-GPU percentages, reservations, preemption, fair-share scheduling, model matrices,
-model routing, retry, cancellation, CORE and workflow/DAG machinery remain outside
-that next slice.
+Work is persisted before admission. A local-chat work item waiting for the scarce slot
+remains durably `accepted` with no started attempt. Once admitted, the existing
+conditional accepted-to-running transition occurs immediately before the same
+`invoke_chat` path used by immediate and delayed work. The admission slot is released
+when physical invocation returns or raises, before durable result/failure finalization;
+structured capability failure therefore cannot permanently occupy the slot, and
+exception/cancellation unwinding also releases it through the async context manager.
+
+This is the first concrete scarce-resource rule, not a generalized scheduler. No
+resource registry, semaphore framework, GPU accounting, model-residency plan, priority
+system, retry/cancellation product feature, capability class hierarchy or execution
+router is introduced. Because there is no implemented non-heavy capability yet,
+concurrent cheap-work execution cannot be exercised honestly in this slice; the
+boundary is instead conditional on the existing capability configuration so it does
+not inherently wrap all future work.
+
+This admission behavior is implemented on the current PR branch but is not canonical
+product behavior until the Owner merges it into `main`.
 
 The dependency/value order is now:
 
 1. Real immediate runtime work execution — implemented and accepted.
-2. Delayed eligibility and restart recovery — implemented on the current PR; Owner merge pending.
-3. Minimal global local-inference admission — next after step 2 is canonical on `main`.
-4. CORE development may begin only after the admission invariant is canonical.
-5. Further application integration, capabilities and execution controls grow from actual use.
+2. Delayed eligibility and restart recovery — implemented, accepted and canonical.
+3. Minimal global local-inference admission — implemented on the current PR; Owner merge pending.
+4. Small canonical `MADRE.md` product-direction realignment — next after Owner merge.
+5. CORE development — after that product-direction realignment.
+6. Further application integration, capabilities and execution controls grow from actual use.
 
 ## Verified development evidence — 2026-09-06
 
