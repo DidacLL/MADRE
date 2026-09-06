@@ -111,7 +111,8 @@ def test_exclusive_database_reopen_migration_and_unknown_schema(tmp_path):
         assert tuple(legacy_row) == ("legacy-work", "legacy-app")
         assert (
             connection.execute(
-                "SELECT name FROM sqlite_master WHERE type='index' AND name='runtime_work_idempotency'"
+                "SELECT name FROM sqlite_master "
+                "WHERE type='index' AND name='runtime_work_idempotency'"
             ).fetchone()[0]
             == "runtime_work_idempotency"
         )
