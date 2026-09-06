@@ -105,9 +105,10 @@ def test_exclusive_database_reopen_migration_and_unknown_schema(tmp_path):
             row[1] for row in connection.execute("PRAGMA table_info(runtime_work)").fetchall()
         }
         assert "idempotency_key" in columns
-        assert connection.execute(
+        legacy_row = connection.execute(
             "SELECT id, application_id FROM runtime_work WHERE id = 'legacy-work'"
-        ).fetchone() == ("legacy-work", "legacy-app")
+        ).fetchone()
+        assert tuple(legacy_row) == ("legacy-work", "legacy-app")
         assert connection.execute(
             "SELECT name FROM sqlite_master WHERE type='index' AND name='runtime_work_idempotency'"
         ).fetchone()[0] == "runtime_work_idempotency"
