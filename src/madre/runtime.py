@@ -1,5 +1,7 @@
 """Reusable execution lifecycle beneath transport adapters."""
 
+import asyncio
+from collections.abc import Callable
 from datetime import datetime
 from uuid import uuid4
 
@@ -11,45 +13,81 @@ from madre.inference import CapabilityError, ChatInput, invoke_chat
 from madre.storage import WorkStore, utc_now
 
 
-class DelayedExecutionUnavailable(RuntimeError):
-    pass
-
-
 class WorkRuntime:
-    def __init__(self, settings: Settings, store: WorkStore):
+    def __init__(
+        self,
+        settings: Settings,
+        store: WorkStore,
+        *,
+        clock: Callable[[], datetime] | None = None,
+    ):
         self.settings = settings
         self.store = store
-        self.store.fail_interrupted(utc_now())
+        self._clock = clock or utc_now
+        self._schedule_changed = asyncio.Event()
+        self.store.fail_interrupted_attempts(self._clock())
 
-    async def execute_immediate(
-        self,
-        submission: WorkSubmission,
-        *,
-        now: datetime | None = None,
-    ) -> WorkRecord:
-        accepted_at = now or utc_now()
-        if submission.eligible_at is not None and submission.eligible_at > accepted_at:
-            raise DelayedExecutionUnavailable(
-                "future eligibility is not implemented yet; submit work when it becomes eligible"
-            )
-
+    async def submit(self, submission: WorkSubmission) -> WorkRecord:
+        accepted_at = self._clock()
         work_id = uuid4().hex
         self.store.create(work_id, submission, accepted_at)
+        self._schedule_changed.set()
 
-        capability = self.settings.capabilities.get(submission.capability_id)
+        if submission.eligible_at is not None and submission.eligible_at > accepted_at:
+            return self._require(work_id)
+        return await self._execute_accepted(work_id)
+
+    async def run_eligible(self) -> int:
+        """Execute all work eligible at the current runtime clock."""
+        eligible_at = self._clock()
+        executed = 0
+        while work_id := self.store.next_eligible(eligible_at):
+            await self._execute_accepted(work_id)
+            executed += 1
+        return executed
+
+    async def run_scheduler(self) -> None:
+        """Continuously recover and execute accepted work when it becomes eligible."""
+        while True:
+            self._schedule_changed.clear()
+            await self.run_eligible()
+
+            next_eligibility = self.store.next_eligibility()
+            if next_eligibility is None:
+                await self._schedule_changed.wait()
+                continue
+
+            delay = max((next_eligibility - self._clock()).total_seconds(), 0.0)
+            if delay == 0:
+                continue
+            try:
+                await asyncio.wait_for(self._schedule_changed.wait(), timeout=delay)
+            except TimeoutError:
+                pass
+
+    async def _execute_accepted(self, work_id: str) -> WorkRecord:
+        record = self._require(work_id)
+        if record.status != "accepted":
+            return record
+
+        now = self._clock()
+        if record.submission.eligible_at is not None and record.submission.eligible_at > now:
+            return record
+
+        capability = self.settings.capabilities.get(record.submission.capability_id)
         if capability is None:
             self.store.fail(
                 work_id,
                 WorkFailure(
                     code="unknown_capability",
-                    message=f"unknown configured capability: {submission.capability_id}",
+                    message=f"unknown configured capability: {record.submission.capability_id}",
                 ),
-                utc_now(),
+                self._clock(),
             )
             return self._require(work_id)
 
         try:
-            chat_input = ChatInput.model_validate(submission.input)
+            chat_input = ChatInput.model_validate(record.submission.input)
         except ValidationError:
             self.store.fail(
                 work_id,
@@ -57,18 +95,21 @@ class WorkRuntime:
                     code="invalid_input",
                     message="work input is not valid for the configured chat-completion capability",
                 ),
-                utc_now(),
+                self._clock(),
             )
             return self._require(work_id)
 
-        attempt_number = self.store.start_attempt(work_id, utc_now())
+        attempt_number = self.store.start_attempt(work_id, self._clock())
+        if attempt_number is None:
+            return self._require(work_id)
+
         try:
-            result = await invoke_chat(capability, chat_input, submission.constraints)
+            result = await invoke_chat(capability, chat_input, record.submission.constraints)
         except CapabilityError as exc:
             self.store.fail(
                 work_id,
                 WorkFailure(code=exc.code, message=str(exc)),
-                utc_now(),
+                self._clock(),
                 attempt_number=attempt_number,
             )
         else:
@@ -76,7 +117,7 @@ class WorkRuntime:
                 work_id,
                 attempt_number,
                 result.model_dump(mode="json"),
-                utc_now(),
+                self._clock(),
             )
         return self._require(work_id)
 
