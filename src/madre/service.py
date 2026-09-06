@@ -10,7 +10,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from madre.config import Settings
 from madre.contracts import WorkRecord, WorkSubmission
-from madre.runtime import DelayedExecutionUnavailable, WorkRuntime
+from madre.runtime import WorkRuntime
 from madre.storage import SCHEMA_VERSION, WorkStore, open_database
 
 
@@ -22,10 +22,13 @@ def create_app(settings: Settings) -> FastAPI:
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         nonlocal active_runtime
         with open_database(settings.data_dir) as connection:
-            active_runtime = WorkRuntime(settings, WorkStore(connection))
+            runtime_instance = WorkRuntime(settings, WorkStore(connection))
+            active_runtime = runtime_instance
+            await runtime_instance.start()
             try:
                 yield
             finally:
+                await runtime_instance.stop()
                 active_runtime = None
 
     bearer = HTTPBearer(auto_error=False)
@@ -61,10 +64,7 @@ def create_app(settings: Settings) -> FastAPI:
 
     @app.post("/v1/work", response_model=WorkRecord, status_code=status.HTTP_201_CREATED)
     async def submit_work(submission: WorkSubmission) -> WorkRecord:
-        try:
-            return await runtime().execute_immediate(submission)
-        except DelayedExecutionUnavailable as exc:
-            raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+        return await runtime().submit(submission)
 
     @app.get("/v1/work/{work_id}", response_model=WorkRecord)
     async def inspect_work(work_id: str) -> WorkRecord:

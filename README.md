@@ -12,11 +12,11 @@ Start here:
 
 ## What runs today
 
-MADRE provides an installable typed Python package, explicit TOML configuration, an authenticated loopback HTTP service, exclusive SQLite runtime ownership, durable immediate-work records, and a real chat-completion capability adapter.
+MADRE provides an installable typed Python package, explicit TOML configuration, an authenticated loopback HTTP service, exclusive SQLite runtime ownership, durable immediate and delayed work records, and a real chat-completion capability adapter.
 
-An independent application can submit currently eligible work to `POST /v1/work`. MADRE durably records the submission, invokes the configured capability, records the attempt and generated result or classified failure, and returns the resulting work record. `GET /v1/work/{id}` returns the same durable record for inspection. A process restart converts any previously in-flight attempt into an `interrupted` failure whose message explicitly says the capability outcome may be unknown; MADRE does not retry it.
+An independent application submits work to `POST /v1/work`. Currently eligible work executes through the capability path before the response is returned. Future-eligible work is durably accepted with status `accepted` and returns immediately; a background scheduler executes it no earlier than `eligible_at`. `GET /v1/work/{id}` returns the durable lifecycle, attempt, generated result, or classified failure.
 
-`eligible_at` remains part of the same work-submission vocabulary. Future eligibility is rejected with HTTP 409 until delayed scheduling and recovery are implemented rather than being accepted with semantics the runtime does not yet provide.
+Accepted work remains queued across MADRE restart and is rediscovered from SQLite. A work item whose capability attempt had actually started but did not durably finish is instead recorded as `interrupted`, with evidence that the capability outcome may be unknown; MADRE does not retry that invocation. Immediate and delayed work use the same durable record and capability execution path.
 
 Python is the current implementation language, not a permanent product boundary. The application API is language-neutral HTTP; C/C++ implementations can be introduced where concrete runtime responsibilities benefit.
 
@@ -92,6 +92,7 @@ A current chat-completion submission is shaped like:
     ],
     "max_tokens": 64
   },
+  "eligible_at": "2030-01-01T12:00:00Z",
   "constraints": {
     "timeout_seconds": 120,
     "local_only": true
@@ -99,7 +100,7 @@ A current chat-completion submission is shaped like:
 }
 ```
 
-The application owns the prompt and interpretation of the generated result. MADRE stores that selected execution material because durable work needs enough intent and evidence to be inspected and, for later delayed work, recovered.
+Omit `eligible_at` for immediate work. A future value returns a durable `accepted` record without waiting for capability execution. The work remains inspectable while queued; after eligibility, the same endpoint exposes its terminal result or failure. The application owns the prompt and interpretation of the generated result. MADRE stores the selected execution material because durable work needs enough intent and evidence to be inspected and recovered.
 
 ## Optional real local-model fixture
 
@@ -140,10 +141,10 @@ python tools/accept-immediate-work.py --capability local-chat
 
 A successful check submits work through HTTP, requires non-empty generated text from the real configured model, then reads the work back through the inspection endpoint and requires the durable record to match the submission response. Capability failures are printed from MADRE's durable work record and cause a nonzero exit.
 
-Fixtures and mocked inference establish deterministic protocol and failure behavior only. This acceptance command is the check for a claim that the complete HTTP runtime path executed a real model.
+The delayed scheduler reuses this exact durable capability execution path. Deterministic runtime tests establish delayed eligibility and restart recovery without downloading or rerunning the real model fixture.
 
 ## Continue implementation
 
-Implement delayed eligibility and restart recovery for queued work next, using the same durable work and attempt model rather than a separate scheduler-specific job type. Define only the scheduling mechanics needed to accept future-eligible work, discover it after restart, execute it when eligible, and expose the eventual result or recoverable failure. Retry, cancellation and broader concurrency policy should grow from subsequent behavior.
+Integrate one real independent application beyond the acceptance client: let the application select its own context, submit immediate or delayed work through the HTTP contract, and consume durable results while retaining its domain state and semantics. Additional capabilities, retry, cancellation, and richer concurrency/resource policy should continue to grow from concrete use.
 
 GPL-3.0. See [`LICENSE`](LICENSE).

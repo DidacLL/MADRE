@@ -1,4 +1,6 @@
+import asyncio
 import sqlite3
+import threading
 from datetime import UTC, datetime, timedelta
 
 from fastapi.testclient import TestClient
@@ -7,6 +9,7 @@ from madre import Settings, create_app
 from madre.config import CapabilityConfig
 from madre.contracts import WorkSubmission
 from madre.inference import CapabilityError, ChatResult
+from madre.runtime import WorkRuntime
 from madre.storage import WorkStore, open_database, utc_now
 
 AUTH = {"Authorization": "Bearer test-token"}
@@ -25,6 +28,14 @@ SUBMISSION = {
     },
     "constraints": {"timeout_seconds": 5, "local_only": True},
 }
+
+
+class MutableClock:
+    def __init__(self, value: datetime):
+        self.value = value
+
+    def __call__(self) -> datetime:
+        return self.value
 
 
 def settings(tmp_path):
@@ -122,8 +133,16 @@ def test_unknown_capability_and_invalid_input_are_durable_failures(tmp_path, mon
         assert invalid["attempts"] == []
 
 
-def test_future_eligibility_is_rejected_without_creating_work(tmp_path, monkeypatch):
+def test_http_future_work_is_durably_accepted_without_execution(tmp_path, monkeypatch):
     monkeypatch.setenv("MADRE_API_TOKEN", "test-token")
+    invoked = False
+
+    async def fake_invoke(capability, request, constraints):
+        nonlocal invoked
+        invoked = True
+        raise AssertionError("future work executed before eligibility")
+
+    monkeypatch.setattr("madre.runtime.invoke_chat", fake_invoke)
     runtime_settings = settings(tmp_path)
     future = datetime.now(UTC) + timedelta(hours=1)
 
@@ -133,11 +152,23 @@ def test_future_eligibility_is_rejected_without_creating_work(tmp_path, monkeypa
             headers=AUTH,
             json={**SUBMISSION, "eligible_at": future.isoformat()},
         )
-        assert response.status_code == 409
+        assert response.status_code == 201
+        work = response.json()
+        assert work["status"] == "accepted"
+        assert work["attempts"] == []
+        assert work["submission"]["eligible_at"] == future.isoformat()
+        work_id = work["id"]
+
+        inspected = client.get(f"/v1/work/{work_id}", headers=AUTH)
+        assert inspected.status_code == 200
+        assert inspected.json() == work
+        assert not invoked
 
     with sqlite3.connect(runtime_settings.data_dir / "runtime.sqlite3") as connection:
-        count = connection.execute("SELECT COUNT(*) FROM runtime_work").fetchone()[0]
-    assert count == 0
+        row = connection.execute(
+            "SELECT status, eligible_at FROM runtime_work WHERE id = ?", (work_id,)
+        ).fetchone()
+    assert row == ("accepted", future.isoformat())
 
 
 def test_restart_marks_incomplete_attempt_as_interrupted(tmp_path, monkeypatch):
@@ -160,26 +191,92 @@ def test_restart_marks_incomplete_attempt_as_interrupted(tmp_path, monkeypatch):
     assert work["attempts"][0]["failure"]["code"] == "interrupted"
 
 
-def test_restart_reconciles_eligible_unstarted_work_but_preserves_future(tmp_path, monkeypatch):
+def test_delayed_work_survives_restart_and_executes_only_when_eligible(
+    tmp_path, monkeypatch
+):
     monkeypatch.setenv("MADRE_API_TOKEN", "test-token")
     runtime_settings = settings(tmp_path)
-    submission = WorkSubmission.model_validate(SUBMISSION)
-    future_submission = submission.model_copy(
-        update={"eligible_at": utc_now() + timedelta(hours=1)}
+    accepted_at = datetime(2030, 1, 1, tzinfo=UTC)
+    eligible_at = accepted_at + timedelta(hours=1)
+    clock = MutableClock(accepted_at)
+    monkeypatch.setattr("madre.runtime.utc_now", clock)
+    invocations: list[datetime] = []
+
+    async def fake_invoke(capability, request, constraints):
+        invocations.append(clock())
+        return ChatResult(
+            text="delayed result",
+            model="test-model",
+            finish_reason="stop",
+            elapsed_seconds=0.01,
+        )
+
+    monkeypatch.setattr("madre.runtime.invoke_chat", fake_invoke)
+    submission = WorkSubmission.model_validate(
+        {**SUBMISSION, "eligible_at": eligible_at.isoformat()}
     )
 
     with open_database(runtime_settings.data_dir) as connection:
-        store = WorkStore(connection)
-        store.create("unstarted-work", submission, utc_now())
-        store.create("future-work", future_submission, utc_now())
+        runtime = WorkRuntime(runtime_settings, WorkStore(connection))
+        accepted = asyncio.run(runtime.submit(submission, now=accepted_at))
+        work_id = accepted.id
+        assert accepted.status == "accepted"
+        assert accepted.attempts == []
+
+    clock.value = eligible_at - timedelta(microseconds=1)
+    with open_database(runtime_settings.data_dir) as connection:
+        recovered = WorkRuntime(runtime_settings, WorkStore(connection))
+        assert recovered.inspect(work_id).status == "accepted"
+        assert asyncio.run(recovered.execute_eligible(now=clock())) == 0
+        assert recovered.inspect(work_id).status == "accepted"
+        assert invocations == []
+
+        clock.value = eligible_at
+        assert asyncio.run(recovered.execute_eligible(now=clock())) == 1
+        completed = recovered.inspect(work_id)
+
+    assert completed is not None
+    assert completed.status == "succeeded"
+    assert completed.result["text"] == "delayed result"
+    assert len(completed.attempts) == 1
+    assert completed.started_at >= eligible_at
+    assert invocations == [eligible_at]
+
+
+def test_background_scheduler_executes_future_work_at_eligibility(tmp_path, monkeypatch):
+    monkeypatch.setenv("MADRE_API_TOKEN", "test-token")
+    runtime_settings = settings(tmp_path)
+    invoked = threading.Event()
+
+    async def fake_invoke(capability, request, constraints):
+        invoked.set()
+        return ChatResult(
+            text="scheduled result",
+            model="test-model",
+            finish_reason="stop",
+            elapsed_seconds=0.01,
+        )
+
+    monkeypatch.setattr("madre.runtime.invoke_chat", fake_invoke)
+    eligible_at = datetime.now(UTC) + timedelta(milliseconds=250)
 
     with TestClient(create_app(runtime_settings)) as client:
-        unstarted = client.get("/v1/work/unstarted-work", headers=AUTH).json()
-        future = client.get("/v1/work/future-work", headers=AUTH).json()
+        accepted = client.post(
+            "/v1/work",
+            headers=AUTH,
+            json={**SUBMISSION, "eligible_at": eligible_at.isoformat()},
+        ).json()
+        assert accepted["status"] == "accepted"
+        assert accepted["attempts"] == []
+        assert invoked.wait(timeout=2)
 
-    assert unstarted["status"] == "failed"
-    assert unstarted["failure"]["code"] == "interrupted_before_attempt"
-    assert unstarted["attempts"] == []
-    assert future["status"] == "accepted"
-    assert future["failure"] is None
-    assert future["attempts"] == []
+        work = accepted
+        for _ in range(20):
+            work = client.get(f"/v1/work/{accepted['id']}", headers=AUTH).json()
+            if work["status"] == "succeeded":
+                break
+
+    assert work["status"] == "succeeded"
+    assert work["result"]["text"] == "scheduled result"
+    assert datetime.fromisoformat(work["started_at"]) >= eligible_at
+    assert len(work["attempts"]) == 1

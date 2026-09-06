@@ -1,5 +1,7 @@
-"""Reusable execution lifecycle beneath transport adapters."""
+"""Reusable execution lifecycle and delayed eligibility scheduling beneath transport adapters."""
 
+import asyncio
+from contextlib import suppress
 from datetime import datetime
 from uuid import uuid4
 
@@ -11,31 +13,60 @@ from madre.inference import CapabilityError, ChatInput, invoke_chat
 from madre.storage import WorkStore, utc_now
 
 
-class DelayedExecutionUnavailable(RuntimeError):
-    pass
-
-
 class WorkRuntime:
     def __init__(self, settings: Settings, store: WorkStore):
         self.settings = settings
         self.store = store
+        self._scheduler_wake = asyncio.Event()
+        self._scheduler_task: asyncio.Task[None] | None = None
         self.store.fail_interrupted(utc_now())
 
-    async def execute_immediate(
+    async def start(self) -> None:
+        if self._scheduler_task is not None:
+            raise RuntimeError("work scheduler is already running")
+        self._scheduler_task = asyncio.create_task(
+            self._scheduler_loop(),
+            name="madre-work-scheduler",
+        )
+
+    async def stop(self) -> None:
+        task = self._scheduler_task
+        if task is None:
+            return
+        self._scheduler_task = None
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+
+    async def submit(
         self,
         submission: WorkSubmission,
         *,
         now: datetime | None = None,
     ) -> WorkRecord:
         accepted_at = now or utc_now()
-        if submission.eligible_at is not None and submission.eligible_at > accepted_at:
-            raise DelayedExecutionUnavailable(
-                "future eligibility is not implemented yet; submit work when it becomes eligible"
-            )
-
         work_id = uuid4().hex
         self.store.create(work_id, submission, accepted_at)
 
+        if submission.eligible_at is None or submission.eligible_at <= accepted_at:
+            return await self._execute(work_id)
+
+        self._scheduler_wake.set()
+        return self._require(work_id)
+
+    async def execute_eligible(self, *, now: datetime | None = None) -> int:
+        ready_at = now or utc_now()
+        executed = 0
+        for work_id in self.store.list_eligible(ready_at):
+            record = self.store.get(work_id)
+            if record is None or record.status != "accepted":
+                continue
+            await self._execute(work_id)
+            executed += 1
+        return executed
+
+    async def _execute(self, work_id: str) -> WorkRecord:
+        submission = self._require(work_id).submission
         capability = self.settings.capabilities.get(submission.capability_id)
         if capability is None:
             self.store.fail(
@@ -79,6 +110,23 @@ class WorkRuntime:
                 utc_now(),
             )
         return self._require(work_id)
+
+    async def _scheduler_loop(self) -> None:
+        while True:
+            await self.execute_eligible()
+            self._scheduler_wake.clear()
+            next_eligible = self.store.next_eligible_at()
+            if next_eligible is None:
+                await self._scheduler_wake.wait()
+                continue
+
+            delay = max(0.0, (next_eligible - utc_now()).total_seconds())
+            if delay == 0:
+                continue
+            try:
+                await asyncio.wait_for(self._scheduler_wake.wait(), timeout=delay)
+            except TimeoutError:
+                pass
 
     def inspect(self, work_id: str) -> WorkRecord | None:
         return self.store.get(work_id)

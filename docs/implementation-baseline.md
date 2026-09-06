@@ -24,19 +24,31 @@ lifespan owns a local SQLite database; the OS releases its ownership lock after
 process exit. Startup rejects unknown schema versions and migrates the original
 schema-1 envelope to schema 2, which owns durable runtime work and attempt records.
 
-`POST /v1/work` accepts currently eligible `WorkSubmission` values. MADRE records
-the application-selected input and execution constraints, invokes the configured
-chat-completion capability through the reusable runtime layer, and durably records
-the attempt plus generated result or classified failure. `GET /v1/work/{id}` reads
-that durable record. Unknown capabilities and capability-specific input errors are
-also durable failures. A restart converts an unfinished running attempt to an
-`interrupted` failure whose evidence states that the capability outcome may be
-unknown; it does not infer success or retry the invocation.
+`POST /v1/work` accepts both immediate and future-eligible `WorkSubmission` values.
+MADRE first persists the application-selected input, eligibility and execution
+constraints. Currently eligible work executes through the configured chat-completion
+capability before the response returns. Future work returns immediately as durable
+`accepted` work and is executed by the service-owned eligibility scheduler no earlier
+than `eligible_at`. `GET /v1/work/{id}` exposes the same durable lifecycle, attempt,
+generated result or classified failure for both cases.
 
-Future `eligible_at` values use the same submission vocabulary but currently return
-HTTP 409 before work is accepted. Delayed scheduling, queued-work restart recovery,
-retry and cancellation remain later behaviors rather than partial semantics hidden
-behind the immediate endpoint.
+The scheduler is intentionally small: it discovers `accepted` rows from the existing
+work store, executes due work serially through the same runtime `_execute(work_id)`
+path used by immediate submission, and otherwise waits until the next durable
+eligibility time or a newly submitted delayed item changes that deadline. No separate
+scheduler job model or schema was introduced.
+
+Restart recovery follows execution evidence. Unstarted `accepted` work remains queued,
+including work that became eligible while MADRE was stopped, because no capability
+attempt has occurred yet. An unfinished `running` attempt is converted to an
+`interrupted` failure whose evidence states that the capability outcome may be
+unknown; MADRE does not infer success or retry the invocation. This removes the old
+immediate-only `interrupted_before_attempt` outcome because accepted work can now be
+safely rediscovered and executed by the scheduler.
+
+Unknown capabilities and capability-specific input errors remain durable failures at
+execution time. Retry, cancellation and generalized concurrency/resource scheduling
+are not part of this slice.
 
 The configured chat-completion adapter invokes real local inference and returns
 generated text, model, finish reason and timing, or a classified failure. It enforces
@@ -54,20 +66,19 @@ host integration where appropriate.
 
 ## Runtime-work direction and next behavior
 
-Immediate and delayed execution share `WorkSubmission`, durable work state and
-attempt evidence. The application owns domain meaning; MADRE persists only the
-selected execution material and lifecycle evidence needed to execute and inspect
-runtime work.
+Immediate and delayed execution share `WorkSubmission`, durable work state, attempt
+evidence and capability execution. The application owns domain meaning; MADRE
+persists only the selected execution material and lifecycle evidence needed to
+schedule, execute, recover and inspect runtime work.
 
-**Implement delayed eligibility and restart recovery next:** accept future-eligible
-work durably, discover it after process restart, execute it when eligible, and expose
-its eventual result or recoverable failure through the existing inspection model.
-Use the current runtime execution path beneath the scheduler so immediate and
-delayed work do not diverge into different execution semantics.
+The next substantive acceptance step is **real independent-application integration
+beyond the acceptance client**: one application should select its own context,
+submit immediate and delayed work through the local HTTP contract, and consume
+durable results while retaining its domain state and semantics.
 
-Choose the smallest scheduling mechanism that establishes that behavior. Retry,
-cancellation, richer concurrency/resource policy and additional capabilities should
-follow later behaviors rather than being designed speculatively into this slice.
+Additional capabilities, retry, cancellation, richer concurrency/resource policy
+and orchestration should continue to follow concrete application requirements rather
+than being designed speculatively.
 
 The dependency/value order is now:
 
@@ -102,3 +113,9 @@ durably recorded as failed with capability failure code `connection` and the mes
 `could not communicate with capability endpoint`. Together with green Ubuntu PR CI,
 this establishes real immediate execution and accurate durable failure on the
 supported local path.
+
+The delayed scheduler deliberately reuses that verified capability path. Its new
+eligibility, queued-state and restart behavior is covered by deterministic storage/
+runtime tests plus the HTTP scheduler tests in the current suite; no additional
+real-model or provider validation is required merely to re-prove unchanged inference
+mechanics.

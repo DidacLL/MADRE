@@ -105,9 +105,34 @@ class WorkStore:
                 ),
             )
 
+    def list_eligible(self, ready_at: datetime) -> list[str]:
+        rows = self.connection.execute(
+            """
+            SELECT id
+            FROM runtime_work
+            WHERE status = 'accepted' AND (eligible_at IS NULL OR eligible_at <= ?)
+            ORDER BY COALESCE(eligible_at, submitted_at), submitted_at, id
+            """,
+            (ready_at.isoformat(),),
+        ).fetchall()
+        return [str(row["id"]) for row in rows]
+
+    def next_eligible_at(self) -> datetime | None:
+        row = self.connection.execute(
+            """
+            SELECT COALESCE(eligible_at, submitted_at) AS due_at
+            FROM runtime_work
+            WHERE status = 'accepted'
+            ORDER BY due_at, submitted_at, id
+            LIMIT 1
+            """
+        ).fetchone()
+        return datetime.fromisoformat(row["due_at"]) if row is not None else None
+
     def start_attempt(self, work_id: str, started_at: datetime) -> int:
         row = self.connection.execute(
-            "SELECT COALESCE(MAX(number), 0) + 1 AS number FROM runtime_attempt WHERE work_id = ?",
+            "SELECT COALESCE(MAX(number), 0) + 1 AS number "
+            "FROM runtime_attempt WHERE work_id = ?",
             (work_id,),
         ).fetchone()
         number = int(row["number"])
@@ -195,18 +220,11 @@ class WorkStore:
             )
 
     def fail_interrupted(self, completed_at: datetime) -> int:
-        running_failure = WorkFailure(
+        failure = WorkFailure(
             code="interrupted",
             message=(
                 "runtime stopped before durable completion was recorded; "
                 "capability outcome may be unknown"
-            ),
-        )
-        accepted_failure = WorkFailure(
-            code="interrupted_before_attempt",
-            message=(
-                "runtime stopped after accepting eligible work but before a capability attempt "
-                "was durably started"
             ),
         )
         completed = completed_at.isoformat()
@@ -214,21 +232,13 @@ class WorkStore:
             running = self.connection.execute(
                 "SELECT COUNT(*) AS count FROM runtime_work WHERE status = 'running'"
             ).fetchone()["count"]
-            accepted = self.connection.execute(
-                """
-                SELECT COUNT(*) AS count
-                FROM runtime_work
-                WHERE status = 'accepted' AND (eligible_at IS NULL OR eligible_at <= ?)
-                """,
-                (completed,),
-            ).fetchone()["count"]
             self.connection.execute(
                 """
                 UPDATE runtime_attempt
                 SET status = 'failed', completed_at = ?, error_code = ?, error_message = ?
                 WHERE status = 'running'
                 """,
-                (completed, running_failure.code, running_failure.message),
+                (completed, failure.code, failure.message),
             )
             self.connection.execute(
                 """
@@ -236,17 +246,9 @@ class WorkStore:
                 SET status = 'failed', completed_at = ?, error_code = ?, error_message = ?
                 WHERE status = 'running'
                 """,
-                (completed, running_failure.code, running_failure.message),
+                (completed, failure.code, failure.message),
             )
-            self.connection.execute(
-                """
-                UPDATE runtime_work
-                SET status = 'failed', completed_at = ?, error_code = ?, error_message = ?
-                WHERE status = 'accepted' AND (eligible_at IS NULL OR eligible_at <= ?)
-                """,
-                (completed, accepted_failure.code, accepted_failure.message, completed),
-            )
-        return int(running) + int(accepted)
+        return int(running)
 
     def get(self, work_id: str) -> WorkRecord | None:
         row = self.connection.execute(
@@ -278,7 +280,9 @@ class WorkStore:
                     status=attempt["status"],
                     started_at=attempt["started_at"],
                     completed_at=attempt["completed_at"],
-                    result=(json.loads(attempt["result_json"]) if attempt["result_json"] else None),
+                    result=(
+                        json.loads(attempt["result_json"]) if attempt["result_json"] else None
+                    ),
                     failure=self._failure(attempt),
                 )
                 for attempt in attempts
