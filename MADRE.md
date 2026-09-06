@@ -149,7 +149,9 @@ Inspection serves debugging, recovery, application integration and research repr
 
 ### R12 — Local-first execution
 
-Local execution is a first-class useful path. An application can use MADRE with locally available capabilities while keeping private work on the local machine when its boundary requires that.
+Local execution is a first-class useful path. A useful MADRE installation can operate with locally available capabilities without requiring a cloud account or remote-service credential for its core runtime path.
+
+An application can keep private work on the local machine when its boundary requires that.
 
 Remote capabilities can coexist with local ones. Remote use is represented as a real transfer boundary so the runtime can apply the constraints supplied for that work and record the execution accurately.
 
