@@ -47,7 +47,7 @@ def test_import_has_no_filesystem_side_effects(tmp_path):
 
 def test_exclusive_database_reopen_migration_and_unknown_schema(tmp_path):
     with open_database(tmp_path) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 2
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 3
         with pytest.raises(RuntimeError, match="another MADRE"):
             with open_database(tmp_path):
                 pytest.fail("second owner accepted")
@@ -59,12 +59,62 @@ def test_exclusive_database_reopen_migration_and_unknown_schema(tmp_path):
     with sqlite3.connect(legacy / "runtime.sqlite3") as connection:
         connection.execute("PRAGMA user_version=1")
     with open_database(legacy) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 2
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 3
         assert (
             connection.execute(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name='runtime_work'"
             ).fetchone()[0]
             == "runtime_work"
+        )
+
+    legacy_v2 = tmp_path / "legacy-v2"
+    legacy_v2.mkdir()
+    with sqlite3.connect(legacy_v2 / "runtime.sqlite3") as connection:
+        connection.executescript(
+            """
+            CREATE TABLE runtime_work (
+                id TEXT PRIMARY KEY,
+                application_id TEXT NOT NULL,
+                capability_id TEXT NOT NULL,
+                input_json TEXT NOT NULL,
+                eligible_at TEXT,
+                constraints_json TEXT NOT NULL,
+                status TEXT NOT NULL,
+                submitted_at TEXT NOT NULL,
+                started_at TEXT,
+                completed_at TEXT,
+                result_json TEXT,
+                error_code TEXT,
+                error_message TEXT
+            );
+            PRAGMA user_version=2;
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO runtime_work (
+                id, application_id, capability_id, input_json,
+                constraints_json, status, submitted_at
+            ) VALUES ('legacy-work', 'legacy-app', 'legacy-capability', '{}', '{}',
+                      'accepted', '2026-09-06T12:00:00+00:00')
+            """
+        )
+    with open_database(legacy_v2) as connection:
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 3
+        columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(runtime_work)").fetchall()
+        }
+        assert "idempotency_key" in columns
+        legacy_row = connection.execute(
+            "SELECT id, application_id FROM runtime_work WHERE id = 'legacy-work'"
+        ).fetchone()
+        assert tuple(legacy_row) == ("legacy-work", "legacy-app")
+        assert (
+            connection.execute(
+                "SELECT name FROM sqlite_master "
+                "WHERE type='index' AND name='runtime_work_idempotency'"
+            ).fetchone()[0]
+            == "runtime_work_idempotency"
         )
 
     with sqlite3.connect(tmp_path / "runtime.sqlite3") as connection:
@@ -111,7 +161,7 @@ def test_health_auth_and_lifecycle(tmp_path, monkeypatch):
         assert client.get("/health").status_code == 401
         assert client.get("/health", headers={"Authorization": "Bearer wrong"}).status_code == 401
         response = client.get("/health", headers={"Authorization": "Bearer test-token"})
-        assert response.json() == {"status": "ok", "schema_version": 2}
+        assert response.json() == {"status": "ok", "schema_version": 3}
         assert "access-control-allow-origin" not in response.headers
         with pytest.raises(RuntimeError, match="another MADRE"):
             with open_database(settings.data_dir):
