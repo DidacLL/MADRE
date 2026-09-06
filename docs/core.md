@@ -38,22 +38,23 @@ CORE never escalates automatically. `/deeper` is rejected unless the latest comp
 
 ## Local product acceptance
 
-The deterministic test suite proves the software protocol and runtime boundaries. The current small local model is probabilistic, so whether it recommends `fast` or `deeper` for a particular prompt—and whether the deeper answer is actually better—must be evaluated with the real model. This manual acceptance is therefore product evidence, not routine developer QA.
+The deterministic test suite proves the software protocol and runtime boundaries. The current small local model is probabilistic, so whether it recommends `fast` or `deeper` for a particular prompt—and whether the deeper answer is actually better—must be evaluated with the real model. This manual acceptance is product evidence, not routine developer QA.
 
-The following sequence is for **Windows PowerShell** and uses the pinned Windows CPU smoke fixture plus a dedicated ignored runtime directory so the resulting work records are easy to inspect. PowerShell does not use backslash to escape quotes; commands that pass Python source use a single-quoted PowerShell argument and double quotes inside the Python source.
+The acceptance helper deliberately avoids shell-embedded Python and SQL so the same commands work from Windows PowerShell without native-command quoting ambiguity.
 
-Run it from the repository root.
+Run the following from the repository root.
 
-First update and bootstrap:
+First update, bootstrap, and prepare a clean dedicated acceptance runtime:
 
 ```powershell
 git switch main
 git pull --ff-only
 python -m uv sync --locked
-python -c 'from pathlib import Path; s=Path("madre.example.toml").read_text(encoding="utf-8"); Path("madre.acceptance.local.toml").write_text(s.replace("# data_dir = \"./dev/runtime\"", "data_dir = \"./dev/core-acceptance\""), encoding="utf-8")'
-Remove-Item -Recurse -Force .\dev\core-acceptance -ErrorAction SilentlyContinue
+python tools/core-acceptance.py prepare
 ./tools/install-smoke-model.ps1
 ```
+
+`prepare` writes `madre.acceptance.local.toml` from `madre.example.toml`, sets `data_dir = "./dev/core-acceptance"`, and removes any previous `dev/core-acceptance` data. Both paths are local/ignored inputs.
 
 Terminal 1 — start the real local model:
 
@@ -73,7 +74,7 @@ $token
 python -m uv run --locked madre --config madre.acceptance.local.toml serve
 ```
 
-Copy the printed token locally into Terminal 3. Do not paste it into an issue, commit, chat, or test report.
+The small token-generation command contains no nested quoting and is safe in Windows PowerShell. Copy the printed token locally into Terminal 3. Do not paste it into an issue, commit, chat, or test report.
 
 Terminal 3 — start CORE with the same token:
 
@@ -86,25 +87,27 @@ python -m uv run --locked madre-core `
 
 At `you>`, try an ordinary request. You should receive non-empty `core>` output and then either `reasoning> fast` or `reasoning> deeper`. The exact recommendation is model output, not a deterministic acceptance criterion.
 
-Before testing explicit escalation, open Terminal 4 and record the current number of durable CORE work items:
+Before testing explicit escalation, open Terminal 4 and record the current durable CORE work status:
 
 ```powershell
-python -c 'import sqlite3; c=sqlite3.connect(r"dev/core-acceptance/runtime.sqlite3"); print(c.execute("select count(*) from runtime_work where application_id=?", ("madre-core",)).fetchone()[0])'
+python tools/core-acceptance.py status
 ```
 
-Call this number `N`. Back in Terminal 3, give CORE a request that genuinely benefits from analysis, for example:
+The helper prints `count=<N>` plus the latest work ID, status, and `latest_max_tokens` when any CORE work exists. Treat the current count as `N`.
+
+Back in Terminal 3, give CORE a request that genuinely benefits from analysis, for example:
 
 ```text
 Design a fault-tolerant migration plan for a stateful service with zero data loss. Compare at least two strategies, identify failure modes, and justify the safer choice.
 ```
 
-If CORE reports `reasoning> deeper`, do not enter `/deeper` yet. In Terminal 4, inspect the count and latest durable CORE work item:
+If CORE reports `reasoning> deeper`, do not enter `/deeper` yet. In Terminal 4 run:
 
 ```powershell
-python -c 'import sqlite3,json; c=sqlite3.connect(r"dev/core-acceptance/runtime.sqlite3"); rows=c.execute("select id,status,input_json from runtime_work where application_id=? order by submitted_at", ("madre-core",)).fetchall(); print("count=",len(rows)); r=rows[-1]; print(r[0],r[1],"max_tokens="+str(json.loads(r[2])["max_tokens"]))'
+python tools/core-acceptance.py status
 ```
 
-The count should now be `N + 1`, and the latest work item should show `max_tokens=256`. This is the observable proof that the complex turn created exactly one ordinary work item and that the `deeper` recommendation did not escalate automatically.
+The count should now be `N + 1`, the latest work should be `succeeded`, and `latest_max_tokens=256`. This is observable proof that the complex turn created exactly one ordinary work item and that the `deeper` recommendation did not escalate automatically.
 
 Back in Terminal 3, enter:
 
@@ -112,15 +115,21 @@ Back in Terminal 3, enter:
 /deeper
 ```
 
-CORE should print a non-empty `core(deeper)>` response. Run the inspection command again. The count should now be `N + 2`, and the latest work item should show `max_tokens=768`. This proves that the explicit user action created exactly one second ordinary runtime work item with the stronger budget rather than a hidden CORE execution path.
+CORE should print a non-empty `core(deeper)>` response. Run the status helper again:
+
+```powershell
+python tools/core-acceptance.py status
+```
+
+The count should now be `N + 2`, the latest work should be `succeeded`, and `latest_max_tokens=768`. This proves that the explicit user action created exactly one second ordinary runtime work item with the stronger budget rather than a hidden CORE execution path.
 
 You can then ask a normal follow-up question about the deeper answer. Because a successful deeper result replaces the fast draft in process-local history, the next turn should be conditioned on the deeper answer rather than both drafts. This is qualitative model behavior, so record surprising behavior rather than treating exact wording as a pass/fail assertion.
 
-If the model reports `fast` for the complex request, try other genuinely multi-step requests. Before each attempt, note the current count as the new `N`. Repeatedly recommending `fast` for clearly complex work is itself useful product evidence about the classifier prompt/model combination; do not manufacture a `deeper` result merely to make the acceptance look successful.
+If the model reports `fast` for the complex request, try other genuinely multi-step requests. Before each attempt, run the status helper and treat its count as the new `N`. Repeatedly recommending `fast` for clearly complex work is itself useful product evidence about the classifier prompt/model combination; do not manufacture a `deeper` result merely to make the acceptance look successful.
 
-Optional failure evidence: after a successful turn, stop the llama.cpp server in Terminal 1 and submit another CORE message. CORE should report a durable runtime failure such as `CORE error: MADRE work failed [connection]: ...`; the failed `madre-core` work remains inspectable in the same SQLite database. Restart the model server before continuing.
+Optional failure evidence: after a successful turn, stop the llama.cpp server in Terminal 1 and submit another CORE message. CORE should report a durable runtime failure such as `CORE error: MADRE work failed [connection]: ...`; `python tools/core-acceptance.py status` should show the additional failed CORE work item. Restart the model server before continuing.
 
-What this acceptance proves:
+This acceptance proves:
 
 - real `User → CORE → MADRE HTTP API → durable runtime → local capability` execution;
 - observable fast/deeper recommendation from the real configured model;
@@ -130,7 +139,7 @@ What this acceptance proves:
 - real generated output is used for both stages;
 - runtime/capability failures remain explicit rather than being turned into assistant text.
 
-What it does not prove is that the small smoke model classifies reasoning depth well or consistently improves its answer after `/deeper`. Those are the product questions this owner-side use is intended to expose.
+It does not prove that the small smoke model classifies reasoning depth well or consistently improves its answer after `/deeper`. Those are the product questions this owner-side use is intended to expose.
 
 ## State
 
