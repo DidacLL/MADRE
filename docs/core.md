@@ -12,7 +12,7 @@ Start the MADRE runtime normally with a configured chat capability and `MADRE_AP
 python -m uv run --locked madre-core --runtime-url http://127.0.0.1:8731 --capability local-chat
 ```
 
-Enter a message at `you>`. Generated assistant text is printed at `core>`. CORE then prints the fast interaction decision as either `reasoning> fast` or `reasoning> deeper`. When the latest turn recommends `deeper`, CORE also shows `deeper> /deeper`; entering `/deeper` explicitly requests one stronger follow-up. Use `/exit`, `/quit`, Ctrl+C, or end-of-input to stop.
+Enter a message at `you>`. Generated assistant text is printed at `core>`. CORE then prints the fast interaction decision as either `reasoning> fast` or `reasoning> deeper`. When the latest turn recommends `deeper`, CORE also shows `deeper> /deeper`; entering `/deeper` explicitly requests one stronger follow-up. `/deeper` is a standalone command: text such as `/deeper generate a poem` is an ordinary user message, not an escalation command. Use `/exit`, `/quit`, Ctrl+C, or end-of-input to stop.
 
 `--token-env` defaults to `MADRE_API_TOKEN`, `--max-tokens` defaults to 256, `--deeper-max-tokens` defaults to 768, and `--timeout` defaults to 120 seconds. The deeper token budget must exceed the fast token budget. The runtime URL must be a literal loopback HTTP(S) origin. CORE never prints the bearer token.
 
@@ -40,31 +40,35 @@ CORE never escalates automatically. `/deeper` is rejected unless the latest comp
 
 ## Local product acceptance
 
-The deterministic test suite proves the software protocol and runtime boundaries. The current small local model is probabilistic, so whether it recommends `fast` or `deeper` for a particular prompt—and whether the deeper answer is actually better—must be evaluated with the real model. This manual acceptance is therefore product evidence, not routine developer QA.
+The deterministic test suite proves the software protocol and runtime boundaries. Real-model use is needed to judge whether CORE's interaction semantics are useful, but the model used for that judgment matters.
+
+The original Qwen2.5-0.5B-Instruct fixture remains the lightweight transport/smoke fixture. The first owner-side CORE run showed that it is not suitable as a product-quality CORE interaction fixture: it produced marker-only output for a trivial message, repeatedly refused a benign poem request, and repeatedly recommended `deeper` for that request. Those observations are model-quality evidence, not runtime failures, and CORE should not be tuned around them.
+
+CORE product acceptance therefore uses a separate pinned Qwen2.5-1.5B-Instruct Q4_K_M fixture. It is still intentionally small and is not claimed to be a final CORE model, but it provides a more credible local interaction baseline while keeping the smoke fixture cheap for transport checks.
 
 The acceptance helper deliberately avoids shell-embedded Python and SQL so the same commands work from Windows PowerShell without native-command quoting ambiguity.
 
 Run the following from the repository root.
 
-First update, bootstrap, and prepare a clean dedicated acceptance runtime:
+First update, bootstrap, prepare a clean dedicated acceptance runtime, and install the CORE acceptance model:
 
 ```powershell
 git switch main
 git pull --ff-only
 python -m uv sync --locked
 python tools/core-acceptance.py prepare
-./tools/install-smoke-model.ps1
+./tools/install-core-acceptance-model.ps1
 ```
 
-`prepare` writes `madre.acceptance.local.toml` from `madre.example.toml`, sets `data_dir = "./dev/core-acceptance"`, and removes any previous `dev/core-acceptance` data. Both paths are local/ignored inputs.
+`prepare` writes `madre.acceptance.local.toml` from `madre.example.toml`, sets `data_dir = "./dev/core-acceptance"`, changes the configured model alias to `madre-core-acceptance`, and removes any previous `dev/core-acceptance` data. Both paths are local/ignored inputs.
 
-Terminal 1 — start the real local model:
+Terminal 1 — start the dedicated CORE acceptance model:
 
 ```powershell
 $fixture = Join-Path $env:LOCALAPPDATA 'MADRE\inference'
 & "$fixture\llama-b10809\llama-server.exe" `
-    -m "$fixture\qwen2.5-0.5b-instruct-q4_k_m.gguf" `
-    --host 127.0.0.1 --port 8080 --alias madre-smoke -c 2048 -ngl 0 -t 4
+    -m "$fixture\qwen2.5-1.5b-instruct-q4_k_m.gguf" `
+    --host 127.0.0.1 --port 8080 --alias madre-core-acceptance -c 2048 -ngl 0 -t 4
 ```
 
 Terminal 2 — generate one local service token, keep it private, and start MADRE:
@@ -87,7 +91,7 @@ python -m uv run --locked madre-core `
     --capability local-chat
 ```
 
-At `you>`, try ordinary requests naturally. You should receive non-empty `core>` output and then either `reasoning> fast` or `reasoning> deeper`. The exact recommendation is model output, not a deterministic acceptance criterion. A marker-only model response is treated as unusable fast output and becomes the explicit fallback plus `reasoning> deeper`, not a runtime error.
+At `you>`, use CORE naturally. You should receive non-empty `core>` output and then either `reasoning> fast` or `reasoning> deeper`. The exact recommendation is model output, not a deterministic acceptance criterion. A marker-only model response is treated as unusable fast output and becomes the explicit fallback plus `reasoning> deeper`, not a runtime error.
 
 Before testing explicit escalation, open Terminal 4 and record the current durable CORE work status:
 
@@ -111,7 +115,7 @@ python tools/core-acceptance.py status
 
 The count should now be `N + 1`, the latest work should be `succeeded`, and `latest_max_tokens=256`. This is observable proof that the complex turn created exactly one ordinary work item and that the `deeper` recommendation did not escalate automatically.
 
-Back in Terminal 3, enter:
+Back in Terminal 3, enter `/deeper` by itself:
 
 ```text
 /deeper
@@ -127,7 +131,7 @@ The count should now be `N + 2`, the latest work should be `succeeded`, and `lat
 
 You can then ask a normal follow-up question about the deeper answer. Because a successful deeper result replaces the fast draft in process-local history, the next turn should be conditioned on the deeper answer rather than both drafts. This is qualitative model behavior, so record surprising behavior rather than treating exact wording as a pass/fail assertion.
 
-If the model reports `fast` for a request where a second same-model pass would clearly improve the answer, try other genuinely multi-step requests. Before each attempt, run the status helper and treat its count as the new `N`. Repeatedly recommending `fast` or `deeper` inappropriately is useful product evidence about the prompt/model combination; do not manufacture a result merely to make the acceptance look successful.
+Repeatedly inappropriate refusals, marker-only answers, or obviously poor `fast`/`deeper` recommendations from the 1.5B fixture are useful evidence that the product-quality model floor is higher. They are not reasons to add scheduler, Agent, Planner, memory, or capability abstractions.
 
 Optional failure evidence: after a successful turn, stop the llama.cpp server in Terminal 1 and submit another CORE message. CORE should report a durable runtime failure such as `CORE error: MADRE work failed [connection]: ...`; `python tools/core-acceptance.py status` should show the additional failed CORE work item. Restart the model server before continuing.
 
@@ -141,7 +145,7 @@ This acceptance proves:
 - real generated output is used for both stages;
 - runtime/capability failures remain explicit rather than being turned into assistant text.
 
-It does not prove that the small smoke model classifies reasoning depth well or consistently improves its answer after `/deeper`. Those are the product questions this owner-side use is intended to expose.
+It does not prove that Qwen2.5-1.5B is an adequate final CORE model or that a larger second inference consistently improves every answer. Those are product-quality questions to answer from use, not deterministic CI assertions.
 
 ## State
 
