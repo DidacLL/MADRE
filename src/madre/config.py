@@ -20,7 +20,6 @@ class CapabilityConfig(StrictModel):
     endpoint: str
     model: str = Field(min_length=1)
     boundary: Literal["local", "remote"] = "local"
-    api_key_env: str | None = None
 
     @field_validator("endpoint")
     @classmethod

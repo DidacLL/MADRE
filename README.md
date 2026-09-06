@@ -64,8 +64,8 @@ app = create_app(settings)  # Reads the configured token; service lifespan owns 
 
 ## Configuration and service
 
-Copy `madre.example.toml` to `madre.local.toml` and edit explicitly. Secrets are
-environment-variable references, never literal TOML values. Unknown configuration
+Copy `madre.example.toml` to `madre.local.toml` and edit explicitly. The local service
+token is an environment-variable reference, never a literal TOML value. Unknown configuration
 keys are errors. Relative data paths resolve beside the TOML file, independent of
 the caller's working directory. Omitting `data_dir` uses the OS user data directory
 (`%LOCALAPPDATA%\madre` on Windows, `$XDG_DATA_HOME/madre` or `~/.local/share/madre`
@@ -89,7 +89,10 @@ python -m uv run --locked madre --config madre.local.toml check-config
 python -m uv run --locked madre --config madre.local.toml serve
 ```
 
-Supply the same token to clients via their environment. The implemented endpoint is
+`MADRE_API_TOKEN` is generated locally to control access to your MADRE service.
+It is not a provider API key, requires no paid account, and is not forwarded to
+inference capabilities. Supply it only to the local applications using MADRE.
+The implemented endpoint is
 `GET http://127.0.0.1:8731/health`, with `Authorization: Bearer <token>`. It returns
 `{"status":"ok","schema_version":1}`. Missing/incorrect credentials return 401.
 Stop the foreground service with Ctrl+C. A second runtime using the same data

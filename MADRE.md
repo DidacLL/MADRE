@@ -153,6 +153,8 @@ Local execution is a first-class useful path. A useful MADRE installation can op
 
 An application can keep private work on the local machine when its boundary requires that.
 
+Prefer capability integrations that keep provider-account credentials with the user's chosen provider client or host. Sharing provider API keys with MADRE is discouraged; direct credential use remains an explicit integration choice rather than a prerequisite for runtime use.
+
 Remote capabilities can coexist with local ones. Remote use is represented as a real transfer boundary so the runtime can apply the constraints supplied for that work and record the execution accurately.
 
 ### R13 — Evolvable implementation

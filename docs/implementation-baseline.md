@@ -31,6 +31,14 @@ require literal loopback destinations; HTTP clients disable proxies and redirect
 Timeout bounds MADRE's wait for the endpoint. The executable behavior and validation
 rules live in code/tests; README owns setup and developer commands.
 
+`invoke_chat` is the initial chat-completion adapter, not MADRE's general work API.
+The verified llama.cpp path needs no provider credential. The service-access token
+authenticates local applications only; the inference adapter sends no authorization
+header. Future authenticated capabilities should follow the credential-ownership
+preference in `MADRE.md`, using a provider-supported client/host integration where
+appropriate. MCP or another transport alone does not establish model access; such
+integrations remain to be validated when needed.
+
 ## Initial work direction and next behavior
 
 Immediate and delayed execution share a runtime-work concept. `WorkSubmission`

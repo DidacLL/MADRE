@@ -16,6 +16,8 @@ Use repository history and supporting documents when provenance or a concrete un
 
 Start with `MADRE.md` and the smallest code surface that can answer the task.
 
+For runtime implementation, read the short `docs/implementation-baseline.md` for the existing foundation and next behavior; `README.md` owns runnable setup. Keep enduring conclusions in their repository owner so fresh sessions need no PR/chat reconstruction.
+
 Expand context just in time through concrete dependencies, interfaces, failing behavior and tests. Prefer targeted repository search and direct inspection over broad ingestion.
 
 Keep persistent context only where it reduces future reasoning: durable product meaning in `MADRE.md`, recurring repository-wide operating knowledge here, and software behavior in code and tests.

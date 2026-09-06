@@ -25,8 +25,11 @@ def invoke(handler, capability=CAPABILITY, timeout=1):
 
 def test_real_wire_shape_and_result(monkeypatch):
     monkeypatch.setenv("HTTP_PROXY", "http://invalid:1")
+    monkeypatch.setenv("OPENAI_API_KEY", "unused-provider-credential")
+    monkeypatch.setenv("MADRE_API_TOKEN", "local-service-token")
 
     def handler(request):
+        assert "authorization" not in request.headers
         assert str(request.url) == "http://127.0.0.1:8080/v1/chat/completions"
         assert json.loads(request.content) == {
             "model": "test",
@@ -139,11 +142,3 @@ def test_boundary_denied_before_transfer(capability):
     with pytest.raises(CapabilityError) as error:
         invoke(handler, capability=capability)
     assert error.value.code == "boundary_denied"
-
-
-def test_missing_secret_never_calls_provider(monkeypatch):
-    monkeypatch.delenv("MADRE_TEST_PROVIDER_SECRET", raising=False)
-    capability = CAPABILITY.model_copy(update={"api_key_env": "MADRE_TEST_PROVIDER_SECRET"})
-    with pytest.raises(CapabilityError) as error:
-        invoke(lambda _: pytest.fail("request sent without credential"), capability=capability)
-    assert error.value.code == "configuration"
