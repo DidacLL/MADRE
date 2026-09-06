@@ -89,6 +89,99 @@ def test_core_conversation_uses_runtime_http_boundary_and_stable_identity(tmp_pa
     assert all(row == ("madre-core", "succeeded") for row in rows)
 
 
+def test_core_deeper_follow_up_is_explicit_second_runtime_work(tmp_path, monkeypatch):
+    monkeypatch.setenv("MADRE_API_TOKEN", "test-token")
+    observed_requests = []
+
+    async def fake_invoke(capability, request, constraints):
+        observed_requests.append(request)
+        text = (
+            "fast draft\n[[MADRE_REASONING:deeper]]"
+            if len(observed_requests) == 1
+            else "materially improved answer"
+        )
+        return ChatResult(
+            text=text,
+            model="test-model",
+            finish_reason="stop",
+            elapsed_seconds=0.01,
+        )
+
+    monkeypatch.setattr("madre.runtime.invoke_chat", fake_invoke)
+    runtime_settings = Settings(data_dir=tmp_path / "runtime", capabilities=CAPABILITIES)
+    app = create_app(runtime_settings)
+
+    async def exercise():
+        async with app.router.lifespan_context(app):
+            client = CoreClient(
+                "http://127.0.0.1:8731",
+                "test-token",
+                "local-chat",
+                transport=httpx.ASGITransport(app=app),
+            )
+            conversation = CoreConversation(
+                client,
+                max_tokens=32,
+                deeper_max_tokens=96,
+                timeout_seconds=5,
+            )
+            turn = await conversation.send("hard question")
+            assert turn.reasoning == "deeper"
+            assert conversation.deeper_available
+            deeper = await conversation.deepen()
+            return deeper, conversation.messages, conversation.deeper_available
+
+    deeper, history, deeper_available = asyncio.run(exercise())
+
+    assert deeper == "materially improved answer"
+    assert not deeper_available
+    assert history == (
+        {"role": "user", "content": "hard question"},
+        {"role": "assistant", "content": "materially improved answer"},
+    )
+    assert len(observed_requests) == 2
+    fast_request, deeper_request = observed_requests
+    assert fast_request.max_tokens == 32
+    assert deeper_request.max_tokens == 96
+    deeper_messages = [message.model_dump() for message in deeper_request.messages]
+    assert deeper_messages[0]["role"] == "system"
+    assert "deeper follow-up behavior" in deeper_messages[0]["content"]
+    assert deeper_messages[1:] == [
+        {"role": "user", "content": "hard question"},
+        {"role": "assistant", "content": "fast draft"},
+    ]
+
+    with sqlite3.connect(runtime_settings.data_dir / "runtime.sqlite3") as connection:
+        rows = connection.execute("SELECT application_id, status FROM runtime_work").fetchall()
+    assert rows == [("madre-core", "succeeded"), ("madre-core", "succeeded")]
+
+
+def test_core_deeper_requires_latest_deeper_recommendation():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            201,
+            json={
+                "id": "work-1",
+                "status": "succeeded",
+                "result": {"text": "enough\n[[MADRE_REASONING:fast]]"},
+                "failure": None,
+            },
+        )
+
+    client = CoreClient(
+        "http://127.0.0.1:8731",
+        "test-token",
+        "local-chat",
+        transport=httpx.MockTransport(handler),
+    )
+    conversation = CoreConversation(client)
+    turn = asyncio.run(conversation.send("simple question"))
+
+    assert turn.reasoning == "fast"
+    with pytest.raises(ValueError, match="no deeper reasoning is available"):
+        asyncio.run(conversation.deepen())
+
+
 def test_core_missing_reasoning_marker_conservatively_recommends_deeper():
     submissions = 0
 
@@ -215,3 +308,4 @@ def test_core_entry_point_help():
         check=True,
     )
     assert "Interactive first-party CORE client" in result.stdout
+    assert "--deeper-max-tokens" in result.stdout
