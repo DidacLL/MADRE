@@ -109,9 +109,12 @@ def test_exclusive_database_reopen_migration_and_unknown_schema(tmp_path):
             "SELECT id, application_id FROM runtime_work WHERE id = 'legacy-work'"
         ).fetchone()
         assert tuple(legacy_row) == ("legacy-work", "legacy-app")
-        assert connection.execute(
-            "SELECT name FROM sqlite_master WHERE type='index' AND name='runtime_work_idempotency'"
-        ).fetchone()[0] == "runtime_work_idempotency"
+        assert (
+            connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='index' AND name='runtime_work_idempotency'"
+            ).fetchone()[0]
+            == "runtime_work_idempotency"
+        )
 
     with sqlite3.connect(tmp_path / "runtime.sqlite3") as connection:
         connection.execute("PRAGMA user_version=999")
