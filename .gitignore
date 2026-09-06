@@ -1,23 +1,16 @@
-# Private inputs and local configuration
-/dev/
-/docs/raw/
+# Private/local inputs
 .env
 .env.*
 *.local.*
-*.inf.md
-*.inform.md
+/dev/
+/docs/raw/
 
-# Local Python execution
+# Python and local storage
 .venv/
 __pycache__/
 *.py[cod]
-
-# Local data
 *.sqlite
 *.sqlite3
 *.db
-*-shm
-*-wal
-*.worker.lock
-.idea/
-.cursor/
+*.db-wal
+*.db-shm
