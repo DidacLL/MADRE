@@ -59,6 +59,12 @@ Keep application semantics in the application, runtime execution semantics in MA
 
 Resolve genuine product-meaning ambiguity with the Owner. Resolve implementation uncertainty through code, documentation, experiments and tests whenever those can provide the answer.
 
+## Development compatibility
+
+MADRE has no installed user base or production data to preserve during active development. Do not implement migrations, backward-compatibility paths or preservation machinery solely to carry generated runtime state from previous development revisions forward unless the Owner explicitly asks for it. When a persisted development format changes, prefer recreating that generated local state in the current format.
+
+This rule applies to generated development/runtime artifacts. It does **not** make prior product definitions, architectural/design material, source contracts or data-structure reasoning disposable, and it is not permission to rewrite or discard them.
+
 ## Evidence and review
 
 Acceptance follows real behavior.
