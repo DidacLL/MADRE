@@ -10,7 +10,7 @@ from pydantic import ValidationError
 
 from madre import Settings, create_app, load_settings
 from madre.contracts import ExecutionConstraints, WorkSubmission
-from madre.storage import open_database
+from madre.storage import STORAGE_FORMAT_ID, open_database
 
 
 def test_config_paths_and_validation(tmp_path, monkeypatch):
@@ -45,23 +45,37 @@ def test_import_has_no_filesystem_side_effects(tmp_path):
     assert list(tmp_path.iterdir()) == []
 
 
-def test_exclusive_database_reopen_and_rejects_incompatible_schema(tmp_path):
+def test_exclusive_database_reopen_and_discards_incompatible_development_storage(tmp_path):
     with open_database(tmp_path) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 3
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == STORAGE_FORMAT_ID
         with pytest.raises(RuntimeError, match="another MADRE"):
             with open_database(tmp_path):
                 pytest.fail("second owner accepted")
     with open_database(tmp_path) as connection:
         assert connection.execute("PRAGMA foreign_keys").fetchone()[0] == 1
 
-    for version in (1, 2, 999):
-        stale = tmp_path / f"schema-{version}"
-        stale.mkdir()
-        with sqlite3.connect(stale / "runtime.sqlite3") as connection:
-            connection.execute(f"PRAGMA user_version={version}")
-        with pytest.raises(RuntimeError, match="delete the development runtime data directory"):
-            with open_database(stale):
-                pytest.fail(f"schema version {version} was accepted")
+    stale = tmp_path / "stale"
+    stale.mkdir()
+    stale_format_id = STORAGE_FORMAT_ID + 1
+    with sqlite3.connect(stale / "runtime.sqlite3") as connection:
+        connection.execute("CREATE TABLE obsolete_state (value TEXT)")
+        connection.execute("INSERT INTO obsolete_state VALUES ('discard me')")
+        connection.execute(f"PRAGMA user_version={stale_format_id}")
+
+    with open_database(stale) as connection:
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == STORAGE_FORMAT_ID
+        assert (
+            connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='obsolete_state'"
+            ).fetchone()
+            is None
+        )
+        assert (
+            connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='runtime_work'"
+            ).fetchone()[0]
+            == "runtime_work"
+        )
 
 
 def test_process_exit_releases_ownership(tmp_path):
@@ -101,7 +115,7 @@ def test_health_auth_and_lifecycle(tmp_path, monkeypatch):
         assert client.get("/health").status_code == 401
         assert client.get("/health", headers={"Authorization": "Bearer wrong"}).status_code == 401
         response = client.get("/health", headers={"Authorization": "Bearer test-token"})
-        assert response.json() == {"status": "ok", "schema_version": 3}
+        assert response.json() == {"status": "ok"}
         assert "access-control-allow-origin" not in response.headers
         with pytest.raises(RuntimeError, match="another MADRE"):
             with open_database(settings.data_dir):
