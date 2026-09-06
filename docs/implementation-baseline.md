@@ -62,9 +62,10 @@ previously running attempt whose capability outcome may be unknown.
 Explicit TOML configuration, package/CLI entry points, authenticated loopback
 service access, and exclusive runtime-data ownership are implemented. Service
 lifespan owns a local SQLite database; the OS releases its ownership lock after
-process exit. Startup rejects unknown schema versions. The current schema is version 3:
-version 1 creates the durable work/attempt envelope, version 2 remains migratable, and
-version 3 adds durable submission-idempotency metadata without rewriting existing work.
+process exit. Startup rejects unknown schema versions. The original schema-1 envelope
+predates durable work records; schema 2 introduced durable runtime work and attempt
+records; schema 3 adds durable submission-idempotency metadata while preserving and
+migrating existing schema-2 work.
 
 `POST /v1/work` accepts both immediate and future-eligible `WorkSubmission` values.
 For every valid submission MADRE allocates an ID, durably records the application-
