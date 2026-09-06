@@ -1,5 +1,6 @@
 import asyncio
 import sqlite3
+from contextlib import suppress
 from datetime import UTC, datetime, timedelta
 
 from fastapi.testclient import TestClient
@@ -186,7 +187,9 @@ def test_restart_marks_incomplete_attempt_as_interrupted(tmp_path, monkeypatch):
     assert work["attempts"][0]["failure"]["code"] == "interrupted"
 
 
-def test_delayed_work_survives_restart_and_executes_at_eligibility(tmp_path, monkeypatch):
+def test_delayed_work_survives_restart_and_scheduler_executes_at_eligibility(
+    tmp_path, monkeypatch
+):
     monkeypatch.setenv("MADRE_API_TOKEN", "test-token")
     runtime_settings = settings(tmp_path)
     current = [datetime(2035, 1, 1, 12, 0, tzinfo=UTC)]
@@ -213,27 +216,53 @@ def test_delayed_work_survives_restart_and_executes_at_eligibility(tmp_path, mon
         work_id = accepted.id
 
     current[0] += timedelta(minutes=1)
+
     with open_database(runtime_settings.data_dir) as connection:
-        recovered = WorkRuntime(
-            runtime_settings,
-            WorkStore(connection),
-            clock=lambda: current[0],
-        )
-        before = recovered.inspect(work_id)
-        assert before is not None
-        assert before.status == "accepted"
-        assert asyncio.run(recovered.run_eligible()) == 0
-        assert invoked_at == []
 
-        current[0] = eligible_at - timedelta(microseconds=1)
-        assert asyncio.run(recovered.run_eligible()) == 0
-        assert invoked_at == []
+        async def exercise_recovered_scheduler():
+            recovered = WorkRuntime(
+                runtime_settings,
+                WorkStore(connection),
+                clock=lambda: current[0],
+            )
+            scheduler = asyncio.create_task(recovered.run_scheduler())
+            try:
+                await asyncio.sleep(0)
+                before = recovered.inspect(work_id)
+                assert before is not None
+                assert before.status == "accepted"
+                assert invoked_at == []
 
-        current[0] = eligible_at
-        assert asyncio.run(recovered.run_eligible()) == 1
-        completed = recovered.inspect(work_id)
+                current[0] = eligible_at - timedelta(minutes=1)
+                wake_before = delayed.model_copy(
+                    update={"eligible_at": eligible_at + timedelta(hours=1)}
+                )
+                assert (await recovered.submit(wake_before)).status == "accepted"
+                for _ in range(3):
+                    await asyncio.sleep(0)
+                still_waiting = recovered.inspect(work_id)
+                assert still_waiting is not None
+                assert still_waiting.status == "accepted"
+                assert invoked_at == []
 
-    assert completed is not None
+                current[0] = eligible_at
+                wake_due = delayed.model_copy(
+                    update={"eligible_at": eligible_at + timedelta(hours=2)}
+                )
+                assert (await recovered.submit(wake_due)).status == "accepted"
+                for _ in range(10):
+                    completed = recovered.inspect(work_id)
+                    if completed is not None and completed.status == "succeeded":
+                        return completed
+                    await asyncio.sleep(0)
+                raise AssertionError("eligible recovered work was not executed by scheduler")
+            finally:
+                scheduler.cancel()
+                with suppress(asyncio.CancelledError):
+                    await scheduler
+
+        completed = asyncio.run(exercise_recovered_scheduler())
+
     assert invoked_at == [eligible_at]
     assert completed.status == "succeeded"
     assert completed.started_at == eligible_at
