@@ -124,21 +124,26 @@ The first CORE application boundary is canonical on `main` as of
 
 CORE separates HTTP transport (`CoreClient`) from interaction behavior
 (`CoreConversation`). Each foreground turn remains exactly one ordinary runtime work
-item. The interaction layer adds a transient system instruction asking the configured
-chat capability for both a concise immediate answer and one bounded recommendation:
-`fast` when the foreground answer is sufficient or `deeper` when materially stronger
-handling would require deeper multi-step reasoning, verification, research, planning
-or tools.
+item. The interaction layer asks the configured chat capability for both a concise
+immediate answer and one bounded recommendation. `fast` is the default. `deeper`
+means one second pass by that same chat capability, with the same conversation and a
+larger response budget but no new tools or external information, is likely to
+materially improve correctness or completeness. The recommendation therefore describes
+the concrete follow-up CORE can perform today rather than hypothetical research, tool
+use or a future agent system.
 
 CORE strips the internal recommendation marker before displaying or remembering the
 assistant response. A missing or malformed marker conservatively yields `deeper` while
-preserving useful generated text. The recommendation is observable in the CLI and
+preserving useful generated text. A marker-only response is also treated as `deeper`,
+but CORE supplies an explicit user-facing fallback rather than turning model protocol
+failure into a runtime error. The recommendation remains observable in the CLI and
 returned as part of `CoreTurn`. "Fast" names the foreground interaction responsibility
 rather than promising wall-clock latency; ordinary runtime admission can still delay
 the submitted work item.
 
-The explicit fast/deeper recommendation behavior is canonical on `main` as of
-`b71e244e39fe81e3a2db02b73e5a219fb64702b1`.
+The first fast/deeper recommendation behavior became canonical on `main` as of
+`b71e244e39fe81e3a2db02b73e5a219fb64702b1`; its recommendation semantics are being
+refined from real-model evidence rather than by adding a new architectural layer.
 
 The canonical CORE behavior gives `deeper` one execution consequence. Only when the
 latest fast turn recommended deeper reasoning, the user may enter `/deeper`. CORE then
@@ -159,14 +164,11 @@ Planner, create a workflow or select a different capability.
 The user-controlled `/deeper` behavior is canonical on `main` as of
 `0b7c36c2bcc987d215f19ad5429a07fd41c7fc3a`.
 
-The deterministic suite proves the software semantics of that two-stage path. It does
-not prove that the current small real model recommends `deeper` at useful times or that
-the larger second inference reliably improves the answer. The next evidence therefore
-comes from owner-side local product acceptance with the real configured model. The
-procedure in `docs/core.md` uses a dedicated ignored runtime database so one can verify
-that a `deeper` recommendation creates no automatic work and that entering `/deeper`
-creates exactly one additional ordinary durable `madre-core` work item with the larger
-token budget.
+The deterministic suite proves the software semantics of that two-stage path. Real
+owner-side use is the evidence for whether the small model can follow the interaction
+protocol and make useful recommendations. The acceptance helper and procedure in
+`docs/core.md` use a dedicated ignored runtime database so the execution consequences
+remain independently inspectable.
 
 ## Runtime-work direction and next behavior
 
@@ -220,7 +222,7 @@ The dependency/value order is now:
 5. Minimal CORE interaction through the ordinary runtime HTTP boundary — implemented, accepted and canonical.
 6. Explicit CORE fast-response responsibility plus observable `fast`/`deeper` recommendation — implemented, accepted and canonical.
 7. User-controlled `/deeper` stronger follow-up through ordinary MADRE work — implemented, accepted and canonical.
-8. Exercise the two-stage CORE path with the real local model and use that product evidence to choose the next behavior; do not infer the next abstraction from tests alone.
+8. Refine the two-stage CORE interaction from real local-model evidence, then continue product use before introducing any broader reasoning abstraction.
 
 ## Verified development evidence — 2026-09-06
 
@@ -248,3 +250,16 @@ durably recorded as failed with capability failure code `connection` and the mes
 `could not communicate with capability endpoint`. Together with green Ubuntu PR CI,
 this establishes real immediate execution and accurate durable failure on the
 supported local path.
+
+The first owner-side CORE product run then exercised the pinned Qwen smoke model through
+the actual `madre-core → authenticated HTTP → durable runtime → local-chat` path. The
+model loaded and listened on `127.0.0.1:8080`. A trivial input produced only the
+internal reasoning marker, which the previous parser surfaced as `CORE fast interaction
+returned no user-facing response`. A benign poem request was first refused and marked
+`deeper`; a repeated poem request produced a poem but was again marked `deeper`. This is
+not runtime failure evidence: it demonstrates that the small model can execute through
+the real CORE path while exposing two interaction weaknesses—marker compliance cannot
+be assumed, and the original `deeper` definition was overly broad relative to the only
+follow-up actually available. The current correction makes marker-only output a usable
+fallback with explicit deeper availability and aligns `deeper` with one possible second
+same-capability pass rather than hypothetical research, tools or future agent behavior.
