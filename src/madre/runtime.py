@@ -9,13 +9,21 @@ from uuid import uuid4
 from pydantic import ValidationError
 
 from madre.config import CapabilityConfig, Settings
-from madre.contracts import WorkFailure, WorkRecord, WorkSubmission
+from madre.contracts import WorkFailure, WorkRecord, WorkRetryRequest, WorkSubmission
 from madre.inference import CapabilityError, ChatInput, ChatResult, invoke_chat
 from madre.storage import WorkStore, utc_now
 
 
 class IdempotencyConflict(RuntimeError):
     """An application reused one submission key for different work."""
+
+
+class WorkNotFound(RuntimeError):
+    """A requested durable work record does not exist."""
+
+
+class RetryConflict(RuntimeError):
+    """A retry request conflicts with durable work state or prior retry intent."""
 
 
 class WorkRuntime:
@@ -55,6 +63,48 @@ class WorkRuntime:
             if existing is None:
                 raise RuntimeError("durable idempotent work disappeared")
             return self._replay(existing, submission)
+
+        self._schedule_changed.set()
+        return self._require(work_id)
+
+    async def retry(
+        self,
+        work_id: str,
+        request: WorkRetryRequest,
+        *,
+        idempotency_key: str,
+    ) -> WorkRecord:
+        prior_policy = self.store.retry_policy_by_key(work_id, idempotency_key)
+        if prior_policy is not None:
+            if prior_policy != request.allow_unknown_outcome:
+                raise RetryConflict(
+                    "idempotency key was already used with a different retry policy"
+                )
+            return self._require(work_id)
+
+        record = self.store.get(work_id)
+        if record is None:
+            raise WorkNotFound(f"work not found: {work_id}")
+        if record.status != "failed":
+            raise RetryConflict("only failed work can be retried")
+        if (
+            record.failure is not None
+            and record.failure.code == "interrupted"
+            and not request.allow_unknown_outcome
+        ):
+            raise RetryConflict(
+                "interrupted work has an unknown capability outcome; "
+                "set allow_unknown_outcome=true to permit another invocation"
+            )
+
+        retry_number = self.store.requeue_failed(
+            work_id,
+            idempotency_key,
+            request.allow_unknown_outcome,
+            self._clock(),
+        )
+        if retry_number is None:
+            raise RetryConflict("work is no longer failed")
 
         self._schedule_changed.set()
         return self._require(work_id)
