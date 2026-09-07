@@ -91,6 +91,8 @@ class WorkRuntime:
             raise WorkNotFound(f"work not found: {work_id}")
         if record.status != "failed":
             raise RetryConflict("only failed work can be retried")
+        if record.cancellation is not None:
+            raise RetryConflict("work with a cancellation request cannot be retried")
         if (
             record.failure is not None
             and record.failure.code == "interrupted"
