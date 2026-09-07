@@ -12,6 +12,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from madre.config import Settings
 from madre.contracts import WorkRecord, WorkRetryRequest, WorkSubmission
 from madre.runtime import (
+    CancellationConflict,
     IdempotencyConflict,
     RetryConflict,
     WorkNotFound,
@@ -104,6 +105,15 @@ def create_app(settings: Settings) -> FastAPI:
         except WorkNotFound as exc:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "work not found") from exc
         except RetryConflict as exc:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+
+    @app.post("/v1/work/{work_id}/cancel", response_model=WorkRecord)
+    async def cancel_work(work_id: str) -> WorkRecord:
+        try:
+            return await runtime().cancel(work_id)
+        except WorkNotFound as exc:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "work not found") from exc
+        except CancellationConflict as exc:
             raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
 
     @app.get("/v1/work/{work_id}", response_model=WorkRecord)
