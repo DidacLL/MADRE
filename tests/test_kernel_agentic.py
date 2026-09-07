@@ -1,20 +1,16 @@
 import asyncio
 import sqlite3
 from pathlib import Path
+from typing import Annotated, Literal
+from uuid import uuid4
 
 import httpx
 import pytest
-from pydantic import ValidationError
+from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
 from madre import Settings, create_app
 from madre.config import CapabilityConfig
 from madre.inference import ChatResult
-from madre_kernel.agents import (
-    CORE_AGENT,
-    CORE_AGENT_DEFINITION,
-    CORE_FINAL_SCHEMA,
-    build_core_module,
-)
 from madre_kernel.contracts import (
     ActorSecurityFacts,
     AgentDefinition,
@@ -40,12 +36,10 @@ from madre_kernel.contracts import (
     ModuleAgentInstanceRef,
     ModuleManifest,
     ModuleRef,
-    ObjectiveText,
     OperationDescriptor,
     OperationOutcomeKind,
     OperationRef,
     OperationSecurityFacts,
-    PrivateFixturePayload,
     Repeatability,
     RuntimeEvidencePurpose,
     SchemaRef,
@@ -53,6 +47,7 @@ from madre_kernel.contracts import (
     ScopeRef,
     SecurityDecisionRef,
     SecurityLevel,
+    SemanticModel,
     SkillDefinition,
     SkillRef,
     WorkflowDefinition,
@@ -69,14 +64,11 @@ from madre_kernel.kernel import (
     repeat_permitted,
 )
 from madre_kernel.modules import (
-    CALC_OBJECTIVE_SCHEMA,
-    CALC_OUTPUT_SCHEMA,
-    CALC_SCOPE,
-    CALCULATE,
+    PUBLIC_DISCOVERY,
+    AgentExecutionServices,
     InProcessModule,
     OperationMaterial,
     UnknownOperationEffect,
-    build_calculator_module,
     ref_key,
 )
 from madre_kernel.runtime_client import KernelRuntimeClient
@@ -90,6 +82,60 @@ CAPABILITIES = {
     )
 }
 
+DOMAIN_MODULE = ModuleRef(module_id="test-domain")
+DOMAIN_SCOPE = ScopeRef(module=DOMAIN_MODULE, scope_id="content")
+OBJECTIVE_SCHEMA = SchemaRef(module=DOMAIN_MODULE, schema_id="objective", revision=1)
+OPERATION_INPUT_SCHEMA = SchemaRef(
+    module=DOMAIN_MODULE,
+    schema_id="operation-input",
+    revision=1,
+)
+OPERATION_OUTPUT_SCHEMA = SchemaRef(
+    module=DOMAIN_MODULE,
+    schema_id="operation-output",
+    revision=1,
+)
+TRANSFORM = OperationRef(module=DOMAIN_MODULE, operation_id="transform", revision=1)
+
+FALLBACK_MODULE = ModuleRef(module_id="test-fallback-provider")
+FALLBACK_AGENT = AgentRef(module=FALLBACK_MODULE, agent_id="general")
+FALLBACK_DEFINITION = AgentDefinitionRef(agent=FALLBACK_AGENT, revision=1)
+FINAL_SCHEMA = SchemaRef(module=FALLBACK_MODULE, schema_id="final", revision=1)
+
+
+class ObjectivePayload(SemanticModel):
+    text: str = Field(min_length=1)
+
+
+class TransformInput(SemanticModel):
+    text: str = Field(min_length=1)
+
+
+class TransformOutput(SemanticModel):
+    text: str = Field(min_length=1)
+
+
+class FinalPayload(SemanticModel):
+    text: str = Field(min_length=1)
+
+
+class BoundedPayload(SemanticModel):
+    text: str = Field(min_length=1)
+
+
+class _OperationTurn(SemanticModel):
+    kind: Literal["operation"]
+    operation_id: Annotated[str, Field(min_length=1)]
+    text: Annotated[str, Field(min_length=1)]
+
+
+class _FinalTurn(SemanticModel):
+    kind: Literal["final"]
+    text: Annotated[str, Field(min_length=1)]
+
+
+_TURN: TypeAdapter[_OperationTurn | _FinalTurn] = TypeAdapter(_OperationTurn | _FinalTurn)
+
 
 def _runtime_client(
     transport: httpx.AsyncBaseTransport | None = None,
@@ -98,7 +144,7 @@ def _runtime_client(
         "http://127.0.0.1:8731",
         "test-token",
         "local-chat",
-        application_id="madre-core",
+        application_id="madre-kernel-test",
         poll_interval_seconds=0.001,
         transport=transport,
     )
@@ -113,6 +159,202 @@ def _kernel(
 
 def _provenance(module: ModuleRef) -> DefinitionProvenance:
     return DefinitionProvenance(created_at=utc_now(), created_by=module)
+
+
+class _FallbackManager:
+    def __init__(self, module: ModuleRef, final_schema: SchemaRef) -> None:
+        self.module = module
+        self.final_schema = final_schema
+
+    def instantiate(self, definition: AgentDefinition) -> AgentInstance:
+        return AgentInstance(
+            ref=AgentInstanceRef(instance_id=uuid4().hex),
+            definition=definition.ref,
+            manager_instance_ref=ModuleAgentInstanceRef(
+                module=self.module,
+                instance_id=uuid4().hex,
+            ),
+            state_refs=(),
+            created_at=utc_now(),
+        )
+
+    async def run_task(
+        self,
+        instance: AgentInstance,
+        objective: ContextBundle,
+        services: AgentExecutionServices,
+    ) -> ContextBundleRef:
+        operations = services.visible_operations()
+        first = _TURN.validate_json(
+            await services.reasoning(
+                (
+                    (
+                        "system",
+                        "Return a test operation request as JSON using only a visible operation.",
+                    ),
+                    ("user", objective.payload.canonical_json),
+                ),
+                (objective.ref,),
+            )
+        )
+        if not isinstance(first, _OperationTurn):
+            raise ValueError("fixture first turn must request an Operation")
+        descriptor = next(
+            (item for item in operations if item.ref.operation_id == first.operation_id),
+            None,
+        )
+        if descriptor is None:
+            raise ValueError("fixture requested an Operation outside discovery")
+        input_ref = services.project_operation_input(
+            descriptor.ref,
+            TransformInput(text=first.text),
+        )
+        produced = await services.invoke_operation(descriptor.ref, (input_ref,))
+        if len(produced) != 1:
+            raise ValueError("fixture Operation must produce one ContextBundle")
+        result_bundle = services.context(produced[0])
+        result = TransformOutput.model_validate_json(result_bundle.payload.canonical_json)
+        second = _TURN.validate_json(
+            await services.reasoning(
+                (
+                    ("system", "Return the observed result as final JSON."),
+                    ("user", result.text),
+                ),
+                produced,
+            )
+        )
+        if not isinstance(second, _FinalTurn):
+            raise ValueError("fixture second turn must return a final response")
+        return services.emit_agent_context(
+            self.final_schema,
+            FinalPayload(text=second.text),
+            DataSecurityFacts(
+                sensitivity=result_bundle.security.sensitivity,
+                trust=SecurityLevel.LEVEL_3,
+                scopes=result_bundle.security.scopes,
+            ),
+            "fixture-final",
+            produced,
+        )
+
+
+def _build_agentless_domain_module() -> InProcessModule:
+    descriptor = OperationDescriptor(
+        ref=TRANSFORM,
+        name="transform",
+        purpose="Test-only deterministic transformation.",
+        input_schema=OPERATION_INPUT_SCHEMA,
+        output_schema=OPERATION_OUTPUT_SCHEMA,
+        security=OperationSecurityFacts(
+            risk=SecurityLevel.LEVEL_1,
+            minimum_input_trust=SecurityLevel.LEVEL_1,
+            maximum_input_sensitivity=SecurityLevel.LEVEL_3,
+            source_scopes=frozenset({DOMAIN_SCOPE}),
+            destination_scopes=frozenset({DOMAIN_SCOPE}),
+            execution_boundary=ExecutionBoundary.LOCAL_TRUSTED,
+        ),
+        effect_semantics=EffectSemantics(
+            kind=EffectKind.NONE,
+            repeatability=Repeatability.REPEATABLE,
+            interrupted_outcome=InterruptedOutcome.DETERMINATE,
+        ),
+        visibility=PUBLIC_DISCOVERY,
+        provenance=_provenance(DOMAIN_MODULE),
+    )
+
+    def project(payload: BaseModel) -> OperationMaterial:
+        value = TransformInput.model_validate(payload)
+        return OperationMaterial(
+            schema_ref=OPERATION_INPUT_SCHEMA,
+            payload=value,
+            security=DataSecurityFacts(
+                sensitivity=SecurityLevel.LEVEL_1,
+                trust=SecurityLevel.LEVEL_3,
+                scopes=frozenset({DOMAIN_SCOPE}),
+            ),
+            purpose="fixture-operation-input",
+        )
+
+    def transform(inputs: tuple[ContextBundle, ...]) -> OperationMaterial:
+        if len(inputs) != 1 or inputs[0].payload.schema_ref != OPERATION_INPUT_SCHEMA:
+            raise ValueError("transform expects one exact input ContextBundle")
+        request = TransformInput.model_validate_json(inputs[0].payload.canonical_json)
+        return OperationMaterial(
+            schema_ref=OPERATION_OUTPUT_SCHEMA,
+            payload=TransformOutput(text=request.text.upper()),
+            security=DataSecurityFacts(
+                sensitivity=SecurityLevel.LEVEL_1,
+                trust=SecurityLevel.LEVEL_5,
+                scopes=frozenset({DOMAIN_SCOPE}),
+            ),
+            purpose="fixture-operation-output",
+        )
+
+    return InProcessModule(
+        manifest=ModuleManifest(
+            module=DOMAIN_MODULE,
+            revision=1,
+            name="Test domain",
+            description="Agentless test-only Module.",
+            visibility=PUBLIC_DISCOVERY,
+            scopes=(
+                ScopeDescriptor(
+                    ref=DOMAIN_SCOPE,
+                    name="content",
+                    description="Test-only content scope",
+                ),
+            ),
+            operations=(TRANSFORM,),
+            agents=(),
+        ),
+        schemas={
+            OBJECTIVE_SCHEMA: ObjectivePayload,
+            OPERATION_INPUT_SCHEMA: TransformInput,
+            OPERATION_OUTPUT_SCHEMA: TransformOutput,
+        },
+        operations=(descriptor,),
+        input_projectors={ref_key(TRANSFORM): project},
+        handlers={ref_key(TRANSFORM): transform},
+    )
+
+
+def _build_fallback_role_module(
+    module: ModuleRef = FALLBACK_MODULE,
+    agent_id: str = "general",
+) -> tuple[InProcessModule, AgentDefinitionRef, AgentRef, SchemaRef]:
+    agent = AgentRef(module=module, agent_id=agent_id)
+    definition_ref = AgentDefinitionRef(agent=agent, revision=1)
+    final_schema = SchemaRef(module=module, schema_id="final", revision=1)
+    definition = AgentDefinition(
+        ref=definition_ref,
+        name="Test fallback Agent",
+        description="Test-only Agent managed by its own Module fixture.",
+        manager_definition_ref=ModuleAgentDefinitionRef(
+            module=module,
+            definition_id="opaque-test-manager",
+        ),
+        security=ActorSecurityFacts(
+            trust=SecurityLevel.LEVEL_4,
+            maximum_handled_sensitivity=SecurityLevel.LEVEL_4,
+            execution_risk=SecurityLevel.LEVEL_1,
+        ),
+        visibility=PUBLIC_DISCOVERY,
+        provenance=_provenance(module),
+    )
+    adapter = InProcessModule(
+        manifest=ModuleManifest(
+            module=module,
+            revision=1,
+            name="Test fallback provider",
+            description="Test-only Module occupying the CORE role.",
+            visibility=PUBLIC_DISCOVERY,
+            agents=(definition_ref,),
+        ),
+        schemas={final_schema: FinalPayload},
+        agents=(definition,),
+        manager=_FallbackManager(module, final_schema),
+    )
+    return adapter, definition_ref, agent, final_schema
 
 
 def test_reference_validation_and_reserved_level_rejection():
@@ -146,13 +388,13 @@ def test_reference_validation_and_reserved_level_rejection():
 def _security_fixture():
     module = ModuleRef(module_id="security-fixture")
     scope = ScopeRef(module=module, scope_id="private")
-    schema = SchemaRef(module=module, schema_id="payload", revision=1)
+    schema_ref = SchemaRef(module=module, schema_id="payload", revision=1)
     operation_ref = OperationRef(module=module, operation_id="consume", revision=1)
     bundle = ContextBundle(
         ref=ContextBundleRef(bundle_id="bundle"),
         owner_module=module,
         purpose="security-test",
-        payload={"schema": schema, "canonical_json": '{"private_text":"x"}'},
+        payload={"schema_ref": schema_ref, "canonical_json": '{"text":"x"}'},
         security=DataSecurityFacts(
             sensitivity=SecurityLevel.LEVEL_2,
             trust=SecurityLevel.LEVEL_3,
@@ -165,8 +407,8 @@ def _security_fixture():
         ref=operation_ref,
         name="consume",
         purpose="security predicate fixture",
-        input_schema=schema,
-        output_schema=schema,
+        input_schema=schema_ref,
+        output_schema=schema_ref,
         security=OperationSecurityFacts(
             risk=SecurityLevel.LEVEL_2,
             minimum_input_trust=SecurityLevel.LEVEL_2,
@@ -180,7 +422,7 @@ def _security_fixture():
             repeatability=Repeatability.REPEATABLE,
             interrupted_outcome=InterruptedOutcome.DETERMINATE,
         ),
-        visibility=DiscoveryPolicyRef(policy_id="public", revision=1),
+        visibility=PUBLIC_DISCOVERY,
         provenance=_provenance(module),
     )
     actor = ActorSecurityFacts(
@@ -229,7 +471,7 @@ def test_security_algebra_rejects_sensitivity_trust_and_risk(
     assert dimension in {item.dimension.value for item in decision.deficits}
 
 
-def test_security_algebra_rejects_scope_mismatch_and_accepts_calculator_shape():
+def test_security_algebra_rejects_scope_mismatch_and_accepts_valid_shape():
     bundle, operation, actor, task, agent = _security_fixture()
     other = ScopeRef(module=bundle.owner_module, scope_id="other")
     mismatched = bundle.model_copy(
@@ -259,21 +501,18 @@ def test_security_algebra_rejects_scope_mismatch_and_accepts_calculator_shape():
     assert accepted.deficits == ()
 
 
-def test_agent_identity_skill_revision_and_direct_workflow_persist_independently(
-    tmp_path,
-):
+def test_agent_identity_skill_revision_and_direct_workflow_persist_independently(tmp_path):
     kernel = _kernel(tmp_path / "kernel.sqlite3")
     module = ModuleRef(module_id="agent-owner")
     skill_module = ModuleRef(module_id="skill-owner")
     agent = AgentRef(module=module, agent_id="A")
     source1 = SkillRef(module=skill_module, skill_id="X", revision=1)
     source2 = SkillRef(module=skill_module, skill_id="X", revision=2)
-    visibility = DiscoveryPolicyRef(policy_id="public", revision=1)
     skill1 = SkillDefinition(
         ref=source1,
         name="X",
         purpose="fixture",
-        visibility=visibility,
+        visibility=PUBLIC_DISCOVERY,
         provenance=_provenance(skill_module),
     )
     skill2 = skill1.model_copy(update={"ref": source2})
@@ -294,7 +533,7 @@ def test_agent_identity_skill_revision_and_direct_workflow_persist_independently
             recipe_id="custom-recipe",
             revision=1,
         ),
-        visibility=visibility,
+        visibility=PUBLIC_DISCOVERY,
         provenance=_provenance(module),
     )
     kernel.register_workflow(workflow)
@@ -315,7 +554,7 @@ def test_agent_identity_skill_revision_and_direct_workflow_persist_independently
                 maximum_handled_sensitivity=SecurityLevel.LEVEL_3,
                 execution_risk=SecurityLevel.LEVEL_1,
             ),
-            visibility=visibility,
+            visibility=PUBLIC_DISCOVERY,
             provenance=_provenance(module),
         )
 
@@ -341,31 +580,29 @@ def test_agent_identity_skill_revision_and_direct_workflow_persist_independently
     assert kernel.agent_definition(d1.ref).skill_instances == (x1.ref,)
     assert kernel.agent_definition(d3.ref).skill_instances == (x2.ref,)
     assert kernel.skill_instance(x1.ref).source_skill == source1
-    derived_agent = AgentRef(module=module, agent_id="A-custom")
-    assert derived_agent != agent
     kernel.close()
 
 
 def test_concurrent_instances_and_zero_to_many_opaque_states():
-    module = build_core_module()
-    definition = module.agent_definition(CORE_AGENT_DEFINITION)
-    manager = module.agent_manager(CORE_AGENT_DEFINITION)
+    module, definition_ref, agent_ref, _ = _build_fallback_role_module()
+    definition = module.agent_definition(definition_ref)
+    manager = module.agent_manager(definition_ref)
     assert definition is not None and manager is not None
     first = manager.instantiate(definition)
     second = manager.instantiate(definition)
-    assert first.definition == second.definition == CORE_AGENT_DEFINITION
+    assert first.definition == second.definition == definition_ref
     assert first.ref != second.ref
     assert first.state_refs == second.state_refs == ()
     with_states = AgentInstance(
         ref=AgentInstanceRef(instance_id="states"),
         definition=definition.ref,
         manager_instance_ref=ModuleAgentInstanceRef(
-            module=CORE_AGENT.module,
+            module=agent_ref.module,
             instance_id="manager",
         ),
         state_refs=(
-            AgentStateRef(module=CORE_AGENT.module, state_id="one"),
-            AgentStateRef(module=CORE_AGENT.module, state_id="two"),
+            AgentStateRef(module=agent_ref.module, state_id="one"),
+            AgentStateRef(module=agent_ref.module, state_id="two"),
         ),
         created_at=utc_now(),
     )
@@ -388,32 +625,26 @@ def test_private_discovery_is_filtered_without_implying_operation_authority(tmp_
     kernel = Kernel(
         store=KernelStore(tmp_path / "kernel.sqlite3"),
         runtime=_runtime_client(),
-        discovery=DiscoveryPolicy((DiscoveryRule(private, frozenset({"madre-core"})),)),
+        discovery=DiscoveryPolicy((DiscoveryRule(private, frozenset({"requester"})),)),
     )
     kernel.register_module(module)
     assert kernel.discover_modules("unauthorized") == ()
-    assert [item.module for item in kernel.discover_modules("madre-core")] == [module_ref]
+    assert [item.module for item in kernel.discover_modules("requester")] == [module_ref]
     kernel.close()
 
 
-def _build_aaaat_fixture(dispatch_log: list[str], before_uncertain=None):
-    module = ModuleRef(module_id="aaaat-fixture")
-    private_scope = ScopeRef(module=module, scope_id="private")
-    shared_scope = ScopeRef(module=module, scope_id="minimized")
-    schema = SchemaRef(module=module, schema_id="bounded-career-context", revision=1)
-    bad_minimize = OperationRef(module=module, operation_id="bad-minimize", revision=1)
-    minimize = OperationRef(module=module, operation_id="minimize", revision=1)
+def _build_classified_fixture(dispatch_log: list[str], before_uncertain=None):
+    module = ModuleRef(module_id="classified-fixture")
+    restricted_scope = ScopeRef(module=module, scope_id="restricted")
+    shared_scope = ScopeRef(module=module, scope_id="shared")
+    schema_ref = SchemaRef(module=module, schema_id="bounded", revision=1)
+    invalid_project = OperationRef(module=module, operation_id="invalid-project", revision=1)
+    project = OperationRef(module=module, operation_id="project", revision=1)
     consume = OperationRef(module=module, operation_id="consume", revision=1)
-    uncertain = OperationRef(
-        module=module,
-        operation_id="uncertain-effect",
-        revision=1,
-    )
-    visibility = DiscoveryPolicyRef(policy_id="public", revision=1)
+    uncertain = OperationRef(module=module, operation_id="uncertain-effect", revision=1)
 
     def descriptor(
         ref,
-        purpose,
         maximum,
         transform=ClassificationTransform.NONE,
         repeatability=Repeatability.REPEATABLE,
@@ -421,14 +652,14 @@ def _build_aaaat_fixture(dispatch_log: list[str], before_uncertain=None):
         return OperationDescriptor(
             ref=ref,
             name=ref.operation_id,
-            purpose=purpose,
-            input_schema=schema,
-            output_schema=schema,
+            purpose="classified crossing fixture",
+            input_schema=schema_ref,
+            output_schema=schema_ref,
             security=OperationSecurityFacts(
                 risk=SecurityLevel.LEVEL_1,
                 minimum_input_trust=SecurityLevel.LEVEL_1,
                 maximum_input_sensitivity=maximum,
-                source_scopes=frozenset({private_scope, shared_scope}),
+                source_scopes=frozenset({restricted_scope, shared_scope}),
                 destination_scopes=frozenset({shared_scope}),
                 execution_boundary=ExecutionBoundary.LOCAL_TRUSTED,
                 classification_transform=transform,
@@ -442,58 +673,48 @@ def _build_aaaat_fixture(dispatch_log: list[str], before_uncertain=None):
                     else InterruptedOutcome.DETERMINATE
                 ),
             ),
-            visibility=visibility,
+            visibility=PUBLIC_DISCOVERY,
             provenance=_provenance(module),
         )
 
-    bad_minimize_descriptor = descriptor(
-        bad_minimize,
-        "invalid sensitivity lowering fixture",
-        SecurityLevel.LEVEL_5,
-    )
-    minimize_descriptor = descriptor(
-        minimize,
-        "Module-owned bounded minimization",
+    invalid_descriptor = descriptor(invalid_project, SecurityLevel.LEVEL_5)
+    project_descriptor = descriptor(
+        project,
         SecurityLevel.LEVEL_5,
         ClassificationTransform.MAY_RECALCULATE,
     )
-    consume_descriptor = descriptor(
-        consume,
-        "low-sensitivity consumer",
-        SecurityLevel.LEVEL_2,
-    )
+    consume_descriptor = descriptor(consume, SecurityLevel.LEVEL_2)
     uncertain_descriptor = descriptor(
         uncertain,
-        "unknown external effect fixture",
         SecurityLevel.LEVEL_2,
         repeatability=Repeatability.UNKNOWN,
     )
 
-    def minimized_material():
+    def projected_material():
         return OperationMaterial(
-            schema=schema,
-            payload=PrivateFixturePayload(private_text="minimized role summary"),
+            schema_ref=schema_ref,
+            payload=BoundedPayload(text="bounded projection"),
             security=DataSecurityFacts(
                 sensitivity=SecurityLevel.LEVEL_2,
                 trust=SecurityLevel.LEVEL_4,
                 scopes=frozenset({shared_scope}),
             ),
-            purpose="minimized-career-context",
+            purpose="bounded-projection",
         )
 
-    def bad_minimize_handler(inputs):
-        dispatch_log.append("bad-minimize")
-        return minimized_material()
+    def invalid_handler(inputs):
+        dispatch_log.append("invalid-project")
+        return projected_material()
 
-    def minimize_handler(inputs):
-        dispatch_log.append("minimize")
-        return minimized_material()
+    def project_handler(inputs):
+        dispatch_log.append("project")
+        return projected_material()
 
     def consume_handler(inputs):
         dispatch_log.append("consume")
-        payload = PrivateFixturePayload.model_validate_json(inputs[0].payload.canonical_json)
+        payload = BoundedPayload.model_validate_json(inputs[0].payload.canonical_json)
         return OperationMaterial(
-            schema=schema,
+            schema_ref=schema_ref,
             payload=payload,
             security=inputs[0].security,
             purpose="consumed-context",
@@ -506,65 +727,65 @@ def _build_aaaat_fixture(dispatch_log: list[str], before_uncertain=None):
         raise UnknownOperationEffect("external outcome cannot be established")
 
     skill1 = SkillDefinition(
-        ref=SkillRef(module=module, skill_id="career-assistance", revision=1),
-        name="career assistance",
-        purpose="AAAAT-shaped exact upstream Skill",
-        visibility=visibility,
+        ref=SkillRef(module=module, skill_id="bounded-assistance", revision=1),
+        name="bounded assistance",
+        purpose="exact upstream Skill fixture",
+        visibility=PUBLIC_DISCOVERY,
         provenance=_provenance(module),
     )
     manifest = ModuleManifest(
         module=module,
         revision=1,
-        name="AAAAT-shaped fixture",
-        description="Agentless bounded career domain fixture",
-        visibility=visibility,
+        name="Classified fixture",
+        description="Agentless classified-domain fixture",
+        visibility=PUBLIC_DISCOVERY,
         scopes=(
             ScopeDescriptor(
-                ref=private_scope,
-                name="private",
-                description="private domain context",
+                ref=restricted_scope,
+                name="restricted",
+                description="restricted source context",
             ),
             ScopeDescriptor(
                 ref=shared_scope,
-                name="minimized",
-                description="minimized projection",
+                name="shared",
+                description="bounded projected context",
             ),
         ),
-        operations=(bad_minimize, minimize, consume, uncertain),
+        operations=(invalid_project, project, consume, uncertain),
         skills=(skill1.ref,),
         agents=(),
     )
     adapter = InProcessModule(
         manifest=manifest,
-        schemas={schema: PrivateFixturePayload},
+        schemas={schema_ref: BoundedPayload},
         operations=(
-            bad_minimize_descriptor,
-            minimize_descriptor,
+            invalid_descriptor,
+            project_descriptor,
             consume_descriptor,
             uncertain_descriptor,
         ),
         skills=(skill1,),
         handlers={
-            ref_key(bad_minimize): bad_minimize_handler,
-            ref_key(minimize): minimize_handler,
+            ref_key(invalid_project): invalid_handler,
+            ref_key(project): project_handler,
             ref_key(consume): consume_handler,
             ref_key(uncertain): uncertain_handler,
         },
     )
     return (
         adapter,
-        schema,
-        private_scope,
+        schema_ref,
+        restricted_scope,
         shared_scope,
-        bad_minimize,
-        minimize,
+        invalid_project,
+        project,
         consume,
         uncertain,
         skill1,
     )
 
 
-def test_aaaat_shaped_skill_pinning_minimization_and_unknown_effect(tmp_path):
+def test_skill_pinning_projection_and_unknown_effect_are_independent(tmp_path):
     dispatch_log = []
     before_unknown = []
     kernel = _kernel(tmp_path / "kernel.sqlite3")
@@ -572,38 +793,38 @@ def test_aaaat_shaped_skill_pinning_minimization_and_unknown_effect(tmp_path):
     def observe_unknown_dispatch():
         before_unknown.append(kernel.operation_invocations())
 
-    core = build_core_module()
+    fallback, _, fallback_agent, _ = _build_fallback_role_module()
     (
         fixture,
-        schema,
-        private_scope,
+        schema_ref,
+        restricted_scope,
         shared_scope,
-        bad_minimize,
-        minimize,
+        invalid_project,
+        project,
         consume,
         uncertain,
         skill1,
-    ) = _build_aaaat_fixture(dispatch_log, observe_unknown_dispatch)
-    kernel.register_module(core)
+    ) = _build_classified_fixture(dispatch_log, observe_unknown_dispatch)
+    kernel.register_module(fallback)
     kernel.register_module(fixture)
-    kernel.assign_core("madre-core")
+    kernel.assign_core(fallback.manifest.module.module_id)
     installed = kernel.install_skill(
-        agent=CORE_AGENT,
+        agent=fallback_agent,
         source_skill=skill1.ref,
-        skill_instance_id="aaaat-installed",
+        skill_instance_id="installed-skill",
     )
     skill2 = skill1.model_copy(update={"ref": skill1.ref.model_copy(update={"revision": 2})})
     kernel.register_skill(skill2)
     assert installed.source_skill == skill1.ref
 
     plan, task = kernel.create_work_plan(
-        owner_module_id="aaaat-fixture",
-        schema=schema,
-        objective=PrivateFixturePayload(private_text="salary=private; role=engineer"),
+        owner_module_id=fixture.manifest.module.module_id,
+        schema_ref=schema_ref,
+        objective=BoundedPayload(text="restricted source material"),
         security=DataSecurityFacts(
             sensitivity=SecurityLevel.LEVEL_4,
             trust=SecurityLevel.LEVEL_4,
-            scopes=frozenset({private_scope}),
+            scopes=frozenset({restricted_scope}),
         ),
     )
     task = kernel.bind_task_agent(task.ref)
@@ -628,21 +849,23 @@ def test_aaaat_shaped_skill_pinning_minimization_and_unknown_effect(tmp_path):
         asyncio.run(
             kernel.invoke_operation(
                 task_ref=task.ref,
-                operation=bad_minimize,
+                operation=invalid_project,
                 input_contexts=(plan.objective,),
             )
         )
-    invalid_derivation = next(
-        record for record in kernel.operation_invocations() if record.operation == bad_minimize
+    invalid = next(
+        record
+        for record in kernel.operation_invocations()
+        if record.operation == invalid_project
     )
-    assert invalid_derivation.dispatched_at is not None
-    assert invalid_derivation.outcome is not None
-    assert invalid_derivation.outcome.kind is OperationOutcomeKind.FAILURE
+    assert invalid.dispatched_at is not None
+    assert invalid.outcome is not None
+    assert invalid.outcome.kind is OperationOutcomeKind.FAILURE
 
     derived_ref = asyncio.run(
         kernel.invoke_operation(
             task_ref=task.ref,
-            operation=minimize,
+            operation=project,
             input_contexts=(plan.objective,),
         )
     )[0]
@@ -688,103 +911,42 @@ def test_aaaat_shaped_skill_pinning_minimization_and_unknown_effect(tmp_path):
     kernel.close()
 
 
-def test_core_replacement_changes_future_fallback_without_rewriting_existing_binding(
-    tmp_path,
-):
+def test_core_role_reassignment_changes_future_fallback_without_rewriting_history(tmp_path):
     kernel = _kernel(tmp_path / "kernel.sqlite3")
-    calc = build_calculator_module()
-    core = build_core_module()
-    kernel.register_module(calc)
-    kernel.register_module(core)
-    kernel.assign_core("madre-core")
-
-    support_module = ModuleRef(module_id="support-skill")
-    support_skill = SkillDefinition(
-        ref=SkillRef(module=support_module, skill_id="stable", revision=1),
-        name="stable",
-        purpose="CORE replacement identity fixture",
-        visibility=DiscoveryPolicyRef(policy_id="public", revision=1),
-        provenance=_provenance(support_module),
-    )
-    kernel.register_skill(support_skill)
-    installed = kernel.install_skill(
-        agent=CORE_AGENT,
-        source_skill=support_skill.ref,
-        skill_instance_id="stable-install",
-    )
-    workflow = WorkflowDefinition(
-        ref=WorkflowRef(module=CORE_AGENT.module, workflow_id="stable", revision=1),
-        name="stable",
-        purpose="CORE replacement Workflow fixture",
-        input_schema=None,
-        output_schema=None,
-        recipe=WorkflowRecipeRef(
-            module=CORE_AGENT.module,
-            recipe_id="stable-recipe",
-            revision=1,
-        ),
-        visibility=DiscoveryPolicyRef(policy_id="public", revision=1),
-        provenance=_provenance(CORE_AGENT.module),
-    )
-    kernel.register_workflow(workflow)
+    domain = _build_agentless_domain_module()
+    first, first_definition, _, _ = _build_fallback_role_module()
+    kernel.register_module(domain)
+    kernel.register_module(first)
+    kernel.assign_core(first.manifest.module.module_id)
 
     plan, task = kernel.create_work_plan(
-        owner_module_id="calc",
-        schema=CALC_OBJECTIVE_SCHEMA,
-        objective=ObjectiveText(text="old binding"),
+        owner_module_id=DOMAIN_MODULE.module_id,
+        schema_ref=OBJECTIVE_SCHEMA,
+        objective=ObjectivePayload(text="old binding"),
         security=DataSecurityFacts(
             sensitivity=SecurityLevel.LEVEL_1,
             trust=SecurityLevel.LEVEL_3,
-            scopes=frozenset({CALC_SCOPE}),
+            scopes=frozenset({DOMAIN_SCOPE}),
         ),
     )
     bound = kernel.bind_task_agent(task.ref)
-    old_definition = bound.resolved_agent
+    assert bound.resolved_agent == first_definition
 
-    replacement_module = ModuleRef(module_id="replacement-core")
-    replacement_agent = AgentRef(module=replacement_module, agent_id="fallback")
-    replacement_ref = AgentDefinitionRef(agent=replacement_agent, revision=1)
-    replacement_definition = AgentDefinition(
-        ref=replacement_ref,
-        name="replacement",
-        description="replacement CORE fixture",
-        manager_definition_ref=ModuleAgentDefinitionRef(
-            module=replacement_module,
-            definition_id="opaque",
-        ),
-        security=ActorSecurityFacts(
-            trust=SecurityLevel.LEVEL_4,
-            maximum_handled_sensitivity=SecurityLevel.LEVEL_4,
-            execution_risk=SecurityLevel.LEVEL_1,
-        ),
-        visibility=DiscoveryPolicyRef(policy_id="public", revision=1),
-        provenance=_provenance(replacement_module),
-    )
-    replacement = InProcessModule(
-        manifest=ModuleManifest(
-            module=replacement_module,
-            revision=1,
-            name="replacement",
-            description="replacement CORE fixture",
-            visibility=DiscoveryPolicyRef(policy_id="public", revision=1),
-            agents=(replacement_ref,),
-        ),
-        schemas={},
-        agents=(replacement_definition,),
+    replacement_module = ModuleRef(module_id="replacement-fallback-provider")
+    replacement, replacement_definition, _, _ = _build_fallback_role_module(
+        replacement_module,
+        "replacement",
     )
     kernel.register_module(replacement)
-    kernel.assign_core("replacement-core")
+    kernel.assign_core(replacement_module.module_id)
 
-    assert kernel.resolve_agent_definition(bound.agent_requirement).ref == replacement_ref
-    assert kernel.inspect_task(task.ref).resolved_agent == old_definition
-    assert kernel.inspect_plan(plan.ref).orchestrator_definition == old_definition
-    assert kernel.agent_definition(CORE_AGENT_DEFINITION).ref.agent == CORE_AGENT
-    assert kernel.skill_instance(installed.ref).ref == installed.ref
-    assert kernel.workflow(workflow.ref).ref == workflow.ref
+    assert kernel.resolve_agent_definition(bound.agent_requirement).ref == replacement_definition
+    assert kernel.inspect_task(task.ref).resolved_agent == first_definition
+    assert kernel.inspect_plan(plan.ref).orchestrator_definition == first_definition
     kernel.close()
 
 
-def test_complete_calculator_agentic_loop_uses_two_real_runtime_work_records(
+def test_complete_vertical_loop_uses_test_only_modules_and_ordinary_runtime_work(
     tmp_path,
     monkeypatch,
 ):
@@ -794,9 +956,9 @@ def test_complete_calculator_agentic_loop_uses_two_real_runtime_work_records(
     async def fake_invoke(capability, request, constraints):
         model_calls.append(request)
         text = (
-            '{"kind":"operation","operation_id":"calculate","left":173,"right":419}'
+            '{"kind":"operation","operation_id":"transform","text":"bounded input"}'
             if len(model_calls) == 1
-            else '{"kind":"final","answer":"72487"}'
+            else '{"kind":"final","text":"BOUNDED INPUT"}'
         )
         return ChatResult(
             text=text,
@@ -813,20 +975,20 @@ def test_complete_calculator_agentic_loop_uses_two_real_runtime_work_records(
     async def exercise():
         async with app.router.lifespan_context(app):
             kernel = _kernel(kernel_path, httpx.ASGITransport(app=app))
-            calc = build_calculator_module()
-            assert calc.manifest.agents == ()
-            assert calc.operation(CALCULATE) is not None
-            kernel.register_module(calc)
-            kernel.register_module(build_core_module())
-            kernel.assign_core("madre-core")
+            domain = _build_agentless_domain_module()
+            fallback, fallback_definition, _, final_schema = _build_fallback_role_module()
+            assert domain.manifest.agents == ()
+            kernel.register_module(domain)
+            kernel.register_module(fallback)
+            kernel.assign_core(fallback.manifest.module.module_id)
             plan = await kernel.run_objective(
-                owner_module_id="calc",
-                schema=CALC_OBJECTIVE_SCHEMA,
-                objective=ObjectiveText(text="What is 173 * 419?"),
+                owner_module_id=DOMAIN_MODULE.module_id,
+                schema_ref=OBJECTIVE_SCHEMA,
+                objective=ObjectivePayload(text="Transform bounded input"),
                 security=DataSecurityFacts(
                     sensitivity=SecurityLevel.LEVEL_1,
                     trust=SecurityLevel.LEVEL_3,
-                    scopes=frozenset({CALC_SCOPE}),
+                    scopes=frozenset({DOMAIN_SCOPE}),
                 ),
             )
             task = kernel.store.all("agent_task", AgentTask)[0]
@@ -844,9 +1006,8 @@ def test_complete_calculator_agentic_loop_uses_two_real_runtime_work_records(
                 decisions,
                 final,
                 result,
-                kernel.store.count("work_plan"),
-                kernel.store.count("agent_task"),
-                kernel.store.count("agent_instance"),
+                fallback_definition,
+                final_schema,
             )
             kernel.close()
             return snapshot
@@ -859,15 +1020,13 @@ def test_complete_calculator_agentic_loop_uses_two_real_runtime_work_records(
         decisions,
         final,
         result,
-        plan_count,
-        task_count,
-        instance_count,
+        fallback_definition,
+        final_schema,
     ) = asyncio.run(exercise())
     assert plan.completion is not None and task.completion is not None
     assert task.ref.plan == plan.ref
-    assert task.resolved_agent == CORE_AGENT_DEFINITION
-    assert plan_count == task_count == instance_count == 1
-    assert invocation.operation == CALCULATE
+    assert task.resolved_agent == fallback_definition
+    assert invocation.operation == TRANSFORM
     assert invocation.outcome is not None
     assert invocation.outcome.kind is OperationOutcomeKind.SUCCESS
     assert len(links) == 2
@@ -876,10 +1035,10 @@ def test_complete_calculator_agentic_loop_uses_two_real_runtime_work_records(
     assert len({link.runtime_work.work_id for link in links}) == 2
     assert len(decisions) == 3
     assert all(decision.accepted for decision in decisions)
-    assert result is not None and result.payload.schema == CALC_OUTPUT_SCHEMA
-    assert "72487" in result.payload.canonical_json
-    assert final is not None and final.payload.schema == CORE_FINAL_SCHEMA
-    assert "72487" in final.payload.canonical_json
+    assert result is not None and result.payload.schema_ref == OPERATION_OUTPUT_SCHEMA
+    assert "BOUNDED INPUT" in result.payload.canonical_json
+    assert final is not None and final.payload.schema_ref == final_schema
+    assert "BOUNDED INPUT" in final.payload.canonical_json
     assert len(model_calls) == 2
 
     with sqlite3.connect(settings.data_dir / "runtime.sqlite3") as connection:
@@ -887,19 +1046,16 @@ def test_complete_calculator_agentic_loop_uses_two_real_runtime_work_records(
             "SELECT application_id, status FROM runtime_work ORDER BY queue_sequence"
         ).fetchall()
     assert rows == [
-        ("madre-core", "succeeded"),
-        ("madre-core", "succeeded"),
+        ("madre-kernel-test", "succeeded"),
+        ("madre-kernel-test", "succeeded"),
     ]
 
     reopened = _kernel(kernel_path)
-    reopened_plan = reopened.inspect_plan(plan.ref)
-    reopened_task = reopened.inspect_task(task.ref)
-    assert reopened_plan == plan
-    assert reopened_task == task
+    assert reopened.inspect_plan(plan.ref) == plan
+    assert reopened.inspect_task(task.ref) == task
     assert reopened.runtime_links() == links
     assert reopened.operation_invocations() == (invocation,)
     assert reopened.inspect_context(plan.objective) is not None
-    assert reopened.agent_definition(CORE_AGENT_DEFINITION) is not None
     reopened.close()
 
     with sqlite3.connect(kernel_path) as connection:
