@@ -1,0 +1,309 @@
+"""Module integration seam plus deterministic in-process calculator adapter."""
+
+from __future__ import annotations
+
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
+from typing import Protocol, TypeVar
+
+from pydantic import BaseModel
+
+from madre_kernel.contracts import (
+    AgentDefinition,
+    AgentDefinitionRef,
+    AgentInstance,
+    AgentSkillInstance,
+    AgentSkillInstanceRef,
+    CalculateInput,
+    CalculateOutput,
+    ClassificationTransform,
+    ContextBundle,
+    ContextBundleRef,
+    DataSecurityFacts,
+    DefinitionProvenance,
+    DiscoveryPolicyRef,
+    EffectKind,
+    EffectSemantics,
+    ExecutionBoundary,
+    InterruptedOutcome,
+    ModuleManifest,
+    ModuleRef,
+    ObjectiveText,
+    OperationDescriptor,
+    OperationRef,
+    OperationSecurityFacts,
+    Repeatability,
+    SchemaRef,
+    ScopeDescriptor,
+    ScopeRef,
+    SecurityLevel,
+    SkillDefinition,
+    SkillRef,
+    TypedPayload,
+    WorkflowDefinition,
+    WorkflowRef,
+    utc_now,
+)
+
+T = TypeVar("T", bound=BaseModel)
+PUBLIC_DISCOVERY = DiscoveryPolicyRef(policy_id="public", revision=1)
+
+
+def ref_key(value: BaseModel) -> str:
+    return value.model_dump_json()
+
+
+class SchemaCodecRegistry:
+    def __init__(self) -> None:
+        self._models: dict[str, type[BaseModel]] = {}
+
+    def register(self, schema: SchemaRef, model: type[BaseModel]) -> None:
+        self._models[ref_key(schema)] = model
+
+    def encode(self, schema: SchemaRef, value: BaseModel) -> TypedPayload:
+        model = self._models.get(ref_key(schema))
+        if model is None or not isinstance(value, model):
+            raise ValueError("payload does not match the exact registered SchemaRef")
+        return TypedPayload(schema=schema, canonical_json=value.model_dump_json())
+
+    def validate(self, payload: TypedPayload) -> None:
+        model = self._models.get(ref_key(payload.schema))
+        if model is None:
+            raise ValueError("unknown SchemaRef")
+        model.model_validate_json(payload.canonical_json)
+
+    def decode(self, payload: TypedPayload, model: type[T]) -> T:
+        registered = self._models.get(ref_key(payload.schema))
+        if registered is not model:
+            raise ValueError("requested payload type does not match exact SchemaRef")
+        return model.model_validate_json(payload.canonical_json)
+
+
+@dataclass(frozen=True)
+class OperationMaterial:
+    schema: SchemaRef
+    payload: BaseModel
+    security: DataSecurityFacts
+    purpose: str
+
+
+class UnknownOperationEffect(RuntimeError):
+    pass
+
+
+class AgentExecutionServices(Protocol):
+    async def reasoning(
+        self,
+        messages: Sequence[tuple[str, str]],
+        material: Sequence[ContextBundleRef],
+    ) -> str: ...
+
+    def visible_operations(self) -> tuple[OperationDescriptor, ...]: ...
+
+    def project_operation_input(self, operation: OperationRef, payload: BaseModel) -> ContextBundleRef: ...
+
+    async def invoke_operation(
+        self, operation: OperationRef, input_contexts: Sequence[ContextBundleRef]
+    ) -> tuple[ContextBundleRef, ...]: ...
+
+    def context(self, ref: ContextBundleRef) -> ContextBundle: ...
+
+    def emit_agent_context(
+        self,
+        schema: SchemaRef,
+        payload: BaseModel,
+        security: DataSecurityFacts,
+        purpose: str,
+        derived_from: Sequence[ContextBundleRef],
+    ) -> ContextBundleRef: ...
+
+
+class AgentManager(Protocol):
+    def instantiate(self, definition: AgentDefinition) -> AgentInstance: ...
+
+    async def run_task(
+        self,
+        instance: AgentInstance,
+        objective: ContextBundle,
+        services: AgentExecutionServices,
+    ) -> ContextBundleRef: ...
+
+
+OperationHandler = Callable[[tuple[ContextBundle, ...]], OperationMaterial]
+InputProjector = Callable[[BaseModel], OperationMaterial]
+
+
+class ModuleAdapter(Protocol):
+    @property
+    def manifest(self) -> ModuleManifest: ...
+
+    def schemas(self) -> Mapping[SchemaRef, type[BaseModel]]: ...
+
+    def operation(self, ref: OperationRef) -> OperationDescriptor | None: ...
+
+    def skill(self, ref: SkillRef) -> SkillDefinition | None: ...
+
+    def workflow(self, ref: WorkflowRef) -> WorkflowDefinition | None: ...
+
+    def agent_definition(self, ref: AgentDefinitionRef) -> AgentDefinition | None: ...
+
+    def agent_skill_instance(self, ref: AgentSkillInstanceRef) -> AgentSkillInstance | None: ...
+
+    def agent_manager(self, ref: AgentDefinitionRef) -> AgentManager | None: ...
+
+    def project_operation_input(self, ref: OperationRef, payload: BaseModel) -> OperationMaterial: ...
+
+    async def invoke_operation(
+        self, ref: OperationRef, inputs: tuple[ContextBundle, ...]
+    ) -> OperationMaterial: ...
+
+
+class InProcessModule:
+    def __init__(
+        self,
+        *,
+        manifest: ModuleManifest,
+        schemas: Mapping[SchemaRef, type[BaseModel]],
+        operations: Sequence[OperationDescriptor] = (),
+        skills: Sequence[SkillDefinition] = (),
+        workflows: Sequence[WorkflowDefinition] = (),
+        agents: Sequence[AgentDefinition] = (),
+        skill_instances: Sequence[AgentSkillInstance] = (),
+        manager: AgentManager | None = None,
+        input_projectors: Mapping[str, InputProjector] | None = None,
+        handlers: Mapping[str, OperationHandler] | None = None,
+    ) -> None:
+        self._manifest = manifest
+        self._schemas = dict(schemas)
+        self._operations = {ref_key(item.ref): item for item in operations}
+        self._skills = {ref_key(item.ref): item for item in skills}
+        self._workflows = {ref_key(item.ref): item for item in workflows}
+        self._agents = {ref_key(item.ref): item for item in agents}
+        self._skill_instances = {ref_key(item.ref): item for item in skill_instances}
+        self._manager = manager
+        self._input_projectors = dict(input_projectors or {})
+        self._handlers = dict(handlers or {})
+
+    @property
+    def manifest(self) -> ModuleManifest:
+        return self._manifest
+
+    def schemas(self) -> Mapping[SchemaRef, type[BaseModel]]:
+        return self._schemas
+
+    def operation(self, ref: OperationRef) -> OperationDescriptor | None:
+        return self._operations.get(ref_key(ref))
+
+    def skill(self, ref: SkillRef) -> SkillDefinition | None:
+        return self._skills.get(ref_key(ref))
+
+    def workflow(self, ref: WorkflowRef) -> WorkflowDefinition | None:
+        return self._workflows.get(ref_key(ref))
+
+    def agent_definition(self, ref: AgentDefinitionRef) -> AgentDefinition | None:
+        return self._agents.get(ref_key(ref))
+
+    def agent_skill_instance(self, ref: AgentSkillInstanceRef) -> AgentSkillInstance | None:
+        return self._skill_instances.get(ref_key(ref))
+
+    def agent_manager(self, ref: AgentDefinitionRef) -> AgentManager | None:
+        return self._manager if ref_key(ref) in self._agents else None
+
+    def project_operation_input(self, ref: OperationRef, payload: BaseModel) -> OperationMaterial:
+        projector = self._input_projectors.get(ref_key(ref))
+        if projector is None:
+            raise KeyError("Module does not expose an input projector for Operation")
+        return projector(payload)
+
+    async def invoke_operation(
+        self, ref: OperationRef, inputs: tuple[ContextBundle, ...]
+    ) -> OperationMaterial:
+        handler = self._handlers.get(ref_key(ref))
+        if handler is None:
+            raise KeyError("Module does not implement Operation")
+        return handler(inputs)
+
+
+CALC_MODULE = ModuleRef(module_id="calc")
+CALC_SCOPE = ScopeRef(module=CALC_MODULE, scope_id="calculation")
+CALC_OBJECTIVE_SCHEMA = SchemaRef(module=CALC_MODULE, schema_id="objective-text", revision=1)
+CALC_INPUT_SCHEMA = SchemaRef(module=CALC_MODULE, schema_id="calculate-input", revision=1)
+CALC_OUTPUT_SCHEMA = SchemaRef(module=CALC_MODULE, schema_id="calculate-output", revision=1)
+CALCULATE = OperationRef(module=CALC_MODULE, operation_id="calculate", revision=1)
+
+
+def build_calculator_module() -> InProcessModule:
+    operation = OperationDescriptor(
+        ref=CALCULATE,
+        name="CalcModule.calculate",
+        purpose="Multiply two integers deterministically.",
+        input_schema=CALC_INPUT_SCHEMA,
+        output_schema=CALC_OUTPUT_SCHEMA,
+        security=OperationSecurityFacts(
+            risk=SecurityLevel.LEVEL_1,
+            minimum_input_trust=SecurityLevel.LEVEL_1,
+            maximum_input_sensitivity=SecurityLevel.LEVEL_3,
+            source_scopes=frozenset({CALC_SCOPE}),
+            destination_scopes=frozenset({CALC_SCOPE}),
+            execution_boundary=ExecutionBoundary.LOCAL_TRUSTED,
+            classification_transform=ClassificationTransform.NONE,
+        ),
+        effect_semantics=EffectSemantics(
+            kind=EffectKind.NONE,
+            repeatability=Repeatability.REPEATABLE,
+            interrupted_outcome=InterruptedOutcome.DETERMINATE,
+        ),
+        visibility=PUBLIC_DISCOVERY,
+        provenance=DefinitionProvenance(created_at=utc_now(), created_by=CALC_MODULE),
+    )
+    manifest = ModuleManifest(
+        module=CALC_MODULE,
+        revision=1,
+        name="Calculator",
+        description="Deterministic calculator Module used by the first AgenticLoop.",
+        visibility=PUBLIC_DISCOVERY,
+        scopes=(ScopeDescriptor(ref=CALC_SCOPE, name="Calculation", description="Integer arithmetic"),),
+        operations=(CALCULATE,),
+        skills=(),
+        agents=(),
+    )
+
+    def project(payload: BaseModel) -> OperationMaterial:
+        value = CalculateInput.model_validate(payload)
+        return OperationMaterial(
+            schema=CALC_INPUT_SCHEMA,
+            payload=value,
+            security=DataSecurityFacts(
+                sensitivity=SecurityLevel.LEVEL_1,
+                trust=SecurityLevel.LEVEL_3,
+                scopes=frozenset({CALC_SCOPE}),
+            ),
+            purpose="calculator-operation-input",
+        )
+
+    def calculate(inputs: tuple[ContextBundle, ...]) -> OperationMaterial:
+        if len(inputs) != 1 or inputs[0].payload.schema != CALC_INPUT_SCHEMA:
+            raise ValueError("calculate expects one exact CalculateInput ContextBundle")
+        request = CalculateInput.model_validate_json(inputs[0].payload.canonical_json)
+        return OperationMaterial(
+            schema=CALC_OUTPUT_SCHEMA,
+            payload=CalculateOutput(value=request.left * request.right),
+            security=DataSecurityFacts(
+                sensitivity=SecurityLevel.LEVEL_1,
+                trust=SecurityLevel.LEVEL_5,
+                scopes=frozenset({CALC_SCOPE}),
+            ),
+            purpose="calculator-result",
+        )
+
+    return InProcessModule(
+        manifest=manifest,
+        schemas={
+            CALC_OBJECTIVE_SCHEMA: ObjectiveText,
+            CALC_INPUT_SCHEMA: CalculateInput,
+            CALC_OUTPUT_SCHEMA: CalculateOutput,
+        },
+        operations=(operation,),
+        input_projectors={ref_key(CALCULATE): project},
+        handlers={ref_key(CALCULATE): calculate},
+    )
