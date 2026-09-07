@@ -189,5 +189,3 @@ def open_database(data_dir: Path) -> Iterator[sqlite3.Connection]:
             connection.close()
     finally:
         lock.release()
-
-

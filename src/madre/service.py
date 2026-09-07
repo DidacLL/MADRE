@@ -57,9 +57,7 @@ def _capabilities(settings: Settings) -> CapabilityRegistry:
             requirements=requirements,
             security=envelope,
         )
-        registry.register(
-            OpenAICompatibleChatCapability(descriptor, config.endpoint, config.model)
-        )
+        registry.register(OpenAICompatibleChatCapability(descriptor, config.endpoint, config.model))
     return registry
 
 

@@ -210,9 +210,7 @@ def test_explicit_agent_and_operation_invocation_evaluates_both_transfer_directi
         ]
         events = [
             row[0]
-            for row in connection.execute(
-                "SELECT event FROM broker_event ORDER BY id"
-            ).fetchall()
+            for row in connection.execute("SELECT event FROM broker_event ORDER BY id").fetchall()
         ]
         assert events == [
             "requested",
@@ -245,9 +243,12 @@ def test_broker_blocks_output_that_requester_cannot_receive(tmp_path: Path) -> N
                     material("call/agent", {"question": "explicit"}, origin="module.a"),
                 )
             )
-        assert connection.execute(
-            "SELECT event FROM broker_event ORDER BY id DESC LIMIT 1"
-        ).fetchone()[0] == "output-security-rejected"
+        assert (
+            connection.execute(
+                "SELECT event FROM broker_event ORDER BY id DESC LIMIT 1"
+            ).fetchone()[0]
+            == "output-security-rejected"
+        )
 
 
 def test_operation_exception_is_recorded_as_unknown_effect(tmp_path: Path) -> None:
@@ -269,6 +270,9 @@ def test_operation_exception_is_recorded_as_unknown_effect(tmp_path: Path) -> No
                     material("call/operation", {"value": 1}, origin="module.a"),
                 )
             )
-        assert connection.execute(
-            "SELECT event FROM broker_event ORDER BY id DESC LIMIT 1"
-        ).fetchone()[0] == "unknown-effect"
+        assert (
+            connection.execute(
+                "SELECT event FROM broker_event ORDER BY id DESC LIMIT 1"
+            ).fetchone()[0]
+            == "unknown-effect"
+        )

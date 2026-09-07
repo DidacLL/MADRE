@@ -136,9 +136,7 @@ class BoundaryRequirements(FrozenModel):
     min_input_trust: OrdinarySecurityLevel = SecurityLevel.LEVEL_1
     max_input_sensitivity: OrdinarySecurityLevel = SecurityLevel.LEVEL_5
     risk: OrdinarySecurityLevel = SecurityLevel.LEVEL_1
-    allowed_scopes: frozenset[ScopeIdentifier] = Field(
-        default_factory=lambda: frozenset({"*"})
-    )
+    allowed_scopes: frozenset[ScopeIdentifier] = Field(default_factory=lambda: frozenset({"*"}))
     allowed_execution_boundaries: frozenset[ExecutionBoundary] = Field(
         default_factory=lambda: frozenset({"local"})
     )
@@ -164,9 +162,7 @@ class SecurityPolicy(FrozenModel):
     def max_risk(self, sensitivity: OrdinarySecurityLevel) -> OrdinarySecurityLevel:
         return self.max_risk_by_sensitivity[int(sensitivity) - 1]
 
-    def min_destination_trust(
-        self, sensitivity: OrdinarySecurityLevel
-    ) -> OrdinarySecurityLevel:
+    def min_destination_trust(self, sensitivity: OrdinarySecurityLevel) -> OrdinarySecurityLevel:
         return self.min_destination_trust_by_sensitivity[int(sensitivity) - 1]
 
 
@@ -187,23 +183,15 @@ class SecurityAlgebra:
         policy: SecurityPolicy,
     ) -> SecurityDecision:
         deficits: list[str] = []
-        SecurityAlgebra._integrity_deficits(
-            (requester, target_envelope, destination), deficits
-        )
+        SecurityAlgebra._integrity_deficits((requester, target_envelope, destination), deficits)
         minimum = max(int(policy.min_requester_trust), int(target.min_requester_trust))
         if int(requester.trust) < minimum:
             deficits.append("requester_trust")
-        if "*" not in target.allowed_scopes and not (
-            requester.scopes & target.allowed_scopes
-        ):
+        if "*" not in target.allowed_scopes and not (requester.scopes & target.allowed_scopes):
             deficits.append("scope_visibility")
-        if "*" not in target_envelope.scopes and not (
-            requester.scopes & target_envelope.scopes
-        ):
+        if "*" not in target_envelope.scopes and not (requester.scopes & target_envelope.scopes):
             deficits.append("target_scope_visibility")
-        if "*" not in destination.scopes and not (
-            requester.scopes & destination.scopes
-        ):
+        if "*" not in destination.scopes and not (requester.scopes & destination.scopes):
             deficits.append("destination_scope_visibility")
         return SecurityDecision(admissible=not deficits, deficits=tuple(deficits))
 
@@ -221,9 +209,7 @@ class SecurityAlgebra:
         SecurityAlgebra._integrity_deficits(
             (requester, material, target_envelope, destination), deficits
         )
-        minimum_requester = max(
-            int(policy.min_requester_trust), int(target.min_requester_trust)
-        )
+        minimum_requester = max(int(policy.min_requester_trust), int(target.min_requester_trust))
         if int(requester.trust) < minimum_requester:
             deficits.append("requester_trust")
         if int(material.trust) > int(requester.trust):
@@ -246,26 +232,20 @@ class SecurityAlgebra:
             deficits.append("destination_trust")
         if execution_boundary not in target.allowed_execution_boundaries:
             deficits.append("execution_boundary")
-        if "*" not in target.allowed_scopes and not material.scopes.issubset(
-            target.allowed_scopes
-        ):
+        if "*" not in target.allowed_scopes and not material.scopes.issubset(target.allowed_scopes):
             deficits.append("target_scope")
         if "*" not in target_envelope.scopes and not material.scopes.issubset(
             target_envelope.scopes
         ):
             deficits.append("target_envelope_scope")
-        if "*" not in destination.scopes and not material.scopes.issubset(
-            destination.scopes
-        ):
+        if "*" not in destination.scopes and not material.scopes.issubset(destination.scopes):
             deficits.append("destination_scope")
         if "*" not in requester.scopes and not material.scopes.issubset(requester.scopes):
             deficits.append("requester_scope")
         return SecurityDecision(admissible=not deficits, deficits=tuple(deficits))
 
     @staticmethod
-    def _integrity_deficits(
-        envelopes: tuple[SecurityEnvelope, ...], deficits: list[str]
-    ) -> None:
+    def _integrity_deficits(envelopes: tuple[SecurityEnvelope, ...], deficits: list[str]) -> None:
         for envelope in envelopes:
             if not envelope.verify_integrity():
                 deficits.append(f"invalid_integrity:{envelope.subject}")

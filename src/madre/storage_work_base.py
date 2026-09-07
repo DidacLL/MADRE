@@ -51,9 +51,7 @@ class WorkStoreBase:
         ).fetchall()
         attempts = []
         for row in rows:
-            failure = (
-                WorkFailure(code=row["error_code"]) if row["error_code"] is not None else None
-            )
+            failure = WorkFailure(code=row["error_code"]) if row["error_code"] is not None else None
             attempts.append(
                 WorkAttempt(
                     number=row["number"],
@@ -61,9 +59,7 @@ class WorkStoreBase:
                     status=row["status"],
                     started_at=datetime.fromisoformat(row["started_at"]),
                     completed_at=(
-                        datetime.fromisoformat(row["completed_at"])
-                        if row["completed_at"]
-                        else None
+                        datetime.fromisoformat(row["completed_at"]) if row["completed_at"] else None
                     ),
                     capability_id=row["capability_id"],
                     model_id=row["model_id"],
@@ -74,5 +70,3 @@ class WorkStoreBase:
                 )
             )
         return tuple(attempts)
-
-

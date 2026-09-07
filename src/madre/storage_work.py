@@ -279,4 +279,3 @@ class WorkStore(WorkRecordStore):
                 """,
                 (work_id,),
             )
-

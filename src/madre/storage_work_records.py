@@ -89,9 +89,7 @@ class WorkRecordStore(WorkStoreBase):
                 "correlation": json.loads(row["correlation_json"]),
             }
         )
-        failure = (
-            WorkFailure(code=row["error_code"]) if row["error_code"] is not None else None
-        )
+        failure = WorkFailure(code=row["error_code"]) if row["error_code"] is not None else None
         cancellation = None
         if row["cancellation_requested_at"] is not None:
             cancellation = WorkCancellation(
@@ -170,4 +168,3 @@ class WorkRecordStore(WorkStoreBase):
             """
         ).fetchone()
         return datetime.fromisoformat(row["eligible_at"]) if row["eligible_at"] else None
-

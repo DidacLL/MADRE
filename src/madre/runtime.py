@@ -207,12 +207,15 @@ class WorkRuntime:
             and not request.allow_unknown_outcome
         ):
             raise RetryConflict("interrupted work requires allow_unknown_outcome=true")
-        if self.store.requeue_failed(
-            work_id,
-            key,
-            request.allow_unknown_outcome,
-            self._clock(),
-        ) is None:
+        if (
+            self.store.requeue_failed(
+                work_id,
+                key,
+                request.allow_unknown_outcome,
+                self._clock(),
+            )
+            is None
+        ):
             raise RetryConflict("work is no longer failed")
         self._schedule_changed.set()
         return self._require(work_id)
@@ -263,9 +266,7 @@ class WorkRuntime:
             self.store.fail(work_id, WorkFailure(code="originator_unavailable"), self._clock())
             return self._require(work_id)
 
-        candidates = self.capabilities.candidates(
-            record.spec.capability, record.spec.constraints
-        )
+        candidates = self.capabilities.candidates(record.spec.capability, record.spec.constraints)
         if not candidates:
             self._discard_material(work_id)
             self.store.fail(work_id, WorkFailure(code="no_capability"), self._clock())
