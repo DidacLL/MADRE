@@ -18,6 +18,7 @@ class WorkSubmission(StrictModel):
     capability_id: str = Field(min_length=1)
     input: dict[str, JsonValue]
     eligible_at: AwareDatetime | None = None
+    priority: int = Field(default=0, ge=-100, le=100)
     constraints: ExecutionConstraints = Field(default_factory=ExecutionConstraints)
 
     @field_validator("eligible_at")
