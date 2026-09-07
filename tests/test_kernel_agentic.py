@@ -854,9 +854,7 @@ def test_skill_pinning_projection_and_unknown_effect_are_independent(tmp_path):
             )
         )
     invalid = next(
-        record
-        for record in kernel.operation_invocations()
-        if record.operation == invalid_project
+        record for record in kernel.operation_invocations() if record.operation == invalid_project
     )
     assert invalid.dispatched_at is not None
     assert invalid.outcome is not None
