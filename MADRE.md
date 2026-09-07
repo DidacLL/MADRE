@@ -55,7 +55,15 @@ CORE does not own application domains. It can reason over only the context and a
 
 CORE uses the same MADRE runtime execution plane as applications. Its higher trust does not grant an alternate execution path or unrestricted access to application data.
 
-Current CORE interaction surfaces used to exercise this path are experimental product-development probes, not a stable MADRE user-experience contract. Their prompts, commands, response staging and presentation may change as concrete CORE behavior develops; provisional chat UX must not define or constrain runtime, Agent or application architecture.
+Current CORE interaction surfaces used to exercise this path are experimental product-development probes, not a stable MADRE user-experience contract. Their prompts, commands, response staging and presentation may change as concrete CORE behavior develops; provisional chat UX must not define or constrain runtime, Agent or application architecture. In particular, the current `fast`/`deeper` vocabulary is an experiment, not a product claim that reasoning has one universal scalar depth or that useful follow-up work is necessarily a stronger version of the same inference.
+
+When concrete agentic behavior is introduced, use the following conceptual distinctions unless working evidence requires something different:
+
+- An **Agent** is an actual reasoning actor. It may belong to CORE or to an application. It is not a skill, tool, MCP surface or passive capability description.
+- A **workflow** is reusable behavior that an Agent advertises as something it knows how to perform. The workflow belongs to that Agent's behavioral repertoire; it is not the module-owned `Workflow` concept from MADRE's discarded `ReasoningModule` architecture.
+- A **WorkPlan** is an objective-specific plan that selects and composes available Agent workflows, dependencies, user gates, scheduled work and expected outputs as needed for one concrete objective. A WorkPlan is semantic planning state owned by CORE or an application according to the objective; it is not a runtime queue or a synonym for `WorkSubmission`.
+
+Planning should therefore reason over workflows that actually exist on available Agents rather than reconstructing the discarded `ReasoningModule`/`ReasoningPlan` class hierarchy. Introduce a Planner implementation only when a concrete CORE or application behavior needs to generate or revise a WorkPlan.
 
 ### MADRE runtime
 
@@ -108,7 +116,7 @@ The same runtime concept supports work eligible immediately and work eligible la
 
 An application or CORE behavior may decompose a larger semantic objective into several reasoning jobs. MADRE schedules and executes those submitted jobs while the semantic owner retains the meaning connecting them.
 
-DRE is therefore a scheduling and execution property. Planning and decomposition mechanisms are introduced where an application or CORE behavior demonstrates their value.
+DRE is therefore a scheduling and execution property. Planning and decomposition mechanisms are introduced where an application or CORE behavior demonstrates their value. DRE does not imply a universal `fast → deeper` progression: later or parallel work may instead verify, critique, research, plan, synthesize, wait for evidence, invoke a different workflow or perform another task whose value comes from when and how it executes rather than from being generically "deeper".
 
 On consumer hardware, MADRE seeks useful intelligence through scheduling, delayed reasoning, decomposition, context minimization, selective stronger reasoning, deterministic tools and accumulated execution evidence. Efficient local inference is an important part of that strategy, not the full reason MADRE exists.
 
@@ -262,7 +270,8 @@ MADRE becomes useful through progressively stronger end-to-end evidence:
 1. **Real execution:** an application can invoke a real configured local inference capability through MADRE and receive its result or an accurate runtime error.
 2. **Delayed execution and resource authority:** the same kind of work can be accepted for later execution, survive runtime restart and share global scarce-resource admission with immediate work.
 3. **First-party intelligence:** CORE can operate as the first real first-party MADRE application through the ordinary runtime boundary, initially with only the smallest useful behavior needed to exercise that path without freezing the eventual user experience.
-4. **Independent application integration:** other applications can select their own context, submit work directly or expose bounded context/actions to CORE while retaining domain state and semantics.
-5. **Boundary growth from use:** additional capabilities, permitted execution-path selection, execution controls and orchestration patterns extend those working paths as concrete applications or experiments require them.
+4. **Agentic planning from real behavior:** CORE or an application can generate one objective-specific WorkPlan by selecting workflows actually offered by available Agents, then materialize the plan's executable portions through ordinary MADRE runtime work without moving plan semantics into the runtime.
+5. **Independent application integration:** other applications can select their own context, submit work directly or expose bounded context/actions and Agent workflows to CORE while retaining domain state and semantics.
+6. **Boundary growth from use:** additional capabilities, permitted execution-path selection, execution controls and orchestration patterns extend those working paths as concrete applications or experiments require them.
 
 These are behavioral acceptance goals. The implementation is free to choose the simplest suitable technologies and structures that realize them.
