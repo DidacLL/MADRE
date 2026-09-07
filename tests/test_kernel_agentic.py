@@ -233,11 +233,7 @@ def test_security_algebra_rejects_scope_mismatch_and_accepts_calculator_shape():
     bundle, operation, actor, task, agent = _security_fixture()
     other = ScopeRef(module=bundle.owner_module, scope_id="other")
     mismatched = bundle.model_copy(
-        update={
-            "security": bundle.security.model_copy(
-                update={"scopes": frozenset({other})}
-            )
-        }
+        update={"security": bundle.security.model_copy(update={"scopes": frozenset({other})})}
     )
     rejected = SecurityAlgebra().evaluate_operation(
         decision_ref=SecurityDecisionRef(decision_id="scope-reject"),
@@ -392,15 +388,11 @@ def test_private_discovery_is_filtered_without_implying_operation_authority(tmp_
     kernel = Kernel(
         store=KernelStore(tmp_path / "kernel.sqlite3"),
         runtime=_runtime_client(),
-        discovery=DiscoveryPolicy(
-            (DiscoveryRule(private, frozenset({"madre-core"})),)
-        ),
+        discovery=DiscoveryPolicy((DiscoveryRule(private, frozenset({"madre-core"})),)),
     )
     kernel.register_module(module)
     assert kernel.discover_modules("unauthorized") == ()
-    assert [item.module for item in kernel.discover_modules("madre-core")] == [
-        module_ref
-    ]
+    assert [item.module for item in kernel.discover_modules("madre-core")] == [module_ref]
     kernel.close()
 
 
@@ -442,11 +434,7 @@ def _build_aaaat_fixture(dispatch_log: list[str], before_uncertain=None):
                 classification_transform=transform,
             ),
             effect_semantics=EffectSemantics(
-                kind=(
-                    EffectKind.EXTERNAL_EFFECT
-                    if ref == uncertain
-                    else EffectKind.NONE
-                ),
+                kind=(EffectKind.EXTERNAL_EFFECT if ref == uncertain else EffectKind.NONE),
                 repeatability=repeatability,
                 interrupted_outcome=(
                     InterruptedOutcome.MAY_BE_UNKNOWN
@@ -503,9 +491,7 @@ def _build_aaaat_fixture(dispatch_log: list[str], before_uncertain=None):
 
     def consume_handler(inputs):
         dispatch_log.append("consume")
-        payload = PrivateFixturePayload.model_validate_json(
-            inputs[0].payload.canonical_json
-        )
+        payload = PrivateFixturePayload.model_validate_json(inputs[0].payload.canonical_json)
         return OperationMaterial(
             schema=schema,
             payload=payload,
@@ -606,9 +592,7 @@ def test_aaaat_shaped_skill_pinning_minimization_and_unknown_effect(tmp_path):
         source_skill=skill1.ref,
         skill_instance_id="aaaat-installed",
     )
-    skill2 = skill1.model_copy(
-        update={"ref": skill1.ref.model_copy(update={"revision": 2})}
-    )
+    skill2 = skill1.model_copy(update={"ref": skill1.ref.model_copy(update={"revision": 2})})
     kernel.register_skill(skill2)
     assert installed.source_skill == skill1.ref
 
@@ -634,9 +618,7 @@ def test_aaaat_shaped_skill_pinning_minimization_and_unknown_effect(tmp_path):
         )
     assert "consume" not in dispatch_log
     rejected = next(
-        record
-        for record in kernel.operation_invocations()
-        if record.operation == consume
+        record for record in kernel.operation_invocations() if record.operation == consume
     )
     assert rejected.dispatched_at is None
     assert rejected.outcome is not None
@@ -651,9 +633,7 @@ def test_aaaat_shaped_skill_pinning_minimization_and_unknown_effect(tmp_path):
             )
         )
     invalid_derivation = next(
-        record
-        for record in kernel.operation_invocations()
-        if record.operation == bad_minimize
+        record for record in kernel.operation_invocations() if record.operation == bad_minimize
     )
     assert invalid_derivation.dispatched_at is not None
     assert invalid_derivation.outcome is not None
@@ -698,9 +678,7 @@ def test_aaaat_shaped_skill_pinning_minimization_and_unknown_effect(tmp_path):
     assert pending[0].dispatched_at is not None
 
     unknown = next(
-        record
-        for record in kernel.operation_invocations()
-        if record.operation == uncertain
+        record for record in kernel.operation_invocations() if record.operation == uncertain
     )
     descriptor = fixture.operation(uncertain)
     assert descriptor is not None
