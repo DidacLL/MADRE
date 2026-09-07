@@ -57,6 +57,10 @@ SecurityTable = tuple[
 ]
 
 
+def _local_execution_boundaries() -> frozenset[ExecutionBoundary]:
+    return frozenset(("local",))
+
+
 def _canonical(value: object) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), default=int).encode()
 
@@ -138,7 +142,7 @@ class BoundaryRequirements(FrozenModel):
     risk: OrdinarySecurityLevel = SecurityLevel.LEVEL_1
     allowed_scopes: frozenset[ScopeIdentifier] = Field(default_factory=lambda: frozenset({"*"}))
     allowed_execution_boundaries: frozenset[ExecutionBoundary] = Field(
-        default_factory=lambda: frozenset({"local"})
+        default_factory=_local_execution_boundaries
     )
 
 
