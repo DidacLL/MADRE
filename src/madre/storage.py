@@ -26,12 +26,14 @@ CREATE TABLE runtime_work (
     capability_id TEXT NOT NULL,
     input_json TEXT NOT NULL,
     eligible_at TEXT,
+    priority INTEGER NOT NULL CHECK (priority BETWEEN -100 AND 100),
     constraints_json TEXT NOT NULL,
     idempotency_key TEXT,
     status TEXT NOT NULL CHECK (
         status IN ('accepted', 'running', 'succeeded', 'failed', 'cancelled')
     ),
     submitted_at TEXT NOT NULL,
+    enqueued_at TEXT NOT NULL,
     started_at TEXT,
     completed_at TEXT,
     result_json TEXT,
@@ -51,6 +53,14 @@ CREATE TABLE runtime_work (
 CREATE UNIQUE INDEX runtime_work_idempotency
 ON runtime_work(application_id, idempotency_key)
 WHERE idempotency_key IS NOT NULL;
+
+CREATE TABLE runtime_scheduler_state (
+    singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+    last_application_id TEXT
+);
+
+INSERT INTO runtime_scheduler_state (singleton, last_application_id)
+VALUES (1, NULL);
 
 CREATE TABLE runtime_retry (
     work_id TEXT NOT NULL REFERENCES runtime_work(id) ON DELETE CASCADE,
@@ -163,8 +173,9 @@ class WorkStore:
                     """
                     INSERT INTO runtime_work (
                         id, application_id, capability_id, input_json, eligible_at,
-                        constraints_json, idempotency_key, status, submitted_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, 'accepted', ?)
+                        priority, constraints_json, idempotency_key, status,
+                        submitted_at, enqueued_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'accepted', ?, ?)
                     """,
                     (
                         work_id,
@@ -172,8 +183,10 @@ class WorkStore:
                         submission.capability_id,
                         _json(submission.input),
                         submission.eligible_at.isoformat() if submission.eligible_at else None,
+                        submission.priority,
                         submission.constraints.model_dump_json(),
                         idempotency_key,
+                        submitted_at.isoformat(),
                         submitted_at.isoformat(),
                     ),
                 )
@@ -258,11 +271,11 @@ class WorkStore:
             updated = self.connection.execute(
                 """
                 UPDATE runtime_work
-                SET status = 'accepted', completed_at = NULL, result_json = NULL,
-                    error_code = NULL, error_message = NULL
+                SET status = 'accepted', enqueued_at = ?, completed_at = NULL,
+                    result_json = NULL, error_code = NULL, error_message = NULL
                 WHERE id = ? AND status = 'failed'
                 """,
-                (work_id,),
+                (requested_at.isoformat(), work_id),
             )
             if updated.rowcount != 1:
                 raise RuntimeError("failed work changed during durable retry transition")
@@ -324,17 +337,71 @@ class WorkStore:
         return "terminal"
 
     def next_eligible(self, now: datetime) -> str | None:
-        row = self.connection.execute(
-            """
-            SELECT id
-            FROM runtime_work
-            WHERE status = 'accepted' AND (eligible_at IS NULL OR eligible_at <= ?)
-            ORDER BY COALESCE(eligible_at, submitted_at), submitted_at, id
-            LIMIT 1
-            """,
-            (now.isoformat(),),
-        ).fetchone()
-        return str(row["id"]) if row is not None else None
+        with self.connection:
+            application_rows = self.connection.execute(
+                """
+                SELECT DISTINCT application_id
+                FROM runtime_work
+                WHERE status = 'accepted' AND (eligible_at IS NULL OR eligible_at <= ?)
+                ORDER BY application_id
+                """,
+                (now.isoformat(),),
+            ).fetchall()
+            if not application_rows:
+                return None
+
+            cursor_row = self.connection.execute(
+                """
+                SELECT last_application_id
+                FROM runtime_scheduler_state
+                WHERE singleton = 1
+                """
+            ).fetchone()
+            if cursor_row is None:
+                raise RuntimeError("durable scheduler state disappeared")
+
+            applications = [str(row["application_id"]) for row in application_rows]
+            cursor = cursor_row["last_application_id"]
+            application_id = applications[0]
+            if cursor is not None:
+                application_id = next(
+                    (candidate for candidate in applications if candidate > cursor),
+                    applications[0],
+                )
+
+            work = self.connection.execute(
+                """
+                SELECT id
+                FROM runtime_work
+                WHERE application_id = ?
+                    AND status = 'accepted'
+                    AND (eligible_at IS NULL OR eligible_at <= ?)
+                ORDER BY
+                    priority DESC,
+                    CASE
+                        WHEN eligible_at IS NOT NULL AND eligible_at > enqueued_at
+                            THEN eligible_at
+                        ELSE enqueued_at
+                    END,
+                    enqueued_at,
+                    submitted_at,
+                    id
+                LIMIT 1
+                """,
+                (application_id, now.isoformat()),
+            ).fetchone()
+            if work is None:
+                raise RuntimeError("eligible application lost its accepted work")
+
+            self.connection.execute(
+                """
+                UPDATE runtime_scheduler_state
+                SET last_application_id = ?
+                WHERE singleton = 1
+                """,
+                (application_id,),
+            )
+        return str(work["id"])
 
     def next_eligibility(self) -> datetime | None:
         row = self.connection.execute(
@@ -499,6 +566,7 @@ class WorkStore:
                 capability_id=row["capability_id"],
                 input=json.loads(row["input_json"]),
                 eligible_at=row["eligible_at"],
+                priority=row["priority"],
                 constraints=json.loads(row["constraints_json"]),
             ),
             status=row["status"],
