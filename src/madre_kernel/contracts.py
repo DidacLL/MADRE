@@ -1,4 +1,4 @@
-"""Validated semantic contracts for the first MADRE AgenticLoop."""
+"""Validated semantic contracts for MADRE Kernel orchestration."""
 
 from __future__ import annotations
 
@@ -373,8 +373,7 @@ class AgentInstance(SemanticModel):
 
 
 class TypedPayload(SemanticModel):
-    # Pydantic retains deprecated BaseModel.schema(); this is the canonical contract field.
-    schema: SchemaRef  # type: ignore[assignment]
+    schema_ref: SchemaRef
     canonical_json: str = Field(min_length=2)
 
 
@@ -431,8 +430,7 @@ class WorkPlan(SemanticModel):
 
 class OutputExpectation(SemanticModel):
     name: str = Field(min_length=1)
-    # Pydantic retains deprecated BaseModel.schema(); this is the canonical contract field.
-    schema: SchemaRef  # type: ignore[assignment]
+    schema_ref: SchemaRef
 
 
 class TaskCompletion(SemanticModel):
@@ -544,32 +542,6 @@ class RuntimeEvidenceLink(SemanticModel):
     operation_invocation: OperationInvocationRef | None
     purpose: RuntimeEvidencePurpose
     created_at: AwareDatetime
-
-
-class ObjectiveText(SemanticModel):
-    text: str = Field(min_length=1)
-
-
-class FinalAnswer(SemanticModel):
-    text: str = Field(min_length=1)
-
-
-class CalculateInput(SemanticModel):
-    left: int
-    right: int
-    operator: Annotated[str, Field(pattern="^multiply$")] = "multiply"
-
-
-class CalculateOutput(SemanticModel):
-    value: int
-
-
-class PrivateFixturePayload(SemanticModel):
-    private_text: str = Field(min_length=1)
-
-
-class MinimizedFixturePayload(SemanticModel):
-    summary: str = Field(min_length=1)
 
 
 def utc_now() -> datetime:
