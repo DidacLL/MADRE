@@ -1,277 +1,498 @@
 # MADRE
 
-This file is the canonical product definition for **MADRE — Model-Agnostic Delayed Reasoning Effort Agentic System**.
+This file defines the proposed canonical product architecture for **MADRE — Model-Agnostic Delayed Reasoning Effort Agentic System** on the clean-slate architecture branch.
 
-MADRE provides a coherent, privacy-aware and user-controlled way to use the permitted intelligence capabilities available to a user, including local models, tools, application-provided intelligence and authorized external services.
+MADRE is a modular, privacy-aware and user-controlled agentic environment. It allows useful intelligence work to continue immediately, later, or over long-lived plans while keeping domain ownership, agent reasoning, security enforcement, orchestration, physical execution and provider-specific computation separate.
 
-Its runtime makes **reasoning effort itself manageable runtime work**: work can execute immediately or become durable work whose eligibility, execution, recovery and evidence remain under software control. Local/private execution is a first-class high-trust, offline-capable execution tier, not MADRE's entire product boundary.
-
-The product supports two complementary paths that converge on the same runtime:
+The primary ownership invariant is:
 
 ```text
-Application ───────────────→ MADRE runtime → Capability
-
-User → CORE ───────────────→ MADRE runtime → Capability
-          ↕
-      Applications
+Modules own domains and exposed functionality.
+Agents perform semantic/intelligence work from bounded inputs.
+MADRE Kernel owns trusted coordination, security and orchestration.
+MADRE Runtime owns durable physical execution.
+Capabilities perform bounded computation.
 ```
 
-Applications may use MADRE directly without CORE. CORE, when implemented, uses the ordinary MADRE runtime rather than bypassing execution control.
+MADRE is local-first. Local/private execution is a first-class high-trust and offline-capable tier, but MADRE may also use authorized external capabilities when the governing security and transfer constraints allow it.
 
-The ownership invariant is:
+## 1. System model
+
+The logical architecture is:
 
 ```text
-Applications own domains.
-CORE owns default generic/system intelligence.
-MADRE Runtime owns execution.
-Capabilities perform computation.
+User / external system
+        │
+        ▼
+      Module
+        │ bounded task, context, Skills and Operations
+        ▼
+   MADRE Kernel
+        │ Agent resolution / orchestration / security
+        ▼
+   AgentInstance
+        │
+        ├── Skills
+        ├── Workflows
+        ├── ContextBundles
+        └── permitted Module Operations
+        │
+        ▼
+     WorkPlan
+        │
+        ▼
+     AgentTasks
+        │
+        ▼
+   MADRE Runtime
+        │
+        ▼
+    Capabilities
 ```
 
-## System roles
+These are logical responsibilities, not mandatory process boundaries.
 
-### Application
+## 2. MADRE Module
 
-An application is an independent domain system using MADRE directly or collaborating with CORE. It may be a script, desktop application, service or larger local system.
+A **Module** is MADRE's semantic and security integration boundary for one externally coherent domain or service.
 
-The application owns its domain semantics and the state whose purpose is domain work, including as applicable:
+A Module may wrap a MADRE-native component, desktop application, service, API, MCP server, local script, library, remote integration or compatibility adapter. MADRE does not require or inspect a particular internal architecture behind that boundary.
 
-- authoritative domain data and persistence;
-- knowledge, memory, retrieval, provenance and truth semantics;
-- learning, evaluation and adaptation of domain behavior;
-- domain workflows and task decomposition;
-- domain-specific agents, prompts and interaction logic;
-- user interface, artifacts and domain operations;
-- selection of material relevant to a reasoning task;
-- semantic privacy projection, minimization and classification;
-- interpretation and acceptance of generated results.
+A Module owns the meaning and authority of its domain state. It decides what domain context may be exposed and what domain Operations are available.
 
-The application decides what its work means, what domain information may be disclosed and which domain mutations may occur. Integration with MADRE preserves that ownership.
+A Module may expose, as applicable:
 
-### CORE
+- identity, purpose and scope metadata;
+- discovery and visibility policy;
+- security properties;
+- bounded context providers;
+- zero or more Operations;
+- zero or more Skills;
+- zero or more AgentDefinitions;
+- artifacts or local interaction projections.
 
-CORE is MADRE's future first-party generic/system intelligence layer. As real product needs establish them, CORE may provide reusable behaviors such as interaction, planning and cross-domain coordination that should not have to be reimplemented by every application.
+A Module with no Agents is a first-class MADRE Module. Agentless integrations are expected to be common.
 
-CORE does not own application domains. It can reason over only the context and actions an application chooses to expose, and application-owned software remains authoritative over domain state and mutations.
+MADRE may adapt a non-MADRE-aware external system into a Module. For example, an MCP server or conventional API can be wrapped so that its callable functions become Module-owned Operations under MADRE's security boundary.
 
-CORE uses the same MADRE runtime execution plane as applications. Its higher trust does not grant an alternate execution path or unrestricted access to application data.
+## 3. CORE Module role
 
-Current CORE interaction surfaces used to exercise this path are experimental product-development probes, not a stable MADRE user-experience contract. Their prompts, commands, response staging and presentation may change as concrete CORE behavior develops; provisional chat UX must not define or constrain runtime, Agent or application architecture. In particular, the current `fast`/`deeper` vocabulary is an experiment, not a product claim that reasoning has one universal scalar depth or that useful follow-up work is necessarily a stronger version of the same inference.
+**CORE is a replaceable Module role, not a different architectural species.**
 
-When concrete agentic behavior is introduced, use the following conceptual distinctions unless working evidence requires something different:
+MADRE ships a standard default Module intended to occupy the CORE role. Another compatible Module may replace it.
 
-- An **Agent** is an actual reasoning actor. It may belong to CORE or to an application. It is not a skill, tool, MCP surface or passive capability description.
-- A **workflow** is reusable behavior that an Agent advertises as something it knows how to perform. The workflow belongs to that Agent's behavioral repertoire; it is not the module-owned `Workflow` concept from MADRE's discarded `ReasoningModule` architecture.
-- A **WorkPlan** is an objective-specific plan that selects and composes available Agent workflows, dependencies, user gates, scheduled work and expected outputs as needed for one concrete objective. A WorkPlan is semantic planning state owned by CORE or an application according to the objective; it is not a runtime queue or a synonym for `WorkSubmission`.
+The CORE role provides default system-level responsibilities such as:
 
-Planning should therefore reason over workflows that actually exist on available Agents rather than reconstructing the discarded `ReasoningModule`/`ReasoningPlan` class hierarchy. Introduce a Planner implementation only when a concrete CORE or application behavior needs to generate or revise a WorkPlan.
+- unified/default interaction;
+- generic system reasoning;
+- cross-domain coordination;
+- semantic routing over visible Modules;
+- fallback AgentDefinitions;
+- fallback planning/orchestration behavior;
+- adaptation when an integrated Module requests agentic behavior but does not manage its own Agents.
 
-### MADRE runtime
+CORE privileges are assigned through Kernel policy. They do not imply direct access to another Module's storage, unrestricted data visibility, or an alternate execution path.
 
-MADRE provides reusable execution semantics for permitted intelligence work submitted by applications or CORE. Its responsibilities include, as the working system requires them:
+CORE may receive high-sensitivity local context when explicitly permitted and should therefore be strongly isolated. Cross-domain access still occurs through bounded Module interfaces and Kernel-enforced information-flow rules.
 
-- accepting and identifying work;
-- immediate and delayed scheduling;
-- eligibility time, priority, budget and execution constraints;
-- durable work state;
-- execution and recovery after interruption;
-- invocation of configured inference, tool and other capability implementations;
-- active execution and transfer-boundary enforcement;
-- cancellation, retry and failure handling;
-- resource allocation, scarce-resource admission and concurrency;
-- final permitted execution-path/capability selection as concrete product needs establish it;
-- runtime trace and inspection;
-- returning results and runtime evidence to the originating application or CORE behavior.
+## 4. Module Operations
 
-MADRE state exists to execute, recover and inspect runtime work. Application state exists to represent and operate the domain. CORE state, when introduced, exists to support generic/system intelligence rather than to absorb domain ownership.
+An **Operation** is the canonical callable functionality exposed by a Module.
 
-### Capability
+Operations are Module-owned. MADRE has no separate architectural `Tool` entity.
 
-A capability is a replaceable implementation that performs bounded computation for MADRE. Inference engines, deterministic tools, application-provided intelligence, specialized services and authorized external intelligence are capability examples.
+An Operation describes at least the information required for an Agent and Kernel to use it safely:
 
-Capabilities may be local libraries, local processes, services or remote endpoints. Their provider-specific mechanics belong to their integration boundary. MADRE presents the stable runtime semantics required by applications and CORE.
+- identity and owning Module;
+- purpose;
+- input contract;
+- output contract;
+- side-effect semantics;
+- repeatability or idempotency information when relevant;
+- security requirements;
+- transfer/egress characteristics when relevant.
 
-MADRE should reuse mature external implementations below this boundary when they remove implementation burden without taking away a responsibility MADRE needs to own.
+The implementation is opaque to the Agent. An Operation may internally use deterministic code, HTTP, MCP, RPC, a database service, a remote API, a native executable or another mechanism.
 
-Capability output is generated data. Software in the application, CORE and runtime assigns any subsequent permission, trusted status, mutation or workflow consequence.
+External ecosystems are adapted into this contract:
 
-## Product requirements
+```text
+external function / MCP tool / API action
+                │
+                ▼
+           Module adapter
+                │
+                ▼
+             Operation
+```
 
-### R1 — Application autonomy
+An Operation does not require a Workflow wrapper. Simple bounded functionality may be called directly by an Agent.
 
-An application can use MADRE without transferring ownership of its domain model, persistence, knowledge, workflows, UI or domain policy into the runtime or CORE.
+## 5. Skills
 
-The integration surface carries the material and execution intent required for a piece of work while leaving domain interpretation with the application.
+A **Skill** is a reusable ability package that may be attached to an AgentDefinition or AgentInstance.
 
-### R2 — Runtime work as a first-class concept
+A Skill is broader than one prompt, one Operation or one Workflow. It may contain:
 
-Intelligence execution is represented as runtime work with an identifiable lifecycle. MADRE can know which application or CORE behavior originated the work, whether it is eligible to execute, which capability is used, what execution outcome occurred and what runtime evidence belongs to that work.
+- semantic purpose and descriptions;
+- instructions or harness fragments;
+- references to relevant Module Operations;
+- context expectations;
+- expected outputs or artifact conventions;
+- zero or more WorkflowDefinitions;
+- provenance and revision information.
 
-The concrete API and internal types are implementation decisions. The lifecycle semantics are product behavior.
+A Skill may contain no Workflows at all.
 
-### R3 — Delayed Reasoning Effort
+Skills provide a compatibility surface for reusable agent abilities from MADRE Modules, user configuration and external skill/harness ecosystems. Importing or attaching a Skill does not imply autonomous learning.
 
-Reasoning effort can be controlled in time.
+## 6. Workflows
 
-The same runtime concept supports work eligible immediately and work eligible later. Durable delayed work preserves enough execution intent to remain actionable across process interruption and restart.
+A **WorkflowDefinition** is a first-class reusable explicit recipe for accomplishing a known task or subtask.
 
-An application or CORE behavior may decompose a larger semantic objective into several reasoning jobs. MADRE schedules and executes those submitted jobs while the semantic owner retains the meaning connecting them.
+WorkflowDefinitions may originate from:
 
-DRE is therefore a scheduling and execution property. Planning and decomposition mechanisms are introduced where an application or CORE behavior demonstrates their value. DRE does not imply a universal `fast → deeper` progression: later or parallel work may instead verify, critique, research, plan, synthesize, wait for evidence, invoke a different workflow or perform another task whose value comes from when and how it executes rather than from being generically "deeper".
+- a SkillDefinition; or
+- direct AgentDefinition/user configuration.
 
-On consumer hardware, MADRE seeks useful intelligence through scheduling, delayed reasoning, decomposition, context minimization, selective stronger reasoning, deterministic tools and accumulated execution evidence. Efficient local inference is an important part of that strategy, not the full reason MADRE exists.
+Therefore a Workflow is not required to belong exclusively to either an Agent or a Skill.
 
-### R4 — Replaceable capabilities
+An Agent's effective Workflow repertoire is the union of:
 
-MADRE can invoke different compatible capability implementations while preserving the originating application's or CORE behavior's runtime contract.
+```text
+direct Agent Workflows
+        +
+Workflows contributed by attached Skills
+```
 
-A provider, model, inference runtime, tool, transport or framework may shape its adapter and may become a stable implementation dependency when it is the appropriate engineering choice. MADRE product semantics remain defined by the responsibilities in this document rather than by accidental properties of one provider or by assuming every task maps directly to an LLM model.
+This permits portable Skill-provided Workflows while also supporting Agent-specific or user-created Workflows without manufacturing an artificial Skill container.
 
-### R5 — Explicit authority
+Workflow and Skill revisions must be explicit enough that an existing Agent configuration is not silently changed by a later Module update. Customized definitions may derive from an upstream definition while preserving provenance.
 
-Authority follows software ownership:
+`Routine` is not a MADRE architecture concept.
 
-1. the user and applications establish intent and domain authority;
-2. applications select what domain material and operations they expose;
-3. CORE may provide generic/system reasoning or coordination within those exposed boundaries;
-4. MADRE controls runtime execution according to the submitted intent, authorization and execution constraints;
-5. capabilities compute and return results;
-6. application-owned software decides any domain consequence or mutation.
+## 7. AgentDefinition and AgentInstance
 
-A generated proposal can therefore participate in planning, classification or action selection while remaining generated material until software gives it an effect.
+An **AgentDefinition** is reusable Agent configuration.
 
-### R6 — Application-governed context
+It may define or reference:
 
-The source application determines which domain material is relevant for a reasoning operation and performs domain-specific projection or minimization before that material crosses the application boundary when needed.
+- identity;
+- the Module responsible for managing it;
+- base harness, instructions or personality configuration;
+- attached Skills;
+- direct Workflows;
+- permitted Operation scope;
+- security constraints;
+- state/memory policy.
 
-CORE may further minimize task context before a less-trusted execution boundary. Its high trust does not imply unrestricted access to application state.
+An AgentDefinition is not one active reasoning process and may be instantiated concurrently.
 
-MADRE receives selected material together with execution-relevant constraints. Domain vocabulary and privacy semantics stay with the application; the runtime needs only the information required to execute the work correctly.
+An **AgentInstance** is the actual working reasoning actor for a task. It has bounded task context, working state and the effective Skills, Workflows and Operations available for that work.
 
-This allows different applications to use different domain models without requiring MADRE or CORE to understand their internal records.
+A responsible Module manages an AgentDefinition, but the Agent does not implicitly gain knowledge of or unrestricted access to that Module's domain. It receives only explicitly supplied ContextBundles and permitted Operations.
 
-### R7 — Execution and transfer boundaries
+The architecture intentionally allows future Agent persistence policies without requiring different Agent subclasses. An instance may eventually be ephemeral, derived from a persistent named configuration, or participate in longer-lived persona/state semantics. The initial architecture requires only AgentDefinition and AgentInstance.
 
-Execution-relevant constraints are applied where they affect actual capability use.
+## 8. Agent fallback and resolution
 
-MADRE can decide whether a configured capability is eligible for a work item, whether submitted material may cross the required transfer boundary, whether an operation may execute and which runtime resources are available.
+A Module is not required to provide Agents.
 
-Availability of a capability, provider account or external service does not imply authorization to send arbitrary data to it. Application disclosure, user authorization, task need and execution-boundary constraints must permit the transfer and execution.
+When semantic/intelligence work is required and the originating Module does not supply a suitable AgentDefinition, MADRE may use a fallback AgentDefinition supplied by the CORE Module.
 
-MADRE should prefer the safest permitted execution path that satisfies the task while keeping the user in control of data transfer and external execution.
+For example:
 
-Boundary representation follows active execution needs. The working design carries each constraint at the narrowest place where it can change runtime behavior.
+```text
+Agentless Module
+    + Module Skill
+    + permitted Module Operations
+    + bounded Module context
+    + CORE fallback AgentDefinition
+        ↓
+    AgentInstance
+```
 
-### R8 — Domain operations remain application-owned
+This keeps one agentic execution model instead of creating separate agentic and non-agentic orchestration systems.
 
-Applications expose the domain operations they choose to make available to AI-assisted execution. MADRE or CORE may request such operations through an explicit application-owned boundary.
+A task may request an Agent by required behavior or properties rather than by hard-coded implementation identity. The Kernel resolves the most appropriate visible and permitted AgentDefinition, falling back to CORE defaults where appropriate.
 
-A durable domain mutation is performed by application-owned software. Generated output can supply proposed inputs or decisions while the application operation remains the authority that changes domain state.
+All semantic/intelligence work is mediated through AgentInstances. Deterministic Kernel, Runtime and Module housekeeping remains ordinary software and does not require fake Agents.
 
-### R9 — Persistence follows purpose
+## 9. Multi-Agent behavior
 
-State ownership is determined by why the state exists:
+MADRE does not require a separate multi-Agent workflow ontology.
+
+When an Agent needs another Agent, it delegates a child AgentTask through the Kernel. The Kernel resolves an appropriate AgentDefinition and creates or binds an AgentInstance for that task.
+
+The delegation remains part of the WorkPlan and execution trace.
+
+This provides multi-Agent behavior without prematurely introducing Agent-team, coordinator, supervisor or multi-Agent-workflow class hierarchies.
+
+## 10. WorkPlan
+
+A **WorkPlan** is durable MADRE orchestration state for one objective.
+
+A WorkPlan is not a Runtime queue, not a WorkSubmission, and not domain persistence owned by one participating Module.
+
+It preserves the semantic continuity required to continue an objective across foreground interaction, delayed execution, process interruption and restart.
+
+A WorkPlan records at least the concepts required to understand and resume the objective, including as needed:
+
+- plan identity;
+- objective;
+- originator/provenance;
+- orchestrating Agent reference;
+- AgentTasks;
+- produced outputs/artifact references;
+- creation/update/retention information;
+- derivation/replay provenance.
+
+The originating Module remains authoritative for its domain and can be consulted later for additional bounded context. MADRE owns the durable orchestration representation required to continue the plan.
+
+WorkPlans are retained for a configurable period after completion so that users and developers can inspect, clone, modify and replay agentic behavior. Replay should preserve provenance rather than overwrite prior evidence.
+
+Dynamic mutation/versioning of active plans may be introduced later when concrete replanning behavior requires it.
+
+## 11. AgentTask
+
+An **AgentTask** is one objective-specific assignment inside a WorkPlan.
+
+It may describe or reference:
+
+- task identity and instruction/objective;
+- required or resolved AgentDefinition;
+- AgentInstance correlation;
+- attached Skill references;
+- selected Workflow reference when applicable;
+- bounded ContextBundle references;
+- prerequisites;
+- eligibility/scheduling requirements;
+- expected outputs/artifacts;
+- semantic execution/result evidence.
+
+One AgentTask may cause zero, one or many Module Operation invocations and zero, one or many Runtime WorkRecords. It may also delegate child AgentTasks.
+
+Therefore there is no architectural 1:1 relation between AgentTask, Workflow and Runtime WorkRecord.
+
+## 12. Readiness, gates and failures
+
+MADRE does not encode generic AI-framework concepts such as `blocked` or `waiting_for_human` as universal WorkPlan lifecycle states.
+
+Whether an AgentTask can execute is derived from current facts, for example:
+
+```text
+required predecessor results exist
+AND scheduling eligibility is satisfied
+AND an appropriate Agent can be resolved
+AND required context may legally flow
+AND required Operations are available and permitted
+```
+
+A user decision may be one prerequisite, but MADRE is not intrinsically human-in-the-loop. Autonomous continuation is permitted whenever semantics and policy allow it.
+
+Failures are recorded as evidence. Retry decisions must respect the repeatability, side-effect and unknown-outcome semantics of the work involved. MADRE must not silently fabricate success or blindly repeat an operation whose external effect may be unknown.
+
+## 13. Context and security
+
+Agents never receive implicit Module access. They receive bounded **ContextBundles**.
+
+A ContextBundle carries the task material together with the provenance and security metadata required to govern its use, including as needed:
+
+- purpose;
+- source/owning Module;
+- security classification;
+- permitted use or egress constraints;
+- payload or references.
+
+MADRE treats semantic payload as data with provenance and security properties. It does not attempt to define a universal distinction between user text, generated text, knowledge, memory, trusted facts or learning candidates. Modules decide the domain meaning assigned to data.
+
+The Kernel enforces information-flow boundaries structurally. Model output cannot grant itself additional access.
+
+A higher-sensitivity ContextBundle may flow only to destinations permitted by the active policy. Moving information into a lower-trust boundary requires an explicit authorized minimization, anonymization or other transformation that produces new derived data with provenance; MADRE must not silently strip data and declare it safe.
+
+Module and Agent discovery metadata is itself subject to policy. The existence of a sensitive Module need not be visible to every user, Module or Agent on an installation.
+
+The first implementation may use a deliberately small security model, but its schema must leave room for stronger policy and information-flow rules without changing the ownership boundaries above.
+
+## 14. MADRE Kernel
+
+The **MADRE Kernel** is the trusted deterministic control plane around Modules and Agents.
+
+Its responsibilities include, as concrete behavior requires:
+
+- Module registration and adaptation;
+- CORE role assignment;
+- policy-filtered Module/Agent/Skill discovery;
+- AgentDefinition resolution;
+- AgentInstance creation;
+- ContextBundle brokering;
+- security and information-flow enforcement;
+- Operation invocation gateway;
+- WorkPlan persistence and orchestration services;
+- AgentTask delegation/routing;
+- correlation between semantic orchestration and Runtime evidence.
+
+The Kernel does not itself reason. When semantic judgement is required it uses an AgentInstance.
+
+## 15. MADRE Runtime
+
+The **MADRE Runtime** is MADRE's durable physical execution subsystem.
+
+Its responsibilities include:
+
+- accepting and identifying WorkSubmissions;
+- immediate and delayed eligibility;
+- durable WorkRecords and attempts;
+- scheduling and resource admission;
+- capability invocation;
+- cancellation and retry semantics;
+- interruption/restart recovery;
+- execution-boundary enforcement required at capability use;
+- execution evidence and inspection.
+
+Runtime remains deliberately unaware of Module domain semantics, Agent working state, Skills, Workflows, WorkPlan objectives and AgentTask dependencies.
+
+The existing Runtime service may remain an implementation subsystem beneath the wider Kernel architecture.
+
+## 16. Capabilities
+
+A **Capability** is a replaceable implementation that performs bounded computation for MADRE Runtime.
+
+Examples include local or remote inference engines and other specialized computation providers.
+
+Capabilities do not own Module semantics, Agent behavior or WorkPlan meaning. Provider-specific mechanics remain at the Capability boundary.
+
+Module Operations and Runtime Capabilities answer different questions:
+
+```text
+Operation: what bounded functionality does this Module expose?
+Capability: what bounded computation can Runtime execute?
+```
+
+Not every Module Operation must become a Runtime WorkSubmission. Fast deterministic Operations may execute through their Module boundary directly while still passing Kernel security and trace controls. Operations that require durable or capability-managed computation may materialize ordinary Runtime work as needed.
+
+## 17. Persistence ownership
+
+State ownership follows purpose:
 
 | Purpose | Owner |
 | --- | --- |
-| Represent, remember, retrieve, interpret or learn domain information | Application |
-| Provide generic interaction, planning or cross-domain coordination | CORE |
-| Schedule, execute, recover, control or inspect runtime work | MADRE Runtime |
-| Implement the internal operation or cache of an inference/tool integration | Capability |
+| Represent, interpret, remember or mutate a domain | Module |
+| Manage a Module-provided AgentDefinition or future Agent-specific learning semantics | Responsible Module |
+| Preserve active AgentInstance working state required by current orchestration | MADRE orchestration / responsible Agent management boundary |
+| Preserve one objective's durable orchestration and replay history | MADRE Kernel / WorkPlan store |
+| Schedule, execute, recover and inspect physical work | MADRE Runtime |
+| Implement provider-specific computation/cache | Capability |
 
-This rule remains valid regardless of which process or storage engine physically writes the bytes.
+Physical storage location does not change semantic ownership.
 
-### R10 — Durable execution has explicit recovery semantics
+## 18. Transparency and customization
 
-When work is durable, restart and interruption have defined runtime outcomes. MADRE records enough state to determine what remains eligible, what attempt occurred and what result or failure is available.
+MADRE serves both non-technical users and agentic-system experimentation.
 
-Delivery and retry guarantees match what the invoked capability can actually support. Runtime evidence describes the behavior that occurred rather than promising stronger semantics than the execution boundary can provide.
+The default UX should present the simplest useful interaction while the underlying agentic loop remains inspectable subject to security policy.
 
-### R11 — Inspectability
+Users and developers should ultimately be able to inspect or customize, as appropriate:
 
-Runtime work can be inspected through evidence proportional to its execution semantics. Evidence can identify lifecycle transitions, attempts, capability use, timing, results and failures as required by the working path.
+- selected Modules;
+- AgentDefinitions and AgentInstances;
+- attached Skills;
+- selected or user-created Workflows;
+- bounded ContextBundles;
+- WorkPlans and AgentTasks;
+- Operation invocations;
+- Runtime WorkRecords;
+- outputs/artifacts;
+- security decisions and execution evidence.
 
-Inspection serves debugging, recovery, application integration and research reproducibility. It records execution facts rather than replacing application knowledge.
+UI presentation may progressively disclose complexity; it must not create a hidden second architecture.
 
-### R12 — Local-first execution
+## 19. Delayed Reasoning Effort
 
-Local/private execution is a first-class execution and trust tier. A useful MADRE installation can operate with locally available capabilities without requiring a cloud account or remote-service credential for its core runtime path.
+Delayed Reasoning Effort means useful semantic work can be controlled in time without losing its orchestration meaning.
 
-An application can keep private work on the local machine when its boundary requires that. Local execution is especially valuable for high-trust and offline-capable work and for avoiding unnecessary data disclosure.
+Runtime durability preserves physical work. WorkPlan durability preserves why that work exists and what should happen next.
 
-Prefer local and free capabilities. For paid cloud services, provider-managed authentication through supported clients or hosts is the preferred connection approach, with authentication mechanics at the capability boundary. Prefer keeping provider-account credentials with that client or host over collecting them in MADRE. Direct API-key integration remains available when explicitly chosen; provider credentials are not a prerequisite for the core runtime.
+A foreground interaction may therefore respond immediately, schedule later reasoning, continue other work, and eventually resume or expose the resulting plan evidence without requiring one blocking chat session.
 
-Authorized external capabilities can coexist with local ones. Remote use is represented as a real transfer boundary so the runtime can apply the constraints supplied for that work and record the execution accurately.
+DRE does not imply a universal `fast → deeper` progression. Later or parallel AgentTasks may verify, critique, research, plan, synthesize, invoke Operations, delegate another Agent, wait for eligibility or perform another useful task.
 
-### R13 — Evolvable implementation
+## 20. Product requirements
 
-Concrete technologies are legitimate implementation architecture. Languages, databases, libraries, transports, frameworks and provider integrations can be selected, depended on and optimized around when they provide the clearest working solution.
+### R1 — Modular domain ownership
 
-Product responsibilities remain stable while implementation structures may be added, merged, renamed or replaced as evidence from the running system develops.
+Integrating a system with MADRE does not transfer its domain model, persistence or mutation authority into Kernel, Runtime or CORE. The Module boundary exposes only the context, Operations, Skills and Agents intentionally made available.
 
-A new architectural element earns its place by making an observed responsibility simpler, clearer, safer, more reliable or measurably more capable.
+### R2 — Replaceable CORE
 
-## Ownership test
+MADRE supplies a standard CORE Module, but CORE is a role with an explicit contract and policy, not a permanently privileged implementation.
 
-A future design decision can be located by asking why it exists:
+### R3 — Uniform agentic execution
 
-- If it exists to understand, remember, decide, present or mutate a domain, it is application responsibility.
-- If it exists to provide default generic interaction, planning or cross-domain coordination, it is CORE responsibility.
-- If it exists to schedule, execute, constrain, recover, select a permitted execution path or inspect runtime work, it is MADRE Runtime responsibility.
-- If it exists to perform a particular computation or provider-specific operation, it belongs to a capability implementation or its adapter.
-- If it is produced by a capability, it is data until application/CORE/runtime software assigns an effect.
+Semantic/intelligence tasks are performed through AgentInstances. Agentless Modules can rely on CORE fallback Agents instead of implementing a parallel orchestration mechanism.
 
-When a responsibility spans these roles, define the narrow integration boundary between the owners rather than moving the whole concern into one side.
+### R4 — Portable abilities
 
-## Reference interaction
+Skills and WorkflowDefinitions can be reused, pinned, derived and customized without requiring their provider Module to own every Agent that uses them.
 
-Applications can invoke the runtime directly:
+### R5 — Durable orchestration
 
-```text
-Application
-    │ selected domain material + execution intent
-    ▼
-MADRE runtime
-    │ scheduled permitted invocation
-    ▼
-Capability
-    │ generated result / failure
-    ▼
-MADRE runtime
-    │ result + runtime evidence
-    ▼
-Application
-    │
-    ▼
-domain interpretation / operation
-```
+WorkPlans can survive long-running execution and preserve enough semantic continuity to resume objectives across interruption and restart.
 
-CORE can also originate generic/system work and coordinate with applications without taking over their domains:
+### R6 — Durable physical execution
 
-```text
-User
-  │
-  ▼
-CORE ↔ Applications
-  │       bounded context/actions
-  │
-  ▼
-MADRE runtime
-  │
-  ▼
-Capability
-```
+Runtime work has truthful lifecycle, recovery, retry, cancellation and evidence semantics independent of WorkPlan semantics.
 
-Both paths use the same runtime execution authority.
+### R7 — No semantic/runtime collapse
 
-## Product acceptance path
+AgentTask, Workflow, WorkSubmission and WorkRecord remain distinct concepts. No 1:1 relationship is assumed between semantic planning and physical execution.
 
-MADRE becomes useful through progressively stronger end-to-end evidence:
+### R8 — Structural security
 
-1. **Real execution:** an application can invoke a real configured local inference capability through MADRE and receive its result or an accurate runtime error.
-2. **Delayed execution and resource authority:** the same kind of work can be accepted for later execution, survive runtime restart and share global scarce-resource admission with immediate work.
-3. **First-party intelligence:** CORE can operate as the first real first-party MADRE application through the ordinary runtime boundary, initially with only the smallest useful behavior needed to exercise that path without freezing the eventual user experience.
-4. **Agentic planning from real behavior:** CORE or an application can generate one objective-specific WorkPlan by selecting workflows actually offered by available Agents, then materialize the plan's executable portions through ordinary MADRE runtime work without moving plan semantics into the runtime.
-5. **Independent application integration:** other applications can select their own context, submit work directly or expose bounded context/actions and Agent workflows to CORE while retaining domain state and semantics.
-6. **Boundary growth from use:** additional capabilities, permitted execution-path selection, execution controls and orchestration patterns extend those working paths as concrete applications or experiments require them.
+Context, Module discovery and Operation use are constrained by deterministic Kernel policy. Model-generated content cannot elevate its own authority.
 
-These are behavioral acceptance goals. The implementation is free to choose the simplest suitable technologies and structures that realize them.
+### R9 — Replaceable computation
+
+Capabilities may evolve independently of Modules, Agents and WorkPlans. Local/private execution remains a first-class trust tier and authorized external computation may coexist with it.
+
+### R10 — Inspectable agentic loop
+
+Users and developers can inspect and, where permitted, customize the semantic structures that determine agentic behavior rather than relying on hidden orchestration machinery.
+
+### R11 — Evolvable implementation
+
+Concrete technologies and internal schemas may evolve from evidence. New architectural elements should be introduced only when observed behavior becomes simpler, safer, clearer, more reliable or materially more capable because of them.
+
+## 21. Product acceptance path
+
+MADRE's architecture should be validated through progressively stronger end-to-end behavior:
+
+1. **Current Runtime foundation:** real immediate/delayed durable work, restart recovery, scarce-resource admission, retry/cancellation and execution evidence remain usable.
+2. **Module boundary:** one external or local system is represented as a Module with bounded Operations and context without leaking its internal model into MADRE.
+3. **Agent environment:** Kernel can instantiate one AgentDefinition as an AgentInstance with bounded Context, Skills, Workflows and permitted Module Operations.
+4. **Agentless Module fallback:** a Module with no Agents can still participate in agentic work through a CORE fallback Agent.
+5. **Durable WorkPlan:** one objective produces a persistent WorkPlan whose AgentTasks can continue across foreground interaction and process restart while materializing ordinary Runtime work as needed.
+6. **Skill portability:** one Module-provided Skill can be attached to a different AgentDefinition without transferring Module authority or silently changing the pinned configuration.
+7. **Cross-domain security:** CORE coordinates bounded material from more than one Module while Kernel policy prevents unauthorized reverse access or unsafe transfer.
+8. **Multi-Agent delegation:** one AgentTask can delegate another AgentTask through normal Kernel resolution without introducing a separate multi-Agent execution architecture.
+9. **Transparency/replay:** a completed WorkPlan can be inspected, cloned and replayed with modifications while retaining provenance.
+
+These are behavioral acceptance goals, not a mandate to implement speculative subclasses or frameworks before the relevant behavior exists.
+
+## 22. Explicit non-goals for the first agentic architecture
+
+The initial agentic environment does **not** require:
+
+- autonomous learning or behavior promotion;
+- a universal knowledge/truth ontology;
+- persistent persona memory semantics;
+- Agent subclass taxonomies;
+- `Routine`;
+- a separate `Tool` hierarchy;
+- Agent teams or multi-Agent workflow classes;
+- dynamic active-plan graph revision/versioning;
+- Agent similarity/substitution machinery;
+- universal human-in-the-loop states;
+- Runtime awareness of WorkPlan/Agent/Skill/Workflow semantics.
+
+These may be introduced later only if concrete behavior earns them.
