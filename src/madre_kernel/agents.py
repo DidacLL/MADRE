@@ -51,7 +51,9 @@ class _FinalResponse(SemanticModel):
     answer: Annotated[str, Field(min_length=1)]
 
 
-_CORE_TURN = TypeAdapter(_OperationRequest | _FinalResponse)
+_CORE_TURN: TypeAdapter[_OperationRequest | _FinalResponse] = TypeAdapter(
+    _OperationRequest | _FinalResponse
+)
 
 
 class CoreAgentManager:
