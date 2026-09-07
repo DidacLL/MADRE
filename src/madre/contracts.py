@@ -43,6 +43,8 @@ class WorkRetry(StrictModel):
     number: int = Field(ge=1)
     requested_at: AwareDatetime
     allow_unknown_outcome: bool = False
+    previous_completed_at: AwareDatetime
+    previous_failure: WorkFailure
 
 
 class WorkAttempt(StrictModel):
