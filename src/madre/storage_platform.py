@@ -14,6 +14,7 @@ from madre.security import (
 from madre.storage_db import _json, utc_now
 from madre.storage_work import WorkStore
 
+
 class PlatformStore(WorkStore):
     def put_manifest(self, manifest: ModuleManifest) -> None:
         with self.connection:
