@@ -373,7 +373,8 @@ class AgentInstance(SemanticModel):
 
 
 class TypedPayload(SemanticModel):
-    schema: SchemaRef
+    # Pydantic retains deprecated BaseModel.schema(); this is the canonical contract field.
+    schema: SchemaRef  # type: ignore[assignment]
     canonical_json: str = Field(min_length=2)
 
 
@@ -430,7 +431,8 @@ class WorkPlan(SemanticModel):
 
 class OutputExpectation(SemanticModel):
     name: str = Field(min_length=1)
-    schema: SchemaRef
+    # Pydantic retains deprecated BaseModel.schema(); this is the canonical contract field.
+    schema: SchemaRef  # type: ignore[assignment]
 
 
 class TaskCompletion(SemanticModel):
