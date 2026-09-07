@@ -43,10 +43,7 @@ async def _interactive(args: argparse.Namespace) -> None:
         deeper_max_tokens=args.deeper_max_tokens,
         timeout_seconds=args.timeout,
     )
-    print(
-        "MADRE CORE — type /exit or /quit to stop; "
-        "/deeper schedules a recommended deeper pass."
-    )
+    print("MADRE CORE — type /exit or /quit to stop; /deeper schedules a recommended deeper pass.")
     while True:
         try:
             user_message = input("you> ")
