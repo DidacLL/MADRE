@@ -26,6 +26,10 @@ class WorkSubmission(StrictModel):
         return value.astimezone(UTC) if value is not None else None
 
 
+class WorkRetryRequest(StrictModel):
+    allow_unknown_outcome: bool = False
+
+
 WorkStatus = Literal["accepted", "running", "succeeded", "failed"]
 AttemptStatus = Literal["running", "succeeded", "failed"]
 
@@ -35,8 +39,17 @@ class WorkFailure(StrictModel):
     message: str = Field(min_length=1)
 
 
+class WorkRetry(StrictModel):
+    number: int = Field(ge=1)
+    requested_at: AwareDatetime
+    allow_unknown_outcome: bool = False
+    previous_completed_at: AwareDatetime
+    previous_failure: WorkFailure
+
+
 class WorkAttempt(StrictModel):
     number: int = Field(ge=1)
+    retry_number: int | None = Field(default=None, ge=1)
     status: AttemptStatus
     started_at: AwareDatetime
     completed_at: AwareDatetime | None = None
@@ -53,4 +66,5 @@ class WorkRecord(StrictModel):
     completed_at: AwareDatetime | None = None
     result: dict[str, JsonValue] | None = None
     failure: WorkFailure | None = None
+    retries: list[WorkRetry] = Field(default_factory=list)
     attempts: list[WorkAttempt] = Field(default_factory=list)

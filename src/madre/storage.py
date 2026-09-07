@@ -10,7 +10,7 @@ from pathlib import Path
 
 from filelock import FileLock, Timeout
 
-from madre.contracts import WorkAttempt, WorkFailure, WorkRecord, WorkSubmission
+from madre.contracts import WorkAttempt, WorkFailure, WorkRecord, WorkRetry, WorkSubmission
 
 _STORAGE_DDL = """
 CREATE TABLE runtime_work (
@@ -34,16 +34,31 @@ CREATE UNIQUE INDEX runtime_work_idempotency
 ON runtime_work(application_id, idempotency_key)
 WHERE idempotency_key IS NOT NULL;
 
+CREATE TABLE runtime_retry (
+    work_id TEXT NOT NULL REFERENCES runtime_work(id) ON DELETE CASCADE,
+    number INTEGER NOT NULL CHECK (number >= 1),
+    idempotency_key TEXT NOT NULL,
+    allow_unknown_outcome INTEGER NOT NULL CHECK (allow_unknown_outcome IN (0, 1)),
+    requested_at TEXT NOT NULL,
+    previous_completed_at TEXT NOT NULL,
+    previous_error_code TEXT NOT NULL,
+    previous_error_message TEXT NOT NULL,
+    PRIMARY KEY (work_id, number),
+    UNIQUE (work_id, idempotency_key)
+);
+
 CREATE TABLE runtime_attempt (
     work_id TEXT NOT NULL REFERENCES runtime_work(id) ON DELETE CASCADE,
     number INTEGER NOT NULL CHECK (number >= 1),
+    retry_number INTEGER CHECK (retry_number IS NULL OR retry_number >= 1),
     status TEXT NOT NULL CHECK (status IN ('running', 'succeeded', 'failed')),
     started_at TEXT NOT NULL,
     completed_at TEXT,
     result_json TEXT,
     error_code TEXT,
     error_message TEXT,
-    PRIMARY KEY (work_id, number)
+    PRIMARY KEY (work_id, number),
+    FOREIGN KEY (work_id, retry_number) REFERENCES runtime_retry(work_id, number)
 );
 """
 
@@ -159,6 +174,82 @@ class WorkStore:
         work_id = self._idempotency_work_id(application_id, idempotency_key)
         return self.get(work_id) if work_id is not None else None
 
+    def retry_policy_by_key(self, work_id: str, idempotency_key: str) -> bool | None:
+        row = self.connection.execute(
+            """
+            SELECT allow_unknown_outcome
+            FROM runtime_retry
+            WHERE work_id = ? AND idempotency_key = ?
+            """,
+            (work_id, idempotency_key),
+        ).fetchone()
+        return bool(row["allow_unknown_outcome"]) if row is not None else None
+
+    def requeue_failed(
+        self,
+        work_id: str,
+        idempotency_key: str,
+        allow_unknown_outcome: bool,
+        requested_at: datetime,
+    ) -> int | None:
+        with self.connection:
+            previous = self.connection.execute(
+                """
+                SELECT completed_at, error_code, error_message
+                FROM runtime_work
+                WHERE id = ? AND status = 'failed'
+                """,
+                (work_id,),
+            ).fetchone()
+            if previous is None:
+                return None
+            if (
+                previous["completed_at"] is None
+                or previous["error_code"] is None
+                or previous["error_message"] is None
+            ):
+                raise RuntimeError("failed work lacks durable terminal evidence")
+
+            row = self.connection.execute(
+                """
+                SELECT COALESCE(MAX(number), 0) + 1 AS number
+                FROM runtime_retry
+                WHERE work_id = ?
+                """,
+                (work_id,),
+            ).fetchone()
+            number = int(row["number"])
+            self.connection.execute(
+                """
+                INSERT INTO runtime_retry (
+                    work_id, number, idempotency_key, allow_unknown_outcome, requested_at,
+                    previous_completed_at, previous_error_code, previous_error_message
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    work_id,
+                    number,
+                    idempotency_key,
+                    int(allow_unknown_outcome),
+                    requested_at.isoformat(),
+                    previous["completed_at"],
+                    previous["error_code"],
+                    previous["error_message"],
+                ),
+            )
+            updated = self.connection.execute(
+                """
+                UPDATE runtime_work
+                SET status = 'accepted', completed_at = NULL, result_json = NULL,
+                    error_code = NULL, error_message = NULL
+                WHERE id = ? AND status = 'failed'
+                """,
+                (work_id,),
+            )
+            if updated.rowcount != 1:
+                raise RuntimeError("failed work changed during durable retry transition")
+        return number
+
     def next_eligible(self, now: datetime) -> str | None:
         row = self.connection.execute(
             """
@@ -207,12 +298,18 @@ class WorkStore:
                 (work_id,),
             ).fetchone()
             number = int(row["number"])
+            retry_row = self.connection.execute(
+                "SELECT MAX(number) AS number FROM runtime_retry WHERE work_id = ?",
+                (work_id,),
+            ).fetchone()
+            retry_number = retry_row["number"]
             self.connection.execute(
                 """
-                INSERT INTO runtime_attempt (work_id, number, status, started_at)
-                VALUES (?, ?, 'running', ?)
+                INSERT INTO runtime_attempt (
+                    work_id, number, retry_number, status, started_at
+                ) VALUES (?, ?, ?, 'running', ?)
                 """,
-                (work_id, number, started_at.isoformat()),
+                (work_id, number, retry_number, started_at.isoformat()),
             )
         return number
 
@@ -316,6 +413,9 @@ class WorkStore:
         ).fetchone()
         if row is None:
             return None
+        retries = self.connection.execute(
+            "SELECT * FROM runtime_retry WHERE work_id = ? ORDER BY number", (work_id,)
+        ).fetchall()
         attempts = self.connection.execute(
             "SELECT * FROM runtime_attempt WHERE work_id = ? ORDER BY number", (work_id,)
         ).fetchall()
@@ -334,9 +434,23 @@ class WorkStore:
             completed_at=row["completed_at"],
             result=json.loads(row["result_json"]) if row["result_json"] else None,
             failure=self._failure(row),
+            retries=[
+                WorkRetry(
+                    number=retry["number"],
+                    requested_at=retry["requested_at"],
+                    allow_unknown_outcome=bool(retry["allow_unknown_outcome"]),
+                    previous_completed_at=retry["previous_completed_at"],
+                    previous_failure=WorkFailure(
+                        code=retry["previous_error_code"],
+                        message=retry["previous_error_message"],
+                    ),
+                )
+                for retry in retries
+            ],
             attempts=[
                 WorkAttempt(
                     number=attempt["number"],
+                    retry_number=attempt["retry_number"],
                     status=attempt["status"],
                     started_at=attempt["started_at"],
                     completed_at=attempt["completed_at"],

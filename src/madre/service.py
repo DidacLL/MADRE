@@ -10,8 +10,13 @@ from fastapi import Depends, FastAPI, Header, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from madre.config import Settings
-from madre.contracts import WorkRecord, WorkSubmission
-from madre.runtime import IdempotencyConflict, WorkRuntime
+from madre.contracts import WorkRecord, WorkRetryRequest, WorkSubmission
+from madre.runtime import (
+    IdempotencyConflict,
+    RetryConflict,
+    WorkNotFound,
+    WorkRuntime,
+)
 from madre.storage import WorkStore, open_database
 
 
@@ -75,6 +80,30 @@ def create_app(settings: Settings) -> FastAPI:
         try:
             return await runtime().submit(submission, idempotency_key=idempotency_key)
         except IdempotencyConflict as exc:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+
+    @app.post(
+        "/v1/work/{work_id}/retry",
+        response_model=WorkRecord,
+        status_code=status.HTTP_202_ACCEPTED,
+    )
+    async def retry_work(
+        work_id: str,
+        request: WorkRetryRequest,
+        idempotency_key: Annotated[
+            str,
+            Header(alias="Idempotency-Key", min_length=1, max_length=128),
+        ],
+    ) -> WorkRecord:
+        try:
+            return await runtime().retry(
+                work_id,
+                request,
+                idempotency_key=idempotency_key,
+            )
+        except WorkNotFound as exc:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "work not found") from exc
+        except RetryConflict as exc:
             raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
 
     @app.get("/v1/work/{work_id}", response_model=WorkRecord)

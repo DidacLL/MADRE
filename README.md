@@ -19,7 +19,9 @@ An independent application or CORE submits work to `POST /v1/work`. Every valid 
 
 Applications may optionally send an `Idempotency-Key` header when a logical submission may need to be retried. The key is scoped to `application_id` and persisted with runtime acceptance. Reusing the same key with the same normalized `WorkSubmission` returns the original durable work record, including after restart or completion, rather than creating another invocation. Reusing that key for different work returns HTTP 409. Omitting the header preserves ordinary distinct submissions.
 
-`GET /v1/work/{id}` returns the durable record at any point in that lifecycle and is the generic completion boundary for applications that need the eventual result. A process restart preserves accepted work that has not started a capability attempt. A previously in-flight attempt becomes an `interrupted` failure whose evidence states that the capability outcome may be unknown; MADRE does not retry it.
+Failed work can be explicitly requeued through `POST /v1/work/{id}/retry`. Retry requests require their own `Idempotency-Key`, are durably recorded, and replay safely without authorizing duplicate execution. Physical attempts identify which retry authorized them. MADRE never retries work automatically. A work item interrupted while a capability may already have executed is retryable only when the caller explicitly sets `allow_unknown_outcome` because another invocation may duplicate external effects.
+
+`GET /v1/work/{id}` returns the durable record at any point in that lifecycle and is the generic completion boundary for applications that need the eventual result. A process restart preserves accepted work that has not started a capability attempt, including an accepted explicit retry. A previously in-flight attempt becomes an `interrupted` failure whose evidence states that the capability outcome may be unknown.
 
 Python is the current implementation language, not a permanent product boundary. The application API is language-neutral HTTP; C/C++ implementations can be introduced where concrete runtime responsibilities benefit.
 
@@ -79,6 +81,7 @@ The authenticated endpoints are:
 
 - `GET http://127.0.0.1:8731/health`
 - `POST http://127.0.0.1:8731/v1/work`
+- `POST http://127.0.0.1:8731/v1/work/{id}/retry`
 - `GET http://127.0.0.1:8731/v1/work/{id}`
 
 All require `Authorization: Bearer <token>`. `/health` returns `{"status":"ok"}`. Missing or incorrect credentials return 401. Stop the foreground service with Ctrl+C. A second runtime using the same data directory is rejected; process exit releases ownership. Runtime files, local configuration, model weights, build output and credentials are not committed. During active development, a runtime database whose internal storage structure no longer matches the executable is discarded and recreated rather than migrated.
@@ -105,7 +108,17 @@ A chat-completion submission is shaped like:
 
 Omit `eligible_at` (or use `null`) for immediate eligibility. Immediate and future-eligible submissions both return a durable `accepted` record; the difference is only when the runtime may execute them. Poll `GET /v1/work/{id}` when the application needs eventual success or failure. The application owns whether it waits, continues foreground interaction, submits additional work, or inspects later. MADRE stores only the application-selected execution material and runtime evidence required to execute, recover and inspect the work.
 
-When retrying one logical POST after a transport failure, send the same opaque key (1–128 characters) in `Idempotency-Key` and the same work body. The durable work identity is then stable even if the original response was lost. A key is intentionally not part of `WorkSubmission`: it controls acceptance/replay rather than changing what the work means.
+When retrying one logical submission POST after a transport failure, send the same opaque key (1–128 characters) in `Idempotency-Key` and the same work body. The durable work identity is then stable even if the original response was lost. A key is intentionally not part of `WorkSubmission`: it controls acceptance/replay rather than changing what the work means.
+
+To explicitly retry a failed work item, POST to `/v1/work/{id}/retry` with a new idempotency key for that logical retry:
+
+```json
+{
+  "allow_unknown_outcome": false
+}
+```
+
+The default `false` is appropriate for failures whose previous capability invocation has a known failure outcome. If the work failed as `interrupted`, MADRE rejects the retry until `allow_unknown_outcome` is explicitly set to `true`; that consent acknowledges that the previous invocation may already have produced an external effect. Reusing the same retry idempotency key replays that retry request instead of requeueing the work again. A different key represents a new explicit retry and is accepted only if the work is failed again.
 
 ## CORE
 
