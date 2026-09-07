@@ -1,1354 +1,2131 @@
 # MADRE agentic schema
 
-Status: **clean-slate schema proposal for Owner review**
+Status: **second clean-slate schema proposal for Owner review**
 
-This document derives the minimum concrete schema needed to begin implementing the
-agentic environment defined by `MADRE.md` and `MADRE-agentic-architecture.md` on
-`architecture/modular-agentic-clean-slate`.
+## 1. Authority and scope
 
-It is intentionally a schema and ownership design, not a runtime implementation. It
-does not import the discarded `ReasoningModule` ontology and does not derive from PR
-#38 dataclasses.
+This document defines the minimum coherent concrete schema required to begin implementing
+the clean-slate MADRE agentic environment.
 
-No correction to the clean-slate `MADRE.md` is required by this derivation.
+Its authority order is:
+
+```text
+MADRE.md
+    product contract
+
+MADRE-agentic-architecture.md
+    architectural derivation and rationale
+
+MADRE-agentic-schema-authority.md
+    Owner-directed schema corrections and mandatory schema constraints
+```
+
+The schema at commit `d2d95c39b60ef6cdae4a6075763ae3e8fe98d823` is design
+history only. Sound decisions are retained where compatible with the authorities; rejected
+ACL/grant semantics, universal Agent-state assumptions, direct Skill attachment and
+CORE-default configuration ownership are not retained.
+
+No contradiction in the three current authorities requires changing them. This document
+therefore changes only the concrete schema.
+
+The schema is language-neutral. It deliberately specifies semantic types, references,
+ownership and persistence rather than Python/JVM class layouts or database tables.
+
+The governing ownership invariant remains:
+
+```text
+Module
+    owns domain semantics, Scope meaning, domain material classification,
+    Operations and any Agent system it manages
+
+AgentInstance
+    performs semantic/intelligence work from bounded material
+
+MADRE Kernel
+    resolves, coordinates, persists semantic orchestration and mechanically
+    evaluates/enforces security crossings
+
+MADRE Runtime
+    schedules and durably executes physical WorkRecords
+
+Capability
+    performs bounded computation
+```
+
+There is no canonical `Tool`, `Routine`, `WorkPlanStep`, Agent subclass hierarchy,
+universal Agent session/memory model, universal Workflow DSL or global knowledge/learning
+ontology.
 
 ---
 
-## 1. Design decisions
-
-The schema is based on the following decisions.
-
-1. **Published semantic definitions are immutable revisions.** `OperationDescriptor`,
-   `SkillDefinition`, `WorkflowDefinition` and `AgentDefinition` use Module-scoped
-   identities plus explicit positive revisions. A later Module publication never
-   silently changes an already-pinned Agent or WorkPlan.
-2. **Module identity is installation-scoped and stable.** A Module does not need a
-   globally unique identifier. References to Module-owned definitions are typed and
-   contain the owning `ModuleRef`.
-3. **CORE assignment is Kernel configuration, not Module self-description.** A Module
-   cannot grant itself CORE privilege by setting a manifest flag.
-4. **Skills and Workflows remain first-class independent definitions.** Skills point to
-   contributed Workflow revisions. AgentDefinitions point to direct Workflow revisions.
-   Workflows do not contain reverse parent pointers.
-5. **Skill references do not grant Operation authority.** Skills may describe required
-   or relevant Operations, but an AgentInstance receives only explicit task Operation
-   grants that are further narrowed by its AgentDefinition and Kernel policy.
-6. **AgentDefinition and AgentInstance are separate identities.** Concurrent instances
-   of the same pinned AgentDefinition never share working state implicitly.
-7. **ContextBundle is immutable transfer data.** Classification, flow constraints and
-   derivation provenance travel with the payload.
-8. **WorkPlan and AgentTask do not embed Runtime lifecycle.** Open/in-flight/readiness
-   conditions are derived from persisted facts. There is no `pending/running/blocked`
-   semantic status enum.
-9. **WorkPlan owns AgentTasks relationally, not as an embedded mutable graph.** Tasks are
-   independently addressable by `(plan_id, task_id)`, which permits durable incremental
-   creation without rewriting the plan record.
-10. **Runtime correlation is Kernel-owned many-to-many evidence.** Runtime `WorkRecord`
-    remains unchanged and unaware of semantic meaning. An AgentTask may correlate with
-    zero, one or many Runtime records.
-11. **Security is a small deterministic algebra, not prompt policy.** Initial labels,
-    visibility rules, destination clearance and egress constraints are value objects.
-    They can later be replaced or extended without changing entity ownership.
-12. **Security policy may tighten after publication.** Pinning a semantic definition
-    preserves behavior/configuration identity; it never freezes an old authorization
-    decision or overrides current Kernel policy.
-
----
-
-## 2. Schema notation and shared primitives
-
-The field tables below are language-neutral. Suggested implementation mappings are:
+## 2. Entity and reference map
 
 ```text
-string          non-empty UTF-8 string
-Instant         timezone-aware timestamp, normalized for persistence
-JsonValue       JSON scalar/object/array value
-JsonSchema      validated JSON Schema object for a bounded input/output contract
-PositiveInt     integer >= 1
-Duration        non-negative duration
-Digest          content digest, algorithm-qualified when serialized
-```
-
-Persisted records should be serialized through a versioned envelope rather than by
-assuming one programming-language class layout is permanent:
-
-```text
-StoredRecord<T>
-  schema: string       # e.g. "madre.agentic/skill-definition@1"
-  value: T
-```
-
-`schema` is serialization versioning. It is distinct from a semantic definition's
-`revision`.
-
-### 2.1 Scoped identifiers and typed references
-
-Identifiers are opaque values. Their scope is part of the type.
-
-```text
-ModuleRef
-  module_id: string                 # unique within one MADRE installation
-
-OperationRef
-  module: ModuleRef
-  operation_id: string              # unique within the Module
-  revision: PositiveInt
-
-SkillRef
-  module: ModuleRef
-  skill_id: string                  # unique within the Module definition store
-  revision: PositiveInt
-
-WorkflowRef
-  module: ModuleRef
-  workflow_id: string               # unique within the Module definition store
-  revision: PositiveInt
-
-AgentDefinitionRef
-  module: ModuleRef
-  agent_id: string                  # unique within the responsible Module
-  revision: PositiveInt
-
-AgentInstanceRef
-  instance_id: string               # unique within one MADRE installation
-
-ContextBundleRef
-  bundle_id: string                 # unique within one MADRE installation
-
-WorkPlanRef
-  plan_id: string                   # unique within one MADRE installation
-
-AgentTaskRef
-  plan: WorkPlanRef
-  task_id: string                   # unique within one WorkPlan
-
-OperationInvocationRef
-  invocation_id: string             # unique within one MADRE installation
-
-RuntimeWorkRef
-  work_id: string                   # existing Runtime WorkRecord.id
-
-ModuleArtifactRef
-  module: ModuleRef
-  artifact_id: string               # opaque to Kernel; interpreted by owning Module
-```
-
-The same raw string used in different reference types is not interchangeable.
-Application code should use distinct value classes/newtypes rather than passing naked
-strings through internal APIs.
-
-### 2.2 Security primitives
-
-The first implementation needs a deliberately small lattice.
-
-```text
-Sensitivity = PUBLIC | INTERNAL | CONFIDENTIAL | RESTRICTED
-
-SecurityLabel
-  sensitivity: Sensitivity
-  compartments: set[string]         # empty means no compartment restriction
-```
-
-A destination clearance covers a label when its sensitivity is at least as high and it
-contains every required compartment.
-
-```text
-TrustBoundary = LOCAL_TRUSTED | LOCAL_ISOLATED | REMOTE
-
-SecurityProfile
-  clearance: SecurityLabel
-  boundary: TrustBoundary
-```
-
-`SecurityProfile` is a value object, not a separately discoverable/persisted entity. It
-is embedded where a Module or Agent definition declares its constraints.
-
-Visibility uses an allow-only subject selector:
-
-```text
-PolicySubjectRef = one of:
-  OwnerSubject
-  CoreRoleSubject
-  ModuleSubject(ModuleRef)
-  AgentDefinitionSubject(AgentDefinitionRef)
-
-VisibilityPolicy
-  visible_to: set[PolicySubjectRef]
-```
-
-The Kernel may impose stricter installation policy. Entity visibility is always the
-intersection of Module visibility, entity visibility and current Kernel policy.
-
-Context transfer has independent flow constraints:
-
-```text
-FlowConstraints
-  remote_egress_allowed: bool
-  allowed_destinations: set[PolicySubjectRef] | null
-  allowed_operations: set[OperationRef] | null
-  expires_at: Instant | null
-```
-
-`null` means no additional allowlist at that dimension; it never means bypass current
-Kernel policy.
-
-### 2.3 Provenance primitives
-
-```text
-DefinitionProvenance<R>
-  authored_by: PolicySubjectRef
-  created_at: Instant
-  derived_from: R | null
-  source_uri: string | null
-  source_digest: Digest | null
-```
-
-`derived_from` is same-kind: a derived Skill points to a Skill revision, a derived
-Workflow to a Workflow revision, and a derived AgentDefinition to an AgentDefinition
-revision. Creating a customized definition allocates a new identity and starts its own
-revision sequence.
-
-Workflow membership is intentionally not recorded as provenance. A Skill contributes a
-Workflow by referencing it; an AgentDefinition owns a direct Workflow attachment by
-referencing it. This avoids bidirectional object graphs and permits the same Workflow
-revision to be reused deliberately in more than one configuration.
-
----
-
-## 3. Entity/reference map
-
-```text
-                             Kernel installation state
+                              MADRE Kernel installation
                                       |
                                       +-- CoreRoleAssignment --> ModuleRef
                                       |
-                                      +-- Module registry
-                                             |
-                                             v
-                                        ModuleManifest
-                                         /    |    \
-                                        /     |     \
-                                       v      v      v
-                              OperationRef  SkillRef  AgentDefinitionRef
-                                  |           |              |
-                                  v           v              v
+                                      +-- policy-filtered Module registry
+                                              |
+                                              v
+                                         ModuleManifest
+                                     /       |        \
+                                    /        |         \
+                                   v         v          v
                          OperationDescriptor SkillDefinition AgentDefinition
-                                                |              |
-                                                | workflow_refs| direct_workflow_refs
-                                                +-------> WorkflowDefinition
+                              |                    |             |
+                              |                    |             +-- manager_definition_ref
+                              |                    |             |       (opaque to Kernel)
+                              |                    |             |
+                              |                    |             +-- AgentSkillInstance[]
+                              |                    |             |      |
+                              |                    |             |      +-- exact SkillRef
+                              |                    |             |      +-- adopted WorkflowRef[]
+                              |                    |             |
+                              |                    |             +-- direct WorkflowRef[]
+                              |                    |
+                              |                    +-- contributed WorkflowRef[]
+                              |
+                              +---------------------------> WorkflowDefinition
 
-Module --bounded projection--> ContextBundle
+Module / Agent manager --typed bounded projection--> ContextBundle
+                                                        |
+                                                        +-- TypedPayload<SchemaRef>
+                                                        |       or ModuleResourceRef
+                                                        +-- DataSecurityFacts
+                                                        +-- ScopeRef[]
+                                                        +-- derivation provenance
 
-AgentDefinition --instantiate--> AgentInstance
-                                      |
-                                      | works for
-                                      v
-WorkPlan -------------------------> AgentTask
-  ^                                   |
-  | derived_from                      +-- ContextBundleRef[]
-WorkPlan                              +-- SkillRef[]
-                                      +-- WorkflowRef?
-                                      +-- explicit OperationRef grants
-                                      +-- child AgentTask rows
-                                      |
-                                      +--> OperationInvocation
-                                      |          |
-                                      |          +--> produced ContextBundleRef[]
-                                      |
-                                      +--> RuntimeCorrelation --> Runtime WorkRecord
+AgentDefinition --instantiate through responsible Module--> AgentInstance
+                                                          |
+                                                          +-- manager_instance_ref
+                                                          +-- 0..N AgentStateRef
 
-Runtime WorkRecord --> Capability execution evidence
+WorkPlan
+  |
+  +-- durable AgentTask
+          |
+          +-- AgentRequirement
+          +-- exact resolved AgentDefinitionRef?
+          +-- AgentInstanceRef?
+          +-- AgentSkillInstanceRef[]
+          +-- Workflow requirements / selection
+          +-- ContextBundleRef[]
+          +-- OperationRequirement[]       # need, never authority
+          +-- prerequisite AgentTaskRef[]
+          +-- child AgentTasks via parent_task
+          |
+          +-- OperationInvocationRecord[]
+          |       |
+          |       +-- SecurityDecisionEvidence
+          |       +-- produced ContextBundleRef[]
+          |
+          +-- RuntimeEvidenceLink[] ------> Runtime WorkRecord
+                                               |
+                                               +-- Runtime attempt/retry/cancel evidence
+                                               +-- Capability invocation
 ```
 
-There is no canonical `Tool`, `Routine`, `WorkPlanStep`, planner subclass, team entity,
-knowledge-candidate entity or 1:1 AgentTask/Runtime-work link.
+The semantic and physical layers are deliberately not collapsed:
+
+```text
+AgentTask != WorkflowDefinition
+AgentTask != Runtime WorkRecord
+Operation != Capability
+WorkPlan != Runtime queue
+```
 
 ---
 
-## 4. ModuleManifest
+## 3. Common scalar and reference types
+
+### 3.1 Scalar conventions
+
+```text
+OpaqueId        non-empty opaque identifier; callers do not infer meaning from its text
+PositiveInt     integer >= 1
+Instant         timezone-aware persisted timestamp
+Digest          algorithm-qualified content digest
+```
+
+Serialized data may use JSON, CBOR, SQL columns or another representation. Serialization
+format is not the semantic type system.
+
+Persisted records SHOULD carry an implementation schema envelope such as:
+
+```text
+StoredRecord<T>
+    schema_version: RecordSchemaVersion
+    value: T
+```
+
+Record serialization version is independent from a published semantic definition's
+`revision`.
+
+### 3.2 Installation-scoped and Module-scoped references
+
+```text
+ModuleRef
+    module_id: OpaqueId
+
+ScopeRef
+    module: ModuleRef
+    scope_id: OpaqueId
+
+SchemaRef
+    module: ModuleRef
+    schema_id: OpaqueId
+    revision: PositiveInt
+
+ModuleResourceRef
+    module: ModuleRef
+    resource_id: OpaqueId
+    revision: PositiveInt
+
+OperationRef
+    module: ModuleRef
+    operation_id: OpaqueId
+    revision: PositiveInt
+
+SkillRef
+    module: ModuleRef
+    skill_id: OpaqueId
+    revision: PositiveInt
+
+WorkflowRef
+    module: ModuleRef
+    workflow_id: OpaqueId
+    revision: PositiveInt
+
+AgentDefinitionRef
+    module: ModuleRef
+    agent_id: OpaqueId
+    revision: PositiveInt
+
+AgentSkillInstanceRef
+    agent_definition: AgentDefinitionRef
+    skill_instance_id: OpaqueId
+
+AgentInstanceRef
+    instance_id: OpaqueId
+
+ContextBundleRef
+    bundle_id: OpaqueId
+
+WorkPlanRef
+    plan_id: OpaqueId
+
+AgentTaskRef
+    plan: WorkPlanRef
+    task_id: OpaqueId
+
+OperationInvocationRef
+    invocation_id: OpaqueId
+
+SecurityDecisionRef
+    decision_id: OpaqueId
+
+RuntimeWorkRef
+    work_id: OpaqueId             # existing Runtime WorkRecord.id
+
+ModuleArtifactRef
+    module: ModuleRef
+    artifact_id: OpaqueId
+```
+
+The same raw identifier string in two reference types is not interchangeable. Internal
+APIs SHOULD use distinct value types/newtypes rather than passing naked strings.
+
+### 3.3 Opaque Agent-manager references
+
+These references intentionally expose identity only. Kernel never interprets the target.
+
+```text
+ModuleAgentDefinitionRef
+    module: ModuleRef
+    definition_id: OpaqueId
+
+ModuleAgentInstanceRef
+    module: ModuleRef
+    instance_id: OpaqueId
+
+AgentStateRef
+    module: ModuleRef
+    state_id: OpaqueId
+```
+
+`ModuleAgentDefinitionRef.module`, `ModuleAgentInstanceRef.module` and every
+`AgentStateRef.module` on an Agent MUST equal the responsible Module in its
+`AgentDefinitionRef`.
+
+Kernel does not know whether an Agent state is a conversation, state machine, model
+session, task state, persistent memory, several concurrent works or something else.
+
+### 3.4 Resource references used by Skills and Workflows
+
+```text
+SkillResourceRef
+    module: ModuleRef
+    resource_id: OpaqueId
+    revision: PositiveInt
+
+WorkflowRecipeRef
+    module: ModuleRef
+    recipe_id: OpaqueId
+    revision: PositiveInt
+```
+
+A resource referenced by an immutable definition MUST itself resolve immutably at that
+exact revision or be content-addressed equivalently. A Module update cannot mutate recipe
+or Skill material behind a pinned reference.
+
+### 3.5 Discovery and intended-use references
+
+Discovery privacy is policy-driven but is not an Operation authorization system.
+
+```text
+DiscoveryPolicyRef
+    policy_id: OpaqueId
+    revision: PositiveInt
+
+IntendedUseRef
+    module: ModuleRef
+    use_id: OpaqueId
+```
+
+`DiscoveryPolicyRef` identifies an installation policy rule evaluated before descriptor
+material is exposed. It is not an ACL embedded in WorkPlan state and does not imply that a
+discovered Operation is callable.
+
+`IntendedUseRef` is optional semantic input to security evaluation. Its meaning is owned
+by the referenced Module; it is not currently another normalized numeric dimension.
+
+### 3.6 Definition provenance
+
+```text
+ProvenanceSubjectRef = one of:
+    InstallationOwnerRef
+    ModuleRef
+    AgentDefinitionRef
+
+DefinitionProvenance<R>
+    created_at: Instant
+    created_by: ProvenanceSubjectRef
+    derived_from: R | null
+    source_resources: ModuleResourceRef[]
+```
+
+`derived_from` is same-kind for published definitions. Derivation creates a new identity;
+it never edits the upstream revision.
+
+---
+
+## 4. Normalized security facts and `SecurityAlgebra`
+
+### 4.1 Normalized levels
+
+```text
+SecurityLevel
+    SYSTEM_RESERVED = 0
+    LEVEL_1 = 1
+    LEVEL_2 = 2
+    LEVEL_3 = 3
+    LEVEL_4 = 4
+    LEVEL_5 = 5
+```
+
+`SYSTEM_RESERVED` is a Kernel/system sentinel outside the ordinary scale. It is not an
+ordinary selectable value and MUST NOT be interpreted as merely weaker/safer than
+`LEVEL_1`.
+
+All Module- and Agent-declared ordinary facts use:
+
+```text
+OrdinarySecurityLevel = LEVEL_1 | LEVEL_2 | LEVEL_3 | LEVEL_4 | LEVEL_5
+```
+
+The normalized dimensions are independent:
+
+```text
+sensitivity
+    higher => material is more sensitive
+
+trust
+    higher => material/actor is more trusted
+
+risk
+    higher => actor/operation/execution presents more risk
+```
+
+They are never summed, averaged or collapsed into one score. The shared 1..5 vocabulary
+exists only to make dimension-specific comparisons and diagnostics simple and stable.
+
+### 4.2 Scope is semantic, not numeric
+
+`ScopeRef` is independent from normalized levels.
+
+A Module owns the meaning of each Scope it publishes. Kernel does not infer Scope from
+payload text and does not decide that two scopes are semantically equivalent because their
+names look similar.
+
+For the initial schema, an Operation explicitly declares the exact source and destination
+ScopeRefs it is designed to cross. A later richer Module-provided scope-relation mechanism
+may extend exact matching without changing `ScopeRef`.
+
+### 4.3 Security fact value objects
+
+```text
+DataSecurityFacts
+    sensitivity: OrdinarySecurityLevel
+    trust: OrdinarySecurityLevel
+    scopes: set[ScopeRef]
+
+ActorSecurityFacts
+    trust: OrdinarySecurityLevel
+    maximum_handled_sensitivity: OrdinarySecurityLevel
+    execution_risk: OrdinarySecurityLevel
+
+ExecutionBoundary
+    LOCAL_TRUSTED
+    LOCAL_ISOLATED
+    REMOTE
+
+ClassificationTransform
+    NONE
+    MAY_RECALCULATE
+
+OperationSecurityFacts
+    risk: OrdinarySecurityLevel
+    minimum_input_trust: OrdinarySecurityLevel
+    maximum_input_sensitivity: OrdinarySecurityLevel
+    source_scopes: set[ScopeRef]
+    destination_scopes: set[ScopeRef]
+    boundary: ExecutionBoundary
+    classification_transform: ClassificationTransform
+```
+
+These are facts, not credentials.
+
+Responsibility is structural:
+
+```text
+Domain Module
+    creates/classifies/projects DataSecurityFacts
+    owns Scope semantics
+    declares OperationSecurityFacts
+    performs semantic minimization/anonymization/projection
+
+Agent-managing Module
+    declares ActorSecurityFacts
+
+Kernel
+    mechanically evaluates relations
+    physically prevents rejected crossings/invocations
+```
+
+No Agent output, Workflow, WorkPlan or prompt can manufacture authority by asserting that
+a crossing is permitted.
+
+### 4.4 Security evaluation boundary
+
+Conceptually:
+
+```text
+SecurityDecision = SecurityAlgebra.evaluate(
+    material,
+    source_scope,
+    agent,
+    operation,
+    destination,
+    intended_use,
+    current_kernel_policy,
+)
+```
+
+The exact implementation is one deterministic Kernel component with pure, separately
+tested predicates. It receives current immutable descriptor facts plus current Kernel
+policy. It does not parse semantic payload text.
+
+The initial predicate families are:
+
+| Dimension/boundary | Deterministic relation |
+| --- | --- |
+| Reserved level | Ordinary Module/Agent facts containing `SYSTEM_RESERVED` are rejected as malformed/security-invalid. |
+| Material sensitivity -> Agent | Every provided material sensitivity MUST be `<= agent.maximum_handled_sensitivity`. |
+| Material sensitivity -> Operation | Every provided material sensitivity MUST be `<= operation.maximum_input_sensitivity`. |
+| Material trust -> Operation | Every provided material trust MUST be `>= operation.minimum_input_trust`. |
+| Agent trust | Agent trust MUST satisfy the current Kernel-policy minimum for the actual sensitivity, Operation risk, destination boundary and intended use. |
+| Agent execution risk | Agent execution risk MUST be `<=` the current Kernel-policy maximum for the actual sensitivity, destination and intended use. |
+| Operation risk | Operation risk MUST be `<=` the current Kernel-policy maximum for the destination boundary and intended use. |
+| Source Scope | Every Scope carried by material sent to an Operation MUST be accepted by `operation.source_scopes` under exact matching in the initial model, plus any stricter current policy. |
+| Destination Scope | Any produced/crossed destination Scope MUST be declared in `operation.destination_scopes` and allowed by current policy. |
+| Execution boundary | The actual boundary MUST equal the declared Operation boundary and be permitted by current policy for the actual material. Remote is never inferred from availability alone. |
+| Intended use | When an `IntendedUseRef` is supplied/required, current policy MUST permit that use for the material/Agent/Operation combination. |
+| Reclassification | Lower sensitivity than source material requires an explicit Module-owned transformation Operation with `MAY_RECALCULATE`; the new material is evaluated again from its own facts. |
+
+Policy functions may use one dimension to select the threshold for another, for example a
+higher-sensitivity crossing may require a higher Agent-trust minimum. That remains a
+lookup/relational rule, not arithmetic aggregation of trust, risk and sensitivity.
+
+The initial implementation SHOULD expose these policy queries as explicit typed methods,
+for example:
+
+```text
+minimum_agent_trust(material_sensitivity, operation_risk, boundary, intended_use)
+maximum_agent_execution_risk(material_sensitivity, boundary, intended_use)
+maximum_operation_risk(boundary, intended_use)
+remote_boundary_permitted(material_facts, intended_use)
+```
+
+The complete future policy language is deliberately deferred.
+
+### 4.5 Structured decision evidence
+
+```text
+SecurityDeficitDimension
+    RESERVED_LEVEL
+    SENSITIVITY
+    TRUST
+    RISK
+    SCOPE
+    EXECUTION_BOUNDARY
+    INTENDED_USE
+    CLASSIFICATION_TRANSFORM
+    POLICY
+
+SecurityDeficit
+    dimension: SecurityDeficitDimension
+    supplied_level: SecurityLevel | null
+    required_level: SecurityLevel | null
+    scope: ScopeRef | null
+    explanation_code: OpaqueId
+
+SecurityDecisionEvidence
+    ref: SecurityDecisionRef
+    evaluated_at: Instant
+    task: AgentTaskRef | null
+    material: ContextBundleRef[]
+    agent: AgentInstanceRef | null
+    operation: OperationRef | null
+    boundary: ExecutionBoundary
+    intended_use: IntendedUseRef | null
+    policy_revision: PositiveInt
+    accepted: bool
+    deficits: SecurityDeficit[]
+```
+
+`SecurityDecisionEvidence` is persisted Kernel evidence. `accepted=true` is **not** an
+authorization state or reusable credential. Every later crossing is re-evaluated from the
+current facts and current policy.
+
+#### Responsibility
+
+Explain one concrete Kernel security evaluation.
+
+#### Identity
+
+`SecurityDecisionRef` is installation-scoped and never reused.
+
+#### Ownership
+
+Kernel owns the evidence; Modules own the semantic facts supplied to the evaluator.
+
+#### Persistence
+
+Retained with the corresponding Operation/Runtime/WorkPlan evidence according to
+security-aware retention policy.
+
+#### Mutability
+
+Immutable after evaluation.
+
+#### Invariants
+
+- `accepted=true` implies `deficits` is empty.
+- A decision cannot be replayed as permission for another crossing.
+- The decision references the actual ContextBundles supplied, not inaccessible upstream
+  domain records.
+
+#### Explicit non-responsibilities
+
+- issuing permissions or tokens;
+- changing Module classification;
+- selecting semantic Scope based on payload text;
+- becoming AgentTask lifecycle state.
+
+### 4.6 Context minimization and recalculation
+
+Security attaches to the material actually crossing a boundary.
+
+```text
+private source ContextBundle
+        |
+        | Module-owned minimization Operation
+        v
+OperationInvocationRecord
+        |
+        v
+new ContextBundle
+    derived_from = [source]
+    derivation_operation = exact OperationInvocationRef
+    security = Module-recalculated DataSecurityFacts for actual output
+```
+
+The original ContextBundle is never relabeled. Kernel verifies that the Operation
+contract allows recalculation and then evaluates the derived bundle normally wherever it
+is next used.
+
+---
+
+## 5. `ModuleManifest`
 
 ### Responsibility
 
-Publish one Module's current MADRE-facing semantic contract and discovery surface.
+Publish one Module's current MADRE-facing domain/discovery contract without exposing its
+internal application model.
 
 ### Fields
 
-| Field | Type | Cardinality | Meaning |
-| --- | --- | ---: | --- |
-| `module` | `ModuleRef` | 1 | Stable installation identity. |
-| `manifest_revision` | `PositiveInt` | 1 | Monotonic revision of the manifest publication. |
-| `name` | `string` | 1 | Human-readable name. |
-| `description` | `string` | 1 | Module purpose/domain boundary. |
-| `scope` | `ScopeDescriptor[]` | 0..N | Semantic routing/discovery hints. |
-| `visibility` | `VisibilityPolicy` | 1 | Who may discover that this Module exists. |
-| `security` | `SecurityProfile` | 1 | Module trust/clearance declaration. |
-| `operations` | `OperationRef[]` | 0..N | Currently advertised Operation revisions. |
-| `skills` | `SkillRef[]` | 0..N | Currently advertised Skill revisions. |
-| `agents` | `AgentDefinitionRef[]` | 0..N | Currently advertised AgentDefinition revisions. |
-| `context_offers` | `ContextOfferDescriptor[]` | 0..N | Bounded context kinds/purposes the Module can project. |
-
-Suggested value objects:
+```text
+ModuleManifest
+    module: ModuleRef                              1
+    revision: PositiveInt                          1
+    name: string                                   1
+    description: string                            1
+    visibility: DiscoveryPolicyRef                 1
+    scopes: ScopeDescriptor[]                      0..N
+    operations: OperationRef[]                     0..N
+    skills: SkillRef[]                             0..N
+    agents: AgentDefinitionRef[]                   0..N
+    context_offers: ContextOfferDescriptor[]       0..N
+```
 
 ```text
 ScopeDescriptor
-  name: string
-  description: string
-  tags: set[string]
+    ref: ScopeRef
+    name: string
+    description: string
 
 ContextOfferDescriptor
-  context_key: string
-  purpose: string
-  output_schema: JsonSchema
-  default_label: SecurityLabel
+    offer_id: OpaqueId
+    purpose: string
+    scope: ScopeRef
+    payload_schema: SchemaRef | null
+    visibility: DiscoveryPolicyRef
 ```
 
-### Identity/reference semantics
+A context offer advertises what can be projected. Actual `DataSecurityFacts` are created
+when the Module emits the concrete ContextBundle and therefore are not frozen in the
+offer.
 
-`ModuleRef` is stable while the installation considers this the same semantic Module.
-Manifest revisions are replaceable publications. Definitions have their own revisioned
-identities and are not identified by manifest position.
+### Identity
+
+`ModuleRef` is stable for the same installed semantic Module. Manifest `revision` is a
+monotonic publication sequence and is not part of child definition identity.
+
+### Ownership
+
+The Module owns manifest content and Scope meaning. Kernel owns registration and
+policy-filtered discovery.
 
 ### Persistence
 
-Kernel registry persists the latest accepted manifest and may retain older manifest
-revisions for inspection. Old pinned definitions remain in their responsible definition
-stores even after they are no longer advertised by the latest manifest.
+Kernel persists the current accepted manifest and MAY retain historical manifest
+revisions for inspection. Exact child definition revisions referenced by retained state
+remain resolvable independently of the current manifest.
 
-### Ownership/authority
+### Mutability
 
-The Module owns and signs/serves the content of its manifest. Kernel decides whether to
-register it and who may discover it.
+A published manifest revision is immutable; change publishes another revision.
 
 ### Invariants
 
-- A manifest may advertise zero Agents, zero Skills and zero Operations.
-- Every advertised definition reference must resolve to the same `ModuleRef` unless a
-  future explicit import mechanism says otherwise.
-- A manifest cannot assign itself the CORE role.
-- Module visibility is an upper bound; child descriptors cannot widen it.
+- Zero Operations, Skills or Agents are valid.
+- Every `ScopeDescriptor.ref.module` equals `module`.
+- Manifest cannot assign itself CORE.
+- Discovering a Module never implies Operation admissibility.
+- Context offer metadata does not expose underlying domain records.
 
-### Intentionally not stored
+### Explicit non-responsibilities
 
-- Internal application/database schema.
-- Runtime Capability configuration.
-- WorkPlans or AgentTasks.
+- Module database schema/state;
+- Agent internal architecture;
+- Runtime Capability configuration;
+- security decisions;
+- WorkPlans/AgentTasks;
 - CORE privilege.
-- Arbitrary Module-owned domain state.
 
 ---
 
-## 5. CoreRoleAssignment
+## 6. `CoreRoleAssignment`
 
-A separate representation **is required** because CORE is privileged Kernel policy, not
+A separate representation is required because CORE privilege is Kernel policy, not a
 Module self-description.
+
+### Responsibility
+
+Identify the Module currently assigned the replaceable CORE role.
 
 ### Fields
 
 ```text
 CoreRoleAssignment
-  module: ModuleRef
-  assigned_at: Instant
-  assigned_by: OwnerSubject
-  policy_revision: PositiveInt
+    module: ModuleRef                 1
+    assigned_at: Instant              1
+    policy_revision: PositiveInt      1
 ```
 
-This is a singleton installation-scoped Kernel configuration record.
+Administrative audit may independently record the installation-owner action that caused
+the assignment; that identity model is not made part of Agent architecture.
 
-### Persistence and authority
+### Identity
 
-Persist durably as Kernel configuration. Only the Owner/Kernel administration path may
-change it. A Module manifest cannot mutate it.
+Singleton active installation configuration.
 
-### Invariants
+### Ownership
 
-- At most one active assignment exists.
-- Assignment does not bypass Module visibility, ContextBundle flow constraints,
-  Operation authorization or current security policy.
-- Replacing CORE changes future resolution policy; it does not rewrite historical Agent
-  or WorkPlan references.
-
-### Intentionally not stored
-
-CORE-specific subclasses, hidden storage access, Runtime bypasses or global Module data.
-
----
-
-## 6. OperationDescriptor
-
-### Responsibility
-
-Describe one bounded callable function exposed by one Module without exposing provider
-mechanics.
-
-### Fields
-
-| Field | Type | Cardinality |
-| --- | --- | ---: |
-| `ref` | `OperationRef` | 1 |
-| `name` | `string` | 1 |
-| `purpose` | `string` | 1 |
-| `input_schema` | `JsonSchema` | 1 |
-| `output_schema` | `JsonSchema` | 1 |
-| `visibility` | `VisibilityPolicy` | 1 |
-| `side_effects` | `SideEffectKind` | 1 |
-| `retry_semantics` | `RetrySemantics` | 1 |
-| `security` | `OperationSecurity` | 1 |
-| `provenance` | `DefinitionProvenance<OperationRef>` | 1 |
-
-```text
-SideEffectKind = NONE | LOCAL_MUTATION | EXTERNAL_EFFECT
-RetrySemantics = REPEATABLE | IDEMPOTENT | NOT_SAFE_OR_UNKNOWN
-EgressBoundary = NONE | LOCAL | REMOTE
-
-OperationSecurity
-  required_caller_clearance: SecurityLabel
-  maximum_input_label: SecurityLabel
-  egress: EgressBoundary
-  may_lower_classification: bool = false
-```
-
-### Identity/reference semantics
-
-Operation identity is `(module, operation_id, revision)`. Any incompatible change to
-input/output, security or effect semantics publishes a new revision. This is slightly
-stricter than the minimum stated only for Skill/Workflow revisions, but is required to
-avoid a pinned Workflow silently invoking a changed contract.
+Kernel/installation owner policy.
 
 ### Persistence
 
-Published descriptor revisions are immutable and retained at least as long as a
-retained WorkPlan or AgentDefinition references them.
+Durable Kernel configuration with ordinary administrative audit history.
 
-### Ownership/authority
+### Mutability
 
-Owning Module defines the Operation contract and implements it. Kernel validates caller
-visibility, explicit grant, context flow and current policy before invocation.
+Changed only by explicit reassignment. Reassignment creates new administrative evidence;
+it does not rewrite Module or Agent definitions.
 
 ### Invariants
 
-- Skill or Workflow references to an Operation never grant invocation authority.
-- `NOT_SAFE_OR_UNKNOWN` work is never blindly retried after uncertain external effect.
-- A lower-classification output derived from higher-classification input is valid only
-  when `may_lower_classification` is true **and** current Kernel policy authorizes that
-  exact transformation.
-- Provider-specific HTTP/MCP/script details are adapter state, not Agent-visible schema.
+- At most one active CORE assignment.
+- The referenced Module must be registered and compatible with the CORE contract.
+- CORE assignment does not bypass Scope, Context, Operation or Runtime security checks.
+- Changing CORE affects future role-based resolution only.
 
-### Intentionally not stored
+### Explicit non-responsibilities
 
-Runtime WorkRecord state, Capability identity, arbitrary implementation configuration or
-Module database identifiers.
+- owning user configuration globally;
+- rewriting `AgentDefinitionRef` ownership;
+- moving `AgentSkillInstance`s or Workflows between Modules;
+- granting direct storage access to other Modules;
+- bypassing Runtime.
 
 ---
 
-## 7. SkillDefinition
+## 7. `OperationDescriptor`
 
 ### Responsibility
 
-Publish one reusable, composable Agent ability package.
+Publish one bounded callable function owned by one Module, including the typed contract,
+security facts and truthful effect/repetition semantics required to decide whether and
+how it may execute.
 
 ### Fields
 
-| Field | Type | Cardinality |
-| --- | --- | ---: |
-| `ref` | `SkillRef` | 1 |
-| `name` | `string` | 1 |
-| `purpose` | `string` | 1 |
-| `description` | `string` | 1 |
-| `instructions` | `string[]` | 0..N |
-| `harness_fragments` | `string[]` | 0..N |
-| `operation_requirements` | `OperationRequirement[]` | 0..N |
-| `context_expectations` | `ContextExpectation[]` | 0..N |
-| `expected_artifacts` | `ArtifactConvention[]` | 0..N |
-| `workflow_refs` | `WorkflowRef[]` | 0..N |
-| `visibility` | `VisibilityPolicy` | 1 |
-| `required_security` | `SecurityLabel` | 1 |
-| `provenance` | `DefinitionProvenance<SkillRef>` | 1 |
+```text
+OperationDescriptor
+    ref: OperationRef                         1
+    name: string                              1
+    purpose: string                           1
+    input_schema: SchemaRef                   1
+    output_schema: SchemaRef                  1
+    security: OperationSecurityFacts          1
+    effect_semantics: EffectSemantics         1
+    visibility: DiscoveryPolicyRef            1
+    provenance: DefinitionProvenance<OperationRef> 1
+```
 
 ```text
+EffectKind
+    NONE
+    LOCAL_MUTATION
+    EXTERNAL_EFFECT
+
+Repeatability
+    REPEATABLE
+    IDEMPOTENT
+    NON_REPEATABLE
+    UNKNOWN
+
+InterruptedOutcome
+    DETERMINATE
+    MAY_BE_UNKNOWN
+
+EffectSemantics
+    kind: EffectKind
+    repeatability: Repeatability
+    interrupted_outcome: InterruptedOutcome
+```
+
+### Identity
+
+`OperationRef = (ModuleRef, operation_id, revision)`. Any incompatible contract,
+security, boundary or effect-semantics change publishes a new revision.
+
+### Ownership
+
+`ref.module` owns and implements the Operation. Kernel only exposes/invokes it through
+policy-filtered discovery plus current `SecurityAlgebra` evaluation.
+
+### Persistence
+
+Published revisions are immutable and retained while exact references remain in retained
+Agents, Skills, Workflows, plans or evidence.
+
+### Mutability
+
+None after publication.
+
+### Invariants
+
+- Operation is the only canonical callable MADRE abstraction.
+- External scripts/APIs/MCP tools/functions are adapter internals behind the Operation.
+- Skill/Workflow/AgentTask references to an Operation are requirements or guidance, not
+  authority.
+- Unknown/non-repeatable external effects are never blindly retried after uncertain
+  outcome evidence.
+- A lower-sensitivity derived ContextBundle requires
+  `security.classification_transform = MAY_RECALCULATE` and a fresh Kernel evaluation.
+
+### Explicit non-responsibilities
+
+- provider transport details exposed to the Agent;
+- Runtime lifecycle;
+- Capability identity;
+- Agent security permission lists;
+- Module database identifiers.
+
+---
+
+## 8. `SkillDefinition`
+
+### Responsibility
+
+Publish one reusable Module-owned ability package without assuming that a Skill is a
+prompt bundle or Workflow container.
+
+### Fields
+
+```text
+SkillDefinition
+    ref: SkillRef                                  1
+    name: string                                   1
+    purpose: string                                1
+    descriptive_resources: SkillResourceRef[]      0..N
+    operation_requirements: OperationRequirement[] 0..N
+    workflow_refs: WorkflowRef[]                   0..N
+    context_expectations: ContextExpectation[]     0..N
+    visibility: DiscoveryPolicyRef                 1
+    provenance: DefinitionProvenance<SkillRef>     1
+```
+
+```text
+RequirementStrength
+    REQUIRED
+    RELEVANT
+
 OperationRequirement
-  operation: OperationRef
-  required: bool
+    operation: OperationRef
+    strength: RequirementStrength
 
 ContextExpectation
-  purpose: string
-  schema: JsonSchema | null
-  minimum_label: SecurityLabel | null
-
-ArtifactConvention
-  kind: string
-  description: string
+    purpose: string
+    schema: SchemaRef | null
+    scopes: set[ScopeRef]
 ```
 
-### Identity/reference semantics
+`OperationRequirement` never grants invocation authority. It says what the Skill expects
+or can make use of.
 
-`SkillRef` pins an exact revision. A customized Skill receives a new Module-scoped
-`skill_id`, starts at revision 1 and points `derived_from` at its upstream revision.
+### Identity
 
-User-authored Skills are persisted by the Module responsible for that user's definition
-store, normally the standard CORE Module in the first implementation. User authorship is
-preserved in provenance; it does not require a new global ownership species.
+`SkillRef` pins one immutable revision owned by the publishing Module.
+
+### Ownership
+
+`ref.module` publishes/owns the reusable definition. An Agent's responsible Module owns
+its separate learned `AgentSkillInstance`.
 
 ### Persistence
 
-Published revisions are immutable and retained while referenced by AgentDefinitions,
-Workflows under review, AgentTasks or retained WorkPlans.
+Published revisions are retained while referenced by any AgentSkillInstance, Workflow,
+Agent/plan evidence or configured retention.
 
-### Ownership/authority
+### Mutability
 
-The `ModuleRef` in the Skill identity is the publishing/management authority. Other
-Agents may attach the Skill without acquiring that Module's domain ownership.
+None after publication. Change publishes a new Skill revision. Derivation creates a new
+Skill identity with provenance rather than modifying upstream history.
 
 ### Invariants
 
 - `workflow_refs` may be empty.
-- Referenced Operations are semantic requirements/recommendations, not grants.
-- Updating an upstream Skill creates a new revision; existing AgentDefinitions remain
-  pinned.
-- Derivation never mutates upstream history.
+- Referenced Workflow revisions are exact.
+- Resource references are immutable/revision-pinned.
+- Publishing Skill revision N+1 never changes an existing AgentSkillInstance sourced from
+  revision N.
 
-### Intentionally not stored
+### Explicit non-responsibilities
 
-Agent working memory, live task state, implicit Module storage access or autonomous
-learning/promotion state.
-
----
-
-## 8. WorkflowDefinition
-
-### Responsibility
-
-Publish one explicit reusable recipe without introducing a generic workflow DSL.
-
-### Fields
-
-| Field | Type | Cardinality |
-| --- | --- | ---: |
-| `ref` | `WorkflowRef` | 1 |
-| `name` | `string` | 1 |
-| `purpose` | `string` | 1 |
-| `expected_input` | `JsonSchema | null` | 0..1 |
-| `expected_output` | `JsonSchema | null` | 0..1 |
-| `instructions` | `string` | 1 |
-| `operation_refs` | `OperationRef[]` | 0..N |
-| `delegation_requirements` | `AgentRequirement[]` | 0..N |
-| `expected_artifacts` | `ArtifactConvention[]` | 0..N |
-| `visibility` | `VisibilityPolicy` | 1 |
-| `required_security` | `SecurityLabel` | 1 |
-| `provenance` | `DefinitionProvenance<WorkflowRef>` | 1 |
-
-`instructions` is deliberately an opaque validated text recipe in the first schema. A
-structured DSL should be introduced only after real workflows demonstrate a stable
-structure worth encoding.
-
-### Identity/reference semantics
-
-Workflow identity is independent of Skill and Agent membership. A Skill contributes a
-Workflow by placing its `WorkflowRef` in `workflow_refs`; an AgentDefinition directly
-attaches one through `direct_workflow_refs`.
-
-A direct private user Workflow therefore needs no fake Skill. It is simply a private
-WorkflowDefinition revision managed by the responsible definition Module and referenced
-only by the desired AgentDefinition.
-
-### Persistence
-
-Same immutable-revision rules as SkillDefinition.
-
-### Ownership/authority
-
-Publishing Module owns the definition record. An Agent using the Workflow does not gain
-authority over the publishing Module or referenced Operations.
-
-### Invariants
-
-- No exclusive parent field.
-- No reverse `skill_id` or `agent_id` pointer.
-- Referenced Operations still require explicit task grants and Kernel authorization.
-- A derived custom Workflow has a new identity and provenance link.
-
-### Intentionally not stored
-
-Live execution graph, Runtime work IDs, task state, learned success scores or hidden
-planner state.
+- Agent-specific learned state;
+- success scores;
+- autonomous learning/promotion;
+- Operation permission lists;
+- Agent memory/session state.
 
 ---
 
-## 9. AgentDefinition
+## 9. `AgentSkillInstance`
 
 ### Responsibility
 
-Publish reusable Agent configuration that can be instantiated concurrently.
+Represent one unique AgentDefinition-owned installation/learning of one exact
+Module-published Skill revision.
 
 ### Fields
-
-| Field | Type | Cardinality |
-| --- | --- | ---: |
-| `ref` | `AgentDefinitionRef` | 1 |
-| `name` | `string` | 1 |
-| `description` | `string` | 1 |
-| `base_instructions` | `string[]` | 0..N |
-| `skill_refs` | `SkillRef[]` | 0..N |
-| `direct_workflow_refs` | `WorkflowRef[]` | 0..N |
-| `operation_scope` | `OperationScope` | 1 |
-| `security` | `SecurityProfile` | 1 |
-| `instance_policy` | `InstancePolicy` | 1 |
-| `resolution_tags` | `set[string]` | 0..N |
-| `visibility` | `VisibilityPolicy` | 1 |
-| `provenance` | `DefinitionProvenance<AgentDefinitionRef>` | 1 |
 
 ```text
-OperationScope
-  allowed_modules: set[ModuleRef] | null
-  allowed_operations: set[OperationRef] | null
-
-InstancePolicy
-  durable_checkpoint_while_active: bool
-  retention_after_close: Duration | null
+AgentSkillInstance
+    ref: AgentSkillInstanceRef                  1
+    source_skill: SkillRef                      1
+    adopted_workflows: WorkflowRef[]            0..N
+    created_at: Instant                         1
+    provenance: SkillInstanceProvenance         1
 ```
 
-`OperationScope` is a **ceiling**, not an authorization source. `null` means this
-AgentDefinition imposes no additional restriction on that dimension. Actual Operations
-must still be explicitly granted to the AgentTask and allowed by Kernel policy.
+```text
+SkillInstanceProvenance
+    created_by: ProvenanceSubjectRef
+    source_skill: SkillRef
+```
 
-### Identity/reference semantics
+`source_skill` is intentionally repeated in provenance only as creation lineage; both
+values MUST agree.
 
-`AgentDefinitionRef.module` is the responsible Module. The exact revision is pinned in
-AgentTasks/WorkPlans once resolved. A customized Agent receives a new identity and
-`derived_from` link.
+### Identity
+
+`AgentSkillInstanceRef` is scoped by the exact owning `AgentDefinitionRef`. The
+`skill_instance_id` is unique within that definition revision.
+
+### Ownership
+
+The AgentDefinition's responsible Module manages the instance as Agent configuration.
+The source Skill remains owned by its publishing Module.
 
 ### Persistence
 
-Published revisions are immutable. Definition revisions needed by retained WorkPlans are
-kept resolvable even if no longer advertised.
+Durable with the AgentDefinition configuration and retained while referenced by a task or
+historical plan.
 
-### Ownership/authority
+### Mutability
 
-Responsible Module manages the AgentDefinition. That responsibility does not imply
-implicit access to the Module's domain state.
+Immutable in the initial architecture.
+
+Learning/installing a Skill into an immutable AgentDefinition is an atomic configuration
+publication: allocate a new AgentDefinition revision (or new derived AgentDefinition
+identity), create the new AgentSkillInstance owned by that exact revision, and publish the
+AgentDefinition referencing it. Existing AgentDefinitions/instances do not change.
 
 ### Invariants
 
-- Many AgentInstances may reference the same definition revision concurrently.
-- Skill and Workflow revisions are explicit.
-- Skills do not grant Operations.
-- The definition cannot widen Module or installation security policy.
-- Persistence/persona behavior is policy data, not an Agent subclass.
+- `source_skill` is an exact immutable revision.
+- Every `adopted_workflows` reference MUST be present in the source SkillDefinition's
+  `workflow_refs` at creation in the initial model.
+- A later source Skill revision never floats into this instance.
+- AgentSkillInstance does not itself confer Operation admissibility.
 
-### Intentionally not stored
+### Explicit non-responsibilities
 
-Current conversation/task context, current working memory, WorkPlan state, Runtime work
-or Module database data.
+- autonomous adaptation/learning scores;
+- generic configuration blobs;
+- working memory;
+- source Skill mutation;
+- user Workflow ownership.
 
 ---
 
-## 10. AgentRequirement
+## 10. `WorkflowDefinition`
 
-`AgentRequirement` is a value object used by AgentTask and Workflow delegation; it is not
-a persisted Agent species.
+### Responsibility
+
+Publish one first-class reusable explicit procedure while leaving recipe internals opaque
+until real workflows justify a shared DSL.
+
+### Fields
+
+```text
+WorkflowDefinition
+    ref: WorkflowRef                                  1
+    name: string                                      1
+    purpose: string                                   1
+    input_schema: SchemaRef | null                    0..1
+    output_schema: SchemaRef | null                   0..1
+    recipe: WorkflowRecipeRef                         1
+    operation_requirements: OperationRequirement[]    0..N
+    delegation_requirements: AgentRequirement[]       0..N
+    visibility: DiscoveryPolicyRef                    1
+    provenance: DefinitionProvenance<WorkflowRef>     1
+```
+
+### Identity
+
+`WorkflowRef` is Module-scoped and pins an immutable revision. Workflow identity is
+independent from Skill membership and Agent attachment.
+
+### Ownership
+
+The publishing Module owns the WorkflowDefinition. Direct attachment to an
+AgentDefinition is configuration managed by that Agent's responsible Module. A user
+creating a private Workflow for such an Agent normally causes that responsible Module to
+publish/manage the private Workflow; this is not ownership by the CORE role as such.
+
+### Persistence
+
+Immutable revisions are retained while referenced by Skills, AgentSkillInstances,
+AgentDefinitions, AgentTasks or retained plans.
+
+### Mutability
+
+None after publication. Derivation creates a new Workflow identity with `derived_from`.
+
+### Invariants
+
+- No mandatory parent Skill or Agent pointer.
+- A Skill contributes a Workflow by reference.
+- An AgentDefinition directly attaches a Workflow by reference.
+- The effective Agent repertoire is direct Agent Workflows plus Workflows adopted through
+  AgentSkillInstances.
+- Operation requirements do not authorize the referenced Operations.
+
+### Explicit non-responsibilities
+
+- universal Workflow DSL;
+- Runtime jobs;
+- AgentTask lifecycle;
+- learned execution scores;
+- implicit Skill creation for ordinary user procedures.
+
+---
+
+## 11. `AgentDefinition`
+
+### Responsibility
+
+Expose MADRE's reusable public descriptor for one reasoning actor while binding opaquely
+to the fundamentally Module-specific Agent manager implementation.
+
+### Fields
+
+```text
+AgentDefinition
+    ref: AgentDefinitionRef                         1
+    name: string                                    1
+    description: string                             1
+    manager_definition_ref: ModuleAgentDefinitionRef 1
+    skill_instances: AgentSkillInstanceRef[]        0..N
+    direct_workflows: WorkflowRef[]                 0..N
+    security: ActorSecurityFacts                    1
+    resolution_descriptors: AgentResolutionDescriptor[] 0..N
+    visibility: DiscoveryPolicyRef                  1
+    provenance: DefinitionProvenance<AgentDefinitionRef> 1
+```
+
+```text
+AgentResolutionDescriptor
+    namespace_module: ModuleRef
+    descriptor_id: OpaqueId
+```
+
+Resolution descriptors are semantic matching facts, not authority.
+
+### Identity
+
+`AgentDefinitionRef.module` is the responsible Agent-managing Module. Exact revision is
+always preserved once persisted in a WorkPlan/AgentTask binding.
+
+### Ownership
+
+The responsible Module owns the Agent configuration and interprets
+`manager_definition_ref`. CORE role assignment is irrelevant to that ownership.
+
+### Persistence
+
+Published revisions are immutable and retained while referenced by Agent instances,
+AgentSkillInstances, AgentTasks or retained plans/evidence.
+
+### Mutability
+
+None after publication. Configuration change, including learning a Skill or adding a
+direct Workflow, publishes another revision/new derived definition.
+
+### Invariants
+
+- `manager_definition_ref.module == ref.module`.
+- Every `skill_instances[*].agent_definition == ref`.
+- Several AgentInstances may instantiate the same exact definition concurrently.
+- The definition exposes no universal prompt, conversation, memory or session layout.
+- `security` is a fact declaration used by Kernel algebra, not a permission set.
+- Agent ownership does not imply access to the responsible Module's domain persistence.
+
+### Explicit non-responsibilities
+
+The universal schema does **not** contain:
+
+```text
+base_prompt
+base_instructions
+conversation_history
+working_memory
+persona_memory
+learning_memory
+standard session
+state/memory policy enum
+operation allowlist/grant set
+working_state payload
+model/provider configuration
+```
+
+All such implementation choices, if used, remain behind `manager_definition_ref` in the
+responsible Module.
+
+---
+
+## 12. `AgentInstance` and opaque Agent state
+
+### Responsibility
+
+Identify one concrete working actor instantiated from an exact AgentDefinition while
+leaving all internal state semantics with its responsible Module.
+
+### Fields
+
+```text
+AgentInstance
+    ref: AgentInstanceRef                         1
+    definition: AgentDefinitionRef                1
+    manager_instance_ref: ModuleAgentInstanceRef  1
+    state_refs: AgentStateRef[]                   0..N
+    created_at: Instant                           1
+    closed_at: Instant | null                     0..1
+```
+
+### Identity
+
+`AgentInstanceRef` is installation-scoped and never reused. `definition` pins the exact
+AgentDefinition revision instantiated.
+
+### Ownership
+
+Kernel coordinates creation/binding; the responsible Module behind
+`definition.module` owns and interprets the actual Agent instance and every AgentStateRef.
+
+### Persistence
+
+Kernel persists the integration record while required by active or retained WorkPlans.
+The responsible Module independently persists whatever manager instance/state it needs
+for restart according to its own Agent semantics.
+
+### Mutability
+
+`definition` and `manager_instance_ref` do not change. `state_refs` may be explicitly
+synchronized as the responsible Module creates/retires opaque state references;
+`closed_at` may be set once.
+
+The Kernel does not checkpoint arbitrary state content and does not prescribe a single
+state object.
+
+### Invariants
+
+- `manager_instance_ref.module == definition.module`.
+- Every `state_refs[*].module == definition.module`.
+- `state_refs` cardinality is 0..N.
+- Different AgentInstances do not share state merely because they share one definition.
+  A responsible Module may intentionally reference shared Module state, but that is an
+  explicit Module-owned design, not a MADRE default.
+- If Agent state content must cross a MADRE boundary, the Module projects it into a new
+  ContextBundle and normal security algebra applies.
+
+### Explicit non-responsibilities
+
+- universal Session entity;
+- `working_state: JsonValue` or arbitrary map;
+- memory/persona taxonomy;
+- Agent-internal state machine semantics;
+- Runtime lifecycle;
+- implicit domain authority.
+
+---
+
+## 13. `AgentRequirement`
+
+`AgentRequirement` is a typed value embedded in WorkPlans/AgentTasks/Workflow delegation.
+It is not another Agent species and does not authorize anything.
 
 ```text
 AgentRequirement
-  preferred_definition: AgentDefinitionRef | null
-  required_tags: set[string]
-  required_skills: set[SkillRef]
-  minimum_clearance: SecurityLabel
+    preferred_definition: AgentDefinitionRef | null
+    resolution_descriptors: AgentResolutionDescriptor[]
+    required_skill_sources: SkillRef[]
+    required_workflows: WorkflowRef[]
+    security_requirement: ActorSecurityRequirement | null
 ```
 
-The Kernel resolves this only against definitions visible and permitted to the current
-principal/context. Persisting the requirement separately from the resolved binding is
-important for the missing-Agent case: a future resolver can explain what was required
-without silently substituting a different actor.
+```text
+ActorSecurityRequirement
+    minimum_trust: OrdinarySecurityLevel | null
+    minimum_handled_sensitivity: OrdinarySecurityLevel | null
+    maximum_execution_risk: OrdinarySecurityLevel | null
+```
+
+These fields narrow semantic candidate resolution. Actual Context/Operation crossings are
+still evaluated from the resolved Agent's real `ActorSecurityFacts` and current policy.
+
+The requirement is persisted even after exact Agent resolution. This preserves what the
+objective asked for if the resolved AgentDefinition later disappears and permits a future
+resolver to detect the missing binding without silently substituting another actor.
 
 ---
 
-## 11. AgentInstance
+## 14. Typed schemas, payloads and `ContextBundle`
 
-### Responsibility
+### 14.1 Schema-bound payload
 
-Represent one actual working reasoning actor and its restart-relevant working state.
+Architectural semantic payload is never typed as `JsonValue`, `Any`, `dict[str, Any]` or
+an equivalent unvalidated arbitrary map.
 
-### Fields
+Conceptually:
 
-| Field | Type | Cardinality |
-| --- | --- | ---: |
-| `ref` | `AgentInstanceRef` | 1 |
-| `definition` | `AgentDefinitionRef` | 1 |
-| `task` | `AgentTaskRef` | 1 in initial implementation |
-| `created_at` | `Instant` | 1 |
-| `checkpointed_at` | `Instant | null` | 0..1 |
-| `working_state` | `JsonValue | null` | 0..1 |
-| `working_state_label` | `SecurityLabel | null` | 0..1 |
-| `closed_at` | `Instant | null` | 0..1 |
+```text
+TypedPayload<S>
+    schema: SchemaRef<S>
+    value: S
+```
 
-### Identity/reference semantics
+A concrete implementation may persist it as:
 
-Instance identity is installation-scoped and never reused. It points to one exact
-AgentDefinition revision.
+```text
+schema ref + canonical encoded bytes
+```
 
-The initial implementation is task-scoped. Future persistent/persona behavior may
-change assignment policy without introducing subclasses; if one instance later serves
-multiple tasks, task-instance binding can be normalized into a separate relation without
-changing AgentDefinition identity.
+where the Module/schema codec validates and decodes the bytes into the type identified by
+`SchemaRef`. JSON is one possible encoding; it does not make arbitrary JSON a valid
+semantic type.
 
-### Persistence
+A `SchemaRef` resolves to immutable Module-owned schema material. The concrete schema
+language (JSON Schema, protobuf, typed JVM codec, CBOR schema, etc.) is not fixed here.
 
-If the AgentDefinition's `instance_policy.durable_checkpoint_while_active` is true,
-checkpoint state is durable for restart continuity. Closed instances are retained only
-as required by plan/research retention; rich persistent persona memory is deferred.
+### 14.2 `ContextBundle`
 
-### Ownership/authority
+#### Responsibility
 
-Kernel controls instance lifecycle. The responsible Module owns any future semantic
-learning/memory policy. Working state is never authority to access a Module.
+Carry one immutable bounded semantic projection with explicit type, provenance and
+security facts across Module/Agent/Operation/Runtime boundaries.
 
-### Invariants
+#### Fields
 
-- Two instances never share mutable working state implicitly.
-- Resuming an instance re-evaluates current security policy; a stale checkpoint cannot
-  authorize a newly forbidden flow.
-- `working_state_label` must dominate every sensitive value persisted in working state.
+```text
+ContextBundle
+    ref: ContextBundleRef                           1
+    owner_module: ModuleRef                         1
+    purpose: string                                 1
+    payload: TypedPayload<S> | ModuleResourceRef    1
+    security: DataSecurityFacts                     1
+    created_at: Instant                             1
+    derived_from: ContextBundleRef[]                0..N
+    derivation_operation: OperationInvocationRef | null 0..1
+    provenance: ContextProvenance                   1
+```
 
-### Intentionally not stored
+```text
+ContextProducer = one of:
+    ModuleProducer(module: ModuleRef)
+    AgentProducer(instance: AgentInstanceRef)
+    OperationProducer(invocation: OperationInvocationRef)
 
-Module domain persistence, global memory ontology, Runtime lifecycle or an inherited
-Agent subclass type.
+ContextProvenance
+    producer: ContextProducer
+    source_contexts: ContextBundleRef[]
+    source_resources: ModuleResourceRef[]
+```
 
----
+#### Identity
 
-## 12. ContextBundle
+`ContextBundleRef` is immutable and installation-scoped. Transforming/projection creates
+a new bundle identity.
 
-### Responsibility
+#### Ownership
 
-Carry one immutable bounded semantic payload across a Module/Agent/Operation boundary
-with enough metadata for deterministic information-flow enforcement.
+`owner_module` is responsible for emitting/classifying the actual material. Kernel brokers
+and evaluates crossings but never reinterprets domain payload to assign security facts.
 
-### Fields
+Agent output is emitted/classified through its responsible Module's Agent manager; the
+model/Agent cannot directly self-declare lower security facts.
 
-| Field | Type | Cardinality |
-| --- | --- | ---: |
-| `ref` | `ContextBundleRef` | 1 |
-| `owner_module` | `ModuleRef` | 1 |
-| `purpose` | `string` | 1 |
-| `payload` | `JsonValue` | 1 |
-| `label` | `SecurityLabel` | 1 |
-| `flow` | `FlowConstraints` | 1 |
-| `created_at` | `Instant` | 1 |
-| `derived_from` | `ContextBundleRef[]` | 0..N |
-| `derivation_operation` | `OperationInvocationRef | null` | 0..1 |
-| `payload_digest` | `Digest | null` | 0..1 |
+#### Persistence
 
-Large files remain Module-owned artifacts referenced through bounded payload values; the
-first schema does not require a universal blob store.
+Persist while required by active/retained WorkPlans or evidence, subject to security-aware
+retention. A plan may retain an expired/unavailable reference rather than silently copying
+Module data into orchestration storage.
 
-### Identity/reference semantics
+#### Mutability
 
-ContextBundle identity is immutable. A transformation always creates a new bundle ID;
-it never edits the original classification in place.
+None after creation.
 
-### Persistence
+#### Invariants
 
-Persist while referenced by an active/retained AgentTask or WorkPlan, subject to
-security-specific retention. Sensitive bundles may have shorter retention than the plan
-that references them; the plan then truthfully retains an unresolved/expired reference.
+- `TypedPayload.schema` resolves exactly and validates the payload.
+- `ModuleResourceRef` remains opaque to consumers; accessing its content requires a
+  Module-defined projection/Operation boundary.
+- A derived bundle is a new object; the source is never relabeled.
+- If derived sensitivity is lower than any source bundle sensitivity,
+  `derivation_operation` is required, the exact Operation must declare
+  `MAY_RECALCULATE`, and the producer Module must classify the resulting actual material.
+- Every later crossing re-evaluates the derived bundle's own facts under current policy.
 
-### Ownership/authority
+#### Explicit non-responsibilities
 
-`owner_module` is authoritative for the bundle it issued. Kernel brokers flow. The
-consumer cannot reclassify it.
-
-### Invariants
-
-- Direct transfer requires destination clearance, visibility/authorization, flow
-  constraints and egress policy all to permit it.
-- If an output label is lower than any input label, `derivation_operation` is required,
-  that Operation revision must allow classification lowering, and current Kernel policy
-  must authorize the transformation.
-- `derived_from` preserves provenance across minimization/anonymization/declassification.
-- Prompt/model output alone can never create a lower-security authorization fact.
-
-### Intentionally not stored
-
-Universal truth/knowledge type, domain database row ownership, implicit Agent memory or
-Runtime execution state.
+- universal knowledge/truth type;
+- Module database row identity exposed as authority;
+- arbitrary JSON storage;
+- Agent internal memory;
+- Runtime work state;
+- reusable security permission.
 
 ---
 
-## 13. WorkPlan
+## 15. `WorkPlan`
 
 ### Responsibility
 
 Persist semantic continuity for one objective across foreground interaction, delayed
-execution and restart.
+reasoning, process interruption and restart, independently of Runtime work lifecycle.
 
 ### Fields
 
-| Field | Type | Cardinality |
-| --- | --- | ---: |
-| `ref` | `WorkPlanRef` | 1 |
-| `objective` | `string` | 1 |
-| `objective_label` | `SecurityLabel` | 1 |
-| `origin` | `PlanOrigin` | 1 |
-| `orchestrator_requirement` | `AgentRequirement | null` | 0..1 |
-| `orchestrator_definition` | `AgentDefinitionRef | null` | 0..1 |
-| `created_at` | `Instant` | 1 |
-| `updated_at` | `Instant` | 1 |
-| `completion` | `PlanCompletion | null` | 0..1 |
-| `termination` | `PlanTermination | null` | 0..1 |
-| `retention_until` | `Instant | null` | 0..1 |
-| `derived_from` | `WorkPlanRef | null` | 0..1 |
+```text
+WorkPlan
+    ref: WorkPlanRef                              1
+    objective: ContextBundleRef                   1
+    origin: PlanOrigin                            1
+    orchestrator_requirement: AgentRequirement | null 0..1
+    orchestrator_definition: AgentDefinitionRef | null 0..1
+    created_at: Instant                           1
+    updated_at: Instant                           1
+    completion: PlanCompletion | null             0..1
+    termination: PlanTermination | null           0..1
+    retention_until: Instant | null               0..1
+    derived_from: WorkPlanRef | null              0..1
+```
 
 ```text
 PlanOrigin = one of:
-  OwnerPlanOrigin(source_ref: string | null)
-  ModulePlanOrigin(module: ModuleRef, source_ref: string | null)
-  AgentTaskPlanOrigin(task: AgentTaskRef)
+    OwnerPlanOrigin(request_context: ContextBundleRef | null)
+    ModulePlanOrigin(module: ModuleRef, source: ModuleResourceRef | null)
+    AgentTaskPlanOrigin(task: AgentTaskRef)
 
 PlanCompletion
-  completed_at: Instant
-  summary: string | null
-  artifacts: ModuleArtifactRef[]
-  context_outputs: ContextBundleRef[]
+    completed_at: Instant
+    context_outputs: ContextBundleRef[]
+    artifacts: ModuleArtifactRef[]
 
 PlanTermination
-  terminated_at: Instant
-  reason: string
+    terminated_at: Instant
+    reason_code: OpaqueId
+    detail_context: ContextBundleRef | null
 ```
 
-### Identity/reference semantics
+### Identity
 
-Plan ID is immutable and never reused. Replay/clone allocates a new plan and sets
-`derived_from`; it never modifies prior historical evidence.
+`WorkPlanRef` is never reused. Replay/clone creates a new WorkPlan and records
+`derived_from`; previous evidence is never rewritten.
 
-AgentTasks are not embedded in the persisted WorkPlan value. They are rows/documents
-owned by the plan and selected by `AgentTaskRef.plan`.
+### Ownership
+
+Kernel owns durable semantic orchestration. Modules retain authority over domain material
+and artifacts referenced from the plan.
 
 ### Persistence
 
-Durable Kernel/WorkPlan store. Active plans survive process restart. Closed plans remain
-for configurable inspection/replay retention.
+Durable across Kernel/Runtime restart. Completed/terminated plans remain inspectable for
+configured retention.
 
-### Ownership/authority
+### Mutability
 
-MADRE Kernel owns orchestration persistence. Modules retain authority over their domain
-state and artifacts referenced by the plan.
+The plan accumulates orchestration facts and may set bindings/terminal facts. It is not an
+immutable published definition. Active-plan version graphs are deferred.
+
+AgentTasks are independent durable records addressed by `AgentTaskRef`; the WorkPlan does
+not embed one mutable task graph blob.
 
 ### Invariants
 
-- No semantic `pending/running/blocked/failed` status.
-- Open plan is derived from absence of `completion` and `termination`.
+- No `pending/running/succeeded/failed/blocked` semantic status enum.
+- Open/terminal condition is derived from completion/termination facts.
 - At most one of `completion` and `termination` is present.
-- `orchestrator_definition`, once resolved, is an exact revision and is never silently
-  rewritten if it later disappears.
-- Plan security does not imply domain authority.
+- `orchestrator_definition`, once resolved, remains the exact historical binding even if
+  it later stops resolving.
+- `objective` is a classified ContextBundle, not an unclassified arbitrary semantic map.
+- Runtime queue/work state is never embedded.
 
-### Intentionally not stored
+### Explicit non-responsibilities
 
-Runtime queue state, copied Module database state, one `work_id`, live graph revision
-history or universal user-approval state.
+- Module domain persistence;
+- one-runtime-job planning;
+- user-approval lifecycle;
+- live graph revision history;
+- security authorization state;
+- Agent internal state.
 
 ---
 
-## 14. AgentTask
+## 16. `AgentTask`
 
 ### Responsibility
 
-Persist one objective-specific semantic assignment within a WorkPlan.
+Persist one objective-specific semantic assignment inside a WorkPlan without assuming one
+Workflow, one Operation or one Runtime job.
 
 ### Fields
 
-| Field | Type | Cardinality |
-| --- | --- | ---: |
-| `ref` | `AgentTaskRef` | 1 |
-| `parent_task` | `AgentTaskRef | null` | 0..1 |
-| `objective` | `string` | 1 |
-| `objective_label` | `SecurityLabel` | 1 |
-| `agent_requirement` | `AgentRequirement` | 1 |
-| `resolved_agent` | `AgentDefinitionRef | null` | 0..1 |
-| `agent_instance` | `AgentInstanceRef | null` | 0..1 |
-| `skill_refs` | `SkillRef[]` | 0..N |
-| `additional_workflow_refs` | `WorkflowRef[]` | 0..N |
-| `selected_workflow` | `WorkflowRef | null` | 0..1 |
-| `context_refs` | `ContextBundleRef[]` | 0..N |
-| `operation_grants` | `OperationRef[]` | 0..N |
-| `prerequisite_tasks` | `AgentTaskRef[]` | 0..N |
-| `eligible_at` | `Instant | null` | 0..1 |
-| `expected_outputs` | `OutputExpectation[]` | 0..N |
-| `created_at` | `Instant` | 1 |
-| `completion` | `TaskCompletion | null` | 0..1 |
-| `termination` | `TaskTermination | null` | 0..1 |
+```text
+AgentTask
+    ref: AgentTaskRef                             1
+    parent_task: AgentTaskRef | null              0..1
+    objective: ContextBundleRef                   1
+    agent_requirement: AgentRequirement           1
+    resolved_agent: AgentDefinitionRef | null     0..1
+    agent_instance: AgentInstanceRef | null       0..1
+    skill_instances: AgentSkillInstanceRef[]      0..N
+    workflow_requirements: WorkflowRef[]          0..N
+    selected_workflow: WorkflowRef | null         0..1
+    context_refs: ContextBundleRef[]              0..N
+    operation_requirements: OperationRequirement[] 0..N
+    prerequisite_tasks: AgentTaskRef[]            0..N
+    eligible_at: Instant | null                   0..1
+    expected_outputs: OutputExpectation[]         0..N
+    created_at: Instant                           1
+    completion: TaskCompletion | null             0..1
+    termination: TaskTermination | null           0..1
+```
 
 ```text
 OutputExpectation
-  name: string
-  description: string
-  schema: JsonSchema | null
+    name: string
+    schema: SchemaRef | null
+    scope: ScopeRef | null
 
 TaskCompletion
-  completed_at: Instant
-  result: JsonValue | null
-  context_outputs: ContextBundleRef[]
-  artifacts: ModuleArtifactRef[]
-  summary: string | null
+    completed_at: Instant
+    context_outputs: ContextBundleRef[]
+    artifacts: ModuleArtifactRef[]
 
 TaskTermination
-  terminated_at: Instant
-  reason: string
+    terminated_at: Instant
+    reason_code: OpaqueId
+    detail_context: ContextBundleRef | null
 ```
 
-### Identity/reference semantics
+### Identity
 
-Task identity is scoped by WorkPlan. Child delegation creates another ordinary AgentTask
-with `parent_task`; no team/group ontology is introduced.
+`AgentTaskRef.task_id` is unique within one WorkPlan. Delegation creates an ordinary child
+AgentTask with `parent_task`; there is no team/supervisor ontology.
 
-`agent_requirement` is preserved even after `resolved_agent` is populated. This is
-required to diagnose a missing pinned Agent later and to offer future substitution
-without silently changing history.
+### Ownership
 
-### Effective Agent environment
-
-At execution time the Kernel derives:
-
-```text
-pinned AgentDefinition
-+ AgentDefinition Skill refs
-+ AgentTask Skill refs
-+ direct Agent Workflow refs
-+ Workflows contributed by effective Skills
-+ AgentTask additional Workflow refs
-+ selected Workflow (if any)
-+ AgentTask ContextBundles
-+ AgentTask explicit Operation grants
-+ current Kernel policy
-= AgentInstance environment
-```
-
-An Operation is callable only if it is in `operation_grants`, allowed by the
-AgentDefinition's `operation_scope`, visible, compatible with all involved security
-labels and permitted by current Kernel policy.
-
-### Readiness
-
-Readiness is computed, not persisted as lifecycle state. Minimum initial computation:
-
-```text
-not completed or terminated
-AND every prerequisite task has TaskCompletion
-AND eligible_at is null or has arrived
-AND resolved/potential AgentDefinition is visible and permitted
-AND every required ContextBundle can legally flow
-AND selected Workflow/Skills resolve
-AND required Operations are available and permitted
-```
-
-A user decision is not a universal state. A future concrete requirement may add another
-typed prerequisite without changing the task lifecycle model.
+Kernel owns task orchestration. Responsible Modules own Agent internals; domain Modules
+own Context/Operation semantics.
 
 ### Persistence
 
-Durable with its WorkPlan. AgentTask records survive restart regardless of whether their
-AgentInstance or Runtime work is currently present.
+Durable with the WorkPlan and independent from AgentInstance/Runtime process lifetime.
 
-### Ownership/authority
+### Mutability
 
-Kernel owns task orchestration. Modules own the meaning/effects of Operations and
-artifacts used by the task.
+Resolution and instance bindings may be populated once; completion or termination may be
+set once. Readiness is always recomputed rather than persisted as a mutable lifecycle
+state.
+
+### Effective semantic Agent environment
+
+For a resolved task, Kernel can inspect the semantic composition:
+
+```text
+exact AgentDefinition
+    + selected AgentSkillInstances owned by that definition
+    + direct Workflows from that AgentDefinition
+    + adopted Workflows from selected AgentSkillInstances
+    + task Workflow requirements/selection
+    + task ContextBundles
+    + task Operation requirements
+```
+
+This composition describes what the task needs and what the Agent can reason about. It is
+**not** an authority calculation.
+
+The actually callable Operation set at any concrete invocation is derived afresh from:
+
+```text
+policy-filtered visible Module/Operation contracts
+    + actual ContextBundle DataSecurityFacts
+    + ScopeRefs of the actual material
+    + resolved Agent ActorSecurityFacts
+    + OperationSecurityFacts
+    + actual destination/execution boundary
+    + intended use when applicable
+    + current Kernel policy
+    -> SecurityAlgebra decision
+```
+
+There is no `operation_grants`, Agent operation allowlist, planner capability token or
+persisted authorization bit.
+
+### Readiness
+
+Initial readiness is derived from facts such as:
+
+```text
+no completion/termination
+AND prerequisite AgentTasks have required completion evidence
+AND eligible_at has arrived (if present)
+AND exact/preferred Agent can be resolved or a permitted fallback exists
+AND selected AgentSkillInstances resolve and belong to the resolved AgentDefinition
+AND required/selected Workflows resolve in the Agent's effective repertoire
+AND required ContextBundles resolve
+AND required Operations are discoverable/available
+AND current security checks permit the crossings required to begin the next action
+```
+
+A rejected security crossing is an explainable current readiness/execution fact, not a
+`blocked` lifecycle state. A user decision may later become a typed prerequisite for a
+specific objective without becoming a universal lifecycle model.
 
 ### Invariants
 
-- No 1:1 Workflow relation: `selected_workflow` is optional.
-- No `work_id` field.
-- No embedded child-task list; children are queried by `parent_task`.
-- At most one of `completion` and `termination` is present.
-- Operation/Runtime failures may be recorded as evidence without forcing a canonical
-  semantic `failed` lifecycle state.
+- No semantic `work_id` field.
+- `operation_requirements` are descriptive needs only.
+- `skill_instances` MUST belong to the resolved AgentDefinition when it is bound.
+- `selected_workflow`, if present, MUST be in the effective repertoire (direct or adopted)
+  for the resolved Agent configuration.
+- One AgentTask may create 0..N child tasks, Operation invocation records and Runtime
+  evidence links.
+- At most one of completion/termination is present.
+- Runtime failure evidence does not mechanically imply semantic task failure/completion.
 
-### Intentionally not stored
+### Explicit non-responsibilities
 
-Runtime lifecycle, Module domain rows, implicit Operation authority or global blocking
-reason enum.
+- Runtime lifecycle;
+- Operation authorization/grants;
+- universal human approval state;
+- Agent internal memory/session;
+- Module domain rows;
+- `WorkPlanStep` semantics.
 
 ---
 
-## 15. OperationInvocationRecord
+## 17. `OperationInvocationRecord`
 
-This is a Kernel trace record, not a new callable architectural species. It is justified
-by three current requirements: several Operations may occur inside one AgentTask,
-external side effects need truthful evidence, and a ContextBundle classification-lowering
-transformation needs deterministic provenance.
+### Responsibility
+
+Persist truthful Kernel evidence for one requested Module Operation crossing, including
+security evaluation, dispatch/outcome evidence and result provenance.
+
+The record exists even when Kernel rejects the requested crossing, because rejection is
+useful inspectable evidence; no provider call occurs in that case.
 
 ### Fields
 
 ```text
 OperationInvocationRecord
-  ref: OperationInvocationRef
-  task: AgentTaskRef
-  operation: OperationRef
-  requested_by: AgentInstanceRef
-  requested_at: Instant
-  input_contexts: ContextBundleRef[]
-  input_digest: Digest | null
-  outcome: OperationOutcome | null
-  produced_contexts: ContextBundleRef[]
-  artifacts: ModuleArtifactRef[]
-
-OperationOutcome = one of:
-  OperationSuccess(completed_at: Instant, summary: string | null)
-  OperationFailure(completed_at: Instant, code: string, message: string)
-  UnknownExternalEffect(observed_at: Instant, message: string)
+    ref: OperationInvocationRef                 1
+    task: AgentTaskRef                          1
+    operation: OperationRef                     1
+    requested_by: AgentInstanceRef              1
+    requested_at: Instant                       1
+    input_contexts: ContextBundleRef[]          0..N
+    intended_use: IntendedUseRef | null         0..1
+    security_decision: SecurityDecisionRef      1
+    dispatched_at: Instant | null               0..1
+    outcome: OperationOutcome | null            0..1
+    produced_contexts: ContextBundleRef[]       0..N
+    artifacts: ModuleArtifactRef[]              0..N
 ```
 
-Raw sensitive inputs need not be duplicated in trace storage; ContextBundle references
-and an optional digest are sufficient for the first implementation.
+```text
+OperationOutcome = one of:
+    SecurityRejected(observed_at: Instant)
+    OperationSuccess(completed_at: Instant)
+    OperationFailure(completed_at: Instant, code: OpaqueId,
+                     detail_context: ContextBundleRef | null)
+    UnknownExternalEffect(observed_at: Instant,
+                          detail_context: ContextBundleRef | null)
+```
 
-### Persistence/authority
+### Identity
 
-Kernel trace store. Append/close semantics only; an observed unknown external effect is
-never rewritten into success without new evidence.
+`OperationInvocationRef` is installation-scoped and never reused.
 
-### Intentionally not stored
+### Ownership
 
-Runtime scheduler state or provider-specific execution details.
+Kernel owns the invocation/evidence record. Operation Module owns the function/effect and
+classifies any produced ContextBundles.
+
+### Persistence
+
+Durable with WorkPlan/security/effect evidence according to retention policy.
+
+### Mutability
+
+Append/close only: create request, attach security decision, optionally set dispatch time,
+then set one observed outcome and produced references. An unknown outcome is never
+rewritten into success without separate new evidence.
+
+### Invariants
+
+- `SecurityRejected` implies `dispatched_at == null` and the referenced decision is
+  rejected.
+- Any dispatched Operation implies the referenced decision was accepted at dispatch time.
+- Acceptance is not cached for a later retry; another attempt obtains another current
+  SecurityDecision.
+- A potentially non-repeatable/unknown external effect plus uncertain outcome prevents
+  blind replay. Any later attempt must satisfy effect semantics, truthful Runtime/Kernel
+  evidence and current security policy.
+- Lower-sensitivity `produced_contexts` use this exact invocation as
+  `derivation_operation` and require `MAY_RECALCULATE`.
+
+### Explicit non-responsibilities
+
+- being the callable Operation definition;
+- granting future authority;
+- Runtime scheduler state;
+- universal Agent action taxonomy.
 
 ---
 
-## 16. RuntimeCorrelation
+## 18. `RuntimeEvidenceLink`
 
 ### Responsibility
 
-Associate semantic orchestration with existing Runtime evidence without making Runtime
-aware of WorkPlan/Agent semantics.
+Associate one physical Runtime WorkRecord with the single semantic AgentTask execution it
+materialized, without teaching Runtime about agentic semantics.
 
 ### Fields
 
 ```text
-RuntimeCorrelation
-  correlation_id: string
-  task: AgentTaskRef
-  work: RuntimeWorkRef
-  operation_invocation: OperationInvocationRef | null
-  purpose: string
-  created_at: Instant
+RuntimeEvidencePurpose
+    AGENT_REASONING
+    OPERATION_EXECUTION
+
+RuntimeEvidenceLink
+    task: AgentTaskRef                              1
+    runtime_work: RuntimeWorkRef                    1
+    operation_invocation: OperationInvocationRef | null 0..1
+    purpose: RuntimeEvidencePurpose                 1
+    created_at: Instant                             1
 ```
 
-Each relation is one row. Therefore:
+### Identity
 
-```text
-one AgentTask -> 0..N RuntimeCorrelation -> 0..N WorkRecord
-one WorkRecord -> 1..N correlations if a future shared execution legitimately serves
-                  more than one semantic consumer
-```
+`runtime_work` is unique across RuntimeEvidenceLinks in the initial architecture. The
+link may therefore use `RuntimeWorkRef` as its natural identity.
 
-The initial implementation should normally create one semantic consumer per work item;
-the schema does not encode that as an invariant.
+### Ownership
 
-### Persistence/authority
+Kernel owns the relation. Runtime owns the referenced WorkRecord and remains unaware of
+the link.
 
-Kernel owns correlations. Runtime continues to persist only `WorkSubmission`,
-`WorkRecord`, attempts, retry/cancellation and Capability evidence.
+### Persistence
 
-The current Runtime's request-level `Idempotency-Key` should be used whenever Kernel may
-need to repeat a submission after transport uncertainty. Kernel correlation identity and
-Runtime idempotency are related operationally but are not the same entity.
+Durable with semantic/Runtime evidence retention.
 
-Before non-repeatable external Operation execution is delegated through Runtime, the
-implementation must ensure correlation creation and idempotent submission can be
-reconciled after a Kernel crash. The existing synchronous submit response is sufficient
-for the first local agent-environment slice; stronger cross-store reconciliation is an
-implementation requirement for later durable side-effecting Runtime materialization.
+### Mutability
+
+Append-only.
 
 ### Invariants
 
-- `RuntimeCorrelation` is never embedded into `WorkRecord`.
-- Runtime does not inspect `task`, Workflow, Skill or Module semantics.
-- An AgentTask never derives semantic success solely from the existence of one Runtime
-  WorkRecord; its AgenticLoop may require more reasoning, Operations or child tasks.
+```text
+one AgentTask -> 0..N RuntimeEvidenceLink
+one Runtime WorkRecord -> 0..1 RuntimeEvidenceLink
+```
+
+- `OPERATION_EXECUTION` requires `operation_invocation`.
+- `AGENT_REASONING` normally has `operation_invocation == null`.
+- Reuse by another semantic task references the produced ContextBundle/artifact/evidence;
+  it does not add a second task owner to the same physical WorkRecord.
+- AgentTask semantic completion is never inferred solely from one WorkRecord succeeding.
+
+### Explicit non-responsibilities
+
+- Runtime retry/cancellation semantics;
+- shared multi-task physical execution ontology;
+- Agent/Workflow/Skill data inside WorkRecord;
+- semantic result ownership.
 
 ---
 
-## 17. Ownership and persistence summary
+## 19. Ownership and persistence matrix
 
-| Schema | Semantic owner/authority | Persistence | Mutability |
+| Schema/entity | Semantic authority | Persistence | Mutability |
 | --- | --- | --- | --- |
-| `ModuleRef` | Kernel installation registry | durable | identity stable |
-| `ModuleManifest` | Module content; Kernel registration | durable current + optional history | publish new manifest revision |
-| `CoreRoleAssignment` | Kernel/Owner policy | durable singleton | explicit reassignment only |
+| `ModuleManifest` | Module content; Kernel registration/discovery | durable current + optional history | new revision |
+| `CoreRoleAssignment` | Kernel/installation owner policy | durable singleton + audit | explicit reassignment |
 | `OperationDescriptor` | owning Module | durable while referenced | immutable revision |
 | `SkillDefinition` | publishing Module | durable while referenced | immutable revision |
-| `WorkflowDefinition` | publishing Module | durable while referenced | immutable revision |
-| `AgentDefinition` | responsible Module | durable while referenced | immutable revision |
-| `AgentInstance` | Kernel lifecycle; Module owns future memory policy | durable while active when policy requires | checkpointed working state |
-| `ContextBundle` | issuing Module; Kernel brokers | durable while referenced/allowed | immutable |
-| `WorkPlan` | Kernel orchestration store | durable + retention | append facts/close; no history rewrite |
-| `AgentTask` | Kernel orchestration store | durable with plan | append bindings/evidence/close |
-| `OperationInvocationRecord` | Kernel trace store | durable with plan/evidence retention | append/close |
-| `RuntimeCorrelation` | Kernel correlation store | durable with plan/evidence retention | append-only |
-| `WorkSubmission` / `WorkRecord` | existing Runtime | existing durable Runtime store | existing Runtime semantics |
+| `AgentSkillInstance` | Agent configuration managed by responsible Module | durable with owning AgentDefinition/history | immutable initial record |
+| `WorkflowDefinition` | publishing Module; direct attachment managed by Agent's responsible Module | durable while referenced | immutable revision |
+| `AgentDefinition` | responsible Agent-managing Module | durable while referenced | immutable revision |
+| `AgentInstance` | responsible Module owns internals; Kernel owns integration binding | durable while active/retained | refs may synchronize; close once |
+| `ContextBundle` | emitting/classifying Module; Kernel brokers | durable while referenced/allowed | immutable |
+| `SecurityDecisionEvidence` | Kernel evidence | durable with crossing evidence | immutable |
+| `WorkPlan` | Kernel semantic orchestration | durable + retention | accumulate facts / terminal close |
+| `AgentTask` | Kernel semantic orchestration | durable with plan | bindings/evidence / terminal close |
+| `OperationInvocationRecord` | Kernel evidence; Module owns Operation effect | durable with plan/evidence | append/close |
+| `RuntimeEvidenceLink` | Kernel correlation | durable with evidence | append-only |
+| `Runtime WorkRecord` | existing Runtime | existing Runtime store | existing Runtime lifecycle |
+| `AgentStateRef` target | responsible Agent-managing Module | Module-defined | Module-defined |
 | `ModuleArtifactRef` target | owning Module | Module-defined | Module-defined |
+| `SchemaRef` / resource target | referenced Module | immutable/revisioned as referenced | new revision |
 
-Physical tables/files/processes may differ from these ownership boundaries.
+Reference/value objects are not independently authoritative merely because they are
+persisted inside these records.
 
----
+Physical table/process placement does not change semantic ownership.
 
-## 18. Security and reference rules
+### CORE and user configuration
 
-### 18.1 Discovery
+CORE is only the current role assignment.
 
-Discovery is always a Kernel query under a subject. There is no globally readable Module,
-Agent, Skill or Operation registry.
+If the currently assigned CORE Module manages an AgentDefinition containing a user-created
+Workflow or an AgentSkillInstance, that Module manages the configuration because it is the
+Agent's responsible Module. It does **not** acquire global user-configuration ownership by
+being CORE.
 
-For any advertised child definition:
+Changing `CoreRoleAssignment`:
 
-```text
-effective_visibility =
-    ModuleManifest.visibility
-    INTERSECT child.visibility
-    INTERSECT current Kernel installation policy
-```
-
-CORE role does not imply visibility unless current policy permits it.
-
-### 18.2 Context flow
-
-For ContextBundle `C` to reach destination `D`, all of these must be true:
-
-1. `D` is authorized to participate in the current task.
-2. `D`'s effective clearance covers `C.label`.
-3. `C.flow.allowed_destinations`, if present, includes `D`.
-4. If an Operation is the destination, `C.flow.allowed_operations`, if present, includes
-   that Operation revision.
-5. Remote transfer is denied unless both `C.flow.remote_egress_allowed` and the Operation
-   / Capability boundary policy allow it.
-6. Current Kernel policy independently permits the flow.
-
-No prompt text can override these checks.
-
-### 18.3 Explicit lowering of sensitivity
-
-A lower-sensitivity derived ContextBundle must be a new immutable bundle with:
-
-```text
-derived_from = [source bundle refs]
-derivation_operation = exact authorized OperationInvocationRef
-```
-
-and the invoked OperationDescriptor must have `security.may_lower_classification = true`.
-Kernel policy still decides whether the requested output label is acceptable. This is the
-minimum seam for minimization, anonymization and declassification without designing the
-final security framework.
-
-### 18.4 Operation authority
-
-Operation availability, Skill mention and Workflow mention are not authority.
-
-```text
-callable operation =
-  explicit AgentTask.operation_grants
-  INTERSECT AgentDefinition.operation_scope
-  INTERSECT discovery/visibility
-  INTERSECT context-flow legality
-  INTERSECT current Kernel policy
-```
-
-### 18.5 Reference resolution
-
-Exact semantic references are never silently floated to a later revision.
-
-- Latest advertised revision is a discovery convenience only.
-- Persisted Agents/Tasks/Plans use exact refs.
-- If an exact ref no longer resolves, the reference remains stored and becomes explicit
-  missing-binding evidence.
-- A future substitution feature may use the preserved `AgentRequirement` and provenance,
-  but must create an explicit new binding decision.
+- does not change existing `AgentDefinitionRef.module` values;
+- does not move AgentSkillInstances;
+- does not republish WorkflowDefinitions;
+- does not rewrite WorkPlans/AgentTasks;
+- only changes future role-based fallback/resolution behavior.
 
 ---
 
-## 19. Lifecycle and immutability rules
+## 20. Immutability, revision and reference rules
 
-### Definitions
+### 20.1 Published definitions
 
 `OperationDescriptor`, `SkillDefinition`, `WorkflowDefinition` and `AgentDefinition` are
-immutable after publication. Change means a new revision. Derivation means a new identity
-plus provenance.
+immutable published revisions.
 
-### ContextBundle
+```text
+change existing definition semantics -> new revision
+customize/derive identity           -> new identity + derived_from exact upstream ref
+```
 
-Immutable after creation. Any projection/transformation produces another bundle.
+References persisted in Agents/Tasks/Plans are exact and never float to a later advertised
+revision.
 
-### AgentInstance
+### 20.2 AgentSkillInstance
 
-Mutable only through explicit checkpoint/close operations. Its pinned definition never
-changes in place.
+An initial AgentSkillInstance is immutable and exact-source pinned. Installing/upgrading a
+Skill is an Agent-configuration publication, not mutation of the source Skill and not a
+floating pointer.
 
-### WorkPlan
+### 20.3 ContextBundle
 
-A WorkPlan accumulates durable orchestration facts. It has no universal status enum.
-Completion/termination are terminal facts. Replay/clone creates a new plan with
-`derived_from`.
+Immutable. Projection/minimization/transformation always creates a new bundle with new
+facts and provenance.
 
-### AgentTask
+### 20.4 AgentInstance
 
-Task readiness is derived. Agent resolution and instance binding may be populated later,
-but an already-recorded exact resolved definition is not silently replaced. Completion
-or termination closes the semantic assignment.
+The exact AgentDefinition binding never changes. Internal Module-managed states may evolve
+behind AgentStateRefs. Kernel does not impose state revision semantics.
 
-### OperationInvocationRecord and RuntimeCorrelation
+### 20.5 WorkPlan and AgentTask
 
-Evidence is append-only except for closing an invocation with observed outcome. Runtime
-work retains its existing independent lifecycle.
+These are durable orchestration records, not immutable definitions. They accumulate
+bindings/evidence and terminal facts. Readiness is derived every time from current facts.
+Replay/clone creates a new WorkPlan with provenance rather than rewriting history.
+
+### 20.6 Missing exact references
+
+A persisted exact reference that no longer resolves remains evidence of the missing
+binding. Kernel must not silently substitute a later revision.
+
+AgentTask retains `AgentRequirement` beside `resolved_agent`, so future substitution can
+be proposed explicitly without erasing what actor was originally bound or what was
+required.
 
 ---
 
-## 20. Validation against the ten architecture tests
+## 21. Security crossing rules
 
-### A — Agentless calculator Module
+### 21.1 Discovery first
 
-`CalcModule` registers a manifest with one `OperationRef` and zero Agents. A calculator
-AgentTask carries an `AgentRequirement` that resolves through `CoreRoleAssignment` to a
-CORE fallback `AgentDefinitionRef`. The task explicitly grants `CalcModule.calculate`.
-The resulting AgentInstance can invoke the Operation through the ordinary gateway. No
-`NoAgent`, Tool or non-agentic orchestration class is required.
+Module, Agent, Skill and Operation existence is exposed only through a subject/context
+query evaluated under `DiscoveryPolicyRef` plus current Kernel policy.
 
-### B — AAAAT Skill portability
+There is no globally readable registry projection. Discovery success is not invocation
+authority.
 
-AAAAT publishes an immutable `SkillRef` plus its referenced Operations and no native
-Agent. A CORE AgentDefinition can receive the pinned AAAAT Skill on an AgentTask together
-with AAAAT ContextBundles and explicit AAAAT Operation grants. Later, a user-defined
-AAAAT AgentDefinition can attach the same SkillRef. Skill provider, Agent owner and
-Operation provider remain separate authorities.
+### 21.2 Context -> Agent
 
-### C — Direct custom Workflow
+Before a ContextBundle reaches an AgentInstance:
 
-A private WorkflowDefinition is published in the responsible user's definition Module
-with a private `VisibilityPolicy`. The desired AgentDefinition puts that exact
-`WorkflowRef` in `direct_workflow_refs`. No Skill container is created and the Workflow
-has no fake parent field.
+1. resolve the exact AgentDefinition and `ActorSecurityFacts`;
+2. evaluate actual bundle `DataSecurityFacts` and ScopeRefs;
+3. evaluate actual Agent execution destination/boundary under current policy;
+4. require sensitivity/trust/risk/boundary/intended-use predicates to pass;
+5. record evidence when inspection/audit policy requires it;
+6. physically withhold the ContextBundle if rejected.
 
-### D — Skill update stability
+No Agent state can override this.
 
-Agent A stores `SkillRef(AAAAT, skill, revision=3)`. Publishing revision 4 changes only
-what discovery advertises as current. Agent A continues resolving revision 3. Upgrade is
-an explicit new AgentDefinition revision or derived Skill/Agent publication.
+### 21.3 Context/Agent -> Operation
 
-### E — Concurrent planner instances
+Before dispatching an Operation:
 
-One pinned planner AgentDefinition can produce Instance A/B/C with different
-`AgentInstanceRef`, AgentTask, ContextBundle refs and independent checkpoint state. No
-mutable state lives in AgentDefinition.
+1. the Operation must be discoverable under current policy;
+2. exact `OperationDescriptor` and actual input ContextBundles are resolved;
+3. `SecurityAlgebra` evaluates material sensitivity/trust/scopes, Agent facts,
+   Operation risk/input constraints, destination boundary, intended use and current
+   policy;
+4. rejection creates evidence but no provider call;
+5. acceptance permits only this concrete dispatch attempt;
+6. any later attempt re-evaluates current facts/policy.
 
-### F — Long-running WorkPlan
+OperationRequirement presence or absence does not decide authority. Requirements help
+planning/resolution; the algebra controls the actual crossing.
 
-WorkPlan and AgentTask rows are Kernel-durable. `eligible_at` is stored on scheduled
-AgentTasks independently of Runtime work. AgentInstance checkpoints can be durable while
-active. After restart, Kernel reconstructs incomplete tasks from facts and re-evaluates
-readiness/current policy. Runtime durability remains separate and correlations reconnect
-semantic tasks to physical work evidence.
+### 21.4 Operation output and Scope transition
+
+An Operation output may carry only ScopeRefs compatible with its declared
+`destination_scopes` and current policy.
+
+The owning Module classifies the actual output material. Kernel verifies the declared
+contract and transformation relation; it does not derive classifications from text.
+
+### 21.5 Sensitivity lowering
+
+If output sensitivity is lower than any source ContextBundle used to derive it:
+
+```text
+Operation.security.classification_transform == MAY_RECALCULATE
+AND derived ContextBundle is new/immutable
+AND derived_from identifies source ContextBundles
+AND derivation_operation identifies the exact invocation
+AND current policy permits the transformation/crossing
+```
+
+The derived material is then treated normally according to its own recalculated facts.
+
+### 21.6 Runtime-backed reasoning
+
+Reasoning material crossing into a Runtime Capability is evaluated against the actual
+Capability execution boundary supplied to `SecurityAlgebra` by current Kernel/Runtime
+configuration. Runtime does not need to know WorkPlan or AgentTask semantics.
+
+The Runtime WorkRecord remains physical evidence; `RuntimeEvidenceLink` preserves the
+semantic correlation outside Runtime.
+
+### 21.7 Unknown/non-repeatable effects
+
+Security algebra decides whether an attempt is admissible before dispatch. Effect and
+Runtime evidence determine whether repetition is safe afterward.
+
+For `NON_REPEATABLE`/`UNKNOWN` effects or `MAY_BE_UNKNOWN` interruption evidence, Kernel
+must not infer that another attempt is safe merely because the Agent still wants the
+result. It surfaces truthful evidence and requires an explicitly safe future basis before
+another physical invocation.
+
+This needs no universal `waiting_for_human` or approval lifecycle state.
+
+---
+
+## 22. Validation against difficult architecture cases
+
+### A — Agentless `CalcModule`
+
+`CalcModule` publishes one Scope, a typed calculate Operation and zero Agents. A WorkPlan
+creates an AgentTask with a general `AgentRequirement`; role-based resolution selects the
+current CORE fallback AgentDefinition. The AgentInstance sees bounded task Context and the
+Operation descriptor. When it requests calculate, Kernel evaluates actual Context, Agent,
+Operation, Scope and local boundary facts through `SecurityAlgebra` and dispatches only if
+accepted.
+
+No `NoAgent`, Tool, Operation grant or second orchestration model exists.
+
+### B — AAAAT Skill learning
+
+AAAAT publishes `SkillDefinition(AAAAT, revision=3)`, exact Workflow references,
+Operation requirements and bounded private Context offers, while exposing zero native
+Agents.
+
+Installing the Skill into a CORE-managed Agent configuration creates unique
+`AgentSkillInstance X`, with `source_skill = AAAAT@3`, and a new exact AgentDefinition
+configuration revision referencing X. X adopts exact Workflow revisions from Skill 3.
+
+When AAAAT publishes Skill revision 4, X remains pinned to revision 3. The AAAAT Module
+still owns the reusable Skill; the responsible Agent Module owns X. No permission flows
+from the Skill reference.
+
+### C — User Workflow
+
+The Agent-managing Module publishes a private user WorkflowDefinition and the next
+AgentDefinition revision attaches its exact `WorkflowRef` in `direct_workflows`.
+
+No synthetic SkillDefinition is created. The Workflow has no exclusive parent pointer.
+
+### D — Concurrent AgentDefinition
+
+Planner AgentDefinition revision N can create Instance A/B/C concurrently. Each has a
+different `AgentInstanceRef` and Module manager-instance reference. Their `state_refs` may
+be empty, one ref or several refs according to the responsible Module.
+
+MADRE imposes no Session/working-memory model and stores no universal state payload.
+
+### E — Alternative native Agent implementation
+
+A future Module can expose the same MADRE-facing AgentDefinition fields while its
+`manager_definition_ref` points to a native state machine, symbolic system, multi-model
+controller or another architecture unrelated to CORE.
+
+Its AgentInstances expose opaque manager/state refs only. No CORE prompt, model session,
+memory taxonomy or state-policy class is required. This proves MADRE standardizes the
+Agent boundary rather than one implementation style.
+
+### F — Long WorkPlan
+
+WorkPlan and AgentTask are Kernel-durable semantic records. Eligibility, prerequisites,
+exact Agent binding and Context references survive restart independently from Runtime.
+
+The responsible Agent Module restores whatever opaque manager state it supports through
+its own refs. Runtime independently recovers WorkRecords. `RuntimeEvidenceLink` reconnects
+physical evidence to the semantic task without putting plan semantics into Runtime.
 
 ### G — Multi-runtime AgentTask
 
-AgentTask has no `work_id`. Each Runtime materialization adds another
-`RuntimeCorrelation`; Operation calls have independent `OperationInvocationRecord`s; child
-delegation creates ordinary child AgentTasks. The sequence `reason -> Operation -> reason
--> Runtime work -> child AgentTask -> more Runtime work` fits without changing task
-identity.
+One AgentTask can produce:
 
-### H — Cross-domain privacy
+```text
+RuntimeEvidenceLink(reasoning #1)
+OperationInvocationRecord(calculate)
+RuntimeEvidenceLink(reasoning #2)
+child AgentTask
+RuntimeEvidenceLink(reasoning #3)
+...
+```
 
-A private calendar ContextBundle carries a high SecurityLabel and flow constraints, so a
-direct AAAAT Agent transfer fails clearance/flow checks. An authorized minimization
-Operation with `may_lower_classification=true` creates a **new** lower-label ContextBundle
-whose `derived_from` and `derivation_operation` identify the exact source/transformation.
-Only the derived bundle may then flow to AAAAT if policy permits.
+There is no task `work_id`; one task can correlate with any number of physical works and
+Operation invocations.
+
+### H — Privacy minimization
+
+A private calendar ContextBundle has high sensitivity and Calendar-owned ScopeRefs. A
+direct crossing to an AAAAT Agent fails the current sensitivity/trust/scope/boundary
+predicates.
+
+Calendar's Module-owned minimization Operation declares the appropriate source/destination
+Scopes and `MAY_RECALCULATE`. If the invocation itself is admissible, Calendar produces a
+new typed ContextBundle containing only the minimized material, recalculates its
+DataSecurityFacts, and records `derived_from` plus the exact invocation.
+
+Kernel evaluates that new bundle from its own facts. It never lowers the original bundle
+or treats a previous SecurityDecision as a credential.
 
 ### I — Private discovery
 
-ModuleManifest and every advertised Operation/Skill/Agent definition carry visibility
-policy. Kernel discovery is subject-scoped and intersects Module, entity and installation
-policy. An installed Module can therefore be completely absent from an unauthorized
-principal's discovery projection.
+An installed Module, AgentDefinition, SkillDefinition or Operation can refer to a
+restricted `DiscoveryPolicyRef`. Kernel evaluates discovery before returning descriptor
+metadata. An unauthorized subject therefore cannot infer existence from a globally
+readable registry.
 
-### J — Missing Agent later
+Discovery policy remains distinct from Operation admissibility.
 
-WorkPlan/AgentTask persist the exact `AgentDefinitionRef` **and** the original
-`AgentRequirement`. If the definition disappears, Kernel detects an unresolved pinned
-binding. Provenance and requirements remain available for a future equivalent/similar
-search or Owner choice. No replacement revision is silently substituted.
+### J — Unknown side effect
 
----
+An Operation declares `EXTERNAL_EFFECT`, `UNKNOWN` or `NON_REPEATABLE`, and
+`MAY_BE_UNKNOWN` as appropriate, together with normalized risk/boundary facts.
 
-## 21. Explicitly deferred questions
+Kernel first decides whether attempting it is admissible. If dispatched and the physical
+outcome later becomes uncertain, `OperationInvocationRecord`/Runtime evidence records
+`UnknownExternalEffect`. Kernel will not blindly retry. The AgentTask can remain open,
+terminate or choose another semantic path without introducing a universal human-approval
+state.
 
-These are genuine later design questions, not missing fields accidentally hidden by the
-schema.
+### K — Replace CORE
 
-1. **Cross-installation package identity/export.** Module-scoped references are enough for
-   one installation. Portable signed packages may later need publisher/package identity
-   distinct from installed `ModuleRef`.
-2. **Rich policy language.** The first security lattice, compartments and allowlists are
-   intentionally small. Delegation of policy administration, revocation and richer
-   mandatory-access-control rules are deferred.
-3. **Persistent persona memory.** `InstancePolicy` only covers active checkpointing and
-   retention. Cross-task semantic memory remains Module-owned future behavior.
-4. **Live plan graph revision.** Tasks may be added durably, but there is no first-class
-   active-plan version/patch graph.
-5. **Agent equivalence/substitution.** Requirements/provenance make it possible later;
-   similarity scoring and automated replacement are not defined.
-6. **Autonomous Workflow/Skill learning.** No promotion/evaluation machinery exists.
-7. **Workflow DSL.** Workflow instructions remain opaque recipe content until real
-   reusable workflows justify stronger structure.
-8. **Artifact schema.** Artifacts remain Module-owned opaque references because current
-   architecture does not require a universal artifact lifecycle.
-9. **General prerequisite algebra.** Initial task prerequisites are prior-task completion
-   plus eligibility time. User decisions or other gates should become typed requirements
-   only when a concrete objective needs them.
-10. **Cross-store Runtime submission reconciliation.** Before non-repeatable external
-    effects rely on Runtime materialization, Kernel correlation + Runtime idempotency must
-    be made crash-reconcilable. This does not require Runtime to understand AgentTask.
-11. **Operation contract retirement.** Retention rules for old Operation revisions after
-    all referring plans expire need an implementation policy.
-12. **AgentInstance reuse across tasks.** Initial instances are task-scoped. A future
-    persistent Agent may normalize task-instance bindings if reuse becomes real behavior.
+`CoreRoleAssignment` changes from Module A to compatible Module B. Future fallback Agent
+resolution uses B.
+
+Existing AgentDefinitionRefs still point to their original responsible Modules;
+AgentSkillInstances remain scoped to those exact Agent definitions; direct Workflow
+ownership does not change; retained WorkPlans/AgentTasks preserve exact bindings. If an
+old Module is later removed, its references become explicit missing bindings rather than
+silently re-owned by B.
 
 ---
 
-## 22. Recommended first implementation slice after schema approval
+## 23. Explicit deferrals and genuine unresolved questions
 
-Implement one coherent **Kernel agent-environment bootstrap** slice, not the full durable
-planner yet.
+The following are deliberately not solved by this schema:
 
-The slice should implement:
+1. **Complete final security policy language.** The normalized facts and deterministic
+   predicates are fixed enough for the first vertical path; policy administration,
+   revocation, richer trust evidence and additional normalized dimensions remain future
+   work.
+2. **Richer Module Scope relations.** Initial Kernel checking uses exact declared
+   ScopeRefs. Hierarchies/semantic subset relations may later be exposed by a typed
+   Module-owned relation contract if real domains require them.
+3. **Persistent persona semantics.** AgentStateRefs provide a seam; MADRE does not define
+   which states are persona, memory, conversation or learning.
+4. **Cross-task AgentInstance reuse.** The schema permits opaque Agent manager behavior,
+   but the first vertical implementation may instantiate one working actor for one task.
+   No universal reuse semantics are defined.
+5. **Agent equivalence/substitution.** Exact binding plus retained AgentRequirement makes
+   future explicit substitution possible; similarity scoring is undefined.
+6. **Autonomous Skill/Workflow learning/promotion.** AgentSkillInstance provides a legal
+   future location for Agent-specific Skill evolution, but no scores/promotion machinery
+   exist now.
+7. **Workflow DSL.** Recipe material remains behind `WorkflowRecipeRef` until repeated
+   real workflows justify shared structure.
+8. **Universal artifact ontology.** Artifacts remain opaque Module-owned references.
+9. **General prerequisite algebra.** Initial prerequisites are AgentTask dependencies,
+   eligibility time and current resolvability/security facts. New typed gate kinds wait
+   for real objectives.
+10. **Cross-installation package identity/export.** Current semantic identities are
+    installation/Module scoped. Portable signed packages may later need publisher/package
+    identity.
+11. **Supply-chain/code trust framework.** Signatures, source inspection, sandboxing and
+    code provenance may contribute future trust facts but are not a second authorization
+    system here.
+12. **Cross-store Runtime submission reconciliation for side effects.** Before
+    non-repeatable external Operations rely on Runtime materialization, Kernel linking and
+    Runtime idempotent submission must be made crash-reconcilable. Runtime still must not
+    learn AgentTask semantics.
+13. **Operation revision retirement.** Retention/garbage-collection policy for definitions
+    no longer referenced by retained evidence remains implementation policy.
+14. **Concrete schema language.** `SchemaRef` intentionally does not choose JSON Schema,
+    protobuf or one provider-specific format. The first implementation must select a
+    concrete validator/codec without weakening typed contracts to arbitrary maps.
 
-1. typed reference/value models and validation for `ModuleManifest`, security values,
-   `OperationDescriptor`, `SkillDefinition`, `WorkflowDefinition`, `AgentDefinition`,
-   `AgentInstance` and `ContextBundle`;
-2. a Kernel-owned Module/definition registry with exact-revision lookup and
-   policy-filtered discovery;
-3. persisted `CoreRoleAssignment` and deterministic fallback AgentDefinition resolution;
-4. AgentInstance composition from one AgentDefinition + task-supplied Skills/Workflows +
-   bounded ContextBundles + explicit Operation grants;
-5. a Kernel Operation gateway that enforces visibility, OperationScope, security-label
-   flow and egress rules before invoking a Module adapter;
-6. two concrete fixtures/adapters proving architecture rather than provider mechanics:
-   - Agentless `CalcModule` with `calculate` Operation;
-   - AAAAT-shaped Module fixture with a Skill and bounded context but zero native Agents;
-7. deterministic tests for direct private Workflow attachment, revision pinning,
-   concurrent AgentInstances, private discovery and denied/direct-vs-derived context
-   flow.
+None of these deferrals requires another architectural entity before the first vertical
+AgenticLoop.
 
-The slice should deliberately **not** yet implement WorkPlan orchestration, AgentTask
-scheduling, planner behavior, multi-Agent delegation or Runtime correlations. Those
-schemas should land first so the next implementation can use them without redesign, but
-the first executable slice should prove the most foundational boundary:
+---
+
+## 24. Exact first implementation slice after schema approval
+
+Do **not** build another horizontal registry-only milestone.
+
+The first implementation should prove one thin but complete vertical AgenticLoop:
 
 ```text
-Module contract
-  + CORE role
-  + exact AgentDefinition resolution
-  + AgentInstance composition
-  + bounded Context
-  + explicit Operation authorization
-  + structural security
+Agentless CalcModule
+        |
+        | manifest + Scope + calculate Operation
+        v
+Kernel policy-filtered discovery
+        |
+        | AgentRequirement has no Module-native Agent candidate
+        v
+current CORE fallback AgentDefinition
+        |
+        v
+responsible Module instantiates AgentInstance
+        |
+        v
+durable WorkPlan / AgentTask
+        |
+        | ContextBundle objective/input
+        v
+Runtime-backed Agent reasoning #1
+        |
+        | RuntimeEvidenceLink
+        v
+Agent requests CalcModule.calculate
+        |
+        v
+Kernel SecurityAlgebra.evaluate(
+    actual input Context,
+    Scope,
+    Agent facts,
+    Operation facts,
+    local destination,
+    intended use,
+    current policy
+)
+        |
+        +-- rejected -> SecurityDecisionEvidence + no dispatch
+        |
+        v accepted
+CalcModule.calculate
+        |
+        v
+OperationInvocationRecord
+        + result ContextBundle (typed, Calc-owned, classified)
+        |
+        v
+Runtime-backed Agent reasoning #2
+        |
+        | RuntimeEvidenceLink
+        v
+AgentTask completion
+        |
+        v
+WorkPlan completion
 ```
 
-Once that boundary works, the next substantive slice should add the durable WorkPlan /
-AgentTask store and restart continuation, then connect AgentTask reasoning to ordinary
-Runtime WorkRecords through `RuntimeCorrelation` without changing Runtime semantics.
+The slice must establish, end-to-end:
+
+- `ModuleManifest`, Module Scope and Module-owned `OperationDescriptor`;
+- separate `CoreRoleAssignment` and fallback Agent resolution;
+- `AgentDefinition` as public descriptor plus opaque Module manager binding;
+- `AgentInstance` without a universal Session/state payload;
+- durable `WorkPlan` and `AgentTask` from the start;
+- typed `ContextBundle` inputs/results;
+- normalized sensitivity/trust/risk facts and deterministic security deficits;
+- real Runtime-backed reasoning using existing WorkSubmission/WorkRecord behavior;
+- one requested Operation crossing evaluated by the Kernel algebra;
+- `OperationInvocationRecord` and `SecurityDecisionEvidence`;
+- result Context flowing back into the same AgentTask;
+- a second Runtime reasoning pass and semantic completion;
+- `RuntimeEvidenceLink` outside Runtime.
+
+A second AAAAT-shaped fixture should then prove the same vertical composition with:
+
+```text
+Agentless AAAAT-like Module
++ SkillDefinition
++ AgentSkillInstance owned by a CORE-managed AgentDefinition revision
++ adopted Workflow revision where useful
++ private bounded Context
++ minimization Operation
+```
+
+That fixture is evidence for Skill ownership/pinning and privacy transformation, not a
+request to reimplement AAAAT.
+
+The first implementation must **not** introduce richer planners, persistent persona
+semantics, autonomous learning loops, multi-Agent teams, a general workflow engine or a
+universal Workflow DSL.
+
+The required proof is deliberately small but vertical:
+
+```text
+Module
+Operation
+CORE fallback
+AgentDefinition
+AgentSkillInstance/Workflow composition when applicable
+AgentInstance
+Context
+SecurityAlgebra
+WorkPlan
+AgentTask
+Runtime
+Operation result
+continuation
+completion
+```
+
+Only after this loop works should the architecture expand horizontally.
