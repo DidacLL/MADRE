@@ -132,10 +132,9 @@ class WorkRuntime:
         return self._require(work_id)
 
     async def run_eligible(self) -> int:
-        """Execute all work eligible at the current runtime clock."""
-        eligible_at = self._clock()
+        """Execute eligible work in durable application-fair scheduler order."""
         executed = 0
-        while work_id := self.store.next_eligible(eligible_at):
+        while work_id := self.store.next_eligible(self._clock()):
             await self._execute_accepted(work_id)
             executed += 1
         return executed
