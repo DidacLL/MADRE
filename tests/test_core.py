@@ -86,22 +86,29 @@ def test_core_conversation_uses_runtime_http_boundary_and_stable_identity(tmp_pa
     ]
 
     with sqlite3.connect(runtime_settings.data_dir / "runtime.sqlite3") as connection:
-        rows = connection.execute("SELECT application_id, status FROM runtime_work").fetchall()
-    assert len(rows) == 2
-    assert all(row == ("madre-core", "succeeded") for row in rows)
+        rows = connection.execute(
+            "SELECT application_id, status, priority FROM runtime_work ORDER BY queue_sequence"
+        ).fetchall()
+    assert rows == [
+        ("madre-core", "succeeded", 10),
+        ("madre-core", "succeeded", 10),
+    ]
 
 
-def test_core_deeper_follow_up_is_explicit_second_runtime_work(tmp_path, monkeypatch):
+def test_core_deeper_follow_up_is_scheduled_without_waiting(tmp_path, monkeypatch):
     monkeypatch.setenv("MADRE_API_TOKEN", "test-token")
     observed_requests = []
+    deeper_entered = asyncio.Event()
+    release_deeper = asyncio.Event()
 
     async def fake_invoke(capability, request, constraints):
         observed_requests.append(request)
-        text = (
-            "fast draft\n[[MADRE_REASONING:deeper]]"
-            if len(observed_requests) == 1
-            else "materially improved answer"
-        )
+        if len(observed_requests) == 1:
+            text = "fast draft\n[[MADRE_REASONING:deeper]]"
+        else:
+            deeper_entered.set()
+            await release_deeper.wait()
+            text = "materially improved answer"
         return ChatResult(
             text=text,
             model="test-model",
@@ -119,6 +126,7 @@ def test_core_deeper_follow_up_is_explicit_second_runtime_work(tmp_path, monkeyp
                 "http://127.0.0.1:8731",
                 "test-token",
                 "local-chat",
+                poll_interval_seconds=0.001,
                 transport=httpx.ASGITransport(app=app),
             )
             conversation = CoreConversation(
@@ -130,13 +138,26 @@ def test_core_deeper_follow_up_is_explicit_second_runtime_work(tmp_path, monkeyp
             turn = await conversation.send("hard question")
             assert turn.reasoning == "deeper"
             assert conversation.deeper_available
-            deeper = await conversation.deepen()
-            return deeper, conversation.messages, conversation.deeper_available
 
-    deeper, history, deeper_available = asyncio.run(exercise())
+            work_id = await conversation.schedule_deeper()
+            assert work_id
+            assert conversation.deeper_pending
+            assert not conversation.deeper_available
+            await asyncio.wait_for(deeper_entered.wait(), timeout=1)
+            assert await conversation.collect_deeper() is None
 
-    assert deeper == "materially improved answer"
-    assert not deeper_available
+            release_deeper.set()
+            update = None
+            while update is None:
+                await asyncio.sleep(0.001)
+                update = await conversation.collect_deeper()
+            return update, conversation.messages, conversation.deeper_pending
+
+    update, history, deeper_pending = asyncio.run(exercise())
+
+    assert update.text == "materially improved answer"
+    assert update.applied_to_history
+    assert not deeper_pending
     assert history == (
         {"role": "user", "content": "hard question"},
         {"role": "assistant", "content": "materially improved answer"},
@@ -155,9 +176,90 @@ def test_core_deeper_follow_up_is_explicit_second_runtime_work(tmp_path, monkeyp
     ]
 
     with sqlite3.connect(runtime_settings.data_dir / "runtime.sqlite3") as connection:
-        rows = connection.execute("SELECT application_id, status FROM runtime_work").fetchall()
-    assert len(rows) == 2
-    assert all(row == ("madre-core", "succeeded") for row in rows)
+        rows = connection.execute(
+            "SELECT application_id, status, priority FROM runtime_work ORDER BY queue_sequence"
+        ).fetchall()
+    assert rows == [
+        ("madre-core", "succeeded", 10),
+        ("madre-core", "succeeded", -10),
+    ]
+
+
+def test_late_deeper_result_does_not_rewrite_advanced_conversation():
+    post_count = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal post_count
+        if request.method == "POST":
+            post_count += 1
+            submission = json.loads(request.content)
+            if post_count == 1:
+                assert submission["priority"] == 10
+                text = "fast draft\n[[MADRE_REASONING:deeper]]"
+                work_id = "fast-1"
+            elif post_count == 2:
+                assert submission["priority"] == -10
+                return httpx.Response(
+                    201,
+                    json={
+                        "id": "deep-1",
+                        "status": "accepted",
+                        "result": None,
+                        "failure": None,
+                    },
+                )
+            else:
+                assert submission["priority"] == 10
+                text = "follow-up answer\n[[MADRE_REASONING:fast]]"
+                work_id = "fast-2"
+            return httpx.Response(
+                201,
+                json={
+                    "id": work_id,
+                    "status": "succeeded",
+                    "result": {"text": text},
+                    "failure": None,
+                },
+            )
+        assert request.url.path == "/v1/work/deep-1"
+        return httpx.Response(
+            200,
+            json={
+                "id": "deep-1",
+                "status": "succeeded",
+                "result": {"text": "late improved answer"},
+                "failure": None,
+            },
+        )
+
+    client = CoreClient(
+        "http://127.0.0.1:8731",
+        "test-token",
+        "local-chat",
+        transport=httpx.MockTransport(handler),
+    )
+    conversation = CoreConversation(client)
+
+    async def exercise():
+        first = await conversation.send("hard question")
+        assert first.reasoning == "deeper"
+        await conversation.schedule_deeper()
+        second = await conversation.send("continue from the draft")
+        update = await conversation.collect_deeper()
+        return second, update, conversation.messages
+
+    second, update, history = asyncio.run(exercise())
+
+    assert second.text == "follow-up answer"
+    assert update is not None
+    assert update.text == "late improved answer"
+    assert not update.applied_to_history
+    assert history == (
+        {"role": "user", "content": "hard question"},
+        {"role": "assistant", "content": "fast draft"},
+        {"role": "user", "content": "continue from the draft"},
+        {"role": "assistant", "content": "follow-up answer"},
+    )
 
 
 def test_core_deeper_requires_latest_deeper_recommendation():
@@ -183,7 +285,7 @@ def test_core_deeper_requires_latest_deeper_recommendation():
 
     assert turn.reasoning == "fast"
     with pytest.raises(ValueError, match="no deeper reasoning is available"):
-        asyncio.run(conversation.deepen())
+        asyncio.run(conversation.schedule_deeper())
 
 
 def test_core_missing_reasoning_marker_conservatively_recommends_deeper():
