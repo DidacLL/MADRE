@@ -141,22 +141,16 @@ class Kernel:
         for agent_ref in module.manifest.agents:
             definition = module.agent_definition(agent_ref)
             if definition is None:
-                raise ValueError(
-                    "manifest AgentDefinitionRef does not resolve through its Module"
-                )
+                raise ValueError("manifest AgentDefinitionRef does not resolve through its Module")
             for instance_ref in definition.skill_instances:
                 instance = module.agent_skill_instance(instance_ref)
                 if instance is None:
-                    raise ValueError(
-                        "AgentDefinition pins an unresolved AgentSkillInstance"
-                    )
+                    raise ValueError("AgentDefinition pins an unresolved AgentSkillInstance")
                 self.register_skill_instance(instance)
             for workflow_ref in definition.direct_workflows:
                 workflow = module.workflow(workflow_ref)
                 if workflow is None:
-                    raise ValueError(
-                        "AgentDefinition pins an unresolved direct WorkflowDefinition"
-                    )
+                    raise ValueError("AgentDefinition pins an unresolved direct WorkflowDefinition")
                 self.register_workflow(workflow)
             self.register_agent_definition(definition)
 
@@ -562,9 +556,7 @@ class _TaskServices(AgentExecutionServices):
         return result.text
 
     def visible_operations(self) -> tuple[OperationDescriptor, ...]:
-        return self.kernel.discover_operations(
-            self.definition.ref.agent.module.module_id
-        )
+        return self.kernel.discover_operations(self.definition.ref.agent.module.module_id)
 
     def project_operation_input(
         self,
@@ -575,9 +567,7 @@ class _TaskServices(AgentExecutionServices):
         material = module.project_operation_input(operation, payload)
         descriptor = module.operation(operation)
         if descriptor is None or material.schema != descriptor.input_schema:
-            raise ValueError(
-                "Module projected input with a schema outside the Operation contract"
-            )
+            raise ValueError("Module projected input with a schema outside the Operation contract")
         bundle = self.kernel.create_context(
             owner=operation.module,
             schema=material.schema,
@@ -655,27 +645,17 @@ class _TaskServices(AgentExecutionServices):
         try:
             material = await module.invoke_operation(operation, bundles)
             if material.schema != descriptor.output_schema:
-                raise ValueError(
-                    "Operation returned a schema outside its exact descriptor"
-                )
+                raise ValueError("Operation returned a schema outside its exact descriptor")
             if bundles:
-                source_sensitivity = max(
-                    bundle.security.sensitivity for bundle in bundles
-                )
+                source_sensitivity = max(bundle.security.sensitivity for bundle in bundles)
                 if (
                     material.security.sensitivity < source_sensitivity
                     and descriptor.security.classification_transform
                     is not ClassificationTransform.MAY_RECALCULATE
                 ):
-                    raise ValueError(
-                        "lower-sensitivity derivation requires MAY_RECALCULATE"
-                    )
-            if not material.security.scopes.issubset(
-                descriptor.security.destination_scopes
-            ):
-                raise ValueError(
-                    "Operation output Scope is outside declared destination scopes"
-                )
+                    raise ValueError("lower-sensitivity derivation requires MAY_RECALCULATE")
+            if not material.security.scopes.issubset(descriptor.security.destination_scopes):
+                raise ValueError("Operation output Scope is outside declared destination scopes")
             output = self.kernel.create_context(
                 owner=operation.module,
                 schema=material.schema,
