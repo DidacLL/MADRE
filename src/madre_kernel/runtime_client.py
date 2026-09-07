@@ -4,16 +4,16 @@ from __future__ import annotations
 
 import asyncio
 import ipaddress
-from collections.abc import Sequence
 from typing import Literal
 from urllib.parse import urlsplit
 
 import httpx
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, JsonValue, TypeAdapter, ValidationError
 
 from madre_kernel.contracts import RuntimeWorkRef
 
 WireScalar = str | int | float | bool | None
+_WIRE_INPUT: TypeAdapter[dict[str, JsonValue]] = TypeAdapter(dict[str, JsonValue])
 
 
 class RuntimeBoundaryError(RuntimeError):
@@ -84,12 +84,15 @@ class KernelRuntimeClient:
         self.poll_interval_seconds = poll_interval_seconds
         self.transport = transport
 
-    async def reason(self, messages: Sequence[tuple[str, str]]) -> RuntimeReasoningResult:
-        wire_messages = [{"role": role, "content": content} for role, content in messages]
+    async def reason(self, capability_input_json: str) -> RuntimeReasoningResult:
+        try:
+            capability_input = _WIRE_INPUT.validate_json(capability_input_json)
+        except ValidationError as exc:
+            raise RuntimeBoundaryError("Agent manager supplied invalid Runtime capability input") from exc
         submission = {
             "application_id": self.application_id,
             "capability_id": self.capability_id,
-            "input": {"messages": wire_messages, "max_tokens": 256},
+            "input": capability_input,
             "priority": 0,
             "constraints": {"timeout_seconds": 120, "local_only": True},
         }
