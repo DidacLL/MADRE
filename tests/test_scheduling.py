@@ -150,26 +150,26 @@ def test_retry_gets_a_new_fifo_position_inside_its_application(tmp_path, monkeyp
     assert retried_record.attempts[-1].retry_number == 1
 
 
-def test_scheduler_cursor_survives_restart(tmp_path):
+def test_scheduler_cursor_and_exact_fifo_survive_restart(tmp_path):
     runtime_settings = settings(tmp_path)
     now = datetime(2035, 1, 1, 12, 0, tzinfo=UTC)
 
     with open_database(runtime_settings.data_dir) as connection:
         store = WorkStore(connection)
-        assert store.create("a-1", submission("application-a", "a-1"), now)
-        assert store.create("a-2", submission("application-a", "a-2"), now)
+        assert store.create("z-first", submission("application-a", "first"), now)
+        assert store.create("a-second", submission("application-a", "second"), now)
         assert store.create("b-1", submission("application-b", "b-1"), now)
 
-        assert store.next_eligible(now) == "a-1"
-        assert store.start_attempt("a-1", now) == 1
-        store.succeed("a-1", 1, {"text": "a-1 result"}, now)
+        assert store.next_eligible(now) == "z-first"
+        assert store.start_attempt("z-first", now) == 1
+        store.succeed("z-first", 1, {"text": "first result"}, now)
 
     with open_database(runtime_settings.data_dir) as connection:
         recovered = WorkStore(connection)
         assert recovered.next_eligible(now) == "b-1"
         assert recovered.start_attempt("b-1", now) == 1
         recovered.succeed("b-1", 1, {"text": "b-1 result"}, now)
-        assert recovered.next_eligible(now) == "a-2"
+        assert recovered.next_eligible(now) == "a-second"
 
 
 def test_newly_eligible_work_joins_fair_rotation_during_existing_backlog(tmp_path, monkeypatch):
