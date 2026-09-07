@@ -34,6 +34,7 @@ CREATE TABLE runtime_work (
     ),
     submitted_at TEXT NOT NULL,
     enqueued_at TEXT NOT NULL,
+    queue_sequence INTEGER NOT NULL UNIQUE CHECK (queue_sequence >= 1),
     started_at TEXT,
     completed_at TEXT,
     result_json TEXT,
@@ -56,11 +57,13 @@ WHERE idempotency_key IS NOT NULL;
 
 CREATE TABLE runtime_scheduler_state (
     singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
-    last_application_id TEXT
+    last_application_id TEXT,
+    next_queue_sequence INTEGER NOT NULL CHECK (next_queue_sequence >= 1)
 );
 
-INSERT INTO runtime_scheduler_state (singleton, last_application_id)
-VALUES (1, NULL);
+INSERT INTO runtime_scheduler_state (
+    singleton, last_application_id, next_queue_sequence
+) VALUES (1, NULL, 1);
 
 CREATE TABLE runtime_retry (
     work_id TEXT NOT NULL REFERENCES runtime_work(id) ON DELETE CASCADE,
@@ -169,13 +172,14 @@ class WorkStore:
     ) -> bool:
         try:
             with self.connection:
+                queue_sequence = self._take_queue_sequence()
                 self.connection.execute(
                     """
                     INSERT INTO runtime_work (
                         id, application_id, capability_id, input_json, eligible_at,
                         priority, constraints_json, idempotency_key, status,
-                        submitted_at, enqueued_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'accepted', ?, ?)
+                        submitted_at, enqueued_at, queue_sequence
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'accepted', ?, ?, ?)
                     """,
                     (
                         work_id,
@@ -188,6 +192,7 @@ class WorkStore:
                         idempotency_key,
                         submitted_at.isoformat(),
                         submitted_at.isoformat(),
+                        queue_sequence,
                     ),
                 )
         except sqlite3.IntegrityError:
@@ -268,14 +273,16 @@ class WorkStore:
                     previous["error_message"],
                 ),
             )
+            queue_sequence = self._take_queue_sequence()
             updated = self.connection.execute(
                 """
                 UPDATE runtime_work
-                SET status = 'accepted', enqueued_at = ?, completed_at = NULL,
-                    result_json = NULL, error_code = NULL, error_message = NULL
+                SET status = 'accepted', enqueued_at = ?, queue_sequence = ?,
+                    completed_at = NULL, result_json = NULL,
+                    error_code = NULL, error_message = NULL
                 WHERE id = ? AND status = 'failed'
                 """,
-                (requested_at.isoformat(), work_id),
+                (requested_at.isoformat(), queue_sequence, work_id),
             )
             if updated.rowcount != 1:
                 raise RuntimeError("failed work changed during durable retry transition")
@@ -383,9 +390,7 @@ class WorkStore:
                             THEN eligible_at
                         ELSE enqueued_at
                     END,
-                    enqueued_at,
-                    submitted_at,
-                    id
+                    queue_sequence
                 LIMIT 1
                 """,
                 (application_id, now.isoformat()),
@@ -609,6 +614,27 @@ class WorkStore:
                 for attempt in attempts
             ],
         )
+
+    def _take_queue_sequence(self) -> int:
+        row = self.connection.execute(
+            """
+            SELECT next_queue_sequence
+            FROM runtime_scheduler_state
+            WHERE singleton = 1
+            """
+        ).fetchone()
+        if row is None:
+            raise RuntimeError("durable scheduler state disappeared")
+        sequence = int(row["next_queue_sequence"])
+        self.connection.execute(
+            """
+            UPDATE runtime_scheduler_state
+            SET next_queue_sequence = ?
+            WHERE singleton = 1
+            """,
+            (sequence + 1,),
+        )
+        return sequence
 
     def _idempotency_work_id(self, application_id: str, idempotency_key: str) -> str | None:
         row = self.connection.execute(
