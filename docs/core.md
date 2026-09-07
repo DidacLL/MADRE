@@ -4,7 +4,7 @@ CORE is MADRE's first-party application. Its current behavior is intentionally s
 
 This terminal conversation is a product-development probe. The `core>`, `reasoning>`, `/deeper` and fallback presentation make the current execution behavior observable; they are not a stable MADRE UX contract. In particular, internal model/protocol failure should not be interpreted as evidence that a future MADRE interaction must expose a chatbot-style failure message. The eventual interaction model remains open to later CORE experimentation.
 
-CORE does not start or bypass the runtime, invoke a capability directly, or own a scheduler. Its submitted work uses the stable application identity `madre-core` and therefore shares the same durable work lifecycle and local-inference admission rules as other applications.
+CORE does not start or bypass the runtime, invoke a capability directly, or own a scheduler. Its submitted work uses the stable application identity `madre-core` and therefore shares the same durable work lifecycle, application-fair scheduling and local-inference admission rules as other applications. CORE's fast and scheduled-deeper priorities only order work inside the `madre-core` application turn; they do not grant CORE additional global scheduler share.
 
 ## Run
 
@@ -14,11 +14,13 @@ Start the MADRE runtime normally with a configured chat capability and `MADRE_AP
 python -m uv run --locked madre-core --runtime-url http://127.0.0.1:8731 --capability local-chat
 ```
 
-Enter a message at `you>`. Generated assistant text is printed at `core>`. CORE then prints the fast interaction decision as either `reasoning> fast` or `reasoning> deeper`. When the latest turn recommends `deeper`, CORE also shows `deeper> /deeper`; entering `/deeper` explicitly requests one stronger follow-up. `/deeper` is a standalone command: text such as `/deeper generate a poem` is an ordinary user message, not an escalation command. Use `/exit`, `/quit`, Ctrl+C, or end-of-input to stop.
+Enter a message at `you>`. Generated assistant text is printed at `core>`. CORE then prints the fast interaction decision as either `reasoning> fast` or `reasoning> deeper`. When the latest turn recommends `deeper`, CORE also shows `deeper> /deeper`; entering `/deeper` explicitly schedules one stronger follow-up as ordinary MADRE work and immediately returns control instead of waiting for the capability to finish. `/deeper` is a standalone command: text such as `/deeper generate a poem` is an ordinary user message, not an escalation command. Use `/exit`, `/quit`, Ctrl+C, or end-of-input to stop.
 
 `--token-env` defaults to `MADRE_API_TOKEN`, `--max-tokens` defaults to 256, `--deeper-max-tokens` defaults to 768, and `--timeout` defaults to 120 seconds. The deeper token budget must exceed the fast token budget. The runtime URL must be a literal loopback HTTP(S) origin. CORE never prints the bearer token.
 
-If MADRE returns work as `accepted` or `running`, CORE polls the ordinary work-inspection endpoint until the work succeeds or fails. Durable runtime/capability failures are shown as `CORE error: ...` rather than being interpreted as assistant output.
+Foreground chat work may return from submission as `accepted` or become `running`; CORE polls the ordinary work-inspection endpoint until that foreground work succeeds, fails or is cancelled. Durable runtime/capability failures are shown as `CORE error: ...` rather than being interpreted as assistant output.
+
+Scheduled deeper work is deliberately different. `/deeper` submits it and returns. Before handling the next user action, CORE performs one ordinary inspection of that pending work. Pressing Enter is therefore enough to check for a completed result without sending another user turn. If the work is still `accepted` or `running`, CORE leaves it to MADRE and continues. No local background task owns the physical execution.
 
 ## Fast interaction responsibility
 
@@ -28,17 +30,30 @@ Each ordinary user turn creates exactly one CORE chat work item. CORE adds a tra
 
 CORE software strips the internal recommendation marker before displaying or remembering the assistant response. If the capability omits or malforms the marker, CORE preserves useful generated text and conservatively reports `deeper`. If the capability emits only a marker and no usable user-facing text, the current diagnostic CLI shows `I couldn't produce a usable fast response.` and offers the explicit deeper follow-up rather than reporting a runtime failure. That fallback is instrumentation for this experiment, not intended MADRE conversational semantics.
 
-"Fast" describes CORE's interaction responsibility: one bounded foreground inference intended to answer the current turn promptly. It is not a wall-clock scheduling guarantee. Ordinary MADRE runtime admission may still delay the work when another application occupies the heavyweight local-inference slot.
+"Fast" describes CORE's interaction responsibility: one bounded foreground inference intended to answer the current turn promptly. It is not a wall-clock scheduling guarantee. Ordinary MADRE runtime admission and application fairness may still delay the work.
 
-## User-controlled deeper follow-up
+CORE submits foreground work at a higher priority than its own scheduled deeper work. This uses the existing intra-application priority mechanism only: another application's fair scheduler turn remains authoritative. If deeper work has already begun physical execution, there is no preemption and a later fast turn can still wait for the occupied local-inference slot. That is an observable product constraint, not a reason to add another scheduler feature speculatively.
+
+## User-controlled scheduled deeper follow-up
 
 A `deeper` recommendation has exactly one execution consequence, and only when the user explicitly enters `/deeper`. CORE then submits one second ordinary MADRE work item through the same authenticated HTTP boundary and stable `madre-core` application identity.
 
 That work uses the configured chat capability with the current process-local conversation, including the latest fast answer as a draft. A transient deeper-follow-up instruction asks for a materially more thorough replacement answer and uses the larger `--deeper-max-tokens` budget. This is stronger reasoning intent within the currently available chat capability; it is not a new runtime work type or capability class.
 
-A successful deeper answer replaces the fast draft in CORE's process-local conversation history so later turns see one authoritative conversational answer rather than both drafts. The opportunity is then consumed. Sending a new ordinary user message instead abandons the previous opportunity. If the deeper work fails, the fast answer remains in history and the opportunity remains available for an explicit retry.
+The important difference from the earlier experiment is ownership of waiting. `/deeper` does not await the capability. MADRE owns the durable work and may execute it immediately or later according to the ordinary scheduler. CORE retains only the work ID and enough process-local information to decide whether the eventual result can still safely replace the fast draft.
 
-CORE never escalates automatically. `/deeper` is rejected unless the latest completed fast turn recommended deeper reasoning. The command does not deploy an agent, invoke a Planner, create a workflow, select another capability, or start background execution.
+Before the next user action, CORE inspects the scheduled deeper work once:
+
+- while it remains `accepted` or `running`, nothing is rewritten and interaction may continue;
+- if it succeeds before the conversation has advanced, `core(deeper)>` is printed and the successful result replaces the fast draft in process-local history;
+- if the user already continued from the fast draft, a later success is printed as `core(deeper, late)>` and is **not** retroactively inserted into conversation history;
+- if the scheduled work fails or is cancelled, the fast draft remains authoritative and CORE surfaces the durable runtime error.
+
+This prevents a late answer from rewriting context that later responses already consumed. It also makes the DRE distinction concrete: CORE can answer now while stronger reasoning exists as runtime-owned work.
+
+CORE tracks at most one scheduled deeper work item at a time. A successful or failed collection clears that pending association. Restarting CORE forgets the process-local association even though the MADRE runtime continues to own any durable work that was already submitted. Persistent CORE sessions or recovery of those associations are intentionally not introduced here.
+
+CORE never escalates automatically. `/deeper` is rejected unless the latest completed fast turn recommended deeper reasoning. The command does not deploy an agent, invoke a Planner, create a workflow, select another capability, or start a privileged execution path.
 
 ## Local product acceptance
 
@@ -97,7 +112,7 @@ python -m uv run --locked madre-core `
 
 At `you>`, use CORE naturally. You should receive non-empty `core>` output and then either `reasoning> fast` or `reasoning> deeper`. The exact recommendation is model output, not a deterministic acceptance criterion. A marker-only model response is treated as unusable fast output and becomes the explicit diagnostic fallback plus `reasoning> deeper`, not a runtime error.
 
-Before testing explicit escalation, open Terminal 4 and record the current durable CORE work status:
+Before testing explicit scheduled reasoning, open Terminal 4 and record the current durable CORE work status:
 
 ```powershell
 python tools/core-acceptance.py status
@@ -117,7 +132,7 @@ If CORE reports `reasoning> deeper`, do not enter `/deeper` yet. In Terminal 4 r
 python tools/core-acceptance.py status
 ```
 
-The count should now be `N + 1`, the latest work should be `succeeded`, and `latest_max_tokens=256`. This is observable proof that the complex turn created exactly one ordinary work item and that the `deeper` recommendation did not escalate automatically.
+The count should now be `N + 1`, the latest work should be `succeeded`, and `latest_max_tokens=256`. This is observable proof that the complex turn created exactly one ordinary foreground work item and that the `deeper` recommendation did not escalate automatically.
 
 Back in Terminal 3, enter `/deeper` by itself:
 
@@ -125,15 +140,29 @@ Back in Terminal 3, enter `/deeper` by itself:
 /deeper
 ```
 
-CORE should print a non-empty `core(deeper)>` response. Run the status helper again:
+CORE should print:
+
+```text
+reasoning> deeper scheduled
+```
+
+It should return to `you>` without waiting for the deeper capability invocation. Immediately running the status helper in Terminal 4 should show count `N + 2`; the latest work may truthfully be `accepted`, `running`, or already `succeeded`, and `latest_max_tokens=768`.
+
+Re-run:
 
 ```powershell
 python tools/core-acceptance.py status
 ```
 
-The count should now be `N + 2`, the latest work should be `succeeded`, and `latest_max_tokens=768`. This proves that the explicit user action created exactly one second ordinary runtime work item with the stronger budget rather than a hidden CORE execution path.
+until the latest work becomes terminal. A successful run should reach `succeeded`. Back in Terminal 3, press Enter without entering another message. CORE performs one inspection before ignoring the empty input. If the conversation has not advanced, it should print a non-empty:
 
-You can then ask a normal follow-up question about the deeper answer. Because a successful deeper result replaces the fast draft in process-local history, the next turn should be conditioned on the deeper answer rather than both drafts. This is qualitative model behavior, so record surprising behavior rather than treating exact wording as a pass/fail assertion.
+```text
+core(deeper)> ...
+```
+
+and the improved result becomes the process-local conversational answer.
+
+For the late-result case, repeat the experiment but send another ordinary user message before the scheduled deeper work completes. If the background result later succeeds, CORE should show `core(deeper, late)> ...` and state that conversation history was not rewritten. This is the safety property: later interaction that already used the fast draft is not silently reinterpreted.
 
 Repeatedly inappropriate refusals, marker-only answers, or obviously poor `fast`/`deeper` recommendations from the 1.5B fixture are useful model/interaction evidence. They are not reasons to add scheduler, Agent, Planner, memory, capability abstractions, or to keep polishing this provisional terminal UX.
 
@@ -145,14 +174,20 @@ This acceptance proves:
 - observable fast/deeper recommendation from the real configured model;
 - no automatic execution consequence from a `deeper` recommendation;
 - exactly one additional ordinary durable work item when the user enters `/deeper`;
+- `/deeper` returns without waiting for capability completion;
 - the larger deeper token budget reaches the existing capability path;
-- real generated output is used for both stages;
+- CORE can collect a result later without owning physical execution;
+- a late deeper result cannot retroactively rewrite already-advanced conversation state;
 - runtime/capability failures remain explicit rather than being turned into assistant text.
 
-It does not prove that Qwen2.5-1.5B is an adequate final CORE model, that the current classifier is product-quality, that a larger second inference consistently improves every answer, or that this terminal flow resembles the eventual MADRE UX. Those are later product-quality questions, not deterministic CI assertions.
+It does not prove that Qwen2.5-1.5B is an adequate final CORE model, that the current classifier is product-quality, that a larger second inference consistently improves every answer, that background deeper work should receive any future latency guarantee, or that this terminal flow resembles the eventual MADRE UX. Those are later product-quality questions, not deterministic CI assertions.
 
 ## State
 
-Conversation history exists only in the running CORE process. A successful assistant response, without CORE's internal reasoning marker, is appended to that in-memory history and included in the next chat-completion input. Failed turns are not appended. Restarting CORE forgets the conversation.
+Conversation history exists only in the running CORE process. A successful foreground assistant response, without CORE's internal reasoning marker, is appended to that in-memory history and included in the next chat-completion input. Failed foreground turns are not appended.
 
-There is no persistent CORE session store, memory system, agent abstraction, planner, background reasoning loop, automatic escalation, capability bypass, or runtime special case in this slice. The current terminal interaction and fast/deeper protocol remain an executable experiment layered on the runtime, not a frozen product interface.
+One scheduled deeper association may also exist in the running process: its durable work ID, the fast draft it may replace, and the conversation length at which it was scheduled. If the result is collected before conversation advancement, it replaces that fast draft. If conversation has already advanced, the late result is surfaced without mutating history.
+
+Restarting CORE forgets both conversation history and any pending deeper association. The MADRE runtime remains authoritative over work already durably accepted and continues according to its own lifecycle.
+
+There is no persistent CORE session store, memory system, generic agent abstraction, Planner, autonomous escalation, capability bypass, or runtime special case in this slice. The current terminal interaction and fast/deeper protocol remain an executable experiment layered on the runtime, not a frozen product interface.

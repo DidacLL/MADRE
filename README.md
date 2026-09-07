@@ -138,7 +138,11 @@ With the MADRE service running and the same `MADRE_API_TOKEN` available in a sec
 python -m uv run --locked madre-core --runtime-url http://127.0.0.1:8731 --capability local-chat
 ```
 
-Enter a message at `you>` and CORE submits ordinary authenticated MADRE work as application `madre-core`. Assistant text is printed at `core>`, followed by `reasoning> fast` when the foreground answer is considered sufficient or `reasoning> deeper` when CORE recommends stronger follow-up reasoning. A deeper recommendation also exposes `deeper> /deeper`. Entering `/deeper` explicitly submits one second ordinary MADRE work item with a deeper-analysis instruction and the larger `--deeper-max-tokens` budget; its result is printed at `core(deeper)>` and replaces the fast draft in process-local conversation history. CORE never escalates automatically. Runtime/capability failures and work cancelled before execution are surfaced explicitly and are not appended to conversation history.
+Enter a message at `you>` and CORE submits ordinary authenticated MADRE work as application `madre-core`. Assistant text is printed at `core>`, followed by `reasoning> fast` when the foreground answer is considered sufficient or `reasoning> deeper` when CORE recommends stronger follow-up reasoning. A deeper recommendation also exposes `deeper> /deeper`.
+
+Entering `/deeper` explicitly submits one second ordinary MADRE work item with a deeper-analysis instruction and the larger `--deeper-max-tokens` budget, then immediately returns to the prompt instead of waiting for capability completion. CORE inspects that scheduled work before the next user action. If it completed before conversation history advanced, its result is printed at `core(deeper)>` and replaces the fast draft in process-local history. If the user continued first, the eventual result is shown as `core(deeper, late)>` without retroactively rewriting history. Press Enter with no message to check a pending deeper result without creating another turn.
+
+Fast CORE work uses higher priority than its own scheduled deeper work, but priority remains intra-application: CORE receives no extra global fair-share or admission privilege. CORE never escalates automatically. Runtime/capability failures and work cancelled before execution are surfaced explicitly and are not interpreted as assistant output.
 
 This terminal interaction is an executable development surface, not a stable MADRE UX contract. The deterministic suite proves its software semantics; owner-side model runs have shown useful execution through the real path while also showing that current fast/deeper judgement and chat presentation remain experimental. [`docs/core.md`](docs/core.md#local-product-acceptance) records that evidence and the local acceptance procedure.
 
@@ -187,8 +191,10 @@ Fixtures and mocked inference establish deterministic protocol and failure behav
 
 ## Continue implementation
 
-The first-party CORE path and its experimental fast/deeper follow-up have now produced enough real-model evidence for this stage. Further chatbot UX, classifier/prompt tuning and model-floor exploration are intentionally deferred.
+The shared runtime foundation is now considered sufficient for product-layer development. The recent retry, cancellation and fair-priority scheduling work remains canonical, but generic scheduler/resource-control growth is frozen unless a concrete CORE or application behavior demonstrates a blocker that requires it.
 
-Development remains focused on the reliable shared execution framework. Read `docs/implementation-baseline.md`, inspect current runtime code/tests, and select one concrete generic reliability behavior that materially improves dependable execution for applications and CORE alike. Do not prebuild a generalized Agent, Planner, workflow engine, memory system or capability router merely to continue development; broaden an abstraction only when a real behavior requires it.
+Continue from a real CORE/application behavior, not from a list of scheduler features. The current CORE slice demonstrates asynchronous DRE by allowing a user-approved stronger reasoning pass to remain ordinary durable MADRE work while interaction can continue. Further chatbot polish, classifier/prompt tuning and model-floor exploration remain deferred.
+
+The next substantive work should deepen CORE's actual reasoning/planning behavior from observed product needs, then gather multi-model evidence when a concrete CORE behavior demonstrates why one available capability is insufficient. Do not prebuild a generalized Agent, Planner, workflow engine, memory system or capability router merely to continue development; introduce those structures only when a working behavior makes the responsibility concrete.
 
 GPL-3.0. See [`LICENSE`](LICENSE).

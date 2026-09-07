@@ -9,6 +9,8 @@ from madre_core.client import CoreClient
 
 ReasoningRecommendation = Literal["fast", "deeper"]
 
+_FAST_PRIORITY = 10
+_BACKGROUND_DEEPER_PRIORITY = -10
 _FAST_INTERACTION_INSTRUCTION = """\
 You are MADRE CORE's fast interaction behavior. Answer the user's current request directly
 with a concise, useful user-facing response. Handle ordinary benign conversational,
@@ -46,6 +48,22 @@ class CoreTurn:
     reasoning: ReasoningRecommendation
 
 
+@dataclass(frozen=True)
+class CoreDeepeningUpdate:
+    """A completed scheduled deeper result and whether it safely replaced its draft."""
+
+    text: str
+    applied_to_history: bool
+
+
+@dataclass(frozen=True)
+class _PendingDeepening:
+    work_id: str
+    assistant_index: int
+    history_length: int
+    fast_text: str
+
+
 def _interpret_fast_response(generated: str) -> CoreTurn:
     lines = generated.rstrip().splitlines()
     final_line = lines[-1].strip()
@@ -66,7 +84,7 @@ def _interpret_fast_response(generated: str) -> CoreTurn:
 
 
 class CoreConversation:
-    """Process-local CORE conversation with explicit user-controlled deeper follow-up."""
+    """Process-local CORE conversation with user-controlled scheduled deeper reasoning."""
 
     def __init__(
         self,
@@ -88,6 +106,7 @@ class CoreConversation:
         self.timeout_seconds = timeout_seconds
         self._messages: list[dict[str, str]] = []
         self._deeper_available = False
+        self._pending_deeper: _PendingDeepening | None = None
 
     @property
     def messages(self) -> tuple[dict[str, str], ...]:
@@ -97,6 +116,10 @@ class CoreConversation:
     def deeper_available(self) -> bool:
         return self._deeper_available
 
+    @property
+    def deeper_pending(self) -> bool:
+        return self._pending_deeper is not None
+
     async def send(self, user_message: str) -> CoreTurn:
         if not user_message.strip():
             raise ValueError("user message is empty")
@@ -105,17 +128,23 @@ class CoreConversation:
             [{"role": "system", "content": _FAST_INTERACTION_INSTRUCTION}, *pending],
             max_tokens=self.max_tokens,
             timeout_seconds=self.timeout_seconds,
+            priority=_FAST_PRIORITY,
         )
         turn = _interpret_fast_response(generated)
         self._messages = [*pending, {"role": "assistant", "content": turn.text}]
         self._deeper_available = turn.reasoning == "deeper"
         return turn
 
-    async def deepen(self) -> str:
-        """Replace the latest fast draft after an explicit user escalation request."""
+    async def schedule_deeper(self) -> str:
+        """Submit stronger reasoning as ordinary runtime work and return without awaiting it."""
         if not self._deeper_available:
             raise ValueError("no deeper reasoning is available for the latest turn")
-        generated = await self.client.complete(
+        if self._pending_deeper is not None:
+            raise ValueError("another deeper reasoning work item is still pending")
+
+        assistant_index = len(self._messages) - 1
+        fast_text = self._messages[assistant_index]["content"]
+        record = await self.client.submit(
             [
                 {"role": "system", "content": _DEEPER_INTERACTION_INSTRUCTION},
                 *self._messages,
@@ -123,7 +152,39 @@ class CoreConversation:
             ],
             max_tokens=self.deeper_max_tokens,
             timeout_seconds=self.timeout_seconds,
+            priority=_BACKGROUND_DEEPER_PRIORITY,
         )
-        self._messages[-1] = {"role": "assistant", "content": generated}
+        if record.status not in {"accepted", "running"}:
+            self.client.result_text(record)
+            raise RuntimeError("MADRE returned completed work from a new CORE submission")
+
+        self._pending_deeper = _PendingDeepening(
+            work_id=record.id,
+            assistant_index=assistant_index,
+            history_length=len(self._messages),
+            fast_text=fast_text,
+        )
         self._deeper_available = False
-        return generated
+        return record.id
+
+    async def collect_deeper(self) -> CoreDeepeningUpdate | None:
+        """Inspect one scheduled deeper result without waiting for pending runtime work."""
+        pending = self._pending_deeper
+        if pending is None:
+            return None
+
+        record = await self.client.inspect(pending.work_id)
+        if record.status in {"accepted", "running"}:
+            return None
+
+        self._pending_deeper = None
+        text = self.client.result_text(record)
+        can_replace = (
+            len(self._messages) == pending.history_length
+            and pending.assistant_index == len(self._messages) - 1
+            and self._messages[pending.assistant_index]
+            == {"role": "assistant", "content": pending.fast_text}
+        )
+        if can_replace:
+            self._messages[pending.assistant_index] = {"role": "assistant", "content": text}
+        return CoreDeepeningUpdate(text=text, applied_to_history=can_replace)

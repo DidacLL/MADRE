@@ -16,6 +16,21 @@ def _credential(token_env: str) -> str:
     return token
 
 
+async def _collect_deeper(conversation: CoreConversation) -> None:
+    try:
+        update = await conversation.collect_deeper()
+    except CoreRuntimeError as exc:
+        print(f"CORE deeper error: {exc}", file=sys.stderr)
+        return
+    if update is None:
+        return
+    if update.applied_to_history:
+        print(f"core(deeper)> {update.text}")
+    else:
+        print(f"core(deeper, late)> {update.text}")
+        print("reasoning> late deeper result did not rewrite conversation history")
+
+
 async def _interactive(args: argparse.Namespace) -> None:
     client = CoreClient(
         args.runtime_url,
@@ -28,13 +43,15 @@ async def _interactive(args: argparse.Namespace) -> None:
         deeper_max_tokens=args.deeper_max_tokens,
         timeout_seconds=args.timeout,
     )
-    print("MADRE CORE — type /exit or /quit to stop; /deeper follows a deeper recommendation.")
+    print("MADRE CORE — type /exit or /quit to stop; /deeper schedules a recommended deeper pass.")
     while True:
         try:
             user_message = input("you> ")
         except (EOFError, KeyboardInterrupt):
             print()
             return
+
+        await _collect_deeper(conversation)
         command = user_message.strip().lower()
         if command in {"/exit", "/quit"}:
             return
@@ -42,8 +59,8 @@ async def _interactive(args: argparse.Namespace) -> None:
             continue
         try:
             if command == "/deeper":
-                deeper_text = await conversation.deepen()
-                print(f"core(deeper)> {deeper_text}")
+                await conversation.schedule_deeper()
+                print("reasoning> deeper scheduled")
                 continue
             turn = await conversation.send(user_message)
         except (CoreRuntimeError, ValueError) as exc:

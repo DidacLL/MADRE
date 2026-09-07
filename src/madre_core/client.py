@@ -85,57 +85,69 @@ class CoreClient:
         self.poll_interval_seconds = poll_interval_seconds
         self.transport = transport
 
+    async def submit(
+        self,
+        messages: Sequence[dict[str, str]],
+        *,
+        max_tokens: int = 256,
+        timeout_seconds: float = 120,
+        priority: int = 0,
+    ) -> _WorkRecord:
+        payload_messages = self._messages(messages)
+        if max_tokens <= 0:
+            raise ValueError("max_tokens must be positive")
+        if timeout_seconds <= 0:
+            raise ValueError("timeout_seconds must be positive")
+        if priority < -100 or priority > 100:
+            raise ValueError("priority must be between -100 and 100")
+
+        submission = {
+            "application_id": CORE_APPLICATION_ID,
+            "capability_id": self.capability_id,
+            "input": {"messages": payload_messages, "max_tokens": max_tokens},
+            "priority": priority,
+            "constraints": {"timeout_seconds": timeout_seconds, "local_only": True},
+        }
+        try:
+            async with self._http_client() as client:
+                return self._record(await client.post("/v1/work", json=submission))
+        except httpx.TimeoutException as exc:
+            raise CoreRuntimeError("timed out communicating with the MADRE runtime") from exc
+        except httpx.RequestError as exc:
+            raise CoreRuntimeError("could not communicate with the MADRE runtime") from exc
+
+    async def inspect(self, work_id: str) -> _WorkRecord:
+        if not work_id.strip():
+            raise ValueError("work id is empty")
+        try:
+            async with self._http_client() as client:
+                return self._record(await client.get(f"/v1/work/{work_id}"))
+        except httpx.TimeoutException as exc:
+            raise CoreRuntimeError("timed out communicating with the MADRE runtime") from exc
+        except httpx.RequestError as exc:
+            raise CoreRuntimeError("could not communicate with the MADRE runtime") from exc
+
     async def complete(
         self,
         messages: Sequence[dict[str, str]],
         *,
         max_tokens: int = 256,
         timeout_seconds: float = 120,
+        priority: int = 0,
     ) -> str:
-        if not messages:
-            raise ValueError("CORE requires at least one chat message")
-        if max_tokens <= 0:
-            raise ValueError("max_tokens must be positive")
-        if timeout_seconds <= 0:
-            raise ValueError("timeout_seconds must be positive")
+        record = await self.submit(
+            messages,
+            max_tokens=max_tokens,
+            timeout_seconds=timeout_seconds,
+            priority=priority,
+        )
+        while record.status in {"accepted", "running"}:
+            await asyncio.sleep(self.poll_interval_seconds)
+            record = await self.inspect(record.id)
+        return self.result_text(record)
 
-        payload_messages: list[dict[str, str]] = []
-        for message in messages:
-            role = message.get("role", "")
-            content = message.get("content", "")
-            if role not in {"system", "user", "assistant"} or not content.strip():
-                raise ValueError("CORE chat messages require a valid role and non-empty content")
-            payload_messages.append({"role": role, "content": content})
-
-        submission = {
-            "application_id": CORE_APPLICATION_ID,
-            "capability_id": self.capability_id,
-            "input": {"messages": payload_messages, "max_tokens": max_tokens},
-            "constraints": {"timeout_seconds": timeout_seconds, "local_only": True},
-        }
-        headers = {"Authorization": f"Bearer {self.token}"}
-        timeout = httpx.Timeout(None, connect=5.0)
-
-        try:
-            async with httpx.AsyncClient(
-                base_url=self.runtime_url,
-                headers=headers,
-                trust_env=False,
-                follow_redirects=False,
-                timeout=timeout,
-                transport=self.transport,
-            ) as client:
-                response = await client.post("/v1/work", json=submission)
-                record = self._record(response)
-                while record.status in {"accepted", "running"}:
-                    await asyncio.sleep(self.poll_interval_seconds)
-                    response = await client.get(f"/v1/work/{record.id}")
-                    record = self._record(response)
-        except httpx.TimeoutException as exc:
-            raise CoreRuntimeError("timed out communicating with the MADRE runtime") from exc
-        except httpx.RequestError as exc:
-            raise CoreRuntimeError("could not communicate with the MADRE runtime") from exc
-
+    @staticmethod
+    def result_text(record: _WorkRecord) -> str:
         if record.status == "failed":
             if record.failure is None:
                 raise CoreRuntimeError(f"MADRE work {record.id} failed without failure details")
@@ -151,6 +163,29 @@ class CoreClient:
         if not isinstance(text, str) or not text.strip():
             raise CoreRuntimeError(f"MADRE work {record.id} succeeded without assistant text")
         return text
+
+    def _http_client(self) -> httpx.AsyncClient:
+        return httpx.AsyncClient(
+            base_url=self.runtime_url,
+            headers={"Authorization": f"Bearer {self.token}"},
+            trust_env=False,
+            follow_redirects=False,
+            timeout=httpx.Timeout(None, connect=5.0),
+            transport=self.transport,
+        )
+
+    @staticmethod
+    def _messages(messages: Sequence[dict[str, str]]) -> list[dict[str, str]]:
+        if not messages:
+            raise ValueError("CORE requires at least one chat message")
+        payload_messages: list[dict[str, str]] = []
+        for message in messages:
+            role = message.get("role", "")
+            content = message.get("content", "")
+            if role not in {"system", "user", "assistant"} or not content.strip():
+                raise ValueError("CORE chat messages require a valid role and non-empty content")
+            payload_messages.append({"role": role, "content": content})
+        return payload_messages
 
     @staticmethod
     def _record(response: httpx.Response) -> _WorkRecord:
