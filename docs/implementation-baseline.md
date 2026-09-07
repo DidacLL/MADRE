@@ -341,3 +341,55 @@ terminal record. Later development deliberately removed migration lineage from a
 storage because there is no installed data compatibility obligation; generated
 development databases now follow the current format. The temporary CI job used only to
 obtain real execution evidence was removed from the final repository diff.
+
+## First AgenticLoop implementation evidence — 2026-09-07
+
+Draft PR #39 on `agentic/vertical-kernel-loop` implements the first bounded executable
+vertical slice of the clean-slate agentic architecture. It is based on
+`architecture/modular-agentic-clean-slate` and is not canonical until Owner review and
+integration.
+
+The new `madre_kernel` package materializes validated references and definitions for
+Modules, Scopes, Schemas, Operations, Skills, Workflows, Agents, Agent instances,
+ContextBundles, WorkPlans, AgentTasks, security decisions and operation-invocation
+evidence. WorkPlan and AgentTask do not acquire a second Runtime-style `status` or a
+Runtime `work_id`; semantic completion/termination facts remain distinct from physical
+Runtime lifecycle.
+
+Kernel persistence is separate from `runtime.sqlite3` and uses responsibility-specific
+SQLite tables for definitions, plans/tasks, contexts, Agent instances, operation
+invocations, security decisions and Runtime evidence links. Module-owned Agent state is
+represented only by opaque Module-scoped references. Runtime remains unaware of all
+WorkPlan/Agent semantics and receives only its existing authenticated ordinary work
+requests.
+
+The Kernel is the Operation gateway. It evaluates the deterministic security algebra
+before dispatch, persists the structured decision, creates durable invocation evidence
+before any permitted physical Operation call, and records rejection without dispatch.
+After dispatch it records success, determinate failure or unknown external effect.
+Unknown-effect evidence is not interpreted as safe to repeat. A lower-sensitivity
+derivation is accepted only when the Operation explicitly declares the classification
+recalculation transform, and produced Scopes must remain within the Operation's declared
+destination set.
+
+The concrete acceptance path is intentionally narrow: a calculator Module declares no
+Agent, so unresolved work falls back through the replaceable CORE role. A CORE-managed
+AgentInstance performs two ordinary Runtime reasoning calls around one deterministic
+calculator Operation. The result and final answer are typed ContextBundles, the task
+and plan finish through semantic completion facts, and the two Runtime WorkRecords are
+linked back as evidence rather than embedded as semantic lifecycle state. Reopening the
+Kernel store reproduces the plan, task, invocation, contexts and Runtime links.
+
+The current CORE turn protocol in this slice is calculator-specific fixture behavior
+used to prove the architecture end to end. It is not the generalized CORE planner,
+Operation argument language, Workflow engine or future MADRE UX. Planner generation,
+WorkPlanStep, multi-Agent teams, learning/promotion, Workflow DSL execution, human
+approval, remote Module transport, rich Scope hierarchy, generic artifact ontology and
+scheduler expansion remain deferred.
+
+Implementation commit `2f18a26d099140fd959ace85f0a3da2892d50089` passed the locked
+Ubuntu PR validation pipeline: 79 deterministic tests, `ruff check .`,
+`ruff format --check .`, strict `mypy`, package build, wheel reinstall and isolated
+wheel import including `madre_kernel`. The ASGI calculator acceptance substitutes only
+the physical model response with deterministic text; it does not claim new real-model
+inference evidence.
