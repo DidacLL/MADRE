@@ -11,19 +11,20 @@ from datetime import datetime
 from typing import Protocol
 from uuid import uuid4
 
-from pydantic import JsonValue
+from pydantic import JsonValue, ValidationError
 
 from madre.capabilities import CapabilityAdapter, CapabilityError, CapabilityRegistry
 from madre.contracts import (
-    DelayedMaterial,
     ImmediateMaterial,
     WorkFailure,
     WorkRecord,
     WorkRetryRequest,
     WorkSpec,
     WorkSubmission,
+    validate_identifier,
 )
-from madre.security import SecurityAlgebra, SecurityEnvelope, SecurityPolicy
+from madre.registry import InteroperabilityRegistry, ModuleManifest
+from madre.security import SecurityAlgebra, SecurityPolicy
 from madre.storage import PlatformStore, utc_now
 
 
@@ -64,17 +65,23 @@ class ResultLost(ResultUnavailable):
     pass
 
 
+class OriginatorNotRegistered(RuntimeError):
+    pass
+
+
 class WorkRuntime:
     def __init__(
         self,
         store: PlatformStore,
         capabilities: CapabilityRegistry,
+        registry: InteroperabilityRegistry | None = None,
         *,
         policy: SecurityPolicy | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self.store = store
         self.capabilities = capabilities
+        self.registry = registry or InteroperabilityRegistry(store)
         self.policy = policy or SecurityPolicy()
         self._clock = clock or utc_now
         self._schedule_changed = asyncio.Event()
@@ -86,7 +93,7 @@ class WorkRuntime:
         self.store.mark_unconsumed_results_lost()
 
     def register_material_provider(self, originator: str, provider: MaterialProvider) -> None:
-        self._providers[originator] = provider
+        self._providers[validate_identifier(originator)] = provider
 
     async def submit(
         self,
@@ -94,11 +101,18 @@ class WorkRuntime:
         *,
         idempotency_key: str | None = None,
     ) -> WorkRecord:
-        if not submission.requester_envelope.verify_integrity():
-            raise ValueError("requester security envelope integrity is invalid")
+        requester = self._originator(submission.originator)
         material = submission.material
         if not material.envelope.verify_integrity():
             raise ValueError("material security envelope integrity is invalid")
+        if material.envelope.origin != requester.module_id:
+            raise ValueError("material security envelope origin does not match originator")
+        if int(material.envelope.trust) > int(requester.security.trust):
+            raise ValueError("material trust exceeds originator provenance trust")
+        if "*" not in requester.security.scopes and not material.envelope.scopes.issubset(
+            requester.security.scopes
+        ):
+            raise ValueError("material scopes exceed originator scopes")
         if isinstance(material, ImmediateMaterial):
             digest = content_digest(material.payload)
             if material.envelope.subject != digest:
@@ -110,7 +124,6 @@ class WorkRuntime:
 
         spec = WorkSpec(
             originator=submission.originator,
-            requester_envelope=submission.requester_envelope,
             capability=submission.capability,
             material_reference=material.reference,
             input_digest=digest,
@@ -120,8 +133,9 @@ class WorkRuntime:
             constraints=submission.constraints,
             correlation=submission.correlation,
         )
-        if idempotency_key is not None:
-            existing = self.store.get_by_idempotency_key(spec.originator, idempotency_key)
+        key = self._idempotency_key(idempotency_key)
+        if key is not None:
+            existing = self.store.get_by_idempotency_key(spec.originator, key)
             if existing is not None:
                 if existing.spec != spec:
                     raise IdempotencyConflict("idempotency key refers to different work")
@@ -131,10 +145,10 @@ class WorkRuntime:
 
         work_id = uuid4().hex
         accepted_at = self._clock()
-        created = self.store.create(work_id, spec, accepted_at, idempotency_key=idempotency_key)
+        created = self.store.create(work_id, spec, accepted_at, idempotency_key=key)
         if not created:
-            assert idempotency_key is not None
-            existing = self.store.get_by_idempotency_key(spec.originator, idempotency_key)
+            assert key is not None
+            existing = self.store.get_by_idempotency_key(spec.originator, key)
             if existing is None:
                 raise RuntimeError("idempotent work disappeared")
             if existing.spec != spec:
@@ -175,7 +189,9 @@ class WorkRuntime:
         *,
         idempotency_key: str,
     ) -> WorkRecord:
-        prior = self.store.retry_policy_by_key(work_id, idempotency_key)
+        key = self._idempotency_key(idempotency_key)
+        assert key is not None
+        prior = self.store.retry_policy_by_key(work_id, key)
         if prior is not None:
             if prior != request.allow_unknown_outcome:
                 raise RetryConflict("retry idempotency key has different policy")
@@ -193,7 +209,7 @@ class WorkRuntime:
             raise RetryConflict("interrupted work requires allow_unknown_outcome=true")
         if self.store.requeue_failed(
             work_id,
-            idempotency_key,
+            key,
             request.allow_unknown_outcome,
             self._clock(),
         ) is None:
@@ -210,6 +226,8 @@ class WorkRuntime:
             raise CancellationConflict("terminal work cannot be cancelled")
         if disposition is None:
             raise WorkNotFound(work_id)
+        if disposition == "prevented":
+            self._discard_material(work_id)
         self._schedule_changed.set()
         return self._require(work_id)
 
@@ -237,55 +255,88 @@ class WorkRuntime:
             return record
         if record.spec.eligible_at is not None and record.spec.eligible_at > self._clock():
             return record
-        adapter = self.capabilities.select(record.spec.capability)
-        if adapter is None:
-            self.store.fail(
-                work_id,
-                WorkFailure(code="no_capability", message="no compatible capability is available"),
-                self._clock(),
-            )
+
+        try:
+            requester = self._originator(record.spec.originator)
+        except OriginatorNotRegistered:
+            self._discard_material(work_id)
+            self.store.fail(work_id, WorkFailure(code="originator_unavailable"), self._clock())
             return self._require(work_id)
+
+        candidates = self.capabilities.candidates(
+            record.spec.capability, record.spec.constraints
+        )
+        if not candidates:
+            self._discard_material(work_id)
+            self.store.fail(work_id, WorkFailure(code="no_capability"), self._clock())
+            return self._require(work_id)
+
         material = await self._resolve_material(work_id, record)
         if material is None:
             return self._require(work_id)
-        descriptor = adapter.descriptor
-        decision = SecurityAlgebra.evaluate(
-            record.spec.requester_envelope,
-            material.envelope,
-            descriptor.requirements,
-            descriptor.security,
-            descriptor.execution_boundary,
-            self.policy,
-        )
-        self.store.record_security_decision(
-            crossing_kind="capability",
-            requester_subject=record.spec.requester_envelope.subject,
-            target_id=descriptor.id,
-            decision=decision,
-        )
-        if not decision.admissible:
-            self.store.fail(
-                work_id,
-                WorkFailure(code="security_denied", message=",".join(decision.deficits)),
-                self._clock(),
+
+        adapter: CapabilityAdapter | None = None
+        for candidate in candidates:
+            descriptor = candidate.descriptor
+            decision = SecurityAlgebra.evaluate(
+                requester.security,
+                material.envelope,
+                descriptor.requirements,
+                descriptor.security,
+                descriptor.security,
+                descriptor.execution_boundary,
+                self.policy,
             )
+            self.store.record_security_decision(
+                crossing_id=work_id,
+                crossing_kind="capability-candidate",
+                target_id=descriptor.id,
+                requester=requester.security,
+                material=material.envelope,
+                target_requirements=descriptor.requirements,
+                target_envelope=descriptor.security,
+                destination=descriptor.security,
+                execution_boundary=descriptor.execution_boundary,
+                decision=decision,
+            )
+            if decision.admissible:
+                adapter = candidate
+                break
+
+        if adapter is None:
+            self._discard_material(work_id)
+            self.store.fail(work_id, WorkFailure(code="security_denied"), self._clock())
             return self._require(work_id)
+
+        descriptor = adapter.descriptor
         result: JsonValue = None
         failure: WorkFailure | None = None
         async with self._capability_slot(adapter):
-            attempt = self.store.start_attempt(work_id, descriptor.id, self._clock())
+            attempt = self.store.start_attempt(
+                work_id,
+                descriptor.id,
+                descriptor.model_id,
+                descriptor.execution_boundary,
+                self._clock(),
+            )
             if attempt is None:
                 return self._require(work_id)
             try:
                 result = await adapter.execute(material.payload, record.spec.constraints)
             except CapabilityError as exc:
-                failure = WorkFailure(code=exc.code, message=str(exc))
+                try:
+                    code = validate_identifier(exc.code)
+                except ValidationError:
+                    code = "capability_error"
+                failure = WorkFailure(code=code)
             except Exception:
-                failure = WorkFailure(code="internal_error", message="capability execution failed")
-        self._materials.pop(work_id, None)
+                failure = WorkFailure(code="internal_error")
+
+        self._discard_material(work_id)
         if failure is not None:
             self.store.fail(work_id, failure, self._clock(), attempt_number=attempt)
             return self._require(work_id)
+
         digest = content_digest(result)
         size = content_size(result)
         self._results[work_id] = result
@@ -299,14 +350,8 @@ class WorkRuntime:
             if provider is not None:
                 material = await provider.resolve(record.spec.material_reference)
         if material is None:
-            self.store.fail(
-                work_id,
-                WorkFailure(
-                    code="material_unavailable",
-                    message="originator did not provide material",
-                ),
-                self._clock(),
-            )
+            self._discard_material(work_id)
+            self.store.fail(work_id, WorkFailure(code="material_unavailable"), self._clock())
             return None
         digest = content_digest(material.payload)
         if (
@@ -315,14 +360,8 @@ class WorkRuntime:
             or material.envelope != record.spec.material_envelope
             or not material.envelope.verify_integrity()
         ):
-            self.store.fail(
-                work_id,
-                WorkFailure(
-                    code="material_integrity",
-                    message="originator material failed integrity verification",
-                ),
-                self._clock(),
-            )
+            self._discard_material(work_id)
+            self.store.fail(work_id, WorkFailure(code="material_integrity"), self._clock())
             return None
         return material
 
@@ -334,6 +373,21 @@ class WorkRuntime:
                 yield
             return
         yield
+
+    def _originator(self, originator: str) -> ModuleManifest:
+        manifest = self.registry.get_module(originator)
+        if manifest is None:
+            raise OriginatorNotRegistered(originator)
+        return manifest
+
+    @staticmethod
+    def _idempotency_key(value: str | None) -> str | None:
+        if value is None:
+            return None
+        return validate_identifier(value)
+
+    def _discard_material(self, work_id: str) -> None:
+        self._materials.pop(work_id, None)
 
     def _require(self, work_id: str) -> WorkRecord:
         record = self.store.get(work_id)

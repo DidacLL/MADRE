@@ -162,7 +162,7 @@ A Module may submit execution relationships such as dependency/group/budget meta
 
 An **Operation** is callable behavior intentionally exported and implemented by a Module. The public descriptor belongs in MADRE interoperability; execution ownership remains with the Module.
 
-Likewise, a public Agent descriptor allows explicit invocation without moving Agent implementation into Kernel.
+Likewise, a public Agent descriptor allows explicit invocation without moving Agent implementation into Kernel. Request material is evaluated before dispatch, and returned material is a new governed crossing back to the requester; successful dispatch is not blanket permission for whatever bytes the target returns.
 
 The cooperation rule is:
 
@@ -177,7 +177,7 @@ MADRE uses immutable, traceable **Security Envelopes** and deterministic multidi
 
 Ordinary values use normalized levels 1..5; `0` is system-reserved. The initial independent numeric dimensions are sensitivity, trust and risk. They are never added, averaged or collapsed into one generic score. Scope/domain boundaries are independent relations.
 
-Every governed crossing is evaluated from the current requester, material, target, destination and policy facts. A prior decision is evidence, not a reusable authority token. References locate entities; possession of a reference does not grant authority.
+Every governed crossing is evaluated from the current requester, material, target, destination and policy facts. Requester security facts come from the installation's current registered Module boundary rather than from trust values supplied by an invocation payload. A prior decision is evidence, not a reusable authority token. References locate entities; possession of a reference does not grant authority.
 
 Derived material receives a new digest/envelope/provenance chain. Kernel does not perform semantic redaction of private domain content.
 

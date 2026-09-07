@@ -40,7 +40,11 @@ descriptor/version identity
 integrity digest
 ```
 
-The reference implementation serializes the envelope canonically and records a SHA-256 integrity digest. This protects against unnoticed mutation inside MADRE's persistence/transport model; it is not a substitute for future package signatures or OS identity mechanisms.
+The reference implementation serializes the envelope canonically and records a SHA-256 integrity digest. This detects unnoticed mutation inside MADRE's persistence/transport model. It is **not** cryptographic proof that an arbitrary caller was entitled to mint the represented trust/provenance.
+
+Authoritative requester/descriptor boundary facts therefore come from installation-controlled registration/adaptation, not from loose numbers or self-issued requester envelopes in an invocation payload. Future package signatures, OS identities or remote attestation can strengthen provenance without changing the algebraic API.
+
+Durable envelope metadata is identifier-shaped where practical so provenance/reference fields do not become hidden private-content persistence channels.
 
 Envelopes are immutable. A transformation creates a new subject/digest and new envelope with derivation provenance.
 
@@ -68,21 +72,27 @@ SecurityAlgebra.evaluate(
     requester envelope,
     material envelope,
     target requirements,
-    destination envelope,
+    target descriptor envelope,
+    destination boundary envelope,
     actual execution boundary,
     current policy,
 )
 ```
+
+The target descriptor and destination are independent facts. A descriptor may have weak provenance even when its owning Module is strongly identified, and vice versa.
+
+The current algebra checks relationships including requester/material provenance compatibility, requester trust, material trust/sensitivity, target and destination risk/trust, scopes and execution boundary. Policy tables relate sensitivity to maximum risk and minimum destination trust without converting dimensions into one score.
 
 The result is either admissible or inadmissible with deterministic deficits such as:
 
 ```text
 invalid envelope integrity
 insufficient requester trust
+material trust inconsistent with requester provenance
 insufficient material trust
 material too sensitive for target
 risk above current policy for sensitivity
-insufficient destination trust
+insufficient target/destination trust
 scope incompatibility
 execution-boundary mismatch
 ```
@@ -91,17 +101,19 @@ The current reference algebra is intentionally small and explicit. It provides a
 
 ## 5. Discovery
 
-Registry discovery uses a related visibility relation over requester trust/scopes and destination integrity. Visibility is not invocation authorization; the actual crossing is evaluated again when an Agent/Operation is invoked.
+Registry discovery uses a related visibility relation over the currently registered requester boundary plus descriptor and destination facts. Visibility is not invocation authorization; the actual crossing is evaluated again when an Agent/Operation is invoked.
 
 ## 6. Provenance and unknown sources
 
 Unknown or weakly described sources remain representable. Installation/adapters assign conservative trust/risk/boundary facts based on available provenance. Missing evidence is never silently equivalent to high trust.
 
+A material envelope cannot legitimately claim greater trust than its current producing/requesting Module boundary. Derived material receives its own envelope and provenance rather than inheriting stronger authority by reference possession.
+
 ## 7. References are not authority
 
 Work ids, descriptor ids, material references and correlation ids locate state. They do not grant authorization. Every governed crossing is evaluated from current boundary facts and policy.
 
-A previous accepted security decision remains historical evidence only.
+A previous accepted security decision remains historical evidence only. Delayed work resolves current requester/Module facts when it executes rather than treating acceptance as a durable grant.
 
 ## 8. Context minimization
 
@@ -111,4 +123,6 @@ If a Module transforms sensitive material, the new representation receives a new
 
 ## 9. Evidence
 
-Kernel persists security envelopes and decision deficits because those facts remain useful after transient content disposal. This permits audit of why an execution occurred without turning MADRE into private content storage.
+Kernel persists enough structured decision inputs to reconstruct which registered requester/material/target/destination boundary facts were evaluated: identities/fingerprints, target requirements, actual execution boundary, decision and deficits.
+
+This permits audit after transient content disposal without persisting the private content itself. Provider/model failure text is not durable security evidence and is reduced to bounded failure codes by default.

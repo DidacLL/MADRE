@@ -5,9 +5,10 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Annotated, Literal
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, JsonValue, field_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, JsonValue, TypeAdapter
+from pydantic import field_validator, model_validator
 
-from madre.security import SecurityEnvelope
+from madre.security import ExecutionBoundary, Identifier, SecurityEnvelope
 
 
 class FrozenModel(BaseModel):
@@ -19,33 +20,28 @@ class ExecutionConstraints(FrozenModel):
     local_only: bool = True
 
 
-CorrelationValue = Annotated[
-    str,
-    Field(
-        min_length=1,
-        max_length=160,
-        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:/@-]*$",
-    ),
-]
+class CorrelationEntry(FrozenModel):
+    key: Identifier
+    value: Identifier
 
 
 class CapabilityRequest(FrozenModel):
-    capability_id: str | None = Field(default=None, min_length=1)
-    kind: str = Field(min_length=1)
-    modality: str = Field(default="text", min_length=1)
-    model_id: str | None = Field(default=None, min_length=1)
+    capability_id: Identifier | None = None
+    kind: Identifier
+    modality: Identifier = "text"
+    model_id: Identifier | None = None
 
 
 class ImmediateMaterial(FrozenModel):
     kind: Literal["immediate"] = "immediate"
-    reference: str = Field(min_length=1)
+    reference: Identifier
     payload: JsonValue
     envelope: SecurityEnvelope
 
 
 class DelayedMaterial(FrozenModel):
     kind: Literal["delayed"] = "delayed"
-    reference: str = Field(min_length=1)
+    reference: Identifier
     digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     envelope: SecurityEnvelope
 
@@ -54,37 +50,41 @@ ExecutionMaterial = Annotated[ImmediateMaterial | DelayedMaterial, Field(discrim
 
 
 class WorkSubmission(FrozenModel):
-    originator: str = Field(min_length=1)
-    requester_envelope: SecurityEnvelope
+    originator: Identifier
     capability: CapabilityRequest
     material: ExecutionMaterial
     eligible_at: AwareDatetime | None = None
     priority: int = Field(default=0, ge=-100, le=100)
     constraints: ExecutionConstraints = Field(default_factory=ExecutionConstraints)
-    correlation: dict[str, CorrelationValue] = Field(default_factory=dict)
+    correlation: tuple[CorrelationEntry, ...] = ()
 
     @field_validator("eligible_at")
     @classmethod
     def utc_time(cls, value: datetime | None) -> datetime | None:
         return value.astimezone(UTC) if value is not None else None
 
+    @model_validator(mode="after")
+    def unique_correlation_keys(self) -> WorkSubmission:
+        keys = [entry.key for entry in self.correlation]
+        if len(keys) != len(set(keys)):
+            raise ValueError("correlation keys must be unique")
+        return self
+
 
 class WorkSpec(FrozenModel):
-    originator: str
-    requester_envelope: SecurityEnvelope
+    originator: Identifier
     capability: CapabilityRequest
-    material_reference: str
+    material_reference: Identifier
     input_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     material_envelope: SecurityEnvelope
     eligible_at: AwareDatetime | None = None
     priority: int = Field(default=0, ge=-100, le=100)
     constraints: ExecutionConstraints = Field(default_factory=ExecutionConstraints)
-    correlation: dict[str, CorrelationValue] = Field(default_factory=dict)
+    correlation: tuple[CorrelationEntry, ...] = ()
 
 
 class WorkFailure(FrozenModel):
-    code: str = Field(min_length=1)
-    message: str = Field(min_length=1)
+    code: Identifier
 
 
 class WorkCancellation(FrozenModel):
@@ -106,7 +106,9 @@ class WorkAttempt(FrozenModel):
     status: Literal["running", "succeeded", "failed"]
     started_at: AwareDatetime
     completed_at: AwareDatetime | None = None
-    capability_id: str | None = None
+    capability_id: Identifier | None = None
+    model_id: Identifier | None = None
+    execution_boundary: ExecutionBoundary | None = None
     output_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     output_size: int | None = Field(default=None, ge=0)
     failure: WorkFailure | None = None
@@ -123,7 +125,7 @@ WorkStatus = Literal["accepted", "running", "succeeded", "failed", "cancelled"]
 
 
 class WorkRecord(FrozenModel):
-    id: str = Field(min_length=1)
+    id: Identifier
     spec: WorkSpec
     status: WorkStatus
     submitted_at: AwareDatetime
@@ -138,3 +140,10 @@ class WorkRecord(FrozenModel):
 
 class WorkRetryRequest(FrozenModel):
     allow_unknown_outcome: bool = False
+
+
+_identifier_adapter = TypeAdapter(Identifier)
+
+
+def validate_identifier(value: str) -> str:
+    return _identifier_adapter.validate_python(value)

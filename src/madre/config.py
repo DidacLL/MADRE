@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import os
 import tomllib
 from pathlib import Path
@@ -9,7 +10,7 @@ from typing import Literal
 from urllib.parse import urlsplit
 
 from platformdirs import user_data_path
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from madre.security import OrdinarySecurityLevel, SecurityLevel
 
@@ -22,22 +23,28 @@ class CapabilityConfig(StrictModel):
     kind: Literal["openai_chat"] = "openai_chat"
     endpoint: str
     model: str = Field(min_length=1)
-    boundary: Literal["local", "remote"] = "local"
+    boundary: Literal["local", "isolated", "remote"] = "local"
     heavyweight: bool = True
     trust: OrdinarySecurityLevel = SecurityLevel.LEVEL_4
     risk: OrdinarySecurityLevel = SecurityLevel.LEVEL_2
     max_input_sensitivity: OrdinarySecurityLevel = SecurityLevel.LEVEL_4
 
-    @field_validator("endpoint")
-    @classmethod
-    def valid_endpoint(cls, value: str) -> str:
-        parsed = urlsplit(value)
+    @model_validator(mode="after")
+    def valid_endpoint(self) -> CapabilityConfig:
+        parsed = urlsplit(self.endpoint)
         if parsed.scheme not in {"http", "https"} or not parsed.hostname:
             raise ValueError("endpoint must be an HTTP(S) base URL")
         if parsed.username or parsed.password or parsed.query or parsed.fragment:
             raise ValueError("endpoint must not contain credentials/query/fragment")
         _ = parsed.port
-        return value.rstrip("/")
+        if self.boundary == "local":
+            try:
+                is_loopback = ipaddress.ip_address(parsed.hostname).is_loopback
+            except ValueError:
+                is_loopback = False
+            if not is_loopback:
+                raise ValueError("local capabilities require a literal loopback endpoint")
+        return self
 
 
 class Settings(StrictModel):

@@ -10,15 +10,18 @@ A Module Manifest publishes:
 module identity / version / description
 semantic discovery terms
 security envelope and provenance
+inbound boundary requirements
 exported Agent descriptors
 exported Skill descriptors
 exported Workflow descriptors
 exported Operation descriptors
 ```
 
-Every exported descriptor identifies its owning Module. The manifest exposes no private database, prompt, Agent memory/state, WorkPlan or implementation object.
+Every exported descriptor identifies its owning Module and uses an owner-qualified public identity. The manifest exposes no private database, prompt, Agent memory/state, WorkPlan or implementation object.
 
 Descriptor provenance may come from native MADRE metadata, generated tooling, known protocols, MCP/OpenAPI adapters, package metadata, source inspection or manual configuration. Weak provenance is represented conservatively rather than treated as safe.
+
+Registration is a trusted installation/adapter responsibility because it establishes public identity and security facts. An invocation payload cannot raise its own trust by supplying a different requester envelope.
 
 ## 2. Agent Descriptor
 
@@ -47,7 +50,7 @@ A Workflow is reusable semantic behavior. Public Workflow contracts support disc
 
 An Operation is callable Module-owned behavior. The descriptor contains enough information for discovery and deterministic safe brokering:
 
-- identity and owner;
+- owner-qualified identity and owner;
 - purpose;
 - input/output contract;
 - effect characteristics;
@@ -59,7 +62,9 @@ A requester selects an Operation semantically and asks Kernel to invoke that exa
 
 ## 6. Boundary-filtered discovery
 
-Discovery is filtered before descriptors are returned. Current evaluation uses requester/destination envelope integrity, requester trust and scope visibility constraints. The requester then decides which visible descriptor is useful.
+Discovery is filtered before descriptors are returned. The requester is identified by Module identity; Kernel resolves its current registered boundary rather than accepting trust values from the discovery request.
+
+Visibility evaluates requester, descriptor and destination Module boundary facts. Visibility is not invocation authorization; the actual material crossing is evaluated again when an Agent/Operation is invoked.
 
 Kernel does not inspect a user's prompt and automatically choose a public Agent/Operation.
 
@@ -68,16 +73,21 @@ Kernel does not inspect a user's prompt and automatically choose a public Agent/
 The broker takes an exact registered identity:
 
 ```text
-requesting Module
+requesting Module identity
+    -> current registered requester boundary
     -> explicit Agent/Operation id
-    -> current material + envelope
-    -> Kernel boundary evaluation
+    -> request material + envelope
+    -> input boundary evaluation
     -> owning Module endpoint
+    -> returned material + new envelope
+    -> output boundary evaluation back to requester
 ```
 
-Broker dispatch records security-decision evidence but does not persist invocation content.
+Dispatch never transfers semantic ownership into Kernel. The endpoint returns bounded material rather than an unclassified bare payload, so the return crossing is independently governed.
 
-This proves the architectural distinction between `AgentDescriptor` and Agent implementation: the reference Kernel contains descriptors and routing only; tests supply Module endpoints that own the actual behavior.
+Broker evidence is append-only around the dispatch boundary. For Operations, an exception after dispatch is conservatively recorded as an unknown external effect unless the Module can provide stronger effect evidence; Kernel does not assume a safe retry merely because it observed an exception.
+
+Broker security/effect evidence persists identifiers, envelope fingerprints, decisions, digests and event state, not invocation content.
 
 ## 8. Cross-Module cooperation
 
@@ -85,6 +95,12 @@ The intelligent participant decides which Module/Agent/Skill/Operation is releva
 
 A public Agent can itself submit ordinary MADRE inference work from its owning Module. Kernel still does not manage that Agent's semantic reasoning state.
 
-## 9. Guided Agent tooling
+## 9. Transport identity
+
+Transport authentication is distinct from the architecture contracts. The reference HTTP service currently uses one installation-admin bearer credential for local compatibility/administration and is not a finished per-Module identity system.
+
+That administrator credential must not be treated as a reusable Module trust token. Native IPC/SDK or future remote transports should bind authenticated caller identity to the registered Module identity through an installation-controlled mechanism.
+
+## 10. Guided Agent tooling
 
 Future Agent creator/import tooling should consume these public contracts to generate Modules, manifests, descriptors, security metadata and integration scaffolding. Tooling does not move Agent internals into Kernel.

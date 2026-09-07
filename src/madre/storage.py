@@ -23,13 +23,12 @@ from madre.contracts import (
     WorkSpec,
 )
 from madre.registry import ModuleManifest
-from madre.security import SecurityDecision
+from madre.security import BoundaryRequirements, ExecutionBoundary, SecurityDecision, SecurityEnvelope
 
 _STORAGE_DDL = """
 CREATE TABLE runtime_work (
     id TEXT PRIMARY KEY,
     originator TEXT NOT NULL,
-    requester_envelope_json TEXT NOT NULL,
     capability_json TEXT NOT NULL,
     material_reference TEXT NOT NULL,
     input_digest TEXT NOT NULL,
@@ -46,7 +45,6 @@ CREATE TABLE runtime_work (
     started_at TEXT,
     completed_at TEXT,
     error_code TEXT,
-    error_message TEXT,
     cancellation_requested_at TEXT,
     cancellation_disposition TEXT CHECK (
         cancellation_disposition IS NULL OR
@@ -78,7 +76,6 @@ CREATE TABLE runtime_retry (
     requested_at TEXT NOT NULL,
     previous_completed_at TEXT NOT NULL,
     previous_error_code TEXT NOT NULL,
-    previous_error_message TEXT NOT NULL,
     PRIMARY KEY(work_id,number),
     UNIQUE(work_id,idempotency_key)
 );
@@ -91,10 +88,11 @@ CREATE TABLE runtime_attempt (
     started_at TEXT NOT NULL,
     completed_at TEXT,
     capability_id TEXT,
+    model_id TEXT,
+    execution_boundary TEXT,
     output_digest TEXT,
     output_size INTEGER,
     error_code TEXT,
-    error_message TEXT,
     PRIMARY KEY(work_id,number)
 );
 
@@ -106,12 +104,35 @@ CREATE TABLE module_manifest (
 
 CREATE TABLE security_decision (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    crossing_id TEXT NOT NULL,
     crossing_kind TEXT NOT NULL,
-    requester_subject TEXT NOT NULL,
     target_id TEXT NOT NULL,
+    requester_subject TEXT NOT NULL,
+    requester_integrity TEXT NOT NULL,
+    material_subject TEXT NOT NULL,
+    material_integrity TEXT NOT NULL,
+    target_requirements_json TEXT NOT NULL,
+    target_subject TEXT NOT NULL,
+    target_integrity TEXT NOT NULL,
+    destination_subject TEXT NOT NULL,
+    destination_integrity TEXT NOT NULL,
+    execution_boundary TEXT NOT NULL,
     admissible INTEGER NOT NULL CHECK (admissible IN (0,1)),
     deficits_json TEXT NOT NULL,
     decided_at TEXT NOT NULL
+);
+
+CREATE TABLE broker_event (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    invocation_id TEXT NOT NULL,
+    crossing_kind TEXT NOT NULL,
+    requester_module_id TEXT NOT NULL,
+    target_module_id TEXT NOT NULL,
+    target_id TEXT NOT NULL,
+    event TEXT NOT NULL,
+    observed_at TEXT NOT NULL,
+    output_digest TEXT,
+    output_size INTEGER
 );
 """
 
@@ -121,9 +142,12 @@ def utc_now() -> datetime:
 
 
 def _json(value: object) -> str:
-    if isinstance(value, BaseModel):
-        value = value.model_dump(mode="json")
-    return json.dumps(value, sort_keys=True, separators=(",", ":"))
+    def default(item: object) -> object:
+        if isinstance(item, BaseModel):
+            return item.model_dump(mode="json")
+        raise TypeError(f"unsupported durable JSON value: {type(item).__name__}")
+
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), default=default)
 
 
 def _format_id() -> int:
@@ -197,16 +221,15 @@ class WorkStore:
                 self.connection.execute(
                     """
                     INSERT INTO runtime_work(
-                        id,originator,requester_envelope_json,capability_json,
-                        material_reference,input_digest,material_envelope_json,eligible_at,
-                        priority,constraints_json,correlation_json,idempotency_key,status,
-                        submitted_at,enqueued_at,queue_sequence
-                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?, 'accepted',?,?,?)
+                        id,originator,capability_json,material_reference,input_digest,
+                        material_envelope_json,eligible_at,priority,constraints_json,
+                        correlation_json,idempotency_key,status,submitted_at,enqueued_at,
+                        queue_sequence
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?, 'accepted',?,?,?)
                     """,
                     (
                         work_id,
                         spec.originator,
-                        _json(spec.requester_envelope),
                         _json(spec.capability),
                         spec.material_reference,
                         spec.input_digest,
@@ -245,7 +268,6 @@ class WorkStore:
         spec = WorkSpec.model_validate(
             {
                 "originator": row["originator"],
-                "requester_envelope": json.loads(row["requester_envelope_json"]),
                 "capability": json.loads(row["capability_json"]),
                 "material_reference": row["material_reference"],
                 "input_digest": row["input_digest"],
@@ -256,17 +278,15 @@ class WorkStore:
                 "correlation": json.loads(row["correlation_json"]),
             }
         )
-        failure = None
-        if row["error_code"] is not None:
-            failure = WorkFailure(code=row["error_code"], message=row["error_message"])
+        failure = (
+            WorkFailure(code=row["error_code"]) if row["error_code"] is not None else None
+        )
         cancellation = None
         if row["cancellation_requested_at"] is not None:
             cancellation = WorkCancellation(
                 requested_at=datetime.fromisoformat(row["cancellation_requested_at"]),
                 disposition=row["cancellation_disposition"],
             )
-        retries = self._retries(work_id)
-        attempts = self._attempts(work_id)
         result = None
         if row["output_digest"] is not None:
             result = ResultEvidence(
@@ -282,14 +302,12 @@ class WorkStore:
             submitted_at=datetime.fromisoformat(row["submitted_at"]),
             started_at=datetime.fromisoformat(row["started_at"]) if row["started_at"] else None,
             completed_at=(
-                datetime.fromisoformat(row["completed_at"])
-                if row["completed_at"]
-                else None
+                datetime.fromisoformat(row["completed_at"]) if row["completed_at"] else None
             ),
             failure=failure,
             cancellation=cancellation,
-            retries=retries,
-            attempts=attempts,
+            retries=self._retries(work_id),
+            attempts=self._attempts(work_id),
             result=result,
         )
 
@@ -324,6 +342,8 @@ class WorkStore:
                 """,
                 (originator, now.isoformat()),
             ).fetchone()
+            if row is None:
+                raise RuntimeError("eligible originator lost its accepted work")
             self.connection.execute(
                 "UPDATE runtime_scheduler_state SET last_originator=? WHERE singleton=1",
                 (originator,),
@@ -340,7 +360,14 @@ class WorkStore:
         ).fetchone()
         return datetime.fromisoformat(row["eligible_at"]) if row["eligible_at"] else None
 
-    def start_attempt(self, work_id: str, capability_id: str, started_at: datetime) -> int | None:
+    def start_attempt(
+        self,
+        work_id: str,
+        capability_id: str,
+        model_id: str | None,
+        execution_boundary: ExecutionBoundary,
+        started_at: datetime,
+    ) -> int | None:
         with self.connection:
             updated = self.connection.execute(
                 """
@@ -364,10 +391,19 @@ class WorkStore:
             self.connection.execute(
                 """
                 INSERT INTO runtime_attempt(
-                    work_id,number,retry_number,status,started_at,capability_id
-                ) VALUES (?,?,?,'running',?,?)
+                    work_id,number,retry_number,status,started_at,capability_id,
+                    model_id,execution_boundary
+                ) VALUES (?,?,?,'running',?,?,?,?)
                 """,
-                (work_id, number, retry_number, started_at.isoformat(), capability_id),
+                (
+                    work_id,
+                    number,
+                    retry_number,
+                    started_at.isoformat(),
+                    capability_id,
+                    model_id,
+                    execution_boundary,
+                ),
             )
             return number
 
@@ -384,7 +420,7 @@ class WorkStore:
                 """
                 UPDATE runtime_attempt
                 SET status='succeeded', completed_at=?, output_digest=?, output_size=?,
-                    error_code=NULL, error_message=NULL
+                    error_code=NULL
                 WHERE work_id=? AND number=?
                 """,
                 (completed_at.isoformat(), output_digest, output_size, work_id, attempt_number),
@@ -392,7 +428,7 @@ class WorkStore:
             self.connection.execute(
                 """
                 UPDATE runtime_work
-                SET status='succeeded', completed_at=?, error_code=NULL, error_message=NULL,
+                SET status='succeeded', completed_at=?, error_code=NULL,
                     output_digest=?, output_size=?, output_produced_at=?,
                     delivery_status='awaiting_consumption'
                 WHERE id=?
@@ -419,24 +455,18 @@ class WorkStore:
                 self.connection.execute(
                     """
                     UPDATE runtime_attempt
-                    SET status='failed', completed_at=?, error_code=?, error_message=?
+                    SET status='failed', completed_at=?, error_code=?
                     WHERE work_id=? AND number=?
                     """,
-                    (
-                        completed_at.isoformat(),
-                        failure.code,
-                        failure.message,
-                        work_id,
-                        attempt_number,
-                    ),
+                    (completed_at.isoformat(), failure.code, work_id, attempt_number),
                 )
             self.connection.execute(
                 """
-                UPDATE runtime_work SET status='failed',completed_at=?,error_code=?,error_message=?,
+                UPDATE runtime_work SET status='failed',completed_at=?,error_code=?,
                     output_digest=NULL,output_size=NULL,output_produced_at=NULL,delivery_status=NULL
                 WHERE id=?
                 """,
-                (completed_at.isoformat(), failure.code, failure.message, work_id),
+                (completed_at.isoformat(), failure.code, work_id),
             )
 
     def request_cancellation(self, work_id: str, requested_at: datetime) -> str | None:
@@ -489,7 +519,7 @@ class WorkStore:
         with self.connection:
             previous = self.connection.execute(
                 """
-                SELECT completed_at,error_code,error_message
+                SELECT completed_at,error_code
                 FROM runtime_work
                 WHERE id=? AND status='failed'
                 """,
@@ -507,8 +537,8 @@ class WorkStore:
                 """
                 INSERT INTO runtime_retry(
                     work_id, number, idempotency_key, allow_unknown_outcome, requested_at,
-                    previous_completed_at, previous_error_code, previous_error_message
-                ) VALUES (?,?,?,?,?,?,?,?)
+                    previous_completed_at, previous_error_code
+                ) VALUES (?,?,?,?,?,?,?)
                 """,
                 (
                     work_id,
@@ -518,7 +548,6 @@ class WorkStore:
                     requested_at.isoformat(),
                     previous["completed_at"],
                     previous["error_code"],
-                    previous["error_message"],
                 ),
             )
             sequence = self._take_queue_sequence()
@@ -526,7 +555,7 @@ class WorkStore:
                 """
                 UPDATE runtime_work
                 SET status='accepted', enqueued_at=?, queue_sequence=?, completed_at=NULL,
-                    error_code=NULL, error_message=NULL, output_digest=NULL, output_size=NULL,
+                    error_code=NULL, output_digest=NULL, output_size=NULL,
                     output_produced_at=NULL, delivery_status=NULL
                 WHERE id=?
                 """,
@@ -553,8 +582,7 @@ class WorkStore:
                     self.connection.execute(
                         """
                         UPDATE runtime_attempt
-                        SET status='failed', completed_at=?, error_code='interrupted',
-                            error_message='runtime stopped during capability execution'
+                        SET status='failed', completed_at=?, error_code='interrupted'
                         WHERE work_id=? AND number=?
                         """,
                         (now.isoformat(), work_id, attempt["number"]),
@@ -562,8 +590,7 @@ class WorkStore:
                 self.connection.execute(
                     """
                     UPDATE runtime_work
-                    SET status='failed', completed_at=?, error_code='interrupted',
-                        error_message='runtime stopped during capability execution'
+                    SET status='failed', completed_at=?, error_code='interrupted'
                     WHERE id=?
                     """,
                     (now.isoformat(), work_id),
@@ -631,9 +658,7 @@ class WorkStore:
                 requested_at=datetime.fromisoformat(row["requested_at"]),
                 allow_unknown_outcome=bool(row["allow_unknown_outcome"]),
                 previous_completed_at=datetime.fromisoformat(row["previous_completed_at"]),
-                previous_failure=WorkFailure(
-                    code=row["previous_error_code"], message=row["previous_error_message"]
-                ),
+                previous_failure=WorkFailure(code=row["previous_error_code"]),
             )
             for row in rows
         )
@@ -644,19 +669,23 @@ class WorkStore:
         ).fetchall()
         attempts = []
         for row in rows:
-            failure = None
-            if row["error_code"] is not None:
-                failure = WorkFailure(code=row["error_code"], message=row["error_message"])
+            failure = (
+                WorkFailure(code=row["error_code"]) if row["error_code"] is not None else None
+            )
             attempts.append(
                 WorkAttempt(
                     number=row["number"],
                     retry_number=row["retry_number"],
                     status=row["status"],
                     started_at=datetime.fromisoformat(row["started_at"]),
-                    completed_at=datetime.fromisoformat(row["completed_at"])
-                    if row["completed_at"]
-                    else None,
+                    completed_at=(
+                        datetime.fromisoformat(row["completed_at"])
+                        if row["completed_at"]
+                        else None
+                    ),
                     capability_id=row["capability_id"],
+                    model_id=row["model_id"],
+                    execution_boundary=row["execution_boundary"],
                     output_digest=row["output_digest"],
                     output_size=row["output_size"],
                     failure=failure,
@@ -686,25 +715,79 @@ class PlatformStore(WorkStore):
     def record_security_decision(
         self,
         *,
+        crossing_id: str,
         crossing_kind: str,
-        requester_subject: str,
         target_id: str,
+        requester: SecurityEnvelope,
+        material: SecurityEnvelope,
+        target_requirements: BoundaryRequirements,
+        target_envelope: SecurityEnvelope,
+        destination: SecurityEnvelope,
+        execution_boundary: ExecutionBoundary,
         decision: SecurityDecision,
     ) -> None:
         with self.connection:
             self.connection.execute(
                 """
                 INSERT INTO security_decision(
-                    crossing_kind, requester_subject, target_id, admissible,
-                    deficits_json, decided_at
-                ) VALUES (?,?,?,?,?,?)
+                    crossing_id,crossing_kind,target_id,
+                    requester_subject,requester_integrity,
+                    material_subject,material_integrity,
+                    target_requirements_json,target_subject,target_integrity,
+                    destination_subject,destination_integrity,
+                    execution_boundary,admissible,deficits_json,decided_at
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 (
+                    crossing_id,
                     crossing_kind,
-                    requester_subject,
                     target_id,
+                    requester.subject,
+                    requester.integrity,
+                    material.subject,
+                    material.integrity,
+                    _json(target_requirements),
+                    target_envelope.subject,
+                    target_envelope.integrity,
+                    destination.subject,
+                    destination.integrity,
+                    execution_boundary,
                     int(decision.admissible),
                     _json(list(decision.deficits)),
                     utc_now().isoformat(),
+                ),
+            )
+
+    def record_broker_event(
+        self,
+        *,
+        invocation_id: str,
+        crossing_kind: str,
+        requester_module_id: str,
+        target_module_id: str,
+        target_id: str,
+        event: str,
+        observed_at: datetime,
+        output_digest: str | None = None,
+        output_size: int | None = None,
+    ) -> None:
+        with self.connection:
+            self.connection.execute(
+                """
+                INSERT INTO broker_event(
+                    invocation_id,crossing_kind,requester_module_id,target_module_id,
+                    target_id,event,observed_at,output_digest,output_size
+                ) VALUES (?,?,?,?,?,?,?,?,?)
+                """,
+                (
+                    invocation_id,
+                    crossing_kind,
+                    requester_module_id,
+                    target_module_id,
+                    target_id,
+                    event,
+                    observed_at.isoformat(),
+                    output_digest,
+                    output_size,
                 ),
             )

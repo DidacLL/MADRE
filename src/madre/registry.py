@@ -9,6 +9,7 @@ from pydantic import Field, model_validator
 from madre.security import (
     BoundaryRequirements,
     FrozenModel,
+    Identifier,
     SecurityAlgebra,
     SecurityEnvelope,
     SecurityPolicy,
@@ -16,86 +17,96 @@ from madre.security import (
 
 
 class AgentDescriptor(FrozenModel):
-    id: str = Field(min_length=1)
-    module_id: str = Field(min_length=1)
-    purpose: str = Field(min_length=1)
-    input_contract: str = Field(min_length=1)
-    output_contract: str = Field(min_length=1)
-    published_skills: tuple[str, ...] = ()
-    published_workflows: tuple[str, ...] = ()
+    id: Identifier
+    module_id: Identifier
+    purpose: str = Field(min_length=1, max_length=2000)
+    input_contract: Identifier
+    output_contract: Identifier
+    published_skills: tuple[Identifier, ...] = ()
+    published_workflows: tuple[Identifier, ...] = ()
     requirements: BoundaryRequirements
     security: SecurityEnvelope
-    provenance: tuple[str, ...] = ()
+    provenance: tuple[Identifier, ...] = ()
 
 
 class SkillDescriptor(FrozenModel):
-    id: str = Field(min_length=1)
-    module_id: str = Field(min_length=1)
-    purpose: str = Field(min_length=1)
-    version: str = Field(min_length=1)
-    input_contract: str | None = None
-    output_contract: str | None = None
-    related_operations: tuple[str, ...] = ()
-    related_workflows: tuple[str, ...] = ()
-    compatibility: tuple[str, ...] = ()
+    id: Identifier
+    module_id: Identifier
+    purpose: str = Field(min_length=1, max_length=2000)
+    version: Identifier
+    input_contract: Identifier | None = None
+    output_contract: Identifier | None = None
+    related_operations: tuple[Identifier, ...] = ()
+    related_workflows: tuple[Identifier, ...] = ()
+    compatibility: tuple[Identifier, ...] = ()
     requirements: BoundaryRequirements
     security: SecurityEnvelope
-    provenance: tuple[str, ...] = ()
+    provenance: tuple[Identifier, ...] = ()
 
 
 class WorkflowDescriptor(FrozenModel):
-    id: str = Field(min_length=1)
-    module_id: str = Field(min_length=1)
-    purpose: str = Field(min_length=1)
-    version: str = Field(min_length=1)
-    input_contract: str = Field(min_length=1)
-    output_contract: str = Field(min_length=1)
+    id: Identifier
+    module_id: Identifier
+    purpose: str = Field(min_length=1, max_length=2000)
+    version: Identifier
+    input_contract: Identifier
+    output_contract: Identifier
     requirements: BoundaryRequirements
     security: SecurityEnvelope
-    provenance: tuple[str, ...] = ()
+    provenance: tuple[Identifier, ...] = ()
 
 
 class OperationDescriptor(FrozenModel):
-    id: str = Field(min_length=1)
-    module_id: str = Field(min_length=1)
-    purpose: str = Field(min_length=1)
-    input_contract: str = Field(min_length=1)
-    output_contract: str = Field(min_length=1)
-    effect: str = Field(min_length=1)
-    repeatability: str = Field(min_length=1)
+    id: Identifier
+    module_id: Identifier
+    purpose: str = Field(min_length=1, max_length=2000)
+    input_contract: Identifier
+    output_contract: Identifier
+    effect: Identifier
+    repeatability: Identifier
     requirements: BoundaryRequirements
     security: SecurityEnvelope
-    provenance: tuple[str, ...] = ()
+    provenance: tuple[Identifier, ...] = ()
 
 
 PublicDescriptor = AgentDescriptor | SkillDescriptor | WorkflowDescriptor | OperationDescriptor
 
 
 class ModuleManifest(FrozenModel):
-    module_id: str = Field(min_length=1)
-    version: str = Field(min_length=1)
-    description: str = Field(min_length=1)
+    module_id: Identifier
+    version: Identifier
+    description: str = Field(min_length=1, max_length=4000)
     discovery_terms: tuple[str, ...] = ()
     security: SecurityEnvelope
+    inbound_requirements: BoundaryRequirements = Field(default_factory=BoundaryRequirements)
     agents: tuple[AgentDescriptor, ...] = ()
     skills: tuple[SkillDescriptor, ...] = ()
     workflows: tuple[WorkflowDescriptor, ...] = ()
     operations: tuple[OperationDescriptor, ...] = ()
-    provenance: tuple[str, ...] = ()
+    provenance: tuple[Identifier, ...] = ()
 
     @model_validator(mode="after")
-    def ownership_is_explicit(self) -> ModuleManifest:
+    def ownership_and_integrity_are_explicit(self) -> ModuleManifest:
+        if self.security.subject != self.module_id:
+            raise ValueError("Module security envelope subject must equal module_id")
+        if not self.security.verify_integrity():
+            raise ValueError("Module security envelope integrity is invalid")
         exports: tuple[PublicDescriptor, ...] = (
             *self.agents,
             *self.skills,
             *self.workflows,
             *self.operations,
         )
+        prefix = f"{self.module_id}/"
         for descriptor in exports:
             if descriptor.module_id != self.module_id:
                 raise ValueError("every exported descriptor must identify its owning Module")
-        if not self.security.verify_integrity():
-            raise ValueError("Module security envelope integrity is invalid")
+            if not descriptor.id.startswith(prefix):
+                raise ValueError("exported descriptor identity must be namespaced by its Module")
+            if descriptor.security.subject != descriptor.id:
+                raise ValueError("descriptor security envelope subject must equal descriptor id")
+            if not descriptor.security.verify_integrity():
+                raise ValueError(f"invalid descriptor security envelope: {descriptor.id}")
         return self
 
 
@@ -111,19 +122,16 @@ class InteroperabilityRegistry:
         self._policy = policy or SecurityPolicy()
 
     def register(self, manifest: ModuleManifest) -> None:
-        exports: tuple[PublicDescriptor, ...] = (
-            *manifest.agents,
-            *manifest.skills,
-            *manifest.workflows,
-            *manifest.operations,
-        )
-        for descriptor in exports:
-            if not descriptor.security.verify_integrity():
-                raise ValueError(f"invalid descriptor security envelope: {descriptor.id}")
         self._store.put_manifest(manifest)
 
     def get_module(self, module_id: str) -> ModuleManifest | None:
         return next((item for item in self._store.manifests() if item.module_id == module_id), None)
+
+    def require_module(self, module_id: str) -> ModuleManifest:
+        manifest = self.get_module(module_id)
+        if manifest is None:
+            raise LookupError(f"Module is not registered: {module_id}")
+        return manifest
 
     def get_agent(self, agent_id: str) -> AgentDescriptor | None:
         for manifest in self._store.manifests():
@@ -139,7 +147,8 @@ class InteroperabilityRegistry:
                     return descriptor
         return None
 
-    def discover_agents(self, requester: SecurityEnvelope) -> tuple[AgentDescriptor, ...]:
+    def discover_agents(self, requester_module_id: str) -> tuple[AgentDescriptor, ...]:
+        requester = self.require_module(requester_module_id).security
         visible: list[AgentDescriptor] = []
         for manifest in self._store.manifests():
             visible.extend(
@@ -149,7 +158,8 @@ class InteroperabilityRegistry:
             )
         return tuple(sorted(visible, key=lambda descriptor: descriptor.id))
 
-    def discover_skills(self, requester: SecurityEnvelope) -> tuple[SkillDescriptor, ...]:
+    def discover_skills(self, requester_module_id: str) -> tuple[SkillDescriptor, ...]:
+        requester = self.require_module(requester_module_id).security
         visible: list[SkillDescriptor] = []
         for manifest in self._store.manifests():
             visible.extend(
@@ -159,9 +169,8 @@ class InteroperabilityRegistry:
             )
         return tuple(sorted(visible, key=lambda descriptor: descriptor.id))
 
-    def discover_workflows(
-        self, requester: SecurityEnvelope
-    ) -> tuple[WorkflowDescriptor, ...]:
+    def discover_workflows(self, requester_module_id: str) -> tuple[WorkflowDescriptor, ...]:
+        requester = self.require_module(requester_module_id).security
         visible: list[WorkflowDescriptor] = []
         for manifest in self._store.manifests():
             visible.extend(
@@ -171,9 +180,8 @@ class InteroperabilityRegistry:
             )
         return tuple(sorted(visible, key=lambda descriptor: descriptor.id))
 
-    def discover_operations(
-        self, requester: SecurityEnvelope
-    ) -> tuple[OperationDescriptor, ...]:
+    def discover_operations(self, requester_module_id: str) -> tuple[OperationDescriptor, ...]:
+        requester = self.require_module(requester_module_id).security
         visible: list[OperationDescriptor] = []
         for manifest in self._store.manifests():
             visible.extend(
@@ -189,9 +197,12 @@ class InteroperabilityRegistry:
         descriptor: PublicDescriptor,
         manifest: ModuleManifest,
     ) -> bool:
+        if not descriptor.security.verify_integrity():
+            return False
         decision = SecurityAlgebra.visible(
             requester,
             descriptor.requirements,
+            descriptor.security,
             manifest.security,
             self._policy,
         )
