@@ -203,9 +203,7 @@ def create_reviewed_planning_work_plan(
         _SYNTHESIS_WORKFLOW_ID,
     )
     offered = {workflow.id for workflow in agent.workflows}
-    missing = [
-        workflow_id for workflow_id in selected_workflows if workflow_id not in offered
-    ]
+    missing = [workflow_id for workflow_id in selected_workflows if workflow_id not in offered]
     if missing:
         raise ValueError(
             f"Agent {agent.id} does not offer required workflow(s): {', '.join(missing)}"
