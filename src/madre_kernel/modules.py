@@ -1,4 +1,4 @@
-"""Module integration seam plus deterministic in-process calculator adapter."""
+"""Generic Module integration seam for MADRE Kernel orchestration."""
 
 from __future__ import annotations
 
@@ -14,35 +14,19 @@ from madre_kernel.contracts import (
     AgentInstance,
     AgentSkillInstance,
     AgentSkillInstanceRef,
-    CalculateInput,
-    CalculateOutput,
-    ClassificationTransform,
     ContextBundle,
     ContextBundleRef,
     DataSecurityFacts,
-    DefinitionProvenance,
     DiscoveryPolicyRef,
-    EffectKind,
-    EffectSemantics,
-    ExecutionBoundary,
-    InterruptedOutcome,
     ModuleManifest,
-    ModuleRef,
-    ObjectiveText,
     OperationDescriptor,
     OperationRef,
-    OperationSecurityFacts,
-    Repeatability,
     SchemaRef,
-    ScopeDescriptor,
-    ScopeRef,
-    SecurityLevel,
     SkillDefinition,
     SkillRef,
     TypedPayload,
     WorkflowDefinition,
     WorkflowRef,
-    utc_now,
 )
 
 T = TypeVar("T", bound=BaseModel)
@@ -57,23 +41,23 @@ class SchemaCodecRegistry:
     def __init__(self) -> None:
         self._models: dict[str, type[BaseModel]] = {}
 
-    def register(self, schema: SchemaRef, model: type[BaseModel]) -> None:
-        self._models[ref_key(schema)] = model
+    def register(self, schema_ref: SchemaRef, model: type[BaseModel]) -> None:
+        self._models[ref_key(schema_ref)] = model
 
-    def encode(self, schema: SchemaRef, value: BaseModel) -> TypedPayload:
-        model = self._models.get(ref_key(schema))
+    def encode(self, schema_ref: SchemaRef, value: BaseModel) -> TypedPayload:
+        model = self._models.get(ref_key(schema_ref))
         if model is None or not isinstance(value, model):
             raise ValueError("payload does not match the exact registered SchemaRef")
-        return TypedPayload(schema=schema, canonical_json=value.model_dump_json())
+        return TypedPayload(schema_ref=schema_ref, canonical_json=value.model_dump_json())
 
     def validate(self, payload: TypedPayload) -> None:
-        model = self._models.get(ref_key(payload.schema))
+        model = self._models.get(ref_key(payload.schema_ref))
         if model is None:
             raise ValueError("unknown SchemaRef")
         model.model_validate_json(payload.canonical_json)
 
     def decode(self, payload: TypedPayload, model: type[T]) -> T:
-        registered = self._models.get(ref_key(payload.schema))
+        registered = self._models.get(ref_key(payload.schema_ref))
         if registered is not model:
             raise ValueError("requested payload type does not match exact SchemaRef")
         return model.model_validate_json(payload.canonical_json)
@@ -81,7 +65,7 @@ class SchemaCodecRegistry:
 
 @dataclass(frozen=True)
 class OperationMaterial:
-    schema: SchemaRef
+    schema_ref: SchemaRef
     payload: BaseModel
     security: DataSecurityFacts
     purpose: str
@@ -116,7 +100,7 @@ class AgentExecutionServices(Protocol):
 
     def emit_agent_context(
         self,
-        schema: SchemaRef,
+        schema_ref: SchemaRef,
         payload: BaseModel,
         security: DataSecurityFacts,
         purpose: str,
@@ -246,109 +230,3 @@ class InProcessModule:
         if handler is None:
             raise KeyError("Module does not implement Operation")
         return handler(inputs)
-
-
-CALC_MODULE = ModuleRef(module_id="calc")
-CALC_SCOPE = ScopeRef(module=CALC_MODULE, scope_id="calculation")
-CALC_OBJECTIVE_SCHEMA = SchemaRef(
-    module=CALC_MODULE,
-    schema_id="objective-text",
-    revision=1,
-)
-CALC_INPUT_SCHEMA = SchemaRef(
-    module=CALC_MODULE,
-    schema_id="calculate-input",
-    revision=1,
-)
-CALC_OUTPUT_SCHEMA = SchemaRef(
-    module=CALC_MODULE,
-    schema_id="calculate-output",
-    revision=1,
-)
-CALCULATE = OperationRef(module=CALC_MODULE, operation_id="calculate", revision=1)
-
-
-def build_calculator_module() -> InProcessModule:
-    operation = OperationDescriptor(
-        ref=CALCULATE,
-        name="CalcModule.calculate",
-        purpose="Multiply two integers deterministically.",
-        input_schema=CALC_INPUT_SCHEMA,
-        output_schema=CALC_OUTPUT_SCHEMA,
-        security=OperationSecurityFacts(
-            risk=SecurityLevel.LEVEL_1,
-            minimum_input_trust=SecurityLevel.LEVEL_1,
-            maximum_input_sensitivity=SecurityLevel.LEVEL_3,
-            source_scopes=frozenset({CALC_SCOPE}),
-            destination_scopes=frozenset({CALC_SCOPE}),
-            execution_boundary=ExecutionBoundary.LOCAL_TRUSTED,
-            classification_transform=ClassificationTransform.NONE,
-        ),
-        effect_semantics=EffectSemantics(
-            kind=EffectKind.NONE,
-            repeatability=Repeatability.REPEATABLE,
-            interrupted_outcome=InterruptedOutcome.DETERMINATE,
-        ),
-        visibility=PUBLIC_DISCOVERY,
-        provenance=DefinitionProvenance(
-            created_at=utc_now(),
-            created_by=CALC_MODULE,
-        ),
-    )
-    manifest = ModuleManifest(
-        module=CALC_MODULE,
-        revision=1,
-        name="Calculator",
-        description="Deterministic calculator Module used by the first AgenticLoop.",
-        visibility=PUBLIC_DISCOVERY,
-        scopes=(
-            ScopeDescriptor(
-                ref=CALC_SCOPE,
-                name="Calculation",
-                description="Integer arithmetic",
-            ),
-        ),
-        operations=(CALCULATE,),
-        skills=(),
-        agents=(),
-    )
-
-    def project(payload: BaseModel) -> OperationMaterial:
-        value = CalculateInput.model_validate(payload)
-        return OperationMaterial(
-            schema=CALC_INPUT_SCHEMA,
-            payload=value,
-            security=DataSecurityFacts(
-                sensitivity=SecurityLevel.LEVEL_1,
-                trust=SecurityLevel.LEVEL_3,
-                scopes=frozenset({CALC_SCOPE}),
-            ),
-            purpose="calculator-operation-input",
-        )
-
-    def calculate(inputs: tuple[ContextBundle, ...]) -> OperationMaterial:
-        if len(inputs) != 1 or inputs[0].payload.schema != CALC_INPUT_SCHEMA:
-            raise ValueError("calculate expects one exact CalculateInput ContextBundle")
-        request = CalculateInput.model_validate_json(inputs[0].payload.canonical_json)
-        return OperationMaterial(
-            schema=CALC_OUTPUT_SCHEMA,
-            payload=CalculateOutput(value=request.left * request.right),
-            security=DataSecurityFacts(
-                sensitivity=SecurityLevel.LEVEL_1,
-                trust=SecurityLevel.LEVEL_5,
-                scopes=frozenset({CALC_SCOPE}),
-            ),
-            purpose="calculator-result",
-        )
-
-    return InProcessModule(
-        manifest=manifest,
-        schemas={
-            CALC_OBJECTIVE_SCHEMA: ObjectiveText,
-            CALC_INPUT_SCHEMA: CalculateInput,
-            CALC_OUTPUT_SCHEMA: CalculateOutput,
-        },
-        operations=(operation,),
-        input_projectors={ref_key(CALCULATE): project},
-        handlers={ref_key(CALCULATE): calculate},
-    )
