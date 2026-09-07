@@ -78,7 +78,7 @@ class UnknownOperationEffect(RuntimeError):
 class AgentExecutionServices(Protocol):
     async def reasoning(
         self,
-        messages: Sequence[tuple[str, str]],
+        capability_input_json: str,
         material: Sequence[ContextBundleRef],
     ) -> str: ...
 
