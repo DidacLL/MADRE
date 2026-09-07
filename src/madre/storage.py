@@ -40,6 +40,9 @@ CREATE TABLE runtime_retry (
     idempotency_key TEXT NOT NULL,
     allow_unknown_outcome INTEGER NOT NULL CHECK (allow_unknown_outcome IN (0, 1)),
     requested_at TEXT NOT NULL,
+    previous_completed_at TEXT NOT NULL,
+    previous_error_code TEXT NOT NULL,
+    previous_error_message TEXT NOT NULL,
     PRIMARY KEY (work_id, number),
     UNIQUE (work_id, idempotency_key)
 );
@@ -190,17 +193,22 @@ class WorkStore:
         requested_at: datetime,
     ) -> int | None:
         with self.connection:
-            updated = self.connection.execute(
+            previous = self.connection.execute(
                 """
-                UPDATE runtime_work
-                SET status = 'accepted', completed_at = NULL, result_json = NULL,
-                    error_code = NULL, error_message = NULL
+                SELECT completed_at, error_code, error_message
+                FROM runtime_work
                 WHERE id = ? AND status = 'failed'
                 """,
                 (work_id,),
-            )
-            if updated.rowcount != 1:
+            ).fetchone()
+            if previous is None:
                 return None
+            if (
+                previous["completed_at"] is None
+                or previous["error_code"] is None
+                or previous["error_message"] is None
+            ):
+                raise RuntimeError("failed work lacks durable terminal evidence")
 
             row = self.connection.execute(
                 """
@@ -214,8 +222,9 @@ class WorkStore:
             self.connection.execute(
                 """
                 INSERT INTO runtime_retry (
-                    work_id, number, idempotency_key, allow_unknown_outcome, requested_at
-                ) VALUES (?, ?, ?, ?, ?)
+                    work_id, number, idempotency_key, allow_unknown_outcome, requested_at,
+                    previous_completed_at, previous_error_code, previous_error_message
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     work_id,
@@ -223,8 +232,22 @@ class WorkStore:
                     idempotency_key,
                     int(allow_unknown_outcome),
                     requested_at.isoformat(),
+                    previous["completed_at"],
+                    previous["error_code"],
+                    previous["error_message"],
                 ),
             )
+            updated = self.connection.execute(
+                """
+                UPDATE runtime_work
+                SET status = 'accepted', completed_at = NULL, result_json = NULL,
+                    error_code = NULL, error_message = NULL
+                WHERE id = ? AND status = 'failed'
+                """,
+                (work_id,),
+            )
+            if updated.rowcount != 1:
+                raise RuntimeError("failed work changed during durable retry transition")
         return number
 
     def next_eligible(self, now: datetime) -> str | None:
@@ -416,6 +439,11 @@ class WorkStore:
                     number=retry["number"],
                     requested_at=retry["requested_at"],
                     allow_unknown_outcome=bool(retry["allow_unknown_outcome"]),
+                    previous_completed_at=retry["previous_completed_at"],
+                    previous_failure=WorkFailure(
+                        code=retry["previous_error_code"],
+                        message=retry["previous_error_message"],
+                    ),
                 )
                 for retry in retries
             ],
