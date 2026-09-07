@@ -1,4 +1,4 @@
-"""Trusted Kernel orchestration and Operation gateway for the first vertical AgenticLoop."""
+"""Trusted Kernel orchestration and Operation gateway."""
 
 from __future__ import annotations
 
@@ -121,8 +121,8 @@ class Kernel:
             ref_key(module.manifest.module),
             module.manifest,
         )
-        for schema, model in module.schemas().items():
-            self.codecs.register(schema, model)
+        for schema_ref, model in module.schemas().items():
+            self.codecs.register(schema_ref, model)
         for operation_ref in module.manifest.operations:
             descriptor = module.operation(operation_ref)
             if descriptor is None:
@@ -244,7 +244,7 @@ class Kernel:
         self,
         *,
         owner_module_id: str,
-        schema: SchemaRef,
+        schema_ref: SchemaRef,
         objective: BaseModel,
         security: DataSecurityFacts,
         requirement: AgentRequirement | None = None,
@@ -252,7 +252,7 @@ class Kernel:
         owner = self._module_by_id(owner_module_id).manifest.module
         objective_bundle = self.create_context(
             owner=owner,
-            schema=schema,
+            schema_ref=schema_ref,
             payload=objective,
             security=security,
             purpose="work-plan-objective",
@@ -314,14 +314,14 @@ class Kernel:
         self,
         *,
         owner_module_id: str,
-        schema: SchemaRef,
+        schema_ref: SchemaRef,
         objective: BaseModel,
         security: DataSecurityFacts,
         requirement: AgentRequirement | None = None,
     ) -> WorkPlan:
         plan, task = self.create_work_plan(
             owner_module_id=owner_module_id,
-            schema=schema,
+            schema_ref=schema_ref,
             objective=objective,
             security=security,
             requirement=requirement,
@@ -368,7 +368,7 @@ class Kernel:
         self,
         *,
         owner: ModuleRef,
-        schema: SchemaRef,
+        schema_ref: SchemaRef,
         payload: BaseModel,
         security: DataSecurityFacts,
         purpose: str,
@@ -377,7 +377,7 @@ class Kernel:
     ) -> ContextBundle:
         if ref_key(owner) not in self._modules:
             raise LookupError("Context owner Module is not registered")
-        typed = self.codecs.encode(schema, payload)
+        typed = self.codecs.encode(schema_ref, payload)
         bundle = ContextBundle(
             ref=ContextBundleRef(bundle_id=uuid4().hex),
             owner_module=owner,
@@ -566,11 +566,11 @@ class _TaskServices(AgentExecutionServices):
         module = self.kernel._module(operation.module)
         material = module.project_operation_input(operation, payload)
         descriptor = module.operation(operation)
-        if descriptor is None or material.schema != descriptor.input_schema:
+        if descriptor is None or material.schema_ref != descriptor.input_schema:
             raise ValueError("Module projected input with a schema outside the Operation contract")
         bundle = self.kernel.create_context(
             owner=operation.module,
-            schema=material.schema,
+            schema_ref=material.schema_ref,
             payload=material.payload,
             security=material.security,
             purpose=material.purpose,
@@ -644,7 +644,7 @@ class _TaskServices(AgentExecutionServices):
 
         try:
             material = await module.invoke_operation(operation, bundles)
-            if material.schema != descriptor.output_schema:
+            if material.schema_ref != descriptor.output_schema:
                 raise ValueError("Operation returned a schema outside its exact descriptor")
             if bundles:
                 source_sensitivity = max(bundle.security.sensitivity for bundle in bundles)
@@ -658,7 +658,7 @@ class _TaskServices(AgentExecutionServices):
                 raise ValueError("Operation output Scope is outside declared destination scopes")
             output = self.kernel.create_context(
                 owner=operation.module,
-                schema=material.schema,
+                schema_ref=material.schema_ref,
                 payload=material.payload,
                 security=material.security,
                 purpose=material.purpose,
@@ -721,7 +721,7 @@ class _TaskServices(AgentExecutionServices):
 
     def emit_agent_context(
         self,
-        schema: SchemaRef,
+        schema_ref: SchemaRef,
         payload: BaseModel,
         security: DataSecurityFacts,
         purpose: str,
@@ -729,7 +729,7 @@ class _TaskServices(AgentExecutionServices):
     ) -> ContextBundleRef:
         bundle = self.kernel.create_context(
             owner=self.definition.ref.agent.module,
-            schema=schema,
+            schema_ref=schema_ref,
             payload=payload,
             security=security,
             purpose=purpose,
