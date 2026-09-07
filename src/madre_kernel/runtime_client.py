@@ -100,9 +100,7 @@ class KernelRuntimeClient:
                 record = self._record(await client.get(f"/v1/work/{record.id}"))
         if record.status == "failed":
             detail = (
-                record.failure.message
-                if record.failure is not None
-                else "unknown Runtime failure"
+                record.failure.message if record.failure is not None else "unknown Runtime failure"
             )
             raise RuntimeBoundaryError(detail)
         if record.status != "succeeded" or record.result is None:
