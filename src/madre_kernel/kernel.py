@@ -518,7 +518,7 @@ class _TaskServices(AgentExecutionServices):
 
     async def reasoning(
         self,
-        messages: Sequence[tuple[str, str]],
+        capability_input_json: str,
         material: Sequence[ContextBundleRef],
     ) -> str:
         bundles = tuple(self.context(ref) for ref in material)
@@ -537,7 +537,7 @@ class _TaskServices(AgentExecutionServices):
         )
         if not decision.accepted:
             raise SecurityRejectedError(decision)
-        result = await self.kernel.runtime.reason(messages)
+        result = await self.kernel.runtime.reason(capability_input_json)
         link = RuntimeEvidenceLink(
             task=self.task.ref,
             runtime_work=result.work,
