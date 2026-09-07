@@ -10,7 +10,14 @@ from pathlib import Path
 
 from filelock import FileLock, Timeout
 
-from madre.contracts import WorkAttempt, WorkFailure, WorkRecord, WorkRetry, WorkSubmission
+from madre.contracts import (
+    WorkAttempt,
+    WorkCancellation,
+    WorkFailure,
+    WorkRecord,
+    WorkRetry,
+    WorkSubmission,
+)
 
 _STORAGE_DDL = """
 CREATE TABLE runtime_work (
@@ -21,13 +28,24 @@ CREATE TABLE runtime_work (
     eligible_at TEXT,
     constraints_json TEXT NOT NULL,
     idempotency_key TEXT,
-    status TEXT NOT NULL CHECK (status IN ('accepted', 'running', 'succeeded', 'failed')),
+    status TEXT NOT NULL CHECK (
+        status IN ('accepted', 'running', 'succeeded', 'failed', 'cancelled')
+    ),
     submitted_at TEXT NOT NULL,
     started_at TEXT,
     completed_at TEXT,
     result_json TEXT,
     error_code TEXT,
-    error_message TEXT
+    error_message TEXT,
+    cancellation_requested_at TEXT,
+    cancellation_disposition TEXT CHECK (
+        cancellation_disposition IS NULL
+        OR cancellation_disposition IN ('prevented', 'requested_while_running')
+    ),
+    CHECK (
+        (cancellation_requested_at IS NULL AND cancellation_disposition IS NULL)
+        OR (cancellation_requested_at IS NOT NULL AND cancellation_disposition IS NOT NULL)
+    )
 );
 
 CREATE UNIQUE INDEX runtime_work_idempotency
@@ -250,6 +268,61 @@ class WorkStore:
                 raise RuntimeError("failed work changed during durable retry transition")
         return number
 
+    def request_cancellation(self, work_id: str, requested_at: datetime) -> str | None:
+        requested = requested_at.isoformat()
+        with self.connection:
+            row = self.connection.execute(
+                """
+                SELECT status, cancellation_disposition
+                FROM runtime_work
+                WHERE id = ?
+                """,
+                (work_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            if row["cancellation_disposition"] is not None:
+                return str(row["cancellation_disposition"])
+
+            if row["status"] == "accepted":
+                updated = self.connection.execute(
+                    """
+                    UPDATE runtime_work
+                    SET status = 'cancelled', completed_at = ?, result_json = NULL,
+                        error_code = NULL, error_message = NULL,
+                        cancellation_requested_at = ?, cancellation_disposition = 'prevented'
+                    WHERE id = ? AND status = 'accepted' AND cancellation_requested_at IS NULL
+                    """,
+                    (requested, requested, work_id),
+                )
+                if updated.rowcount == 1:
+                    return "prevented"
+
+            if row["status"] == "running":
+                updated = self.connection.execute(
+                    """
+                    UPDATE runtime_work
+                    SET cancellation_requested_at = ?,
+                        cancellation_disposition = 'requested_while_running'
+                    WHERE id = ? AND status = 'running' AND cancellation_requested_at IS NULL
+                    """,
+                    (requested, work_id),
+                )
+                if updated.rowcount == 1:
+                    return "requested_while_running"
+
+            current = self.connection.execute(
+                """
+                SELECT cancellation_disposition
+                FROM runtime_work
+                WHERE id = ?
+                """,
+                (work_id,),
+            ).fetchone()
+            if current is not None and current["cancellation_disposition"] is not None:
+                return str(current["cancellation_disposition"])
+        return "terminal"
+
     def next_eligible(self, now: datetime) -> str | None:
         row = self.connection.execute(
             """
@@ -434,6 +507,14 @@ class WorkStore:
             completed_at=row["completed_at"],
             result=json.loads(row["result_json"]) if row["result_json"] else None,
             failure=self._failure(row),
+            cancellation=(
+                WorkCancellation(
+                    requested_at=row["cancellation_requested_at"],
+                    disposition=row["cancellation_disposition"],
+                )
+                if row["cancellation_requested_at"] is not None
+                else None
+            ),
             retries=[
                 WorkRetry(
                     number=retry["number"],

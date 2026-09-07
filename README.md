@@ -21,7 +21,9 @@ Applications may optionally send an `Idempotency-Key` header when a logical subm
 
 Failed work can be explicitly requeued through `POST /v1/work/{id}/retry`. Retry requests require their own `Idempotency-Key`, are durably recorded, and replay safely without authorizing duplicate execution. Physical attempts identify which retry authorized them. MADRE never retries work automatically. A work item interrupted while a capability may already have executed is retryable only when the caller explicitly sets `allow_unknown_outcome` because another invocation may duplicate external effects.
 
-`GET /v1/work/{id}` returns the durable record at any point in that lifecycle and is the generic completion boundary for applications that need the eventual result. A process restart preserves accepted work that has not started a capability attempt, including an accepted explicit retry. A previously in-flight attempt becomes an `interrupted` failure whose evidence states that the capability outcome may be unknown.
+Work can be cancelled through `POST /v1/work/{id}/cancel`. If the work is still `accepted`, cancellation is durable and terminal as `cancelled`; the currently pending execution is prevented from starting a capability attempt. For an initial submission that means the capability is never invoked; if a previous attempt already failed and was explicitly retried, that earlier attempt remains in the evidence. If a physical attempt is already `running`, MADRE records `requested_while_running` cancellation evidence but does not pretend that cancelling its own HTTP coroutine would prove the external capability stopped. The invocation keeps its scarce-resource admission until it actually returns, and its real success or failure is then recorded together with the cancellation request. Cancellation is monotonic for one logical work item: work with a recorded cancellation request cannot later be retried under the same identity.
+
+`GET /v1/work/{id}` returns the durable record at any point in that lifecycle and is the generic completion boundary for applications that need the eventual result. A process restart preserves accepted work that has not started a capability attempt, including an accepted explicit retry, and preserves cancelled work without executing it. A previously in-flight attempt becomes an `interrupted` failure whose evidence states that the capability outcome may be unknown; any previously recorded running cancellation request remains part of that evidence.
 
 Python is the current implementation language, not a permanent product boundary. The application API is language-neutral HTTP; C/C++ implementations can be introduced where concrete runtime responsibilities benefit.
 
@@ -82,6 +84,7 @@ The authenticated endpoints are:
 - `GET http://127.0.0.1:8731/health`
 - `POST http://127.0.0.1:8731/v1/work`
 - `POST http://127.0.0.1:8731/v1/work/{id}/retry`
+- `POST http://127.0.0.1:8731/v1/work/{id}/cancel`
 - `GET http://127.0.0.1:8731/v1/work/{id}`
 
 All require `Authorization: Bearer <token>`. `/health` returns `{"status":"ok"}`. Missing or incorrect credentials return 401. Stop the foreground service with Ctrl+C. A second runtime using the same data directory is rejected; process exit releases ownership. Runtime files, local configuration, model weights, build output and credentials are not committed. During active development, a runtime database whose internal storage structure no longer matches the executable is discarded and recreated rather than migrated.
@@ -106,7 +109,7 @@ A chat-completion submission is shaped like:
 }
 ```
 
-Omit `eligible_at` (or use `null`) for immediate eligibility. Immediate and future-eligible submissions both return a durable `accepted` record; the difference is only when the runtime may execute them. Poll `GET /v1/work/{id}` when the application needs eventual success or failure. The application owns whether it waits, continues foreground interaction, submits additional work, or inspects later. MADRE stores only the application-selected execution material and runtime evidence required to execute, recover and inspect the work.
+Omit `eligible_at` (or use `null`) for immediate eligibility. Immediate and future-eligible submissions both return a durable `accepted` record; the difference is only when the runtime may execute them. Poll `GET /v1/work/{id}` when the application needs eventual success, failure or cancellation. The application owns whether it waits, continues foreground interaction, submits additional work, cancels pending work, or inspects later. MADRE stores only the application-selected execution material and runtime evidence required to execute, recover and inspect the work.
 
 When retrying one logical submission POST after a transport failure, send the same opaque key (1–128 characters) in `Idempotency-Key` and the same work body. The durable work identity is then stable even if the original response was lost. A key is intentionally not part of `WorkSubmission`: it controls acceptance/replay rather than changing what the work means.
 
@@ -118,7 +121,9 @@ To explicitly retry a failed work item, POST to `/v1/work/{id}/retry` with a new
 }
 ```
 
-The default `false` is appropriate for failures whose previous capability invocation has a known failure outcome. If the work failed as `interrupted`, MADRE rejects the retry until `allow_unknown_outcome` is explicitly set to `true`; that consent acknowledges that the previous invocation may already have produced an external effect. Reusing the same retry idempotency key replays that retry request instead of requeueing the work again. A different key represents a new explicit retry and is accepted only if the work is failed again.
+The default `false` is appropriate for failures whose previous capability invocation has a known failure outcome. If the work failed as `interrupted`, MADRE rejects the retry until `allow_unknown_outcome` is explicitly set to `true`; that consent acknowledges that the previous invocation may already have produced an external effect. Reusing the same retry idempotency key replays that retry request instead of requeueing the work again. A different key represents a new explicit retry and is accepted only if the work is failed again. Work that already carries a cancellation request is not retryable; submit new work if the application deliberately changes that intent.
+
+Cancellation needs no idempotency key because it is itself monotonic and idempotent. Repeating `POST /v1/work/{id}/cancel` returns the same recorded cancellation. A `cancelled` record with `cancellation.disposition = "prevented"` proves that the accepted execution present when cancellation was recorded did not start another attempt. A running record with `cancellation.disposition = "requested_while_running"` means only that MADRE durably received the request after physical execution had begun; continue inspecting that work for the real execution outcome. A new cancellation request for work that already completed without any cancellation request returns HTTP 409.
 
 ## CORE
 
@@ -128,7 +133,7 @@ With the MADRE service running and the same `MADRE_API_TOKEN` available in a sec
 python -m uv run --locked madre-core --runtime-url http://127.0.0.1:8731 --capability local-chat
 ```
 
-Enter a message at `you>` and CORE submits ordinary authenticated MADRE work as application `madre-core`. Assistant text is printed at `core>`, followed by `reasoning> fast` when the foreground answer is considered sufficient or `reasoning> deeper` when CORE recommends stronger follow-up reasoning. A deeper recommendation also exposes `deeper> /deeper`. Entering `/deeper` explicitly submits one second ordinary MADRE work item with a deeper-analysis instruction and the larger `--deeper-max-tokens` budget; its result is printed at `core(deeper)>` and replaces the fast draft in process-local conversation history. CORE never escalates automatically. Runtime/capability failures are printed explicitly and are not appended to conversation history.
+Enter a message at `you>` and CORE submits ordinary authenticated MADRE work as application `madre-core`. Assistant text is printed at `core>`, followed by `reasoning> fast` when the foreground answer is considered sufficient or `reasoning> deeper` when CORE recommends stronger follow-up reasoning. A deeper recommendation also exposes `deeper> /deeper`. Entering `/deeper` explicitly submits one second ordinary MADRE work item with a deeper-analysis instruction and the larger `--deeper-max-tokens` budget; its result is printed at `core(deeper)>` and replaces the fast draft in process-local conversation history. CORE never escalates automatically. Runtime/capability failures and work cancelled before execution are surfaced explicitly and are not appended to conversation history.
 
 This terminal interaction is an executable development surface, not a stable MADRE UX contract. The deterministic suite proves its software semantics; owner-side model runs have shown useful execution through the real path while also showing that current fast/deeper judgement and chat presentation remain experimental. [`docs/core.md`](docs/core.md#local-product-acceptance) records that evidence and the local acceptance procedure.
 

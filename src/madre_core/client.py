@@ -29,7 +29,7 @@ class _WorkRecord(BaseModel):
     model_config = ConfigDict(extra="ignore", frozen=True)
 
     id: str
-    status: Literal["accepted", "running", "succeeded", "failed"]
+    status: Literal["accepted", "running", "succeeded", "failed", "cancelled"]
     result: dict[str, JsonValue] | None = None
     failure: _Failure | None = None
 
@@ -142,6 +142,8 @@ class CoreClient:
             raise CoreRuntimeError(
                 f"MADRE work failed [{record.failure.code}]: {record.failure.message}"
             )
+        if record.status == "cancelled":
+            raise CoreRuntimeError(f"MADRE work {record.id} was cancelled before execution")
         if record.status != "succeeded" or record.result is None:
             raise CoreRuntimeError(f"MADRE work {record.id} returned no terminal result")
 
