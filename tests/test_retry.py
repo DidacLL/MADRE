@@ -331,11 +331,9 @@ def test_retry_of_pre_execution_failure_is_visible_without_fake_attempt(tmp_path
         second_failure = wait_for_terminal(client, submitted["id"])
         assert second_failure["failure"]["code"] == "unknown_capability"
         assert len(second_failure["retries"]) == 1
-        assert second_failure["retries"][0]["previous_failure"] == first_failure["failure"]
-        assert (
-            second_failure["retries"][0]["previous_completed_at"]
-            == first_failure["completed_at"]
-        )
+        retry_evidence = second_failure["retries"][0]
+        assert retry_evidence["previous_failure"] == first_failure["failure"]
+        assert retry_evidence["previous_completed_at"] == first_failure["completed_at"]
         assert second_failure["attempts"] == []
 
     assert not invoked
