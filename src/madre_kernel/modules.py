@@ -100,10 +100,16 @@ class AgentExecutionServices(Protocol):
 
     def visible_operations(self) -> tuple[OperationDescriptor, ...]: ...
 
-    def project_operation_input(self, operation: OperationRef, payload: BaseModel) -> ContextBundleRef: ...
+    def project_operation_input(
+        self,
+        operation: OperationRef,
+        payload: BaseModel,
+    ) -> ContextBundleRef: ...
 
     async def invoke_operation(
-        self, operation: OperationRef, input_contexts: Sequence[ContextBundleRef]
+        self,
+        operation: OperationRef,
+        input_contexts: Sequence[ContextBundleRef],
     ) -> tuple[ContextBundleRef, ...]: ...
 
     def context(self, ref: ContextBundleRef) -> ContextBundle: ...
@@ -147,14 +153,23 @@ class ModuleAdapter(Protocol):
 
     def agent_definition(self, ref: AgentDefinitionRef) -> AgentDefinition | None: ...
 
-    def agent_skill_instance(self, ref: AgentSkillInstanceRef) -> AgentSkillInstance | None: ...
+    def agent_skill_instance(
+        self,
+        ref: AgentSkillInstanceRef,
+    ) -> AgentSkillInstance | None: ...
 
     def agent_manager(self, ref: AgentDefinitionRef) -> AgentManager | None: ...
 
-    def project_operation_input(self, ref: OperationRef, payload: BaseModel) -> OperationMaterial: ...
+    def project_operation_input(
+        self,
+        ref: OperationRef,
+        payload: BaseModel,
+    ) -> OperationMaterial: ...
 
     async def invoke_operation(
-        self, ref: OperationRef, inputs: tuple[ContextBundle, ...]
+        self,
+        ref: OperationRef,
+        inputs: tuple[ContextBundle, ...],
     ) -> OperationMaterial: ...
 
 
@@ -203,20 +218,29 @@ class InProcessModule:
     def agent_definition(self, ref: AgentDefinitionRef) -> AgentDefinition | None:
         return self._agents.get(ref_key(ref))
 
-    def agent_skill_instance(self, ref: AgentSkillInstanceRef) -> AgentSkillInstance | None:
+    def agent_skill_instance(
+        self,
+        ref: AgentSkillInstanceRef,
+    ) -> AgentSkillInstance | None:
         return self._skill_instances.get(ref_key(ref))
 
     def agent_manager(self, ref: AgentDefinitionRef) -> AgentManager | None:
         return self._manager if ref_key(ref) in self._agents else None
 
-    def project_operation_input(self, ref: OperationRef, payload: BaseModel) -> OperationMaterial:
+    def project_operation_input(
+        self,
+        ref: OperationRef,
+        payload: BaseModel,
+    ) -> OperationMaterial:
         projector = self._input_projectors.get(ref_key(ref))
         if projector is None:
             raise KeyError("Module does not expose an input projector for Operation")
         return projector(payload)
 
     async def invoke_operation(
-        self, ref: OperationRef, inputs: tuple[ContextBundle, ...]
+        self,
+        ref: OperationRef,
+        inputs: tuple[ContextBundle, ...],
     ) -> OperationMaterial:
         handler = self._handlers.get(ref_key(ref))
         if handler is None:
@@ -226,9 +250,21 @@ class InProcessModule:
 
 CALC_MODULE = ModuleRef(module_id="calc")
 CALC_SCOPE = ScopeRef(module=CALC_MODULE, scope_id="calculation")
-CALC_OBJECTIVE_SCHEMA = SchemaRef(module=CALC_MODULE, schema_id="objective-text", revision=1)
-CALC_INPUT_SCHEMA = SchemaRef(module=CALC_MODULE, schema_id="calculate-input", revision=1)
-CALC_OUTPUT_SCHEMA = SchemaRef(module=CALC_MODULE, schema_id="calculate-output", revision=1)
+CALC_OBJECTIVE_SCHEMA = SchemaRef(
+    module=CALC_MODULE,
+    schema_id="objective-text",
+    revision=1,
+)
+CALC_INPUT_SCHEMA = SchemaRef(
+    module=CALC_MODULE,
+    schema_id="calculate-input",
+    revision=1,
+)
+CALC_OUTPUT_SCHEMA = SchemaRef(
+    module=CALC_MODULE,
+    schema_id="calculate-output",
+    revision=1,
+)
 CALCULATE = OperationRef(module=CALC_MODULE, operation_id="calculate", revision=1)
 
 
@@ -254,7 +290,10 @@ def build_calculator_module() -> InProcessModule:
             interrupted_outcome=InterruptedOutcome.DETERMINATE,
         ),
         visibility=PUBLIC_DISCOVERY,
-        provenance=DefinitionProvenance(created_at=utc_now(), created_by=CALC_MODULE),
+        provenance=DefinitionProvenance(
+            created_at=utc_now(),
+            created_by=CALC_MODULE,
+        ),
     )
     manifest = ModuleManifest(
         module=CALC_MODULE,
@@ -262,7 +301,13 @@ def build_calculator_module() -> InProcessModule:
         name="Calculator",
         description="Deterministic calculator Module used by the first AgenticLoop.",
         visibility=PUBLIC_DISCOVERY,
-        scopes=(ScopeDescriptor(ref=CALC_SCOPE, name="Calculation", description="Integer arithmetic"),),
+        scopes=(
+            ScopeDescriptor(
+                ref=CALC_SCOPE,
+                name="Calculation",
+                description="Integer arithmetic",
+            ),
+        ),
         operations=(CALCULATE,),
         skills=(),
         agents=(),

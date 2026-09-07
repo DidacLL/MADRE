@@ -10,12 +10,12 @@ from madre_kernel.kernel import (
     repeat_permitted,
 )
 from madre_kernel.modules import (
-    CALCULATE,
     CALC_INPUT_SCHEMA,
     CALC_MODULE,
     CALC_OBJECTIVE_SCHEMA,
     CALC_OUTPUT_SCHEMA,
     CALC_SCOPE,
+    CALCULATE,
     InProcessModule,
     OperationMaterial,
     SchemaCodecRegistry,

@@ -44,7 +44,10 @@ class KernelSecurityPolicy:
         material_sensitivity: SecurityLevel,
         boundary: ExecutionBoundary,
     ) -> SecurityLevel:
-        if boundary is ExecutionBoundary.REMOTE or material_sensitivity >= SecurityLevel.LEVEL_4:
+        if (
+            boundary is ExecutionBoundary.REMOTE
+            or material_sensitivity >= SecurityLevel.LEVEL_4
+        ):
             return SecurityLevel.LEVEL_2
         return SecurityLevel.LEVEL_4
 
@@ -56,7 +59,9 @@ class KernelSecurityPolicy:
         return SecurityLevel.LEVEL_4
 
     def remote_boundary_permitted(self, material: Sequence[ContextBundle]) -> bool:
-        return all(bundle.security.sensitivity <= SecurityLevel.LEVEL_2 for bundle in material)
+        return all(
+            bundle.security.sensitivity <= SecurityLevel.LEVEL_2 for bundle in material
+        )
 
 
 class SecurityAlgebra:
@@ -77,7 +82,10 @@ class SecurityAlgebra:
         maximum_material_sensitivity = SecurityLevel.LEVEL_1
         for bundle in material:
             facts = bundle.security
-            maximum_material_sensitivity = max(maximum_material_sensitivity, facts.sensitivity)
+            maximum_material_sensitivity = max(
+                maximum_material_sensitivity,
+                facts.sensitivity,
+            )
             if facts.sensitivity > agent.maximum_handled_sensitivity:
                 deficits.append(
                     SecurityDeficit(
@@ -114,8 +122,9 @@ class SecurityAlgebra:
                     explanation_code="kernel-agent-risk-ceiling",
                 )
             )
-        if actual_boundary is ExecutionBoundary.REMOTE and not self.policy.remote_boundary_permitted(
-            material
+        if (
+            actual_boundary is ExecutionBoundary.REMOTE
+            and not self.policy.remote_boundary_permitted(material)
         ):
             deficits.append(
                 SecurityDeficit(
@@ -152,7 +161,10 @@ class SecurityAlgebra:
 
         for bundle in material:
             facts = bundle.security
-            maximum_material_sensitivity = max(maximum_material_sensitivity, facts.sensitivity)
+            maximum_material_sensitivity = max(
+                maximum_material_sensitivity,
+                facts.sensitivity,
+            )
             if facts.sensitivity > agent.maximum_handled_sensitivity:
                 deficits.append(
                     SecurityDeficit(
@@ -237,8 +249,9 @@ class SecurityAlgebra:
                     explanation_code="operation-boundary-mismatch",
                 )
             )
-        if actual_boundary is ExecutionBoundary.REMOTE and not self.policy.remote_boundary_permitted(
-            material
+        if (
+            actual_boundary is ExecutionBoundary.REMOTE
+            and not self.policy.remote_boundary_permitted(material)
         ):
             deficits.append(
                 SecurityDeficit(

@@ -99,14 +99,23 @@ class KernelRuntimeClient:
                 await asyncio.sleep(self.poll_interval_seconds)
                 record = self._record(await client.get(f"/v1/work/{record.id}"))
         if record.status == "failed":
-            detail = record.failure.message if record.failure is not None else "unknown Runtime failure"
+            detail = (
+                record.failure.message
+                if record.failure is not None
+                else "unknown Runtime failure"
+            )
             raise RuntimeBoundaryError(detail)
         if record.status != "succeeded" or record.result is None:
-            raise RuntimeBoundaryError(f"Runtime work {record.id} did not produce a successful result")
+            raise RuntimeBoundaryError(
+                f"Runtime work {record.id} did not produce a successful result"
+            )
         text = record.result.get("text")
         if not isinstance(text, str) or not text.strip():
             raise RuntimeBoundaryError(f"Runtime work {record.id} returned no reasoning text")
-        return RuntimeReasoningResult(work=RuntimeWorkRef(work_id=record.id), text=text)
+        return RuntimeReasoningResult(
+            work=RuntimeWorkRef(work_id=record.id),
+            text=text,
+        )
 
     def _client(self) -> httpx.AsyncClient:
         return httpx.AsyncClient(

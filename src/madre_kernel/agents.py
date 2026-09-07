@@ -31,7 +31,7 @@ from madre_kernel.contracts import (
     SemanticModel,
     utc_now,
 )
-from madre_kernel.modules import AgentExecutionServices, InProcessModule, PUBLIC_DISCOVERY
+from madre_kernel.modules import PUBLIC_DISCOVERY, AgentExecutionServices, InProcessModule
 
 CORE_MODULE = ModuleRef(module_id="madre-core")
 CORE_AGENT = AgentRef(module=CORE_MODULE, agent_id="fallback-general")
@@ -60,7 +60,8 @@ class CoreAgentManager:
             ref=AgentInstanceRef(instance_id=uuid4().hex),
             definition=definition.ref,
             manager_instance_ref=ModuleAgentInstanceRef(
-                module=CORE_MODULE, instance_id=uuid4().hex
+                module=CORE_MODULE,
+                instance_id=uuid4().hex,
             ),
             state_refs=(),
             created_at=utc_now(),
@@ -93,10 +94,13 @@ class CoreAgentManager:
         if not isinstance(first, _OperationRequest):
             raise ValueError("first CORE reasoning pass must request an Operation")
         descriptor = next(
-            (item for item in operations if item.ref.operation_id == first.operation_id), None
+            (item for item in operations if item.ref.operation_id == first.operation_id),
+            None,
         )
         if descriptor is None:
-            raise ValueError("CORE requested an Operation outside its visible descriptor projection")
+            raise ValueError(
+                "CORE requested an Operation outside its visible descriptor projection"
+            )
         input_ref = services.project_operation_input(
             descriptor.ref,
             CalculateInput(left=first.left, right=first.right),
@@ -139,7 +143,8 @@ def build_core_module() -> InProcessModule:
         name="CORE fallback general Agent",
         description="Standard fallback reasoning actor managed opaquely by the CORE Module.",
         manager_definition_ref=ModuleAgentDefinitionRef(
-            module=CORE_MODULE, definition_id="core-private-chat-manager-v1"
+            module=CORE_MODULE,
+            definition_id="core-private-chat-manager-v1",
         ),
         skill_instances=(),
         direct_workflows=(),
@@ -149,10 +154,16 @@ def build_core_module() -> InProcessModule:
             execution_risk=SecurityLevel.LEVEL_1,
         ),
         resolution_descriptors=(
-            AgentResolutionDescriptor(namespace_module=CORE_MODULE, descriptor_id="general"),
+            AgentResolutionDescriptor(
+                namespace_module=CORE_MODULE,
+                descriptor_id="general",
+            ),
         ),
         visibility=PUBLIC_DISCOVERY,
-        provenance=DefinitionProvenance(created_at=utc_now(), created_by=CORE_MODULE),
+        provenance=DefinitionProvenance(
+            created_at=utc_now(),
+            created_by=CORE_MODULE,
+        ),
     )
     manifest = ModuleManifest(
         module=CORE_MODULE,
