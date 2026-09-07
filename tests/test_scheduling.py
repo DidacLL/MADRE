@@ -198,9 +198,7 @@ def test_newly_eligible_work_joins_fair_rotation_during_existing_backlog(tmp_pat
         async def exercise():
             await runtime.submit(submission("application-a", "a-first", priority=10))
             await runtime.submit(submission("application-a", "a-second"))
-            await runtime.submit(
-                submission("application-b", "b-delayed", eligible_at=delayed_at)
-            )
+            await runtime.submit(submission("application-b", "b-delayed", eligible_at=delayed_at))
             return await runtime.run_eligible()
 
         executed = asyncio.run(exercise())
