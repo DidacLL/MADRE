@@ -85,14 +85,18 @@ def test_failed_work_can_be_retried_once_without_duplicate_retry_execution(tmp_p
         assert accepted["status"] == "accepted"
         assert accepted["failure"] is None
         assert len(accepted["retries"]) == 1
-        assert accepted["retries"][0]["number"] == 1
-        assert accepted["retries"][0]["allow_unknown_outcome"] is False
+        retry = accepted["retries"][0]
+        assert retry["number"] == 1
+        assert retry["allow_unknown_outcome"] is False
+        assert retry["previous_completed_at"] == failed["completed_at"]
+        assert retry["previous_failure"] == failed["failure"]
 
         succeeded = wait_for_terminal(client, submitted["id"])
         assert succeeded["status"] == "succeeded"
         assert succeeded["result"]["text"] == "retry succeeded"
         assert len(succeeded["attempts"]) == 2
         assert succeeded["attempts"][1]["retry_number"] == 1
+        assert succeeded["retries"][0]["previous_failure"]["code"] == "connection"
         assert invocations == 2
 
         replay = client.post(
@@ -230,17 +234,16 @@ def test_interrupted_work_requires_explicit_unknown_outcome_consent(tmp_path, mo
             json={"allow_unknown_outcome": True},
         )
         assert accepted.status_code == 202
+        accepted_retry = accepted.json()["retries"][0]
         assert accepted.json()["status"] == "accepted"
+        assert accepted_retry["allow_unknown_outcome"] is True
+        assert accepted_retry["previous_completed_at"] == interrupted["completed_at"]
+        assert accepted_retry["previous_failure"] == interrupted["failure"]
 
         succeeded = wait_for_terminal(client, work_id)
         assert succeeded["status"] == "succeeded"
-        assert succeeded["retries"] == [
-            {
-                "number": 1,
-                "requested_at": succeeded["retries"][0]["requested_at"],
-                "allow_unknown_outcome": True,
-            }
-        ]
+        assert len(succeeded["retries"]) == 1
+        assert succeeded["retries"][0]["previous_failure"]["code"] == "interrupted"
         assert len(succeeded["attempts"]) == 2
         assert succeeded["attempts"][0]["retry_number"] is None
         assert succeeded["attempts"][1]["retry_number"] == 1
@@ -270,6 +273,7 @@ def test_accepted_retry_survives_restart_and_executes(tmp_path, monkeypatch):
         )
         assert accepted.status == "accepted"
         assert len(accepted.retries) == 1
+        assert accepted.retries[0].previous_failure.code == "connection"
         assert accepted.attempts == []
 
     async def succeed_invoke(capability, request, constraints):
@@ -327,6 +331,8 @@ def test_retry_of_pre_execution_failure_is_visible_without_fake_attempt(tmp_path
         second_failure = wait_for_terminal(client, submitted["id"])
         assert second_failure["failure"]["code"] == "unknown_capability"
         assert len(second_failure["retries"]) == 1
+        assert second_failure["retries"][0]["previous_failure"] == first_failure["failure"]
+        assert second_failure["retries"][0]["previous_completed_at"] == first_failure["completed_at"]
         assert second_failure["attempts"] == []
 
     assert not invoked
