@@ -30,13 +30,19 @@ class WorkRetryRequest(StrictModel):
     allow_unknown_outcome: bool = False
 
 
-WorkStatus = Literal["accepted", "running", "succeeded", "failed"]
+WorkStatus = Literal["accepted", "running", "succeeded", "failed", "cancelled"]
 AttemptStatus = Literal["running", "succeeded", "failed"]
+CancellationDisposition = Literal["prevented", "requested_while_running"]
 
 
 class WorkFailure(StrictModel):
     code: str = Field(min_length=1)
     message: str = Field(min_length=1)
+
+
+class WorkCancellation(StrictModel):
+    requested_at: AwareDatetime
+    disposition: CancellationDisposition
 
 
 class WorkRetry(StrictModel):
@@ -66,5 +72,6 @@ class WorkRecord(StrictModel):
     completed_at: AwareDatetime | None = None
     result: dict[str, JsonValue] | None = None
     failure: WorkFailure | None = None
+    cancellation: WorkCancellation | None = None
     retries: list[WorkRetry] = Field(default_factory=list)
     attempts: list[WorkAttempt] = Field(default_factory=list)
