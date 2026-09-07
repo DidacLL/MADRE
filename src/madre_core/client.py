@@ -12,27 +12,26 @@ import httpx
 from pydantic import BaseModel, ConfigDict, JsonValue, ValidationError
 
 CORE_APPLICATION_ID = "madre-core"
-CoreWorkStatus = Literal["accepted", "running", "succeeded", "failed", "cancelled"]
 
 
 class CoreRuntimeError(RuntimeError):
     """A runtime boundary failure that can be reported directly to a CORE user."""
 
 
-class CoreFailure(BaseModel):
+class _Failure(BaseModel):
     model_config = ConfigDict(extra="ignore", frozen=True)
 
     code: str
     message: str
 
 
-class CoreWork(BaseModel):
+class _WorkRecord(BaseModel):
     model_config = ConfigDict(extra="ignore", frozen=True)
 
     id: str
-    status: CoreWorkStatus
+    status: Literal["accepted", "running", "succeeded", "failed", "cancelled"]
     result: dict[str, JsonValue] | None = None
-    failure: CoreFailure | None = None
+    failure: _Failure | None = None
 
 
 def _runtime_url(value: str) -> str:
@@ -93,7 +92,7 @@ class CoreClient:
         max_tokens: int = 256,
         timeout_seconds: float = 120,
         priority: int = 0,
-    ) -> CoreWork:
+    ) -> _WorkRecord:
         payload_messages = self._messages(messages)
         if max_tokens <= 0:
             raise ValueError("max_tokens must be positive")
@@ -117,7 +116,7 @@ class CoreClient:
         except httpx.RequestError as exc:
             raise CoreRuntimeError("could not communicate with the MADRE runtime") from exc
 
-    async def inspect(self, work_id: str) -> CoreWork:
+    async def inspect(self, work_id: str) -> _WorkRecord:
         if not work_id.strip():
             raise ValueError("work id is empty")
         try:
@@ -148,7 +147,7 @@ class CoreClient:
         return self.result_text(record)
 
     @staticmethod
-    def result_text(record: CoreWork) -> str:
+    def result_text(record: _WorkRecord) -> str:
         if record.status == "failed":
             if record.failure is None:
                 raise CoreRuntimeError(f"MADRE work {record.id} failed without failure details")
@@ -189,7 +188,7 @@ class CoreClient:
         return payload_messages
 
     @staticmethod
-    def _record(response: httpx.Response) -> CoreWork:
+    def _record(response: httpx.Response) -> _WorkRecord:
         if response.status_code == 401:
             raise CoreRuntimeError("MADRE runtime rejected the bearer credential")
         try:
@@ -197,6 +196,6 @@ class CoreClient:
         except httpx.HTTPStatusError as exc:
             raise CoreRuntimeError(f"MADRE runtime returned HTTP {response.status_code}") from exc
         try:
-            return CoreWork.model_validate(response.json())
+            return _WorkRecord.model_validate(response.json())
         except (ValueError, ValidationError) as exc:
             raise CoreRuntimeError("MADRE runtime returned invalid work data") from exc
