@@ -17,6 +17,8 @@ MADRE provides an installable typed Python distribution, explicit TOML runtime c
 
 An independent application or CORE submits work to `POST /v1/work`. Every valid submission is durably created as `accepted` before the response returns, regardless of whether it is eligible now or later. The service-owned scheduler executes already-eligible accepted work and waits for future eligibility using those same persisted records. Physical capability execution is not owned by the submitting HTTP request, so applications obtain the durable work ID without waiting for capability completion or scarce-resource admission.
 
+Eligible applications receive scheduler turns in durable round-robin order, so one application's accepted backlog cannot monopolize the shared runtime. Each work submission may carry a bounded `priority` from `-100` to `100`, defaulting to `0`. Higher priority is selected first within that application's turn; equal-priority work is FIFO by its current queue entry. Priority is execution intent, not permission to acquire more global turns. Explicit retry creates a new queue entry for that logical work, and the fairness cursor survives restart.
+
 Applications may optionally send an `Idempotency-Key` header when a logical submission may need to be retried. The key is scoped to `application_id` and persisted with runtime acceptance. Reusing the same key with the same normalized `WorkSubmission` returns the original durable work record, including after restart or completion, rather than creating another invocation. Reusing that key for different work returns HTTP 409. Omitting the header preserves ordinary distinct submissions.
 
 Failed work can be explicitly requeued through `POST /v1/work/{id}/retry`. Retry requests require their own `Idempotency-Key`, are durably recorded, and replay safely without authorizing duplicate execution. Physical attempts identify which retry authorized them. MADRE never retries work automatically. A work item interrupted while a capability may already have executed is retryable only when the caller explicitly sets `allow_unknown_outcome` because another invocation may duplicate external effects.
@@ -102,6 +104,7 @@ A chat-completion submission is shaped like:
     "max_tokens": 64
   },
   "eligible_at": "2035-01-01T12:05:00Z",
+  "priority": 20,
   "constraints": {
     "timeout_seconds": 120,
     "local_only": true
@@ -110,6 +113,8 @@ A chat-completion submission is shaped like:
 ```
 
 Omit `eligible_at` (or use `null`) for immediate eligibility. Immediate and future-eligible submissions both return a durable `accepted` record; the difference is only when the runtime may execute them. Poll `GET /v1/work/{id}` when the application needs eventual success, failure or cancellation. The application owns whether it waits, continues foreground interaction, submits additional work, cancels pending work, or inspects later. MADRE stores only the application-selected execution material and runtime evidence required to execute, recover and inspect the work.
+
+Omit `priority` to use `0`. Values from `-100` through `100` are accepted, with larger values selected first among eligible work belonging to the same `application_id`. Priority does not move an application ahead of another application's fair scheduler turn. Within the same application and priority, the current queue order is FIFO; an explicit retry receives a fresh queue position instead of inheriting the original submission's age. Changing priority while reusing the same submission idempotency key is a conflict because priority is part of the execution intent.
 
 When retrying one logical submission POST after a transport failure, send the same opaque key (1–128 characters) in `Idempotency-Key` and the same work body. The durable work identity is then stable even if the original response was lost. A key is intentionally not part of `WorkSubmission`: it controls acceptance/replay rather than changing what the work means.
 
