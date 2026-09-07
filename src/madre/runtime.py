@@ -26,6 +26,10 @@ class RetryConflict(RuntimeError):
     """A retry request conflicts with durable work state or prior retry intent."""
 
 
+class CancellationConflict(RuntimeError):
+    """A cancellation request conflicts with already terminal work."""
+
+
 class WorkRuntime:
     def __init__(
         self,
@@ -107,6 +111,22 @@ class WorkRuntime:
             raise RetryConflict("work is no longer failed")
 
         self._schedule_changed.set()
+        return self._require(work_id)
+
+    async def cancel(self, work_id: str) -> WorkRecord:
+        record = self.store.get(work_id)
+        if record is None:
+            raise WorkNotFound(f"work not found: {work_id}")
+        if record.cancellation is not None:
+            return record
+
+        disposition = self.store.request_cancellation(work_id, self._clock())
+        if disposition is None:
+            raise WorkNotFound(f"work not found: {work_id}")
+        if disposition == "terminal":
+            raise CancellationConflict("completed work cannot be cancelled")
+        if disposition == "prevented":
+            self._schedule_changed.set()
         return self._require(work_id)
 
     async def run_eligible(self) -> int:
