@@ -1,12 +1,14 @@
-# Copy to madre.local.toml; relative paths resolve beside this file.
-# Omit data_dir to use the OS user application-data directory.
-# data_dir = "./dev/runtime"
+data_dir = ".madre-data"
 host = "127.0.0.1"
 port = 8731
 token_env = "MADRE_API_TOKEN"
 
-[capabilities.local-chat]
-kind = "chat_completions"
-endpoint = "http://127.0.0.1:8080/v1"
-model = "madre-smoke"
+[capabilities.local_chat]
+kind = "openai_chat"
+endpoint = "http://127.0.0.1:1234/v1"
+model = "local-model"
 boundary = "local"
+heavyweight = true
+trust = 4
+risk = 2
+max_input_sensitivity = 4

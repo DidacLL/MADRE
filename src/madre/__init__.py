@@ -1,6 +1,8 @@
-"""MADRE's importable runtime package. Import has no runtime side effects."""
+"""MADRE governed execution and interoperability platform."""
 
-from madre.config import Settings, load_settings
-from madre.service import create_app
+from madre.broker import Broker
+from madre.capabilities import CapabilityRegistry
+from madre.registry import InteroperabilityRegistry
+from madre.runtime import WorkRuntime
 
-__all__ = ["Settings", "create_app", "load_settings"]
+__all__ = ["Broker", "CapabilityRegistry", "InteroperabilityRegistry", "WorkRuntime"]

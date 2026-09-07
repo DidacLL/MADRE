@@ -1,6 +1,7 @@
-"""Explicit configuration, independent of command-line or service lifecycle."""
+"""Small runtime configuration surface; provider semantics stay in adapters."""
 
-import ipaddress
+from __future__ import annotations
+
 import os
 import tomllib
 from pathlib import Path
@@ -10,33 +11,32 @@ from urllib.parse import urlsplit
 from platformdirs import user_data_path
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from madre.security import OrdinarySecurityLevel, SecurityLevel
+
 
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
 class CapabilityConfig(StrictModel):
-    kind: Literal["chat_completions"] = "chat_completions"
+    kind: Literal["openai_chat"] = "openai_chat"
     endpoint: str
     model: str = Field(min_length=1)
     boundary: Literal["local", "remote"] = "local"
+    heavyweight: bool = True
+    trust: OrdinarySecurityLevel = SecurityLevel.LEVEL_4
+    risk: OrdinarySecurityLevel = SecurityLevel.LEVEL_2
+    max_input_sensitivity: OrdinarySecurityLevel = SecurityLevel.LEVEL_4
 
     @field_validator("endpoint")
     @classmethod
     def valid_endpoint(cls, value: str) -> str:
         parsed = urlsplit(value)
-        if (
-            parsed.scheme not in {"http", "https"}
-            or not parsed.hostname
-            or parsed.username
-            or parsed.password
-            or parsed.query
-            or parsed.fragment
-        ):
-            raise ValueError(
-                "endpoint must be an HTTP(S) base URL without credentials/query/fragment"
-            )
-        _ = parsed.port  # Validate malformed ports as configuration errors.
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            raise ValueError("endpoint must be an HTTP(S) base URL")
+        if parsed.username or parsed.password or parsed.query or parsed.fragment:
+            raise ValueError("endpoint must not contain credentials/query/fragment")
+        _ = parsed.port
         return value.rstrip("/")
 
 
@@ -48,10 +48,10 @@ class Settings(StrictModel):
     capabilities: dict[str, CapabilityConfig] = Field(default_factory=dict)
 
     def token(self) -> str:
-        value = os.environ.get(self.token_env, "")
-        if not value.strip():
+        token = os.environ.get(self.token_env, "")
+        if not token.strip():
             raise ValueError(f"required credential environment variable is unset: {self.token_env}")
-        return value
+        return token
 
 
 def load_settings(path: Path) -> Settings:
@@ -62,11 +62,3 @@ def load_settings(path: Path) -> Settings:
     if not data_dir.is_absolute():
         data_dir = path.parent / data_dir
     return settings.model_copy(update={"data_dir": data_dir.resolve()})
-
-
-def is_loopback_endpoint(endpoint: str) -> bool:
-    """Require a literal address, avoiding hostname resolution ambiguity."""
-    try:
-        return ipaddress.ip_address(urlsplit(endpoint).hostname or "").is_loopback
-    except ValueError:
-        return False

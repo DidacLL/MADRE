@@ -1,126 +1,150 @@
-"""Authenticated local HTTP boundary for MADRE runtime work."""
+"""Authenticated local HTTP transport over the architecture-neutral work runtime."""
+
+from __future__ import annotations
 
 import asyncio
-import secrets
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager, suppress
-from typing import Annotated
+from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, Header, HTTPException, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi import Depends, FastAPI, Header, HTTPException, Response, status
 
+from madre.capabilities import (
+    CapabilityDescriptor,
+    CapabilityRegistry,
+    OpenAICompatibleChatCapability,
+)
 from madre.config import Settings
 from madre.contracts import WorkRecord, WorkRetryRequest, WorkSubmission
 from madre.runtime import (
     CancellationConflict,
     IdempotencyConflict,
+    ResultLost,
+    ResultUnavailable,
     RetryConflict,
     WorkNotFound,
     WorkRuntime,
 )
-from madre.storage import WorkStore, open_database
+from madre.security import BoundaryRequirements, SecurityEnvelope, SecurityLevel
+from madre.storage import PlatformStore, open_database
+
+
+def _capabilities(settings: Settings) -> CapabilityRegistry:
+    registry = CapabilityRegistry()
+    for capability_id, config in settings.capabilities.items():
+        envelope = SecurityEnvelope.issue(
+            subject=f"capability:{capability_id}",
+            sensitivity=SecurityLevel.LEVEL_1,
+            trust=config.trust,
+            risk=config.risk,
+            scopes={"*"},
+            origin="local-config",
+        )
+        requirements = BoundaryRequirements(
+            max_input_sensitivity=config.max_input_sensitivity,
+            risk=config.risk,
+            allowed_execution_boundaries=frozenset({config.boundary}),
+        )
+        descriptor = CapabilityDescriptor(
+            id=capability_id,
+            kind="model.inference.chat",
+            modality="text",
+            model_id=config.model,
+            execution_boundary=config.boundary,
+            heavyweight=config.heavyweight,
+            requirements=requirements,
+            security=envelope,
+        )
+        registry.register(
+            OpenAICompatibleChatCapability(descriptor, config.endpoint, config.model)
+        )
+    return registry
 
 
 def create_app(settings: Settings) -> FastAPI:
-    token = settings.token()
-    active_runtime: WorkRuntime | None = None
+    state: dict[str, object] = {}
 
     @asynccontextmanager
-    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        nonlocal active_runtime
+    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         with open_database(settings.data_dir) as connection:
-            active_runtime = WorkRuntime(settings, WorkStore(connection))
-            scheduler = asyncio.create_task(active_runtime.run_scheduler())
+            runtime = WorkRuntime(PlatformStore(connection), _capabilities(settings))
+            state["runtime"] = runtime
+            scheduler = asyncio.create_task(runtime.run_scheduler())
             try:
                 yield
             finally:
                 scheduler.cancel()
-                with suppress(asyncio.CancelledError):
+                try:
                     await scheduler
-                active_runtime = None
+                except asyncio.CancelledError:
+                    pass
+                state.clear()
 
-    bearer = HTTPBearer(auto_error=False)
+    app = FastAPI(title="MADRE", lifespan=lifespan)
 
-    def authenticate(
-        credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)],
-    ) -> None:
-        if credentials is None or not secrets.compare_digest(
-            credentials.credentials.encode(), token.encode()
-        ):
-            raise HTTPException(
-                401, "invalid bearer credential", headers={"WWW-Authenticate": "Bearer"}
-            )
+    def authenticated(authorization: str | None = Header(default=None)) -> None:
+        expected = f"Bearer {settings.token()}"
+        if authorization != expected:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="unauthorized")
 
-    app = FastAPI(
-        title="MADRE",
-        version="0.1.0",
-        lifespan=lifespan,
-        dependencies=[Depends(authenticate)],
-        docs_url=None,
-        redoc_url=None,
-        openapi_url=None,
-    )
+    def runtime(_: None = Depends(authenticated)) -> WorkRuntime:
+        value = state.get("runtime")
+        if not isinstance(value, WorkRuntime):
+            raise HTTPException(status_code=503, detail="runtime unavailable")
+        return value
 
-    def runtime() -> WorkRuntime:
-        if active_runtime is None:
-            raise RuntimeError("MADRE service runtime is not active")
-        return active_runtime
-
-    @app.get("/health")
-    def health() -> dict[str, str]:
-        return {"status": "ok"}
-
-    @app.post("/v1/work", response_model=WorkRecord, status_code=status.HTTP_201_CREATED)
+    @app.post("/v1/work", response_model=WorkRecord, status_code=202)
     async def submit_work(
         submission: WorkSubmission,
-        idempotency_key: Annotated[
-            str | None,
-            Header(alias="Idempotency-Key", min_length=1, max_length=128),
-        ] = None,
+        response: Response,
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+        service: WorkRuntime = Depends(runtime),
     ) -> WorkRecord:
         try:
-            return await runtime().submit(submission, idempotency_key=idempotency_key)
+            record = await service.submit(submission, idempotency_key=idempotency_key)
         except IdempotencyConflict as exc:
-            raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        response.headers["Location"] = f"/v1/work/{record.id}"
+        return record
 
-    @app.post(
-        "/v1/work/{work_id}/retry",
-        response_model=WorkRecord,
-        status_code=status.HTTP_202_ACCEPTED,
-    )
+    @app.get("/v1/work/{work_id}", response_model=WorkRecord)
+    async def inspect_work(work_id: str, service: WorkRuntime = Depends(runtime)) -> WorkRecord:
+        record = service.inspect(work_id)
+        if record is None:
+            raise HTTPException(status_code=404, detail="work not found")
+        return record
+
+    @app.post("/v1/work/{work_id}/cancel", response_model=WorkRecord)
+    async def cancel_work(work_id: str, service: WorkRuntime = Depends(runtime)) -> WorkRecord:
+        try:
+            return await service.cancel(work_id)
+        except WorkNotFound as exc:
+            raise HTTPException(status_code=404, detail="work not found") from exc
+        except CancellationConflict as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post("/v1/work/{work_id}/retry", response_model=WorkRecord)
     async def retry_work(
         work_id: str,
         request: WorkRetryRequest,
-        idempotency_key: Annotated[
-            str,
-            Header(alias="Idempotency-Key", min_length=1, max_length=128),
-        ],
+        idempotency_key: str = Header(alias="Idempotency-Key"),
+        service: WorkRuntime = Depends(runtime),
     ) -> WorkRecord:
         try:
-            return await runtime().retry(
-                work_id,
-                request,
-                idempotency_key=idempotency_key,
-            )
+            return await service.retry(work_id, request, idempotency_key=idempotency_key)
         except WorkNotFound as exc:
-            raise HTTPException(status.HTTP_404_NOT_FOUND, "work not found") from exc
+            raise HTTPException(status_code=404, detail="work not found") from exc
         except RetryConflict as exc:
-            raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
 
-    @app.post("/v1/work/{work_id}/cancel", response_model=WorkRecord)
-    async def cancel_work(work_id: str) -> WorkRecord:
+    @app.post("/v1/work/{work_id}/result")
+    async def consume_result(work_id: str, service: WorkRuntime = Depends(runtime)) -> object:
         try:
-            return await runtime().cancel(work_id)
+            return service.consume_result(work_id)
         except WorkNotFound as exc:
-            raise HTTPException(status.HTTP_404_NOT_FOUND, "work not found") from exc
-        except CancellationConflict as exc:
-            raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
-
-    @app.get("/v1/work/{work_id}", response_model=WorkRecord)
-    async def inspect_work(work_id: str) -> WorkRecord:
-        record = runtime().inspect(work_id)
-        if record is None:
-            raise HTTPException(status.HTTP_404_NOT_FOUND, "work not found")
-        return record
+            raise HTTPException(status_code=404, detail="work not found") from exc
+        except ResultLost as exc:
+            raise HTTPException(status_code=410, detail=str(exc)) from exc
+        except ResultUnavailable as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     return app
