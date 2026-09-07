@@ -17,7 +17,6 @@ from madre_kernel.contracts import (
     AgentRequirement,
     AgentSkillInstance,
     AgentSkillInstanceRef,
-    AgentStateRef,
     AgentTask,
     AgentTaskRef,
     ClassificationTransform,
@@ -81,7 +80,11 @@ class DiscoveryPolicy:
     def __init__(self, rules: Sequence[DiscoveryRule] = ()) -> None:
         self._rules = {ref_key(rule.policy): rule for rule in rules}
 
-    def visible(self, policy: DiscoveryPolicyRef, requester_module_id: str | None) -> bool:
+    def visible(
+        self,
+        policy: DiscoveryPolicyRef,
+        requester_module_id: str | None,
+    ) -> bool:
         if policy.policy_id == "public":
             return True
         rule = self._rules.get(ref_key(policy))
@@ -113,7 +116,11 @@ class Kernel:
 
     def register_module(self, module: ModuleAdapter) -> None:
         self._modules[ref_key(module.manifest.module)] = module
-        self.store.put("module_manifest", ref_key(module.manifest.module), module.manifest)
+        self.store.put(
+            "module_manifest",
+            ref_key(module.manifest.module),
+            module.manifest,
+        )
         for schema, model in module.schemas().items():
             self.codecs.register(schema, model)
         for operation_ref in module.manifest.operations:
@@ -125,17 +132,33 @@ class Kernel:
             skill = module.skill(skill_ref)
             if skill is None:
                 raise ValueError("manifest SkillRef does not resolve through its Module")
-            self.store.put("skill", ref_key(skill.ref), skill)
+            self.register_skill(skill)
+            for workflow_ref in skill.workflow_refs:
+                workflow = module.workflow(workflow_ref)
+                if workflow is None:
+                    raise ValueError("SkillDefinition pins an unresolved WorkflowDefinition")
+                self.register_workflow(workflow)
         for agent_ref in module.manifest.agents:
             definition = module.agent_definition(agent_ref)
             if definition is None:
-                raise ValueError("manifest AgentDefinitionRef does not resolve through its Module")
-            self.register_agent_definition(definition)
+                raise ValueError(
+                    "manifest AgentDefinitionRef does not resolve through its Module"
+                )
             for instance_ref in definition.skill_instances:
                 instance = module.agent_skill_instance(instance_ref)
                 if instance is None:
-                    raise ValueError("AgentDefinition pins an unresolved AgentSkillInstance")
+                    raise ValueError(
+                        "AgentDefinition pins an unresolved AgentSkillInstance"
+                    )
                 self.register_skill_instance(instance)
+            for workflow_ref in definition.direct_workflows:
+                workflow = module.workflow(workflow_ref)
+                if workflow is None:
+                    raise ValueError(
+                        "AgentDefinition pins an unresolved direct WorkflowDefinition"
+                    )
+                self.register_workflow(workflow)
+            self.register_agent_definition(definition)
 
     def assign_core(self, module_id: str) -> CoreRoleAssignment:
         module = self._module_by_id(module_id)
@@ -150,22 +173,35 @@ class Kernel:
     def core_assignment(self) -> CoreRoleAssignment | None:
         return self.store.get("core_role", "active", CoreRoleAssignment)
 
-    def discover_modules(self, requester_module_id: str | None) -> tuple[ModuleManifest, ...]:
+    def discover_modules(
+        self,
+        requester_module_id: str | None,
+    ) -> tuple[ModuleManifest, ...]:
         return tuple(
             module.manifest
             for module in self._modules.values()
-            if self.discovery.visible(module.manifest.visibility, requester_module_id)
+            if self.discovery.visible(
+                module.manifest.visibility,
+                requester_module_id,
+            )
         )
 
-    def discover_operations(self, requester_module_id: str | None) -> tuple[OperationDescriptor, ...]:
+    def discover_operations(
+        self,
+        requester_module_id: str | None,
+    ) -> tuple[OperationDescriptor, ...]:
         result: list[OperationDescriptor] = []
         for module in self._modules.values():
-            if not self.discovery.visible(module.manifest.visibility, requester_module_id):
+            if not self.discovery.visible(
+                module.manifest.visibility,
+                requester_module_id,
+            ):
                 continue
             for operation_ref in module.manifest.operations:
                 descriptor = module.operation(operation_ref)
                 if descriptor is not None and self.discovery.visible(
-                    descriptor.visibility, requester_module_id
+                    descriptor.visibility,
+                    requester_module_id,
                 ):
                     result.append(descriptor)
         return tuple(result)
@@ -203,7 +239,10 @@ class Kernel:
         module = self._module(assignment.module)
         for ref in module.manifest.agents:
             definition = module.agent_definition(ref)
-            if definition is not None and self.discovery.visible(definition.visibility, None):
+            if definition is not None and self.discovery.visible(
+                definition.visibility,
+                None,
+            ):
                 return definition
         raise LookupError("assigned CORE Module exposes no fallback AgentDefinition")
 
@@ -269,7 +308,10 @@ class Kernel:
         plan = self.inspect_plan(task.ref.plan)
         if plan is not None:
             plan = plan.model_copy(
-                update={"orchestrator_definition": definition.ref, "updated_at": utc_now()}
+                update={
+                    "orchestrator_definition": definition.ref,
+                    "updated_at": utc_now(),
+                }
             )
             self.store.put("work_plan", ref_key(plan.ref), plan)
         return task
@@ -307,13 +349,21 @@ class Kernel:
         final_ref = await manager.run_task(instance, objective_bundle, services)
         completed_at = utc_now()
         task = task.model_copy(
-            update={"completion": TaskCompletion(completed_at=completed_at, context_outputs=(final_ref,))}
+            update={
+                "completion": TaskCompletion(
+                    completed_at=completed_at,
+                    context_outputs=(final_ref,),
+                )
+            }
         )
         plan = plan.model_copy(
             update={
                 "orchestrator_definition": definition.ref,
                 "updated_at": completed_at,
-                "completion": PlanCompletion(completed_at=completed_at, context_outputs=(final_ref,)),
+                "completion": PlanCompletion(
+                    completed_at=completed_at,
+                    context_outputs=(final_ref,),
+                ),
             }
         )
         self.store.put("agent_task", ref_key(task.ref), task)
@@ -366,9 +416,12 @@ class Kernel:
         instance = self.inspect_instance(task.agent_instance)
         if definition is None or instance is None:
             raise LookupError("bound Agent evidence does not resolve")
-        return await _TaskServices(self, task, definition, instance).invoke_operation(
-            operation, input_contexts
-        )
+        return await _TaskServices(
+            self,
+            task,
+            definition,
+            instance,
+        ).invoke_operation(operation, input_contexts)
 
     def install_skill(
         self,
@@ -383,7 +436,9 @@ class Kernel:
         if skill is None:
             raise LookupError("source SkillDefinition does not resolve exactly")
         if any(workflow not in skill.workflow_refs for workflow in adopted_workflows):
-            raise ValueError("adopted Workflow must be published by the exact source Skill revision")
+            raise ValueError(
+                "adopted Workflow must be published by the exact source Skill revision"
+            )
         instance = AgentSkillInstance(
             ref=AgentSkillInstanceRef(
                 agent=agent,
@@ -413,8 +468,12 @@ class Kernel:
     def register_agent_definition(self, definition: AgentDefinition) -> None:
         for instance_ref in definition.skill_instances:
             instance = self.skill_instance(instance_ref)
-            if instance is not None and instance.ref.agent != definition.ref.agent:
-                raise ValueError("AgentDefinition cannot pin another logical Agent's Skill instance")
+            if instance is None:
+                raise ValueError("AgentDefinition pins an unresolved AgentSkillInstance")
+            if instance.ref.agent != definition.ref.agent:
+                raise ValueError(
+                    "AgentDefinition cannot pin another logical Agent's Skill instance"
+                )
         self.store.put("agent_definition", ref_key(definition.ref), definition)
 
     def skill(self, ref: SkillRef) -> SkillDefinition | None:
@@ -424,7 +483,11 @@ class Kernel:
         return self.store.get("workflow", ref_key(ref), WorkflowDefinition)
 
     def skill_instance(self, ref: AgentSkillInstanceRef) -> AgentSkillInstance | None:
-        return self.store.get("agent_skill_instance", ref_key(ref), AgentSkillInstance)
+        return self.store.get(
+            "agent_skill_instance",
+            ref_key(ref),
+            AgentSkillInstance,
+        )
 
     def agent_definition(self, ref: AgentDefinitionRef) -> AgentDefinition | None:
         return self.store.get("agent_definition", ref_key(ref), AgentDefinition)
@@ -473,7 +536,11 @@ class _TaskServices(AgentExecutionServices):
             agent=self.definition.security,
             actual_boundary=ExecutionBoundary.LOCAL_TRUSTED,
         )
-        self.kernel.store.put("security_decision", ref_key(decision.ref), decision)
+        self.kernel.store.put(
+            "security_decision",
+            ref_key(decision.ref),
+            decision,
+        )
         if not decision.accepted:
             raise SecurityRejectedError(decision)
         result = await self.kernel.runtime.reason(messages)
@@ -484,20 +551,33 @@ class _TaskServices(AgentExecutionServices):
             purpose=RuntimeEvidencePurpose.AGENT_REASONING,
             created_at=utc_now(),
         )
-        if self.kernel.store.get("runtime_link", ref_key(result.work), RuntimeEvidenceLink) is not None:
+        existing = self.kernel.store.get(
+            "runtime_link",
+            ref_key(result.work),
+            RuntimeEvidenceLink,
+        )
+        if existing is not None:
             raise ValueError("Runtime WorkRecord is already linked to an AgentTask")
         self.kernel.store.put("runtime_link", ref_key(result.work), link)
         return result.text
 
     def visible_operations(self) -> tuple[OperationDescriptor, ...]:
-        return self.kernel.discover_operations(self.definition.ref.agent.module.module_id)
+        return self.kernel.discover_operations(
+            self.definition.ref.agent.module.module_id
+        )
 
-    def project_operation_input(self, operation: OperationRef, payload: BaseModel) -> ContextBundleRef:
+    def project_operation_input(
+        self,
+        operation: OperationRef,
+        payload: BaseModel,
+    ) -> ContextBundleRef:
         module = self.kernel._module(operation.module)
         material = module.project_operation_input(operation, payload)
         descriptor = module.operation(operation)
         if descriptor is None or material.schema != descriptor.input_schema:
-            raise ValueError("Module projected input with a schema outside the Operation contract")
+            raise ValueError(
+                "Module projected input with a schema outside the Operation contract"
+            )
         bundle = self.kernel.create_context(
             owner=operation.module,
             schema=material.schema,
@@ -508,7 +588,9 @@ class _TaskServices(AgentExecutionServices):
         return bundle.ref
 
     async def invoke_operation(
-        self, operation: OperationRef, input_contexts: Sequence[ContextBundleRef]
+        self,
+        operation: OperationRef,
+        input_contexts: Sequence[ContextBundleRef],
     ) -> tuple[ContextBundleRef, ...]:
         module = self.kernel._module(operation.module)
         descriptor = module.operation(operation)
@@ -524,85 +606,13 @@ class _TaskServices(AgentExecutionServices):
             operation=descriptor,
             actual_boundary=ExecutionBoundary.LOCAL_TRUSTED,
         )
-        self.kernel.store.put("security_decision", ref_key(decision.ref), decision)
+        self.kernel.store.put(
+            "security_decision",
+            ref_key(decision.ref),
+            decision,
+        )
         invocation_ref = OperationInvocationRef(invocation_id=uuid4().hex)
         requested_at = utc_now()
-        if not decision.accepted:
-            record = OperationInvocationRecord(
-                ref=invocation_ref,
-                task=self.task.ref,
-                operation=operation,
-                requested_by=self.instance.ref,
-                requested_at=requested_at,
-                input_contexts=tuple(input_contexts),
-                security_decision=decision.ref,
-                outcome=OperationOutcome(
-                    kind=OperationOutcomeKind.SECURITY_REJECTED,
-                    observed_at=utc_now(),
-                ),
-            )
-            self.kernel.store.put("operation_invocation", ref_key(record.ref), record)
-            raise SecurityRejectedError(decision)
-
-        dispatched_at = utc_now()
-        try:
-            material = await module.invoke_operation(operation, bundles)
-        except UnknownOperationEffect:
-            record = OperationInvocationRecord(
-                ref=invocation_ref,
-                task=self.task.ref,
-                operation=operation,
-                requested_by=self.instance.ref,
-                requested_at=requested_at,
-                input_contexts=tuple(input_contexts),
-                security_decision=decision.ref,
-                dispatched_at=dispatched_at,
-                outcome=OperationOutcome(
-                    kind=OperationOutcomeKind.UNKNOWN_EXTERNAL_EFFECT,
-                    observed_at=utc_now(),
-                ),
-            )
-            self.kernel.store.put("operation_invocation", ref_key(record.ref), record)
-            raise
-        except Exception:
-            record = OperationInvocationRecord(
-                ref=invocation_ref,
-                task=self.task.ref,
-                operation=operation,
-                requested_by=self.instance.ref,
-                requested_at=requested_at,
-                input_contexts=tuple(input_contexts),
-                security_decision=decision.ref,
-                dispatched_at=dispatched_at,
-                outcome=OperationOutcome(
-                    kind=OperationOutcomeKind.FAILURE,
-                    observed_at=utc_now(),
-                    code="operation-failure",
-                ),
-            )
-            self.kernel.store.put("operation_invocation", ref_key(record.ref), record)
-            raise
-
-        if material.schema != descriptor.output_schema:
-            raise ValueError("Operation returned a schema outside its exact descriptor")
-        source_sensitivity = max(bundle.security.sensitivity for bundle in bundles)
-        if (
-            material.security.sensitivity < source_sensitivity
-            and descriptor.security.classification_transform
-            is not ClassificationTransform.MAY_RECALCULATE
-        ):
-            raise ValueError("lower-sensitivity derivation requires MAY_RECALCULATE")
-        if not material.security.scopes.issubset(descriptor.security.destination_scopes):
-            raise ValueError("Operation output Scope is outside declared destination scopes")
-        output = self.kernel.create_context(
-            owner=operation.module,
-            schema=material.schema,
-            payload=material.payload,
-            security=material.security,
-            purpose=material.purpose,
-            derived_from=input_contexts,
-            derivation_operation=invocation_ref,
-        )
         record = OperationInvocationRecord(
             ref=invocation_ref,
             task=self.task.ref,
@@ -611,11 +621,116 @@ class _TaskServices(AgentExecutionServices):
             requested_at=requested_at,
             input_contexts=tuple(input_contexts),
             security_decision=decision.ref,
-            dispatched_at=dispatched_at,
-            outcome=OperationOutcome(kind=OperationOutcomeKind.SUCCESS, observed_at=utc_now()),
-            produced_contexts=(output.ref,),
         )
-        self.kernel.store.put("operation_invocation", ref_key(record.ref), record)
+        self.kernel.store.put(
+            "operation_invocation",
+            ref_key(record.ref),
+            record,
+        )
+
+        if not decision.accepted:
+            record = record.model_copy(
+                update={
+                    "outcome": OperationOutcome(
+                        kind=OperationOutcomeKind.SECURITY_REJECTED,
+                        observed_at=utc_now(),
+                    )
+                }
+            )
+            self.kernel.store.put(
+                "operation_invocation",
+                ref_key(record.ref),
+                record,
+            )
+            raise SecurityRejectedError(decision)
+
+        dispatched_at = utc_now()
+        record = record.model_copy(update={"dispatched_at": dispatched_at})
+        self.kernel.store.put(
+            "operation_invocation",
+            ref_key(record.ref),
+            record,
+        )
+
+        try:
+            material = await module.invoke_operation(operation, bundles)
+            if material.schema != descriptor.output_schema:
+                raise ValueError(
+                    "Operation returned a schema outside its exact descriptor"
+                )
+            if bundles:
+                source_sensitivity = max(
+                    bundle.security.sensitivity for bundle in bundles
+                )
+                if (
+                    material.security.sensitivity < source_sensitivity
+                    and descriptor.security.classification_transform
+                    is not ClassificationTransform.MAY_RECALCULATE
+                ):
+                    raise ValueError(
+                        "lower-sensitivity derivation requires MAY_RECALCULATE"
+                    )
+            if not material.security.scopes.issubset(
+                descriptor.security.destination_scopes
+            ):
+                raise ValueError(
+                    "Operation output Scope is outside declared destination scopes"
+                )
+            output = self.kernel.create_context(
+                owner=operation.module,
+                schema=material.schema,
+                payload=material.payload,
+                security=material.security,
+                purpose=material.purpose,
+                derived_from=input_contexts,
+                derivation_operation=invocation_ref,
+            )
+        except UnknownOperationEffect:
+            record = record.model_copy(
+                update={
+                    "outcome": OperationOutcome(
+                        kind=OperationOutcomeKind.UNKNOWN_EXTERNAL_EFFECT,
+                        observed_at=utc_now(),
+                    )
+                }
+            )
+            self.kernel.store.put(
+                "operation_invocation",
+                ref_key(record.ref),
+                record,
+            )
+            raise
+        except Exception:
+            record = record.model_copy(
+                update={
+                    "outcome": OperationOutcome(
+                        kind=OperationOutcomeKind.FAILURE,
+                        observed_at=utc_now(),
+                        code="operation-failure",
+                    )
+                }
+            )
+            self.kernel.store.put(
+                "operation_invocation",
+                ref_key(record.ref),
+                record,
+            )
+            raise
+
+        record = record.model_copy(
+            update={
+                "outcome": OperationOutcome(
+                    kind=OperationOutcomeKind.SUCCESS,
+                    observed_at=utc_now(),
+                ),
+                "produced_contexts": (output.ref,),
+            }
+        )
+        self.kernel.store.put(
+            "operation_invocation",
+            ref_key(record.ref),
+            record,
+        )
         return (output.ref,)
 
     def context(self, ref: ContextBundleRef) -> ContextBundle:
@@ -644,8 +759,15 @@ class _TaskServices(AgentExecutionServices):
 
 
 def repeat_permitted(
-    descriptor: OperationDescriptor, record: OperationInvocationRecord
+    descriptor: OperationDescriptor,
+    record: OperationInvocationRecord,
 ) -> bool:
-    if record.outcome is None or record.outcome.kind is OperationOutcomeKind.UNKNOWN_EXTERNAL_EFFECT:
+    if (
+        record.outcome is None
+        or record.outcome.kind is OperationOutcomeKind.UNKNOWN_EXTERNAL_EFFECT
+    ):
         return False
-    return descriptor.effect_semantics.repeatability.value in {"repeatable", "idempotent"}
+    return descriptor.effect_semantics.repeatability.value in {
+        "repeatable",
+        "idempotent",
+    }
