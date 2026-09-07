@@ -44,10 +44,7 @@ class KernelSecurityPolicy:
         material_sensitivity: SecurityLevel,
         boundary: ExecutionBoundary,
     ) -> SecurityLevel:
-        if (
-            boundary is ExecutionBoundary.REMOTE
-            or material_sensitivity >= SecurityLevel.LEVEL_4
-        ):
+        if boundary is ExecutionBoundary.REMOTE or material_sensitivity >= SecurityLevel.LEVEL_4:
             return SecurityLevel.LEVEL_2
         return SecurityLevel.LEVEL_4
 
@@ -59,9 +56,7 @@ class KernelSecurityPolicy:
         return SecurityLevel.LEVEL_4
 
     def remote_boundary_permitted(self, material: Sequence[ContextBundle]) -> bool:
-        return all(
-            bundle.security.sensitivity <= SecurityLevel.LEVEL_2 for bundle in material
-        )
+        return all(bundle.security.sensitivity <= SecurityLevel.LEVEL_2 for bundle in material)
 
 
 class SecurityAlgebra:
