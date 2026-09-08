@@ -37,6 +37,8 @@ A public Agent descriptor carries interoperability facts such as:
 
 Kernel may discover and explicitly route this Agent. The owning Module remains responsible for prompts, memory, internal state, reasoning loops, internal Operations, Skill choice and Workflow choice.
 
+Generated material returned to the owning/requesting Module may be used in subsequent reasoning exactly as that Module chooses. Kernel does not impose a universal semantic status on generated output.
+
 ## 3. Skill Descriptor
 
 A Skill is reusable behavior/knowledge for adoption by compatible Agents. Its public descriptor may include version, purpose, input/output contracts, related Operations/Workflows, compatibility information, boundary facts and provenance.
@@ -58,6 +60,8 @@ An Operation is callable Module-owned behavior. Its descriptor contains enough p
 - repeatability semantics;
 - boundary/security envelope;
 - provenance.
+
+MADRE-provided external/system effects are bounded through specific Operations rather than an unrestricted generic Agent shell/Internet authority surface.
 
 MADRE does not impose an arbitrary global naming hierarchy on descriptor IDs. Ownership is an explicit field, not inferred from string syntax.
 
@@ -117,16 +121,39 @@ Module code should not need Kernel storage classes, scheduler internals, FastAPI
 
 The SDK must not own Agent memory/state, prompts/private context, WorkPlans, Workflow execution or domain persistence.
 
-The default CORE Module should use the same public SDK/contracts as third-party Modules. If CORE requires privileged semantic access to Kernel internals, treat that as evidence that the public boundary is incomplete or ownership has drifted.
+The target is a **minimal but concrete** public object model: define enough stable cross-boundary structure for independent implementations to interoperate, but do not turn Module-private semantics into universal MADRE classes merely for completeness.
 
-## 10. Transport and mechanism access
+## 10. Default / CORE Module designation
+
+A MADRE installation may designate one ordinary registered Module as its default/CORE Module.
+
+The shipped MADRE CORE implementation is the first-party default, but the designation is replaceable. Another Module may be configured to provide the same generic/fallback role.
+
+Typical generic responsibilities may include fallback intelligence for Agentless Modules, fast/default interaction behavior, generic UI/UX support, module-independent intelligent tasks (for example configuration/installation assistance), and escalation/routing when no more specific Module owns the work.
+
+These are ordinary Module capabilities exposed through public contracts. Default/CORE status may influence fallback/routing preference, but it must not grant:
+
+```text
+security bypass
+private semantic Kernel API
+resource exemption
+hidden registry authority
+special Agent ontology
+irreplaceable behavior
+```
+
+If CORE requires privileged semantic access to Kernel internals, treat that as evidence that the public boundary is incomplete or ownership has drifted.
+
+The exact configuration/routing representation of the default designation remains open until real SDK/CORE implementation proves the minimum needed contract.
+
+## 11. Transport and mechanism access
 
 Transport is not architecture. Public Module contracts may be exposed through in-process APIs, IPC, HTTP, MCP or other adapters.
 
-Provider/mechanism credentials and login/session mechanics do not belong to interoperability contracts and do not authorize Module work. Detailed provider/mechanism integration belongs to `MADRE-execution-contract.md`; security authority belongs to `MADRE-security-algebra.md`.
+Provider/mechanism credentials and login/session mechanics do not belong to interoperability contracts and do not authorize Module work. Detailed provider/mechanism integration belongs to `MADRE-execution-contract.md`; security admissibility belongs to `MADRE-security-algebra.md`.
 
 The current local single-owner installation does not add a separate bearer-token/per-Module authorization framework merely because a transport exists.
 
-## 11. Guided Agent tooling
+## 12. Guided Agent tooling
 
 Future Agent creator/import tooling should consume these public contracts to generate Modules, manifests, descriptors, boundary metadata and integration scaffolding. Tooling does not move Agent internals into Kernel.
