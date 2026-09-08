@@ -1,6 +1,6 @@
 # MADRE Platform Architecture
 
-`MADRE.md` is the canonical product contract. This document expands the system topology and ownership boundaries.
+Authority: `MADRE.md` defines product meaning. This document owns detailed system topology and responsibility placement.
 
 ## 1. Topology
 
@@ -9,32 +9,29 @@
 
 Module A                    Kernel                    Inference mechanisms
 ---------              -------------------            -------------------
-domain state     --->   public registry        --->   local model runtime
-private Agents           boundary discovery            remote provider API
-Skills/Workflows         explicit brokering            provider CLI/session
-WorkPlans                 work admission                MCP/software adapter
-Operations                security algebra              embeddings/speech/...
-UI/history                scheduling/resources
-                          recovery/evidence
+domain state     --->   public interoperability --->  local model runtime
+private Agents           security algebra             remote provider API
+Skills/Workflows         transient inference          provider CLI/session
+WorkPlans                 durable work                MCP/software adapter
+Operations                scheduling/resources        embeddings/speech/...
+UI/history                recovery/evidence
 
-Module B / Default Module / adapters participate through the same boundaries.
+Module B / Default Module / adapters participate through the same logical boundaries.
 ```
 
-The Kernel and execution engine may be one process or several. Logical responsibility, not process shape, defines the architecture.
+The Kernel and execution engine may be one process or several. Logical responsibility, not process topology, defines the architecture.
 
-## 2. Module
+## 2. Module boundary
 
-A Module is an independently owned application or integration boundary. It can be a desktop application, service, script, editor integration, adapter over another program, MCP integration, API integration or first-party Module.
+A Module is an independently owned application or integration boundary: desktop application, service, script, editor integration, adapter over another program, MCP integration, API integration or first-party Module.
 
-The Module is the semantic owner. It decides what data is relevant, what a task means, how an Agent behaves, which Skill or Workflow is useful, what a WorkPlan means, how output is interpreted and which domain mutation should occur.
+The Module is the semantic owner. It decides what data is relevant, what a request means, how an Agent behaves, which Skill/Workflow is useful, what a WorkPlan means, how output is interpreted and which domain mutation should occur.
 
 MADRE must not reconstruct those semantics from Module-private data.
 
-Interactive Modules are expected to use MADRE's dual-lane interaction pattern: each user input can drive a latency-sensitive transient inference while a non-blocking reasoning path continues independently. The fast lane is still real inference, not canned text. The Module/Agent owns the semantics of acknowledgement, escalation, delegation and eventual result presentation.
+## 3. Public interoperability boundary
 
-## 3. Public descriptor versus implementation
-
-MADRE interoperability intentionally distinguishes public contract from private owner:
+MADRE separates public contract from private implementation:
 
 ```text
 AgentDescriptor            Agent implementation
@@ -43,37 +40,21 @@ SkillDescriptor            adopted Skill mechanism
 WorkflowDescriptor         Workflow execution
        |                           |
        v                           v
-MADRE registry              owning Module
+MADRE interoperability      owning Module
 ```
 
-Kernel can persist, filter and route a descriptor. It cannot thereby become owner of the implementation.
+The registry knows that published surfaces exist and how to route them. Registration is not semantic certification or authorization.
 
-## 4. Registry
+Detailed manifest, descriptor, discovery, brokering and SDK-facing semantics belong to `MADRE-agent-interoperability.md`.
 
-Kernel maintains the installation registry of published descriptors:
-
-```text
-Module manifests
-public Agents
-public Skills
-public Workflow descriptors
-public Operations
-inference-mechanism / model descriptors
-```
-
-Registry discovery is deterministic and boundary-filtered. The requester performs semantic selection over the returned visible descriptors.
-
-Unknown/weakly described integrations may be represented conservatively with provenance that lowers trust or narrows admissible boundaries. Registration is not semantic certification or authorization.
-
-## 5. Kernel
+## 4. Kernel boundary
 
 Kernel responsibility is deterministic control:
 
-- evaluate current security/boundary algebra;
+- evaluate carried security/boundary facts;
 - expose latency-sensitive transient inference execution;
-- admit explicit durable work;
-- schedule immediately eligible/delayed durable work globally;
-- allocate scarce execution resources;
+- admit and schedule durable work;
+- allocate scarce GPU/CPU/RAM and execution resources;
 - select a physically compatible admissible inference mechanism/model from Module requirements/preferences;
 - acquire durable-work material just-in-time from its owner;
 - track attempts and truthful physical outcomes;
@@ -82,74 +63,63 @@ Kernel responsibility is deterministic control:
 - deliver transient results;
 - retain execution/security evidence.
 
-Kernel does not semantically route arbitrary user text, choose an Agent because of prompt meaning, own WorkPlans, persist Agent state or interpret generated content.
+Kernel does not semantically route arbitrary user text, choose an Agent because prompt contents appear relevant, own WorkPlans, persist Agent state or interpret generated content.
 
-Kernel also does not persist or cache queued private work material. Accepted durable work holds only a verifiable material handle and execution metadata; actual material is acquired only when execution is about to occur.
+Kernel also does not cache queued private work material. Detailed transient/durable execution semantics belong to `MADRE-execution-contract.md`.
 
-## 6. Capability / inference mechanism
+## 5. Inference mechanism / Capability boundary
 
-The current code uses **Capability** for a physical computation implementation. In architecture discussions, read this as an available physical inference/execution mechanism with known properties, not as a semantic skill or ability.
-
-Operations and Capabilities are distinct:
+The current code uses **Capability** for a physical computation implementation. Architecturally, this means an available physical inference/execution mechanism with declared properties, not a semantic Skill or ability.
 
 ```text
 Operation  = Module-owned semantic callable
 Capability = MADRE physical computation/inference mechanism
 ```
 
-A provider is not one Capability. The same provider may expose multiple mechanisms: official APIs, account-authenticated CLIs, MCP paths, SDKs, local gateways or user-installed adapters over software the user controls. Each mechanism can have different cost, latency, modality, authentication, model inventory and resource properties.
+A provider is not one Capability. One provider may expose multiple mechanisms: official APIs, account-authenticated CLIs, MCP paths, SDKs, local gateways or user-installed adapters over software the user controls. Their cost, latency, modality, authentication, model inventory and resource behavior can differ.
 
-Provider-specific request formats, login/API-key/session handling, model loading, process/SDK details and backend device/cache mechanics stay at the adapter boundary. Kernel must not assume that API keys or HTTP are universal merely because one reference adapter uses them.
+Provider-specific request formats, login/credential/session handling, process/SDK mechanics, model loading and backend device/cache behavior remain behind the adapter/external-software boundary.
 
-The OpenAI-compatible HTTP adapter is one mechanism among many and must not become the template that flattens later provider integration.
+The current OpenAI-compatible HTTP adapter is one concrete mechanism, not the architectural template for all provider support.
 
-Modules normally describe requirements/preferences rather than enumerate installed backends. Kernel may match on dimensions such as modality/specialization, latency class, reasoning effort/quality, cost policy, locality/privacy, and preferred provider/model with explicit fallback semantics.
+Detailed requirement/preference matching and mechanism selection belong to `MADRE-execution-contract.md`.
 
-A Module Operation may internally submit MADRE work; a Capability does not become an Operation merely because it computes something.
+## 6. Interactive and durable paths
 
-## 7. Interactive and durable execution paths
-
-Two execution paths have intentionally different ownership and latency semantics:
+The platform exposes two execution classes with different topology and lifecycle:
 
 ```text
 Transient interactive inference
-    direct minimal ephemeral input
-    latency-sensitive
-    not queued
-    no restart/recovery promise
-    input discarded after invocation
+    Module -> ephemeral input -> Kernel -> mechanism -> transient result -> Module
 
 Durable work
-    reference + digest + envelope + retrieval coordination
-    no queued private payload
-    scheduled/recoverable/retriable
-    material resolved just-in-time
+    Module -> execution intent/material handle -> Kernel queue/recovery
+           -> JIT material resolution -> mechanism -> transient result -> Module
 ```
 
-This distinction prevents the privacy/recovery rules of durable work from adding unnecessary round-trips to the fast interaction lane while preventing queued work from consuming RAM with duplicated Module-owned context.
+An interactive Module may use both paths for the same user input: one low-latency inference keeps interaction natural while a parallel Module-owned reasoning branch may answer, schedule durable work or delegate.
 
-The dual-lane user interaction pattern may use both paths for the same user input: a fast inference keeps the interaction natural while a background reasoning branch can answer, schedule deeper work, or delegate. Kernel provides the execution paths and resource arbitration; the Module owns what those inferences mean.
+Kernel supplies execution paths and resource arbitration; the Module owns what those inferences mean.
 
-## 8. Default Module and SDK boundary
+## 7. Default Module and SDK placement
 
-A default general-purpose Module may ship with MADRE. It is useful for generic Agents, cross-domain coordination and interaction surfaces, but is architecturally ordinary. It uses the same registry, security and execution paths as every Module.
+A default general-purpose Module may ship with MADRE. It is architecturally ordinary and uses the same public registry, security and execution boundaries as other Modules.
 
-The public Module boundary should be sufficiently stable and segregated to support a modular MADRE SDK. Module code should not need Kernel storage, scheduler, FastAPI or provider internals. CORE should become the first substantial consumer of that public SDK/boundary rather than a privileged second Kernel.
+Public Module contracts should be sufficiently stable and segregated for a modular MADRE SDK. Module code should not depend on Kernel storage, scheduler, FastAPI or provider internals. CORE should be the first substantial consumer of that public boundary rather than a privileged second Kernel.
 
-## 9. Transport neutrality
+Detailed SDK-facing interfaces belong to `MADRE-agent-interoperability.md`.
 
-HTTP, MCP, IPC, in-process APIs, vendor CLIs, local automation bridges and third-party agent protocols are transports/adapters. None of them defines the ownership model.
+## 8. Transport neutrality
 
-MADRE should allow user-installed adapters over software the user controls even when their mechanism is unconventional. The adapter/user owns the correctness and account/software implications of that integration; Kernel sees only the mechanism's declared execution properties and callable boundary.
+HTTP, IPC, in-process APIs, MCP, vendor CLIs, local automation bridges and third-party protocols are transports/adapters. None defines the ownership model.
 
-## 10. Responsibility test
+User-installed adapters over software the user controls are allowed even when unconventional. Their owners are responsible for the software/account implications; Kernel sees the declared execution mechanism and its boundary facts.
 
-Place a new concept by asking what decision requires it.
+## 9. Responsibility test
 
-If it exists to understand meaning, plan, remember, present, learn, choose Skills/Workflows or mutate a domain, it belongs to a Module.
+Place a new concept by asking what decision requires it:
 
-If it exists to publish/discover a public semantic contract, it belongs to interoperability contracts/registry.
-
-If it exists to evaluate boundaries, execute a latency-sensitive inference, admit/schedule durable work, allocate hardware, select an execution mechanism, recover physical execution, route an explicit target or record evidence, it belongs to Kernel.
-
-If it exists to load/talk to a model/provider, manage provider login/credentials/session mechanics, or wrap a concrete local/remote inference program, it belongs to a Capability adapter or external provider software.
+- understand meaning, plan, remember, present, learn, choose Skills/Workflows or mutate a domain → Module;
+- publish/discover a public semantic contract → interoperability;
+- evaluate boundaries, execute transient inference, admit/schedule durable work, allocate hardware, select a mechanism, recover physical execution, route an explicit target or record evidence → Kernel;
+- load/talk to a model/provider or wrap concrete inference software → Capability adapter/external mechanism software.

@@ -1,5 +1,7 @@
 # MADRE Agent Interoperability
 
+Authority: `MADRE.md` defines product meaning. This document owns public Module/Agent/Skill/Workflow/Operation contracts, discovery, explicit brokering and the SDK-facing Module boundary.
+
 MADRE interoperability standardizes what Modules intentionally publish without standardizing their private agentic implementation.
 
 ## 1. Module Manifest
@@ -18,9 +20,9 @@ exported Operation descriptors
 
 The manifest exposes no private database, prompt, Agent memory/state, WorkPlan or implementation object.
 
-Registration means only that MADRE knows a descriptor exists and which Module publishes it. Registration does not authorize the Module, grant trust, or establish reusable permission.
+Registration means only that MADRE knows a descriptor exists and which Module publishes it. Registration does not authorize the Module, grant trust or establish reusable permission.
 
-Descriptors may carry boundary/security envelopes because invoking that published surface introduces facts into a concrete crossing. Those envelopes participate in the additive algebra **when the crossing is formed**; they are not registry grants.
+Descriptors may carry boundary/security envelopes because invoking that published surface introduces facts into a concrete crossing. Those envelopes participate in the carried algebra when the crossing is formed; they are not registry grants. Detailed algebra belongs to `MADRE-security-algebra.md`.
 
 ## 2. Agent Descriptor
 
@@ -47,7 +49,7 @@ A Workflow is reusable semantic behavior. Public Workflow contracts support disc
 
 ## 5. Operation Descriptor
 
-An Operation is callable Module-owned behavior. The descriptor contains enough information for discovery and deterministic brokering:
+An Operation is callable Module-owned behavior. Its descriptor contains enough public information for discovery and deterministic brokering, including:
 
 - identity and owner Module;
 - purpose;
@@ -63,11 +65,11 @@ MADRE does not impose an arbitrary global naming hierarchy on descriptor IDs. Ow
 
 Discovery receives the requester's carried `SecurityContext`.
 
-For each descriptor, Kernel appends that descriptor's boundary envelope and evaluates the resulting context. It does not resolve requester trust from a Module registry.
+For each descriptor, Kernel evaluates the caller context with the descriptor's boundary facts. It does not reconstruct requester trust from Module registry state.
 
-Changing unrelated Module registry metadata therefore cannot change the carried security state of a discovery request.
+Changing unrelated Module registry metadata therefore cannot rewrite the carried security state of a discovery request.
 
-The requester decides which visible descriptor is semantically useful. Actual invocation is evaluated again with the concrete material and endpoint boundary facts.
+The requester decides which visible descriptor is semantically useful. Actual invocation is evaluated again with concrete material and endpoint boundary facts.
 
 ## 7. Explicit brokering
 
@@ -86,21 +88,21 @@ requesting Module identity (routing/evidence only)
     -> output algebra evaluation
 ```
 
-The registry supplies the descriptor and owner routing information. It supplies no authorization.
+The registry supplies descriptor/owner routing information. It supplies no authorization.
 
-Broker evidence is append-only around the physical dispatch boundary. For Operations, an exception after dispatch is conservatively recorded as an unknown external effect unless stronger effect evidence exists.
+Broker evidence is append-only around the physical dispatch boundary. For Operations, an exception after dispatch is conservatively recorded as an unknown external effect unless stronger effect evidence exists; uncertain side effects must not be blindly repeated.
 
 ## 8. Cross-Module cooperation
 
-The intelligent participant decides which Module/Agent/Skill/Operation is relevant and what context to provide. MADRE supplies registry, boundary-filtered discovery, deterministic algebra, routing, transient transfer and evidence.
+The intelligent participant decides which Module/Agent/Skill/Operation is relevant and what context to provide. MADRE supplies public descriptors, boundary-filtered discovery, deterministic algebra, routing, transient transfer and execution evidence.
 
 A public Agent can submit ordinary MADRE inference work from its owning Module. Kernel still does not manage that Agent's reasoning state.
 
 ## 9. Public SDK boundary
 
-These public contracts are intended to be the foundation of a modular MADRE SDK.
+These contracts are intended to form the basis of a modular MADRE SDK.
 
-The SDK should make the public boundary easy to consume without becoming another semantic framework. Module-facing interfaces should be segregated so a Module implements only the surfaces it actually uses or exports, for example:
+The SDK should make the public boundary easy to consume without becoming another semantic framework. Module-facing responsibilities should be segregated so a Module implements only surfaces it actually uses or exports, for example:
 
 ```text
 work submission / inspection / result access
@@ -113,19 +115,17 @@ SecurityEnvelope / SecurityContext propagation
 
 Module code should not need Kernel storage classes, scheduler internals, FastAPI implementation objects or provider-adapter internals.
 
-The SDK must not own Agent memory/state, prompts, private context, WorkPlans, Workflow execution or domain persistence.
+The SDK must not own Agent memory/state, prompts/private context, WorkPlans, Workflow execution or domain persistence.
 
 The default CORE Module should use the same public SDK/contracts as third-party Modules. If CORE requires privileged semantic access to Kernel internals, treat that as evidence that the public boundary is incomplete or ownership has drifted.
 
-## 10. Transport and provider credentials
+## 10. Transport and mechanism access
 
-Transport is not architecture.
+Transport is not architecture. Public Module contracts may be exposed through in-process APIs, IPC, HTTP, MCP or other adapters.
 
-The current MADRE installation is local and administered by the machine owner; MADRE does not add a separate bearer-token/per-Module authentication framework to authorize ordinary local work.
+Provider/mechanism credentials and login/session mechanics do not belong to interoperability contracts and do not authorize Module work. Detailed provider/mechanism integration belongs to `MADRE-execution-contract.md`; security authority belongs to `MADRE-security-algebra.md`.
 
-Provider authentication is a different concern and can vary by concrete inference mechanism. An adapter may use an API key, OAuth/browser login, an account-authenticated vendor CLI/session, MCP, a provider SDK credential flow, a local gateway or another user-installed adapter over software the user controls. Those mechanics stay inside the adapter/external-software boundary and do not become MADRE authorization.
-
-Do not flatten one provider into one connection model. Multiple adapters may reach the same provider/model family while exposing materially different cost, latency, authentication and operational properties.
+The current local single-owner installation does not add a separate bearer-token/per-Module authorization framework merely because a transport exists.
 
 ## 11. Guided Agent tooling
 

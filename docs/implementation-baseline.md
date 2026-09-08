@@ -1,92 +1,131 @@
 # Implementation Baseline
 
-This file describes current repository truth, not future product semantics. Product authority is `MADRE.md` and `docs/architecture/`.
+This document describes current repository state only. It is not product authority.
 
-## Current architecture-aligned foundation
+Product meaning comes from `MADRE.md`; detailed architecture comes from the focused documents under `docs/architecture/`.
 
-The `madre` package implements one coherent reference platform slice:
+## Current development stage
 
-- immutable normalized security envelopes;
-- carried `SecurityContext` state accumulated through the request/work lifecycle;
+The active stage is **Kernel foundation convergence**.
+
+The goal of this stage is to align the already-working runtime foundation with the final public execution/material/mechanism contracts required before modular SDK and CORE development begins.
+
+When an agent is asked simply to continue, this stage remains the default target until the completion criteria below are satisfied or the Owner explicitly changes direction.
+
+## Implemented repository truth
+
+The current `madre` package implements:
+
+- immutable normalized `SecurityEnvelope` facts and carried `SecurityContext` lifecycle state;
 - conservative deterministic sensitivity/trust/risk composition without registry grants, ACLs or external authorization tables;
-- durable Module manifests and public Agent/Skill/Workflow/Operation descriptors used for discovery/routing only;
-- boundary-filtered discovery over caller-carried context plus candidate descriptor facts;
+- durable Module manifests plus public Agent/Skill/Workflow/Operation descriptors used for discovery/routing only;
+- boundary-filtered discovery from caller-carried security state;
 - explicit Agent/Operation broker routing into Module-owned endpoints with independently evaluated return material;
-- append-only broker dispatch/effect evidence, including unknown Operation effect after uncertain dispatch failure;
-- `WorkSubmission -> WorkRecord -> WorkAttempt` execution with carried security state persisted in WorkSpec;
-- immediate transient material plus delayed originator-owned material references;
-- digest/envelope verification when material is supplied for execution;
-- delayed execution continuing from persisted carried security state rather than refreshing registry authority;
-- Capability registry with deterministic compatibility, optional `local_only`, security-algebra evaluation and physical adapter selection;
-- provider-specific OpenAI-compatible chat handling isolated under the Capability adapter boundary, including optional provider API-key configuration;
+- broker dispatch/effect evidence, including unknown Operation effect after uncertain dispatch failure;
+- `WorkSubmission -> WorkRecord -> WorkAttempt` durable execution records;
+- immediate pushed transient material plus delayed originator-owned material references;
+- material digest/envelope continuity verification;
+- delayed execution/retry continuing from persisted carried security rather than mutable registry authority;
+- Capability registry with deterministic compatibility, optional `local_only`, boundary-algebra evaluation and physical adapter selection;
+- one OpenAI-compatible HTTP Capability adapter with optional provider API-key environment configuration;
 - delayed eligibility, originator fairness, priority/FIFO ordering and one heavyweight local execution slot;
 - cancellation, retry and interrupted-attempt recovery;
-- transient result delivery with durable digest/size/delivery evidence only;
-- startup truth that unconsumed transient result bytes are lost after restart;
-- SQLite persistence for work metadata, public descriptors, broker evidence and structured security-decision evidence.
+- transient result delivery with durable digest/size/delivery evidence;
+- truthful loss of unconsumed transient results after restart;
+- SQLite persistence for work metadata, public descriptors, broker evidence and structured security-decision evidence;
+- direct SQLite byte-inspection tests proving private input/output/provider-error sentinel content is not durably persisted.
 
-## Security invariant implemented
+Current Kernel `trust` is boundary/provenance trust only. No prompt-injection, truth, hallucination or generic AI-content scoring is implemented.
 
-No Module or work is authorized because it is registered, accepted, named, authenticated by a MADRE bearer token, or previously permitted.
+## Active convergence gaps
 
-Registration means existence/discovery/routing only.
+These are implementation gaps against current canonical architecture, not optional roadmap ideas.
 
-A work submission carries its current SecurityContext. MADRE appends the material envelope at admission and persists the resulting context. Each later physical boundary appends its own envelope and is evaluated from that carried state. Registry mutation does not rewrite existing WorkRecord security history.
+### 1. Durable material ownership
 
-The current minimal reference relation derives highest carried sensitivity, lowest carried trust and highest carried risk; trust must cover both sensitivity and risk. Scope/domain facts are accumulated but their semantic classification remains Module-owned.
+Current code still permits `ImmediateMaterial` to be pushed into `WorkSubmission` and cached in `WorkRuntime._materials`.
 
-Current Kernel trust is boundary/provenance trust only. The implementation does not perform prompt-injection detection, semantic truth scoring, hallucination detection or generic AI-content safety analysis.
+Canonical execution now requires **all durable accepted/queued work to be reference-only**, with Module-owned material acquired just-in-time for the concrete execution attempt. Immediate eligibility must not imply Kernel ownership of queued input.
 
-## Privacy invariant implemented
+Restart and retry must reacquire material from the Module.
 
-The runtime schema has no input/result content columns and no durable provider-error message column. The deterministic suite writes sentinel prompt/output/provider-error strings, executes work, consumes the result, closes storage and scans the actual SQLite files to prove those strings were never durably stored.
+### 2. Transient fast inference
 
-Delayed work persists only the originator material reference, expected digest, material envelope and carried security context. After restart the originator provider must supply the material again.
+There is not yet a first-class non-durable latency-sensitive inference path.
 
-## Known Kernel completion gaps
+The canonical dual-lane interaction model requires a transient route that accepts minimal ephemeral input directly, performs real inference, creates no `WorkRecord`, carries no recovery promise and discards input/result after handoff.
 
-The current implementation predates two now-canonical refinements and must be converged before the Kernel stage is considered complete:
+Kernel provides the execution primitive only; Module/Agent code owns acknowledgement, semantic routing, delegation/escalation and user-facing behavior.
 
-1. **Durable material ownership:** `ImmediateMaterial` can still be pushed into `WorkSubmission` and cached in `WorkRuntime._materials`. Canonical architecture now requires all durable accepted/queued work to be reference-only, with material acquired just-in-time from its Module for the concrete execution attempt. Immediate eligibility must not imply Kernel ownership of queued input.
+### 3. Inference requirements versus installed mechanisms
 
-2. **Transient fast inference:** there is not yet a first-class non-durable latency-sensitive inference path. Canonical interactive behavior distinguishes this transient route from durable work so minimal user-interaction input can be executed directly without queue/recovery semantics.
+Current `CapabilityRequest` is intentionally minimal: kind, modality and optional model/exact capability identity.
 
-The current `CapabilityRequest` is also intentionally minimal (`kind`, `modality`, optional model/exact capability). The canonical selection model now requires a clearer distinction between Module execution requirements/preferences and the installed inference-mechanism inventory, including future dimensions such as latency class, effort/quality, cost policy, specialization, provider/model preferences and fallback semantics. Do not mistake the current OpenAI-compatible adapter or current request fields for the final provider/inference architecture.
+The canonical model distinguishes Module execution requirements/preferences from Kernel's installed inference-mechanism inventory. The public request/descriptor contracts still need to converge enough to express hard constraints versus preferences/fallbacks across concrete needs such as latency class, effort/quality, cost policy, specialization/modality, locality/privacy and provider/model preference.
 
-## Deliberately absent
+Do not mistake the current OpenAI-compatible adapter, `local_only`, or current request fields for the complete inference architecture.
 
-The Kernel does not implement or persist:
+### 4. SDK-ready public Module boundary
+
+The repository already has public descriptors and runtime/broker protocols, but the completed Kernel stage must leave them sufficiently segregated that a modular SDK/CORE consumer does not import Kernel persistence, scheduler, FastAPI or provider internals.
+
+Material resolution, optional Agent endpoint and optional Operation endpoint responsibilities should remain independently consumable.
+
+## Stage completion criteria
+
+The Kernel foundation stage is complete only when all are demonstrated:
+
+1. accepted/queued durable work contains no private material payload in Kernel memory or SQLite;
+2. durable material is acquired just-in-time only when execution is genuinely ready;
+3. restart and retry resolve Module-owned material again and verify reference/digest/envelope continuity;
+4. transient interactive inference works without durable work state;
+5. mechanism selection cleanly distinguishes Module requirements/preferences from installed physical mechanisms and preserves deterministic fallback/cost behavior;
+6. carried security/registry-independence invariants remain intact and no new authorization framework appears;
+7. existing broker, scheduling, cancellation/recovery, transient-result and provider-adapter behavior is not accidentally destroyed;
+8. a realistic reference Module path can consume the public boundary end-to-end without privileged Kernel internals;
+9. locked pytest/Ruff/mypy/build/wheel-import validation is green;
+10. canonical docs and this baseline agree with repository truth.
+
+Once these criteria are met, stop expanding Kernel by inertia and move to the modular SDK + CORE stage unless the Owner directs otherwise.
+
+## Structurally outside Kernel
+
+The following are intentionally not Kernel responsibilities:
 
 - Agent memory/state or Agent implementation classes;
-- semantic WorkPlans or AgentTasks;
-- a universal Workflow language/executor;
+- semantic WorkPlans / Agent task meaning;
+- universal Workflow language/execution;
 - Skill adoption internals;
 - semantic routing over prompt contents;
-- a CORE planner/Agent implementation;
 - application history/private context storage;
-- durable model output content;
-- Module authentication/authorization infrastructure for the local single-owner installation;
-- ACL/role/token/allowlist permission systems;
-- compatibility shims for the discarded semantic-Kernel architecture.
+- durable model-output content;
+- domain learning/adaptation;
+- domain-specific result interpretation or mutations;
+- local per-Module ACL/role/token/allowlist authorization infrastructure.
 
-The reference scheduler is not presented as a complete parallel/resource optimization engine. It preserves the already useful deterministic scheduling/recovery behavior while leaving richer resource concurrency for evidence-driven development.
+These are exclusions, not missing Kernel features.
 
-## Capability/provider boundary
+## Explicitly deferred stages
 
-Capabilities remain first-class MADRE physical inference/execution mechanisms. Local models are the primary product focus, while permitted remote/provider mechanisms remain supported through replaceable adapters.
+After Kernel foundation convergence:
 
-One provider may expose many distinct mechanisms: API, vendor CLI/session, MCP path, local gateway, SDK or another user-installed software adapter. Their authentication, cost, latency and model properties can differ and must not be flattened into one provider abstraction.
+- build the modular MADRE SDK over the stable public Module boundary;
+- implement the default CORE Module as the first substantial SDK consumer;
+- use CORE/real Modules to expose remaining public-contract deficiencies;
+- add broader provider/inference mechanisms as concrete integrations are needed;
+- evolve richer resource optimization only from real workload evidence;
+- consider deterministic AI-specific security signals only when a concrete design exists.
 
-The concrete OpenAI-compatible HTTP adapter owns its provider request/response shape and optional API-key environment variable. It is one implemented mechanism, not a canonical example that future provider support must copy.
+Deferred does not mean rejected; it means it is not part of the current Kernel completion stage.
 
-The local HTTP MADRE service remains as a transport surface but has no separate bearer-token authorization framework.
+## Current mechanism/provider surface
 
-## SDK boundary direction
+The concrete OpenAI-compatible HTTP adapter owns its provider request/response schema and optional API-key environment variable. It is one implemented physical mechanism, not a canonical template for provider ecosystems.
 
-The public contracts are intended to become the basis of a modular MADRE SDK. CORE should be the first substantial consumer of that same public Module-facing boundary rather than calling privileged Kernel internals.
+The current local HTTP MADRE service remains a transport surface and has no separate bearer-token authorization framework.
 
-The SDK must not absorb Agent memory/state, WorkPlans, Workflow execution or domain semantics; those remain Module-owned.
+## Validation state
 
-## Validation owner
+CI is the repository authority for the locked validation suite.
 
-CI remains the repository authority for locked pytest/Ruff/mypy/build/wheel-import validation. The current implemented suite contains 16 deterministic tests and performs direct SQLite content inspection.
+At the documentation-refactor starting head, the implemented suite contained 16 deterministic tests and the branch had passing locked pytest, Ruff, strict mypy, package build/wheel reinstall and isolated import validation. Documentation-only revisions after that point must not be mistaken for newly implemented runtime behavior; current CI results should be checked when claiming branch validation.
