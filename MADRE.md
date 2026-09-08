@@ -137,9 +137,9 @@ Completion and delivery are separate facts. If MADRE restarts after output produ
 
 A **Capability** is a bounded physical computation/provider integration such as a local LLM runtime, remote model provider, embedding engine, speech model or image model.
 
-A Module may request a specific model/capability or execution properties such as modality, local-only execution, context/resource constraints or output contract. Kernel deterministically selects a compatible permitted execution path using policy and runtime evidence. It does not inspect prompt meaning to choose a reasoning strategy.
+A Module may request a specific model/capability or execution properties such as modality, optional local-only execution, context/resource constraints or output contract. Kernel deterministically selects a compatible execution path using the carried security algebra plus current resource/availability facts. It does not inspect prompt meaning to choose a reasoning strategy.
 
-Provider-specific protocols such as OpenAI-compatible chat messages remain inside Capability adapters. Kernel work is not structurally defined by one provider/chat dialect.
+Provider-specific protocols, credentials and validation such as OpenAI-compatible chat contracts remain inside Capability adapters. They are implementation details of those adapters, not MADRE authorization or Kernel work semantics.
 
 ## Scheduling and resources
 
@@ -173,11 +173,15 @@ MADRE discovers, evaluates, routes, executes/transfers and records evidence.
 
 ## Security
 
-MADRE uses immutable, traceable **Security Envelopes** and deterministic multidimensional algebra.
+MADRE uses immutable, traceable **Security Envelopes** composed through a carried **SecurityContext**.
 
-Ordinary values use normalized levels 1..5; `0` is system-reserved. The initial independent numeric dimensions are sensitivity, trust and risk. They are never added, averaged or collapsed into one generic score. Scope/domain boundaries are independent relations.
+Ordinary values use normalized levels 1..5; `0` is system-reserved. The initial independent numeric dimensions are sensitivity, trust and risk. They are never arithmetically added, averaged or collapsed into one generic score. Scope/domain facts remain independent.
 
-Every governed crossing is evaluated from the current requester, material, target, destination and policy facts. Requester security facts come from the installation's current registered Module boundary rather than from trust values supplied by an invocation payload. A prior decision is evidence, not a reusable authority token. References locate entities; possession of a reference does not grant authority.
+Security state belongs to the concrete request/work lifecycle. Originating facts are carried forward; material, Module/Agent/Operation boundaries, capability/model boundaries and derived representations contribute new immutable envelopes only when those crossings actually occur. Kernel evaluates the resulting accumulated context deterministically.
+
+No registry entry, installation acceptance, bearer token, allowlist, role assignment, previous decision or identifier authorizes work. Registration means only that a descriptor exists and can be discovered/routed. A registry update cannot rewrite the security history already carried by accepted work.
+
+The current minimal reference composition uses conservative normalized relations (highest sensitivity, lowest trust, highest risk) and admits only contexts whose effective trust can carry both effective sensitivity and risk. Future relations must remain algebra over carried boundary facts rather than external grants.
 
 Derived material receives a new digest/envelope/provenance chain. Kernel does not perform semantic redaction of private domain content.
 
@@ -185,7 +189,7 @@ Derived material receives a new digest/envelope/provenance chain. Kernel does no
 
 An installation may designate one registered Module as its default general-purpose Module. It may provide general Agents, Skills, Workflows, Operations, cross-domain coordination, developer tooling and optional UI. Default status does not bypass Kernel security.
 
-MADRE may be used through native SDKs, in-process APIs, local IPC, HTTP, MCP or other adapters. Transport is not architecture.
+MADRE may be used through native SDKs, in-process APIs, local IPC, HTTP, MCP or other adapters. Transport is not architecture. The current local single-owner runtime does not add a separate Module authentication/authorization framework; provider credentials remain provider-adapter concerns.
 
 ## Greenfield rule
 

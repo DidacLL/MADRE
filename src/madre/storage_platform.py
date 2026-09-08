@@ -5,12 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from madre.registry import ModuleManifest
-from madre.security import (
-    BoundaryRequirements,
-    ExecutionBoundary,
-    SecurityDecision,
-    SecurityEnvelope,
-)
+from madre.security import ExecutionBoundary, SecurityContext, SecurityDecision
 from madre.storage_db import _json, utc_now
 from madre.storage_work import WorkStore
 
@@ -39,39 +34,28 @@ class PlatformStore(WorkStore):
         crossing_id: str,
         crossing_kind: str,
         target_id: str,
-        requester: SecurityEnvelope,
-        material: SecurityEnvelope,
-        target_requirements: BoundaryRequirements,
-        target_envelope: SecurityEnvelope,
-        destination: SecurityEnvelope,
-        execution_boundary: ExecutionBoundary,
+        context: SecurityContext,
+        execution_boundary: ExecutionBoundary | None,
         decision: SecurityDecision,
     ) -> None:
         with self.connection:
             self.connection.execute(
                 """
                 INSERT INTO security_decision(
-                    crossing_id,crossing_kind,target_id,
-                    requester_subject,requester_integrity,
-                    material_subject,material_integrity,
-                    target_requirements_json,target_subject,target_integrity,
-                    destination_subject,destination_integrity,
+                    crossing_id,crossing_kind,target_id,context_json,
+                    effective_sensitivity,effective_trust,effective_risk,scopes_json,
                     execution_boundary,admissible,deficits_json,decided_at
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 (
                     crossing_id,
                     crossing_kind,
                     target_id,
-                    requester.subject,
-                    requester.integrity,
-                    material.subject,
-                    material.integrity,
-                    _json(target_requirements),
-                    target_envelope.subject,
-                    target_envelope.integrity,
-                    destination.subject,
-                    destination.integrity,
+                    _json(context),
+                    int(decision.sensitivity),
+                    int(decision.trust),
+                    int(decision.risk),
+                    _json(sorted(decision.scopes)),
                     execution_boundary,
                     int(decision.admissible),
                     _json(list(decision.deficits)),

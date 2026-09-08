@@ -19,38 +19,29 @@ from madre.contracts import (
 )
 from madre.registry import InteroperabilityRegistry, ModuleManifest
 from madre.runtime import MaterialProvider, ResultLost, WorkRuntime, content_digest
-from madre.security import BoundaryRequirements, SecurityEnvelope, SecurityLevel
+from madre.security import SecurityContext, SecurityEnvelope, SecurityLevel
 from madre.storage import PlatformStore, open_database
 
 
 def sec(
     subject: str,
     *,
-    origin: str = "test-installation",
+    origin: str = "fixture",
     trust: SecurityLevel = SecurityLevel.LEVEL_5,
-    sensitivity: SecurityLevel = SecurityLevel.LEVEL_2,
-    scopes: set[str] | None = None,
+    sensitivity: SecurityLevel = SecurityLevel.LEVEL_1,
 ) -> SecurityEnvelope:
     return SecurityEnvelope.issue(
         subject=subject,
         sensitivity=sensitivity,
         trust=trust,
         risk=SecurityLevel.LEVEL_1,
-        scopes=scopes or {"*"},
+        scopes={"runtime"},
         origin=origin,
     )
 
 
-def manifest(module_id: str, trust: SecurityLevel = SecurityLevel.LEVEL_5) -> ModuleManifest:
-    return ModuleManifest(
-        module_id=module_id,
-        version="1",
-        description="runtime test module",
-        security=sec(module_id, trust=trust),
-        inbound_requirements=BoundaryRequirements(
-            allowed_execution_boundaries=frozenset({"local"})
-        ),
-    )
+def context(originator: str) -> SecurityContext:
+    return SecurityContext(envelopes=(sec(originator, origin=originator),))
 
 
 def make_material(reference: str, payload, origin: str) -> ImmediateMaterial:
@@ -58,7 +49,7 @@ def make_material(reference: str, payload, origin: str) -> ImmediateMaterial:
     return ImmediateMaterial(
         reference=reference,
         payload=payload,
-        envelope=sec(digest, origin=origin),
+        envelope=sec(digest, origin=origin, sensitivity=SecurityLevel.LEVEL_2),
     )
 
 
@@ -69,11 +60,6 @@ def capabilities(function) -> CapabilityRegistry:
         modality="json",
         execution_boundary="local",
         heavyweight=True,
-        requirements=BoundaryRequirements(
-            risk=SecurityLevel.LEVEL_1,
-            allowed_scopes=frozenset({"*"}),
-            allowed_execution_boundaries=frozenset({"local"}),
-        ),
         security=sec("compute"),
     )
     result = CapabilityRegistry()
@@ -102,13 +88,12 @@ def test_delayed_work_survives_restart_while_material_stays_with_originator(tmp_
     )
     with open_database(data_dir) as connection:
         store = PlatformStore(connection)
-        registry = InteroperabilityRegistry(store)
-        registry.register(manifest("module.a"))
-        runtime = WorkRuntime(store, capabilities(lambda value: {"seen": value}), registry)
+        runtime = WorkRuntime(store, capabilities(lambda value: {"seen": value}))
         record = asyncio.run(
             runtime.submit(
                 WorkSubmission(
                     originator="module.a",
+                    security=context("module.a"),
                     capability=CapabilityRequest(kind="compute", modality="json"),
                     material=delayed,
                 )
@@ -119,8 +104,7 @@ def test_delayed_work_survives_restart_while_material_stays_with_originator(tmp_
     provider = Provider(material)
     with open_database(data_dir) as connection:
         store = PlatformStore(connection)
-        registry = InteroperabilityRegistry(store)
-        runtime = WorkRuntime(store, capabilities(lambda value: {"seen": value}), registry)
+        runtime = WorkRuntime(store, capabilities(lambda value: {"seen": value}))
         runtime.register_material_provider("module.a", provider)
         assert asyncio.run(runtime.run_eligible()) == 1
         completed = runtime.inspect(record.id)
@@ -129,11 +113,9 @@ def test_delayed_work_survives_restart_while_material_stays_with_originator(tmp_
         assert runtime.consume_result(record.id) == {"seen": payload}
 
 
-def test_delayed_execution_uses_current_requester_security_not_stale_submission_facts(
-    tmp_path: Path,
-) -> None:
+def test_delayed_work_keeps_carried_security_when_registry_metadata_changes(tmp_path: Path) -> None:
     data_dir = tmp_path / "runtime"
-    payload = {"private": "high-trust-material"}
+    payload = {"private": "carried-boundary-state"}
     material = make_material("module.a/material/43", payload, "module.a")
     delayed = DelayedMaterial(
         reference=material.reference,
@@ -143,41 +125,44 @@ def test_delayed_execution_uses_current_requester_security_not_stale_submission_
     with open_database(data_dir) as connection:
         store = PlatformStore(connection)
         registry = InteroperabilityRegistry(store)
-        registry.register(manifest("module.a", trust=SecurityLevel.LEVEL_5))
-        runtime = WorkRuntime(store, capabilities(lambda value: value), registry)
+        registry.register(ModuleManifest(module_id="module.a", version="1", description="before"))
+        runtime = WorkRuntime(store, capabilities(lambda value: value))
         record = asyncio.run(
             runtime.submit(
                 WorkSubmission(
                     originator="module.a",
+                    security=context("module.a"),
                     capability=CapabilityRequest(kind="compute", modality="json"),
                     material=delayed,
                 )
             )
         )
-        registry.register(manifest("module.a", trust=SecurityLevel.LEVEL_2))
+        registry.register(ModuleManifest(module_id="module.a", version="2", description="after"))
         runtime.register_material_provider("module.a", Provider(material))
         asyncio.run(runtime.run_eligible())
-        failed = runtime.inspect(record.id)
-        assert failed is not None and failed.status == "failed"
-        assert failed.failure is not None and failed.failure.code == "security_denied"
-        deficits = connection.execute(
-            "SELECT deficits_json FROM security_decision WHERE crossing_id=?",
+        completed = runtime.inspect(record.id)
+        assert completed is not None and completed.status == "succeeded"
+        stored = connection.execute(
+            """
+            SELECT context_json FROM security_decision
+            WHERE crossing_id=? AND crossing_kind='capability-candidate'
+            """,
             (record.id,),
         ).fetchone()[0]
-        assert "material_trust_provenance" in deficits
+        assert '"version":"2"' not in stored
+        assert '"version":"1"' not in stored
 
 
 def test_unconsumed_result_is_truthfully_marked_lost_after_restart(tmp_path: Path) -> None:
     data_dir = tmp_path / "runtime"
     with open_database(data_dir) as connection:
         store = PlatformStore(connection)
-        registry = InteroperabilityRegistry(store)
-        registry.register(manifest("module.a"))
-        runtime = WorkRuntime(store, capabilities(lambda value: {"done": value}), registry)
+        runtime = WorkRuntime(store, capabilities(lambda value: {"done": value}))
         record = asyncio.run(
             runtime.submit(
                 WorkSubmission(
                     originator="module.a",
+                    security=context("module.a"),
                     capability=CapabilityRequest(kind="compute", modality="json"),
                     material=make_material("m/1", {"x": 1}, "module.a"),
                 )
@@ -189,9 +174,7 @@ def test_unconsumed_result_is_truthfully_marked_lost_after_restart(tmp_path: Pat
         assert produced.result.delivery_status == "awaiting_consumption"
 
     with open_database(data_dir) as connection:
-        store = PlatformStore(connection)
-        registry = InteroperabilityRegistry(store)
-        runtime = WorkRuntime(store, capabilities(lambda value: value), registry)
+        runtime = WorkRuntime(PlatformStore(connection), capabilities(lambda value: value))
         reopened = runtime.inspect(record.id)
         assert reopened is not None and reopened.result is not None
         assert reopened.result.delivery_status == "lost"
@@ -214,10 +197,7 @@ def test_scheduler_fairness_priority_cancellation_retry_and_recovery(tmp_path: P
     data_dir = tmp_path / "runtime"
     with open_database(data_dir) as connection:
         store = PlatformStore(connection)
-        registry = InteroperabilityRegistry(store)
-        for originator in ("a", "b", "z"):
-            registry.register(manifest(originator))
-        runtime = WorkRuntime(store, capabilities(execute), registry)
+        runtime = WorkRuntime(store, capabilities(execute))
         for originator, name, priority in [
             ("a", "a-low", 0),
             ("a", "a-high", 50),
@@ -227,6 +207,7 @@ def test_scheduler_fairness_priority_cancellation_retry_and_recovery(tmp_path: P
                 runtime.submit(
                     WorkSubmission(
                         originator=originator,
+                        security=context(originator),
                         capability=CapabilityRequest(kind="compute", modality="json"),
                         material=make_material(name, {"name": name}, originator),
                         priority=priority,
@@ -241,6 +222,7 @@ def test_scheduler_fairness_priority_cancellation_retry_and_recovery(tmp_path: P
             runtime.submit(
                 WorkSubmission(
                     originator="a",
+                    security=context("a"),
                     capability=CapabilityRequest(kind="compute", modality="json"),
                     material=make_material("cancel", {"name": "cancel"}, "a"),
                     eligible_at=future,
@@ -256,6 +238,7 @@ def test_scheduler_fairness_priority_cancellation_retry_and_recovery(tmp_path: P
             runtime.submit(
                 WorkSubmission(
                     originator="a",
+                    security=context("a"),
                     capability=CapabilityRequest(kind="compute", modality="json"),
                     material=failure_material,
                 )
@@ -265,13 +248,7 @@ def test_scheduler_fairness_priority_cancellation_retry_and_recovery(tmp_path: P
         failed = runtime.inspect(failure_record.id)
         assert failed is not None and failed.status == "failed"
         runtime.register_material_provider("a", Provider(failure_material))
-        asyncio.run(
-            runtime.retry(
-                failure_record.id,
-                WorkRetryRequest(),
-                idempotency_key="retry-1",
-            )
-        )
+        asyncio.run(runtime.retry(failure_record.id, WorkRetryRequest(), idempotency_key="retry-1"))
         asyncio.run(runtime.run_eligible())
         succeeded = runtime.inspect(failure_record.id)
         assert succeeded is not None and succeeded.status == "succeeded"
@@ -283,26 +260,16 @@ def test_scheduler_fairness_priority_cancellation_retry_and_recovery(tmp_path: P
             runtime.submit(
                 WorkSubmission(
                     originator="z",
+                    security=context("z"),
                     capability=CapabilityRequest(kind="compute", modality="json"),
                     material=interrupted_material,
                 )
             )
         )
-        assert (
-            store.start_attempt(
-                interrupted.id,
-                "compute",
-                None,
-                "local",
-                datetime.now(UTC),
-            )
-            == 1
-        )
+        assert store.start_attempt(interrupted.id, "compute", None, "local", datetime.now(UTC)) == 1
 
     with open_database(data_dir) as connection:
-        store = PlatformStore(connection)
-        registry = InteroperabilityRegistry(store)
-        runtime = WorkRuntime(store, capabilities(execute), registry)
+        runtime = WorkRuntime(PlatformStore(connection), capabilities(execute))
         recovered = runtime.inspect(interrupted.id)
         assert recovered is not None and recovered.status == "failed"
         assert recovered.failure is not None and recovered.failure.code == "interrupted"

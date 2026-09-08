@@ -1,30 +1,16 @@
-"""Deterministic multidimensional boundary evaluation for MADRE crossings."""
+"""Immutable carried security state and deterministic MADRE boundary algebra."""
 
 from __future__ import annotations
 
 import hashlib
 import json
 from enum import IntEnum
-from typing import Annotated, Literal
+from typing import Annotated, Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field
 
-Identifier = Annotated[
-    str,
-    Field(
-        min_length=1,
-        max_length=160,
-        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:/@-]*$",
-    ),
-]
-ScopeIdentifier = Annotated[
-    str,
-    Field(
-        min_length=1,
-        max_length=160,
-        pattern=r"^(\*|[A-Za-z0-9][A-Za-z0-9._:/@-]*)$",
-    ),
-]
+Identifier = Annotated[str, Field(min_length=1)]
+ScopeIdentifier = Annotated[str, Field(min_length=1)]
 
 
 class FrozenModel(BaseModel):
@@ -48,17 +34,6 @@ OrdinarySecurityLevel = Literal[
     SecurityLevel.LEVEL_5,
 ]
 ExecutionBoundary = Literal["local", "isolated", "remote"]
-SecurityTable = tuple[
-    OrdinarySecurityLevel,
-    OrdinarySecurityLevel,
-    OrdinarySecurityLevel,
-    OrdinarySecurityLevel,
-    OrdinarySecurityLevel,
-]
-
-
-def _local_execution_boundaries() -> frozenset[ExecutionBoundary]:
-    return frozenset(("local",))
 
 
 def _canonical(value: object) -> bytes:
@@ -66,7 +41,7 @@ def _canonical(value: object) -> bytes:
 
 
 class SecurityEnvelope(FrozenModel):
-    """Immutable traceable facts bound to a descriptor or material subject."""
+    """Immutable security facts bound to one material, descriptor, actor, or boundary."""
 
     subject: Identifier
     sensitivity: OrdinarySecurityLevel
@@ -93,8 +68,7 @@ class SecurityEnvelope(FrozenModel):
         }
 
     def verify_integrity(self) -> bool:
-        expected = hashlib.sha256(_canonical(self.integrity_payload())).hexdigest()
-        return expected == self.integrity
+        return self.integrity == hashlib.sha256(_canonical(self.integrity_payload())).hexdigest()
 
     @classmethod
     def issue(
@@ -135,121 +109,77 @@ class SecurityEnvelope(FrozenModel):
         )
 
 
-class BoundaryRequirements(FrozenModel):
-    min_requester_trust: OrdinarySecurityLevel = SecurityLevel.LEVEL_1
-    min_input_trust: OrdinarySecurityLevel = SecurityLevel.LEVEL_1
-    max_input_sensitivity: OrdinarySecurityLevel = SecurityLevel.LEVEL_5
-    risk: OrdinarySecurityLevel = SecurityLevel.LEVEL_1
-    allowed_scopes: frozenset[ScopeIdentifier] = Field(default_factory=lambda: frozenset({"*"}))
-    allowed_execution_boundaries: frozenset[ExecutionBoundary] = Field(
-        default_factory=_local_execution_boundaries
-    )
+class SecurityContext(FrozenModel):
+    """Security state carried by one request/work lifecycle.
 
+    Each boundary contributes another immutable envelope. No registry entry, token,
+    allowlist, or previous decision grants authority to the context.
+    """
 
-class SecurityPolicy(FrozenModel):
-    min_requester_trust: OrdinarySecurityLevel = SecurityLevel.LEVEL_1
-    max_risk_by_sensitivity: SecurityTable = (
-        SecurityLevel.LEVEL_5,
-        SecurityLevel.LEVEL_5,
-        SecurityLevel.LEVEL_4,
-        SecurityLevel.LEVEL_3,
-        SecurityLevel.LEVEL_2,
-    )
-    min_destination_trust_by_sensitivity: SecurityTable = (
-        SecurityLevel.LEVEL_1,
-        SecurityLevel.LEVEL_2,
-        SecurityLevel.LEVEL_3,
-        SecurityLevel.LEVEL_4,
-        SecurityLevel.LEVEL_5,
-    )
+    envelopes: tuple[SecurityEnvelope, ...] = Field(min_length=1)
 
-    def max_risk(self, sensitivity: OrdinarySecurityLevel) -> OrdinarySecurityLevel:
-        return self.max_risk_by_sensitivity[int(sensitivity) - 1]
+    def extend(self, *envelopes: SecurityEnvelope) -> SecurityContext:
+        return SecurityContext(envelopes=(*self.envelopes, *envelopes))
 
-    def min_destination_trust(self, sensitivity: OrdinarySecurityLevel) -> OrdinarySecurityLevel:
-        return self.min_destination_trust_by_sensitivity[int(sensitivity) - 1]
+    @property
+    def sensitivity(self) -> OrdinarySecurityLevel:
+        return cast(
+            OrdinarySecurityLevel,
+            SecurityLevel(max(int(item.sensitivity) for item in self.envelopes)),
+        )
+
+    @property
+    def trust(self) -> OrdinarySecurityLevel:
+        return cast(
+            OrdinarySecurityLevel,
+            SecurityLevel(min(int(item.trust) for item in self.envelopes)),
+        )
+
+    @property
+    def risk(self) -> OrdinarySecurityLevel:
+        return cast(
+            OrdinarySecurityLevel,
+            SecurityLevel(max(int(item.risk) for item in self.envelopes)),
+        )
+
+    @property
+    def scopes(self) -> frozenset[ScopeIdentifier]:
+        return frozenset(scope for item in self.envelopes for scope in item.scopes)
 
 
 class SecurityDecision(FrozenModel):
     admissible: bool
     deficits: tuple[Identifier, ...] = ()
+    sensitivity: OrdinarySecurityLevel
+    trust: OrdinarySecurityLevel
+    risk: OrdinarySecurityLevel
+    scopes: frozenset[ScopeIdentifier] = Field(default_factory=frozenset)
 
 
 class SecurityAlgebra:
-    """Pure relations over independent sensitivity, trust, risk and scope dimensions."""
+    """Pure additive boundary algebra over the security context carried by the work."""
 
     @staticmethod
-    def visible(
-        requester: SecurityEnvelope,
-        target: BoundaryRequirements,
-        target_envelope: SecurityEnvelope,
-        destination: SecurityEnvelope,
-        policy: SecurityPolicy,
-    ) -> SecurityDecision:
+    def evaluate(context: SecurityContext) -> SecurityDecision:
         deficits: list[str] = []
-        SecurityAlgebra._integrity_deficits((requester, target_envelope, destination), deficits)
-        minimum = max(int(policy.min_requester_trust), int(target.min_requester_trust))
-        if int(requester.trust) < minimum:
-            deficits.append("requester_trust")
-        if "*" not in target.allowed_scopes and not (requester.scopes & target.allowed_scopes):
-            deficits.append("scope_visibility")
-        if "*" not in target_envelope.scopes and not (requester.scopes & target_envelope.scopes):
-            deficits.append("target_scope_visibility")
-        if "*" not in destination.scopes and not (requester.scopes & destination.scopes):
-            deficits.append("destination_scope_visibility")
-        return SecurityDecision(admissible=not deficits, deficits=tuple(deficits))
-
-    @staticmethod
-    def evaluate(
-        requester: SecurityEnvelope,
-        material: SecurityEnvelope,
-        target: BoundaryRequirements,
-        target_envelope: SecurityEnvelope,
-        destination: SecurityEnvelope,
-        execution_boundary: ExecutionBoundary,
-        policy: SecurityPolicy,
-    ) -> SecurityDecision:
-        deficits: list[str] = []
-        SecurityAlgebra._integrity_deficits(
-            (requester, material, target_envelope, destination), deficits
-        )
-        minimum_requester = max(int(policy.min_requester_trust), int(target.min_requester_trust))
-        if int(requester.trust) < minimum_requester:
-            deficits.append("requester_trust")
-        if int(material.trust) > int(requester.trust):
-            deficits.append("material_trust_provenance")
-        if int(material.trust) < int(target.min_input_trust):
-            deficits.append("material_trust")
-        if int(material.sensitivity) > int(target.max_input_sensitivity):
-            deficits.append("material_sensitivity")
-        allowed_risk = policy.max_risk(material.sensitivity)
-        if int(requester.risk) > int(allowed_risk):
-            deficits.append("requester_risk")
-        if max(int(target.risk), int(target_envelope.risk)) > int(allowed_risk):
-            deficits.append("target_risk")
-        if int(destination.risk) > int(allowed_risk):
-            deficits.append("destination_risk")
-        trust_floor = policy.min_destination_trust(material.sensitivity)
-        if int(target_envelope.trust) < int(trust_floor):
-            deficits.append("target_trust")
-        if int(destination.trust) < int(trust_floor):
-            deficits.append("destination_trust")
-        if execution_boundary not in target.allowed_execution_boundaries:
-            deficits.append("execution_boundary")
-        if "*" not in target.allowed_scopes and not material.scopes.issubset(target.allowed_scopes):
-            deficits.append("target_scope")
-        if "*" not in target_envelope.scopes and not material.scopes.issubset(
-            target_envelope.scopes
-        ):
-            deficits.append("target_envelope_scope")
-        if "*" not in destination.scopes and not material.scopes.issubset(destination.scopes):
-            deficits.append("destination_scope")
-        if "*" not in requester.scopes and not material.scopes.issubset(requester.scopes):
-            deficits.append("requester_scope")
-        return SecurityDecision(admissible=not deficits, deficits=tuple(deficits))
-
-    @staticmethod
-    def _integrity_deficits(envelopes: tuple[SecurityEnvelope, ...], deficits: list[str]) -> None:
-        for envelope in envelopes:
+        for envelope in context.envelopes:
             if not envelope.verify_integrity():
                 deficits.append(f"invalid_integrity:{envelope.subject}")
+
+        sensitivity = context.sensitivity
+        trust = context.trust
+        risk = context.risk
+
+        if int(trust) < int(sensitivity):
+            deficits.append("trust_below_sensitivity")
+        if int(trust) < int(risk):
+            deficits.append("trust_below_risk")
+
+        return SecurityDecision(
+            admissible=not deficits,
+            deficits=tuple(deficits),
+            sensitivity=sensitivity,
+            trust=trust,
+            risk=risk,
+            scopes=context.scopes,
+        )

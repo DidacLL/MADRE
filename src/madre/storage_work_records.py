@@ -32,15 +32,16 @@ class WorkRecordStore(WorkStoreBase):
                 self.connection.execute(
                     """
                     INSERT INTO runtime_work(
-                        id,originator,capability_json,material_reference,input_digest,
-                        material_envelope_json,eligible_at,priority,constraints_json,
+                        id,originator,security_context_json,capability_json,material_reference,
+                        input_digest,material_envelope_json,eligible_at,priority,constraints_json,
                         correlation_json,idempotency_key,status,submitted_at,enqueued_at,
                         queue_sequence
-                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?, 'accepted',?,?,?)
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?, 'accepted',?,?,?)
                     """,
                     (
                         work_id,
                         spec.originator,
+                        _json(spec.security),
                         _json(spec.capability),
                         spec.material_reference,
                         spec.input_digest,
@@ -79,6 +80,7 @@ class WorkRecordStore(WorkStoreBase):
         spec = WorkSpec.model_validate(
             {
                 "originator": row["originator"],
+                "security": json.loads(row["security_context_json"]),
                 "capability": json.loads(row["capability_json"]),
                 "material_reference": row["material_reference"],
                 "input_digest": row["input_digest"],

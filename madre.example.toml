@@ -1,14 +1,14 @@
 data_dir = ".madre-data"
 host = "127.0.0.1"
 port = 8731
-token_env = "MADRE_API_TOKEN"
 
-[capabilities.local_chat]
+[capabilities.local-chat]
 kind = "openai_chat"
-endpoint = "http://127.0.0.1:1234/v1"
+endpoint = "http://127.0.0.1:11434/v1"
 model = "local-model"
 boundary = "local"
 heavyweight = true
-trust = 4
-risk = 2
-max_input_sensitivity = 4
+trust = 5
+risk = 1
+scopes = ["local-model"]
+# api_key_env = "OPENAI_API_KEY"  # optional for providers that require it

@@ -1,4 +1,4 @@
-"""Explicit Agent/Operation routing without semantic Kernel selection."""
+"""Explicit Agent/Operation routing with carried boundary algebra."""
 
 from __future__ import annotations
 
@@ -13,12 +13,11 @@ from pydantic import JsonValue
 from madre.contracts import ImmediateMaterial
 from madre.registry import AgentDescriptor, InteroperabilityRegistry, OperationDescriptor
 from madre.security import (
-    BoundaryRequirements,
     ExecutionBoundary,
     SecurityAlgebra,
+    SecurityContext,
     SecurityDecision,
     SecurityEnvelope,
-    SecurityPolicy,
 )
 
 
@@ -39,7 +38,11 @@ class ModuleEndpoint(Protocol):
     @property
     def boundary(self) -> ExecutionBoundary: ...
 
+    @property
+    def security(self) -> SecurityEnvelope: ...
+
     async def invoke_agent(self, agent_id: str, payload: JsonValue) -> ImmediateMaterial: ...
+
     async def invoke_operation(
         self, operation_id: str, payload: JsonValue
     ) -> ImmediateMaterial: ...
@@ -52,12 +55,8 @@ class BrokerEvidenceStore(Protocol):
         crossing_id: str,
         crossing_kind: str,
         target_id: str,
-        requester: SecurityEnvelope,
-        material: SecurityEnvelope,
-        target_requirements: BoundaryRequirements,
-        target_envelope: SecurityEnvelope,
-        destination: SecurityEnvelope,
-        execution_boundary: ExecutionBoundary,
+        context: SecurityContext,
+        execution_boundary: ExecutionBoundary | None,
         decision: SecurityDecision,
     ) -> None: ...
 
@@ -101,21 +100,18 @@ class Broker:
         self,
         registry: InteroperabilityRegistry,
         evidence: BrokerEvidenceStore,
-        policy: SecurityPolicy | None = None,
     ) -> None:
         self._registry = registry
         self._evidence = evidence
-        self._policy = policy or SecurityPolicy()
         self._endpoints: dict[str, ModuleEndpoint] = {}
 
     def attach_module(self, module_id: str, endpoint: ModuleEndpoint) -> None:
-        if self._registry.get_module(module_id) is None:
-            raise ValueError("Module must publish a manifest before attaching an endpoint")
         self._endpoints[module_id] = endpoint
 
     async def invoke_agent(
         self,
         requester_module_id: str,
+        security: SecurityContext,
         agent_id: str,
         material: ImmediateMaterial,
     ) -> JsonValue:
@@ -125,6 +121,7 @@ class Broker:
         return await self._invoke(
             crossing_kind="agent",
             requester_module_id=requester_module_id,
+            security=security,
             descriptor=descriptor,
             material=material,
         )
@@ -132,6 +129,7 @@ class Broker:
     async def invoke_operation(
         self,
         requester_module_id: str,
+        security: SecurityContext,
         operation_id: str,
         material: ImmediateMaterial,
     ) -> JsonValue:
@@ -141,6 +139,7 @@ class Broker:
         return await self._invoke(
             crossing_kind="operation",
             requester_module_id=requester_module_id,
+            security=security,
             descriptor=descriptor,
             material=material,
         )
@@ -150,12 +149,11 @@ class Broker:
         *,
         crossing_kind: str,
         requester_module_id: str,
+        security: SecurityContext,
         descriptor: AgentDescriptor | OperationDescriptor,
         material: ImmediateMaterial,
     ) -> JsonValue:
         invocation_id = uuid4().hex
-        requester_manifest = self._registry.require_module(requester_module_id)
-        target_manifest = self._registry.require_module(descriptor.module_id)
         endpoint = self._endpoint(descriptor.module_id)
         self._event(
             invocation_id,
@@ -165,14 +163,15 @@ class Broker:
             descriptor.id,
             "requested",
         )
-        input_decision = self._authorize(
+
+        input_context = security.extend(material.envelope, descriptor.security, endpoint.security)
+        input_decision = self._evaluate(
             crossing_id=invocation_id,
             crossing_kind=f"{crossing_kind}-input",
-            requester=requester_manifest.security,
-            descriptor=descriptor,
-            material=material,
-            destination=target_manifest.security,
+            target_id=descriptor.id,
+            context=input_context,
             execution_boundary=endpoint.boundary,
+            material=material,
         )
         if not input_decision.admissible:
             self._event(
@@ -224,12 +223,7 @@ class Broker:
             output_digest=output_digest,
             output_size=output_size,
         )
-        if (
-            output.envelope.subject != output_digest
-            or output.envelope.origin != descriptor.module_id
-            or int(output.envelope.trust) > int(target_manifest.security.trust)
-            or not output.envelope.verify_integrity()
-        ):
+        if output.envelope.subject != output_digest or not output.envelope.verify_integrity():
             self._event(
                 invocation_id,
                 crossing_kind,
@@ -242,24 +236,13 @@ class Broker:
             )
             raise InvalidModuleResult(descriptor.id)
 
-        output_decision = SecurityAlgebra.evaluate(
-            target_manifest.security,
-            output.envelope,
-            requester_manifest.inbound_requirements,
-            requester_manifest.security,
-            requester_manifest.security,
-            endpoint.boundary,
-            self._policy,
-        )
+        output_context = input_context.extend(output.envelope)
+        output_decision = SecurityAlgebra.evaluate(output_context)
         self._evidence.record_security_decision(
             crossing_id=invocation_id,
             crossing_kind=f"{crossing_kind}-output",
             target_id=requester_module_id,
-            requester=target_manifest.security,
-            material=output.envelope,
-            target_requirements=requester_manifest.inbound_requirements,
-            target_envelope=requester_manifest.security,
-            destination=requester_manifest.security,
+            context=output_context,
             execution_boundary=endpoint.boundary,
             decision=output_decision,
         )
@@ -294,44 +277,32 @@ class Broker:
             raise ModuleEndpointUnavailable(module_id)
         return endpoint
 
-    def _authorize(
+    def _evaluate(
         self,
         *,
         crossing_id: str,
         crossing_kind: str,
-        requester: SecurityEnvelope,
-        descriptor: AgentDescriptor | OperationDescriptor,
-        material: ImmediateMaterial,
-        destination: SecurityEnvelope,
+        target_id: str,
+        context: SecurityContext,
         execution_boundary: ExecutionBoundary,
+        material: ImmediateMaterial,
     ) -> SecurityDecision:
-        digest = material_digest(material.payload)
-        if (
-            digest != material.envelope.subject
-            or material.envelope.origin != requester.subject
-            or int(material.envelope.trust) > int(requester.trust)
-            or not material.envelope.verify_integrity()
-        ):
-            decision = SecurityDecision(admissible=False, deficits=("material_integrity",))
-        else:
-            decision = SecurityAlgebra.evaluate(
-                requester,
-                material.envelope,
-                descriptor.requirements,
-                descriptor.security,
-                destination,
-                execution_boundary,
-                self._policy,
+        if material_digest(material.payload) != material.envelope.subject:
+            decision = SecurityDecision(
+                admissible=False,
+                deficits=("material_integrity",),
+                sensitivity=context.sensitivity,
+                trust=context.trust,
+                risk=context.risk,
+                scopes=context.scopes,
             )
+        else:
+            decision = SecurityAlgebra.evaluate(context)
         self._evidence.record_security_decision(
             crossing_id=crossing_id,
             crossing_kind=crossing_kind,
-            target_id=descriptor.id,
-            requester=requester,
-            material=material.envelope,
-            target_requirements=descriptor.requirements,
-            target_envelope=descriptor.security,
-            destination=destination,
+            target_id=target_id,
+            context=context,
             execution_boundary=execution_boundary,
             decision=decision,
         )

@@ -11,12 +11,11 @@ from pydantic import (
     ConfigDict,
     Field,
     JsonValue,
-    TypeAdapter,
     field_validator,
     model_validator,
 )
 
-from madre.security import ExecutionBoundary, Identifier, SecurityEnvelope
+from madre.security import ExecutionBoundary, Identifier, SecurityContext, SecurityEnvelope
 
 
 class FrozenModel(BaseModel):
@@ -24,8 +23,8 @@ class FrozenModel(BaseModel):
 
 
 class ExecutionConstraints(FrozenModel):
-    timeout_seconds: float = Field(default=120, gt=0, le=3600, allow_inf_nan=False)
-    local_only: bool = True
+    timeout_seconds: float = Field(default=120, gt=0, allow_inf_nan=False)
+    local_only: bool = False
 
 
 class CorrelationEntry(FrozenModel):
@@ -59,10 +58,11 @@ ExecutionMaterial = Annotated[ImmediateMaterial | DelayedMaterial, Field(discrim
 
 class WorkSubmission(FrozenModel):
     originator: Identifier
+    security: SecurityContext
     capability: CapabilityRequest
     material: ExecutionMaterial
     eligible_at: AwareDatetime | None = None
-    priority: int = Field(default=0, ge=-100, le=100)
+    priority: int = 0
     constraints: ExecutionConstraints = Field(default_factory=ExecutionConstraints)
     correlation: tuple[CorrelationEntry, ...] = ()
 
@@ -81,12 +81,13 @@ class WorkSubmission(FrozenModel):
 
 class WorkSpec(FrozenModel):
     originator: Identifier
+    security: SecurityContext
     capability: CapabilityRequest
     material_reference: Identifier
     input_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     material_envelope: SecurityEnvelope
     eligible_at: AwareDatetime | None = None
-    priority: int = Field(default=0, ge=-100, le=100)
+    priority: int = 0
     constraints: ExecutionConstraints = Field(default_factory=ExecutionConstraints)
     correlation: tuple[CorrelationEntry, ...] = ()
 
@@ -148,10 +149,3 @@ class WorkRecord(FrozenModel):
 
 class WorkRetryRequest(FrozenModel):
     allow_unknown_outcome: bool = False
-
-
-_identifier_adapter = TypeAdapter(Identifier)
-
-
-def validate_identifier(value: str) -> str:
-    return _identifier_adapter.validate_python(value)

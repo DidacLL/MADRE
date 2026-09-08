@@ -10,32 +10,31 @@ WorkSubmission -> WorkRecord -> 0..N WorkAttempts
 
 A `WorkSubmission` is an explicit request for computation. The caller has already made the semantic decision that the computation is useful.
 
-The durable `WorkRecord` stores only execution metadata. It never embeds prompt/context/result content.
+The durable `WorkRecord` stores execution metadata and carried security state. It never embeds prompt/context/result content.
 
-An attempt records physical truth: selected capability/model/boundary, start/end, failure classification, output digest/size and other execution evidence.
+A WorkAttempt records physical truth: selected capability/model/boundary, start/end, failure classification, output digest/size and execution evidence.
 
 ## 2. Submission projection
 
 The public submission contains:
 
-- originator identity;
-- capability/model requirement;
-- material reference plus material envelope;
+- originator identity for routing/correlation;
+- the current carried `SecurityContext`;
+- capability/model requirements;
+- material reference plus immutable material envelope;
 - transient material for immediate work **or** expected digest for delayed work;
 - eligibility, priority and execution constraints;
-- bounded opaque semantic correlation identifiers.
+- opaque semantic correlation identifiers.
 
-The originator does not self-assert its Kernel trust/security facts inside the submission. MADRE resolves the current registered Module boundary for that originator and uses those facts at admission/execution time.
+The originator identity is not an authorization credential. MADRE does not look up registered Module trust to decide whether the submission is permitted.
 
-The durable projection (`WorkSpec`) contains the material reference/digest/envelope but not the transient payload.
+At admission, the material envelope is appended to the supplied security context and the algebra is evaluated. The resulting context is persisted in `WorkSpec` and becomes the security history carried by that work lifecycle.
 
-Correlation identifiers locate Module-owned semantics such as a conversation turn or WorkPlan task. Their representation is intentionally identifier-shaped so correlation storage cannot silently become a private-content channel.
+The durable projection contains no transient payload.
 
 ## 3. Immediate material
 
-For immediate execution, the caller may submit actual material transiently. MADRE verifies that its digest matches the immutable material envelope and that the envelope provenance is compatible with the registered originator, writes only the durable projection, and holds content only in transient memory while it remains needed.
-
-If the process ends before execution, durable work survives but content does not. Recovery therefore uses the same originator material-resolution path as delayed work.
+For immediate execution the caller may submit actual material transiently. MADRE verifies its digest/envelope binding, appends that envelope to the carried context, writes only the durable execution projection, and holds content only while needed.
 
 Transient material is discarded on terminal cancellation, admission failure, execution completion or execution failure.
 
@@ -48,51 +47,50 @@ originator
 opaque material reference
 expected digest
 immutable material envelope
+carried SecurityContext
 capability/model requirements
 eligible_at / scheduling metadata
 ```
 
-When the work becomes eligible, Kernel asks the originator for the material, recomputes its digest, checks the original reference/envelope and only then attempts execution.
+When work becomes eligible, MADRE asks the originator for the material, recomputes its digest, and verifies reference/envelope continuity.
 
-The originator's current registered security boundary is resolved again at execution. A delayed request therefore does not preserve stale trust or authority merely because work was accepted earlier.
+The carried security context is **not reconstructed from registry state**. A registry update cannot raise or lower the authority of previously accepted work.
 
-Unavailable material produces truthful `material_unavailable` failure. Mismatched material produces `material_integrity` failure. MADRE never solves restart recovery by copying private content into durable runtime storage.
+If a new boundary is actually crossed later—for example a capability is selected—its current boundary envelope is appended at that point and the algebra is evaluated again.
+
+Unavailable material produces truthful `material_unavailable` failure. Mismatched material produces `material_integrity` failure.
 
 ## 5. Capability selection
 
-A `CapabilityRequest` describes execution properties such as capability class, modality, model and optional exact capability identity.
+A `CapabilityRequest` describes physical execution requirements such as capability class, modality, model and optional exact capability identity.
 
-Kernel selection is deterministic over registered capability descriptors, explicit constraints, current security policy and runtime evidence. It is not semantic prompt routing.
+Kernel selection is deterministic over registered capability availability, explicit execution constraints and current resource state. It is not semantic prompt routing.
 
-Selection must consider admissibility while selecting rather than choose a statically compatible target and fail prematurely. If the first compatible candidate is security-inadmissible but another compatible candidate is admissible, the admissible candidate may execute. Candidate decisions remain evidence.
+For each compatible candidate, its capability boundary/security envelope is appended to the WorkRecord's carried security context and evaluated. A rejected candidate grants or denies nothing beyond that candidate crossing; selection may continue to another compatible candidate.
 
-`local_only` is an execution constraint: a remote or isolated candidate cannot satisfy it. A capability declared `local` must also have a physically local implementation boundary; the reference HTTP adapter requires a literal loopback endpoint.
+`local_only` remains an explicit execution constraint available to Modules. It is not a default policy and does not create an authentication mechanism.
 
-The runtime-level adapter protocol is conceptually:
+The current Python reference execution payload is JSON-like because the implemented adapters currently use that representation. This is an implementation surface, not a universal MADRE architecture restriction. Binary/streaming representations should be introduced only when a concrete capability requires them.
 
-```text
-execute(JSON-like payload, ExecutionConstraints) -> JSON-like result
-```
+## 6. Capability adapters and providers
 
-A provider-specific adapter may use OpenAI chat messages, embeddings, speech frames or another protocol internally. The work model is not tied to one chat dialect. The JSON-like reference contract is intentionally minimal; a future binary/streaming material transport belongs at this execution boundary when a concrete capability requires it.
+Provider/backend integration belongs to Capability adapters.
 
-## 6. Security admission
-
-Before physical execution Kernel evaluates:
+An adapter may manage:
 
 ```text
-current registered requester envelope
-material envelope
-target capability requirements
-target capability envelope
-destination boundary envelope
-actual execution boundary
-current policy
+provider request/response schemas
+OpenAI-compatible contracts
+provider API keys or login flows
+HTTP / SDK details
+backend-specific validation
+model loading
+backend/device/cache behavior
 ```
 
-Target descriptor provenance/security and destination boundary are independent inputs even when one reference adapter currently represents both with the same capability envelope.
+None of those provider details define Kernel work semantics or MADRE authorization.
 
-The resulting decision and deficits are evidence. They are not reusable permission tokens.
+The generic Capability layer only needs the bounded execution descriptor, physical execution boundary, model/modality compatibility, resource facts and callable adapter interface.
 
 ## 7. Scheduling/resources
 
@@ -106,7 +104,7 @@ Kernel retains global deterministic scheduling state. The current reference impl
 - durable queue sequencing;
 - cancellation and retry transitions.
 
-The current execution loop is deliberately simple and does not yet claim parallel non-heavyweight execution or a complete resource scheduler. Future scheduling groups/dependencies and richer resource admission may be added as explicit execution metadata without introducing semantic WorkPlan ownership into Kernel.
+The execution loop remains deliberately simple and does not claim a complete resource optimizer.
 
 ## 8. Result lifecycle
 
@@ -118,13 +116,7 @@ Capability -> transient result -> originator consumes -> bytes discarded
 
 Durable evidence contains output digest, size, production time, attempt reference and delivery state.
 
-Delivery states distinguish:
-
-- awaiting consumption;
-- consumed;
-- lost before consumption.
-
-A restart turns any unconsumed transient result into `lost`; it does not preserve result bytes. Recomputing a lost result is a new retry/recomputation decision by the originator under applicable idempotency/effect semantics.
+A restart turns any unconsumed transient result into `lost`; it does not preserve result bytes.
 
 ## 9. Cancellation/retry/recovery
 
@@ -132,14 +124,12 @@ Cancellation records whether accepted work was prevented or a request arrived wh
 
 Interrupted physical execution is recorded as failure with unknown provider outcome. Retrying such work requires explicit `allow_unknown_outcome` intent.
 
-At startup, any work still marked running is failed as interrupted. This preserves physical truth rather than inventing exactly-once guarantees.
+At startup, work still marked running is failed as interrupted. Operations with external side effects preserve uncertain effects rather than being blindly retried.
 
-Operations with external side effects require their own effect/repeatability semantics and must not be blindly retried.
-
-Durable failures use bounded failure codes. Provider exception text is not persisted by default because arbitrary provider text may itself contain private content.
+Provider exception messages are not persisted; durable failure evidence stores adapter/runtime failure codes.
 
 ## 10. Persistence invariant
 
-The runtime database may contain work/capability/registry/security metadata, bounded identifiers, digests, delivery state and failure/evidence codes. It must contain no prompt/context/output payload columns and no content serialization hidden in correlation, references, provenance or failure strings.
+The runtime database may contain work/capability/registry/security metadata, references, digests, delivery state and evidence codes. It must contain no prompt/context/output payload columns.
 
-Privacy claims must be validated against actual storage, not only against object models.
+Privacy claims are validated against actual storage, not only object models.
