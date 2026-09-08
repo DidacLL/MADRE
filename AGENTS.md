@@ -19,7 +19,7 @@ Repository authority is otherwise:
 5. `README.md` — runnable setup and current usage;
 6. Git history, PRs, issues and supporting material — provenance/evidence only.
 
-History does not restore superseded product semantics.
+History does not restore superseded product semantics. If the descriptive baseline disagrees with current executable behavior, code/tests/runtime evidence establish what actually works and the baseline must be corrected; they do not silently redefine product architecture.
 
 ## Context loading
 

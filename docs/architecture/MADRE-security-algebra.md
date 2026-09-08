@@ -52,6 +52,8 @@ For material, the subject is normally the payload digest. A transformed represen
 
 The reference implementation uses canonical SHA-256 envelope integrity to detect mutation. That integrity value is evidence about the envelope's own continuity. It is not authority.
 
+Kernel does not infer semantic redaction/minimization policy from private content. Modules own domain-specific classification, minimization and semantic projection before/while creating the material they expose.
+
 ## 3. Carried Security Context
 
 A request/work lifecycle carries a `SecurityContext` containing immutable envelopes accumulated so far.
@@ -108,6 +110,8 @@ Scope/domain semantics are owned by Modules. Kernel carries resulting scope fact
 Registry entries locate and describe published interoperability surfaces. They do not authorize anything.
 
 A descriptor may contain a security envelope because invoking that Agent, Operation or inference mechanism introduces concrete boundary/risk facts. When that descriptor participates in an actual crossing, its envelope is composed into the carried context and evaluated.
+
+Unknown or weakly described integrations may contribute conservative provenance/risk facts. That is a property of the prospective crossing; registration itself is never semantic certification or trust.
 
 Therefore:
 

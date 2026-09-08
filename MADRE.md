@@ -104,6 +104,8 @@ Successful durable-work output is transient until consumed. A restart before con
 
 Modules normally do not know the installed inference inventory. They express execution requirements/preferences; Kernel deterministically matches them against currently available mechanisms and resource state.
 
+Local inference mechanisms are the primary product focus, while admissible remote/provider mechanisms remain valid first-class execution options.
+
 Provider/model identity may be a preference or a hard requirement according to the request. Cost, latency/interaction class, reasoning effort/quality, modality/specialization, locality/privacy, resource availability and fallback semantics may all be execution properties. Detailed selection semantics belong to `MADRE-execution-contract.md`.
 
 A provider is not one mechanism. The same provider may be reachable through multiple independently usable adapters/software paths with different cost, latency, authentication, modality and operational properties. MADRE must not flatten that ecosystem into one provider-shaped integration or prohibit user-installed mechanisms merely because they are unconventional.
@@ -120,7 +122,7 @@ Current Kernel `trust` is boundary/provenance trust. It is not semantic truth, p
 
 ### 7. Public interoperability does not make Kernel an Agent framework
 
-Modules may publish discoverable Agent, Skill, Workflow and Operation descriptors. Boundary-visible requesters choose semantic targets; Kernel evaluates/routs explicit invocations and records evidence.
+Modules may publish discoverable Agent, Skill, Workflow and Operation descriptors. Boundary-visible requesters choose semantic targets; Kernel evaluates/routes explicit invocations and records evidence.
 
 Unknown external Operation effects must not be blindly retried when dispatch outcome is uncertain.
 
