@@ -1,12 +1,12 @@
 # MADRE Security Algebra
 
-Authority: `MADRE.md` defines product meaning. This document owns detailed security facts, carried composition, provenance, deterministic admissibility and security evidence.
+Authority: `MADRE.md` defines product meaning. This document owns detailed security facts, carried composition, deterministic admissibility and security evidence.
 
-MADRE security is deterministic admissibility over immutable facts carried by the concrete request/work lifecycle.
+MADRE security is deterministic evaluation over a small set of normalized facts carried by the concrete request/work lifecycle.
 
-It is deliberately **not** an authentication system, ACL system, registry-grant system, token system, role system or installation-acceptance system.
+It is deliberately **not** an authentication system, ACL system, registry-grant system, role system, clearance model, policy-matrix system or installation-acceptance system.
 
-## 1. Normalized dimensions
+## 1. Normalized vocabulary
 
 ```text
 SYSTEM_RESERVED = 0
@@ -17,103 +17,127 @@ LEVEL_4 = 4
 LEVEL_5 = 5
 ```
 
-Ordinary security facts use levels 1..5. The initial independent numeric dimensions are:
+Ordinary security-relevant facts use levels `1..5` so materially different concerns can participate in one simple deterministic algebra without creating a large bespoke taxonomy.
+
+The current vocabulary uses concepts such as:
 
 ```text
 sensitivity
-trust
-risk
+trust / privacy-provenance quality
+risk / consequence
 ```
 
-They share one normalized vocabulary but remain independent dimensions. They are not arithmetically summed or averaged into one score.
+These words must be interpreted only through MADRE's own boundary model. Do not import conventional clearance, IAM or policy-engine meanings merely because the vocabulary overlaps with security engineering terminology.
 
-Scope/domain facts remain a separate non-numeric dimension.
+Current `trust` terminology is about boundary/provenance/security quality. It does **not** mean semantic truth, prompt-injection resistance, hallucination probability, answer quality or generic AI-content safety.
 
-Current Kernel `trust` is boundary/provenance trust. It does **not** mean semantic truth, prompt-injection resistance, hallucination probability, model-answer quality or generic AI-content safety.
+## 2. Contributors add relevant boundary facts, not mirrored requirements
 
-## 2. Security Envelope
+A request/work lifecycle accumulates security-relevant facts from the concrete things and boundaries it actually uses.
 
-A `SecurityEnvelope` binds security facts to the thing that contributed them:
+Typical contributors include:
 
 ```text
-subject identity or digest
-sensitivity
-trust
-risk
-scopes / domain facts
-origin
-provenance chain
-derivation chain
-descriptor/version identity
-integrity digest
+originating request / Module boundary
+material or context sensitivity
+Agent / Module boundary
+Operation consequence/risk
+inference-mechanism privacy/exposure/risk
+new derived material or representation
+actual transfer/execution boundary
 ```
 
-For material, the subject is normally the payload digest. A transformed representation receives a new digest and a new envelope; the source envelope is never relabelled in place.
+The purpose is not to define counterpart fields such as:
 
-The reference implementation uses canonical SHA-256 envelope integrity to detect mutation. That integrity value is evidence about the envelope's own continuity. It is not authority.
+```text
+actor maximum sensitivity
+context minimum trust
+operation required clearance
+target maximum input sensitivity
+```
 
-Kernel does not infer semantic redaction/minimization policy from private content. Modules own domain-specific classification, minimization and semantic projection before/while creating the material they expose.
+Those would be pairwise permission checks expressed with normalized numbers rather than the intended algebra.
 
-## 3. Carried Security Context
+A sensitive context can be perfectly appropriate inside a highly private local path. Conversely, low-sensitivity material may still be involved in a high-risk destructive or externally publishing Operation. The algebra evaluates the whole concrete crossing/lifecycle rather than asking whether one actor has a static clearance for one classification.
 
-A request/work lifecycle carries a `SecurityContext` containing immutable envelopes accumulated so far.
+Examples used to reason about the model include:
+
+- medical information: high sensitivity;
+- known user secrets: among the highest sensitivity;
+- encapsulated local UX/local inference: stronger privacy/lower exposure than broad remote or Internet-facing paths;
+- executable artifacts such as Bash/shell scripts: high risk because they can become directly effectful;
+- publishing, destructive or irreversible Operations: high consequence/risk even when their input is not very sensitive.
+
+These examples are specification probes, not a frozen lookup table.
+
+## 3. Carried security state
+
+A request/work lifecycle carries immutable security/boundary contributions accumulated so far.
 
 Conceptually:
 
 ```text
-originating request facts
-        |
-        + material facts
-        |
-        + Module / Agent / Operation boundary facts
-        |
-        + inference mechanism / model boundary and risk facts
-        |
-        + derived representation facts
-        v
-carried SecurityContext
+originating facts
+    + material sensitivity/privacy facts
+    + Module/Agent/Operation boundary facts
+    + mechanism boundary/exposure/risk facts
+    + derived-representation facts
+    -> carried security state
 ```
 
-Each governed crossing appends facts introduced by that concrete crossing. Earlier envelopes remain unchanged.
+Every governed crossing adds the facts introduced by that concrete crossing. Earlier facts remain part of the lifecycle history.
 
-This is the meaning of additive boundary algebra in MADRE: **composition of independent boundary facts**, not arithmetic addition and not reconstruction from an external authority database.
+This is the meaning of additive/compositional boundary algebra in MADRE: **accumulation of relevant boundary consequences**, not arithmetic addition and not reconstruction from an external authority database.
 
-A registry update cannot rewrite a `SecurityContext` already carried by accepted work. Delayed execution and retry continue from the context stored with the WorkRecord.
+A registry update cannot rewrite the carried security history of already accepted work. Restart/retry continue from that history and add only facts from newly occurring crossings.
 
-## 4. Reference composition
+## 4. Security envelope / integrity representation
 
-The current minimal reference implementation derives conservative effective facts from all envelopes in the context:
+The current implementation uses immutable `SecurityEnvelope` objects plus a carried `SecurityContext` and integrity digests. That representation is useful implementation evidence, especially for continuity/provenance and restart-safe carried state.
+
+However, the exact universal field layout of `SecurityEnvelope` is not itself a frozen product requirement. A future schema may simplify which contributor kinds carry which normalized facts, provided it preserves the small compositional model and deterministic lifecycle evaluation.
+
+For material, digest/integrity continuity allows Kernel to verify that later-resolved material is the material whose security facts were already carried.
+
+Kernel does not infer semantic redaction/minimization policy from private content. Modules own domain-specific classification, minimization and semantic projection when constructing material and boundary metadata.
+
+## 5. Admissibility relation: open architecture, current implementation not authority
+
+The canonical architecture intentionally does **not** freeze a final formula yet.
+
+The required property is:
 
 ```text
-effective sensitivity = highest carried sensitivity
-effective trust       = lowest carried trust
-effective risk        = highest carried risk
-effective scopes      = union of carried scope/domain facts
+carried material/context sensitivity
+    + concrete privacy/provenance/boundary facts
+    + concrete capability/Operation consequence/risk
+    + previous lifecycle crossings
+    -> simple deterministic admissibility result
 ```
 
-The initial admissibility relation is:
+The exact relation must be derived from real MADRE cases and remain understandable enough that normalized values reduce complexity rather than create another policy language.
+
+The current runtime implementation reduces envelopes with:
 
 ```text
-effective trust >= effective sensitivity
+effective sensitivity = max(...)
+effective trust       = min(...)
+effective risk        = max(...)
+```
+
+and admits with:
+
+```text
+trust >= sensitivity
 and
-effective trust >= effective risk
+trust >= risk
 ```
 
-Invalid envelope integrity is independently inadmissible.
+That is **current implementation behavior only** and is now an explicit Kernel convergence gap. It must not be treated as frozen Owner semantics or used as the template for future schema design. Preserve useful carried-state/integrity behavior while re-deriving the minimum correct algebra rather than replacing it with conventional clearance matching.
 
-This is a concrete initial relation, not a claim that all future MADRE security semantics reduce to those comparisons. New relations must be justified by actual MADRE requirements and expressed as algebra over carried facts, never as external grants or mutable authorization records.
+## 6. Registry, identity and references grant nothing
 
-Scope/domain semantics are owned by Modules. Kernel carries resulting scope facts; it does not invent a universal domain ACL vocabulary.
-
-## 5. Non-authority references and registries
-
-Registry entries locate and describe published interoperability surfaces. They do not authorize anything.
-
-A descriptor may contain a security envelope because invoking that Agent, Operation or inference mechanism introduces concrete boundary/risk facts. When that descriptor participates in an actual crossing, its envelope is composed into the carried context and evaluated.
-
-Unknown or weakly described integrations may contribute conservative provenance/risk facts. That is a property of the prospective crossing; registration itself is never semantic certification or trust.
-
-Therefore:
+Registration means existence/discovery/routing only.
 
 ```text
 registered == known/discoverable
@@ -122,74 +146,44 @@ registered != permitted
 registered != authorized
 ```
 
-Changing a registry entry can change facts of a **future crossing that has not occurred**. It cannot retroactively change security facts already accumulated into existing work.
+Module identity, descriptor identity, Work IDs, material references, retrieval claims, correlation values, idempotency keys, installation acceptance, bearer tokens, roles, allowlists and prior decisions are not permission sources.
 
-Work IDs, material references, retrieval claims/coordination values, descriptor IDs, idempotency keys and correlation identifiers are references/coordination data only. Possession of any of them grants no MADRE authority.
+Changing descriptor/registry facts can affect the boundary facts of a **future crossing that has not happened yet**. It cannot retroactively change the carried history of an existing request/work lifecycle.
 
-## 6. Discovery
+The durable-material retrieval claim is opaque coordination only; possession of it grants no MADRE authority.
 
-Boundary-filtered discovery receives the requester's carried `SecurityContext` directly.
+## 7. Bounded Operations and mechanisms
 
-For each candidate descriptor:
+MADRE-provided AI surfaces do not give Agents unrestricted shell or Internet authority.
 
-```text
-candidate_context = requester_context + descriptor_envelope
-SecurityAlgebra.evaluate(candidate_context)
-```
+System/network/external effects are exposed through specific bounded Module Operations or concrete mechanisms with explicit boundary/risk properties. This boundedness is a deliberate part of the security design: the algebra evaluates concrete effects rather than trying to secure an arbitrary omnipotent AI process.
 
-The registry never looks up a requester trust level and never grants visibility merely because a Module was accepted or registered.
+A user may install custom Modules/adapters with different behavior, but those integrations still cross explicit MADRE boundaries and contribute their declared risk/privacy facts.
 
-Discovery is advisory. Actual invocation is evaluated again with concrete material and endpoint/mechanism facts.
+Unknown external Operation effect after an uncertain dispatch must not be blindly retried.
 
-## 7. Durable work
+## 8. Kernel payload opacity and generated material
 
-A durable `WorkSubmission` carries the security context accumulated before submission plus the immutable envelope describing the Module-owned material referenced by the work.
+Kernel does not read prompts or outputs to derive semantic meaning, policy or permission. It handles explicit metadata/security facts, digests/references, physical mechanism state and transient bytes needed for execution/transfer.
 
-MADRE composes that material envelope into the carried context and persists the resulting security history in `WorkSpec`. The actual private material remains with the Module and is resolved just-in-time according to `MADRE-execution-contract.md`.
+Generated output therefore cannot rewrite Kernel security by making a semantic assertion.
 
-At inference execution:
+Once delivered to a Module, however, generated output is Module-owned material. A Module/Agent may intentionally use it as later input, evidence, WorkPlan state, persisted domain material, or the basis for a bounded Operation. MADRE security constrains the actual subsequent crossings/effects; it does not forbid agentic chaining by declaring generated material universally non-authoritative.
 
-```text
-stored_work_context
-    + selected mechanism boundary envelope
-    -> SecurityAlgebra.evaluate(...)
-```
+## 9. Provider credentials and deployment boundaries
 
-Delayed work does not refresh requester trust from a Module registry. Retry does not obtain authority from a previous successful decision.
-
-Material returned during just-in-time resolution must match the previously carried material reference/digest/envelope continuity; the retrieval claim itself is not security authority.
-
-## 8. Agent / Operation brokering
-
-An explicit broker request carries its current `SecurityContext`.
-
-Input crossing:
-
-```text
-carried request context
-    + input material envelope
-    + selected descriptor envelope
-    + concrete Module endpoint boundary envelope
-```
-
-Return crossing continues from that same context and appends the returned material envelope.
-
-The result of either evaluation applies only to that concrete crossing. Dispatch, registration, identity references or previous decisions never become reusable permission.
-
-## 9. Authentication, credentials and future deployment boundaries
-
-MADRE's current local single-owner installation does not introduce separate Module authentication/authorization infrastructure.
+MADRE's current local single-owner installation does not add separate Module authentication/authorization infrastructure.
 
 HTTP/IPC/SDK transport mechanics are not security authority for the algebra.
 
-Provider API keys, OAuth/login/session flows and other mechanism-specific credentials belong to the relevant adapter/external software. They access that provider/mechanism; they do not authorize Module work inside MADRE. Detailed provider integration belongs to `MADRE-execution-contract.md`.
+Provider API keys, OAuth/login/session flows and similar mechanism-specific credentials belong to the concrete adapter/external software. They access that provider/mechanism; they do not authorize Module work inside MADRE.
 
-If a future deployment introduces a concrete adversarial multi-user/remote trust boundary, that requirement must be designed explicitly rather than pre-installed as generic security boilerplate.
+If a future deployment introduces a real adversarial multi-user or remote trust boundary, that requirement must be designed explicitly rather than pre-installed as generic security boilerplate.
 
-Future deterministic AI-specific security signals may be added only when MADRE has a concrete model for them. They must not silently redefine today's boundary/provenance `trust` dimension.
+Future deterministic AI-specific signals may be explored only when MADRE has a concrete design for them. They must not silently redefine today's boundary/provenance concepts.
 
 ## 10. Evidence
 
-Kernel persists the carried context used for each decision, resulting effective dimensions/scopes, the concrete target/execution boundary and deterministic decision/deficits.
+Kernel should persist enough normalized carried state, integrity/provenance continuity and concrete crossing/execution evidence to explain deterministic security decisions without persisting private prompt/context/output content.
 
-It does not persist prompt/context/output content merely to explain security decisions.
+The exact evidence schema should follow the final minimal algebra rather than preserving redundant fields solely because the current implementation already stores them.
