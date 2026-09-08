@@ -35,11 +35,23 @@ A work submission carries its current SecurityContext. MADRE appends the materia
 
 The current minimal reference relation derives highest carried sensitivity, lowest carried trust and highest carried risk; trust must cover both sensitivity and risk. Scope/domain facts are accumulated but their semantic classification remains Module-owned.
 
+Current Kernel trust is boundary/provenance trust only. The implementation does not perform prompt-injection detection, semantic truth scoring, hallucination detection or generic AI-content safety analysis.
+
 ## Privacy invariant implemented
 
 The runtime schema has no input/result content columns and no durable provider-error message column. The deterministic suite writes sentinel prompt/output/provider-error strings, executes work, consumes the result, closes storage and scans the actual SQLite files to prove those strings were never durably stored.
 
 Delayed work persists only the originator material reference, expected digest, material envelope and carried security context. After restart the originator provider must supply the material again.
+
+## Known Kernel completion gaps
+
+The current implementation predates two now-canonical refinements and must be converged before the Kernel stage is considered complete:
+
+1. **Durable material ownership:** `ImmediateMaterial` can still be pushed into `WorkSubmission` and cached in `WorkRuntime._materials`. Canonical architecture now requires all durable accepted/queued work to be reference-only, with material acquired just-in-time from its Module for the concrete execution attempt. Immediate eligibility must not imply Kernel ownership of queued input.
+
+2. **Transient fast inference:** there is not yet a first-class non-durable latency-sensitive inference path. Canonical interactive behavior distinguishes this transient route from durable work so minimal user-interaction input can be executed directly without queue/recovery semantics.
+
+The current `CapabilityRequest` is also intentionally minimal (`kind`, `modality`, optional model/exact capability). The canonical selection model now requires a clearer distinction between Module execution requirements/preferences and the installed inference-mechanism inventory, including future dimensions such as latency class, effort/quality, cost policy, specialization, provider/model preferences and fallback semantics. Do not mistake the current OpenAI-compatible adapter or current request fields for the final provider/inference architecture.
 
 ## Deliberately absent
 
@@ -61,12 +73,20 @@ The reference scheduler is not presented as a complete parallel/resource optimiz
 
 ## Capability/provider boundary
 
-Capabilities remain first-class MADRE execution backends. Local models are the primary product focus, while permitted remote providers remain supported through replaceable adapters.
+Capabilities remain first-class MADRE physical inference/execution mechanisms. Local models are the primary product focus, while permitted remote/provider mechanisms remain supported through replaceable adapters.
 
-The concrete OpenAI-compatible HTTP adapter owns its provider request/response shape and optional API-key environment variable. Those details do not leak into Kernel security algebra or generic work contracts.
+One provider may expose many distinct mechanisms: API, vendor CLI/session, MCP path, local gateway, SDK or another user-installed software adapter. Their authentication, cost, latency and model properties can differ and must not be flattened into one provider abstraction.
+
+The concrete OpenAI-compatible HTTP adapter owns its provider request/response shape and optional API-key environment variable. It is one implemented mechanism, not a canonical example that future provider support must copy.
 
 The local HTTP MADRE service remains as a transport surface but has no separate bearer-token authorization framework.
 
+## SDK boundary direction
+
+The public contracts are intended to become the basis of a modular MADRE SDK. CORE should be the first substantial consumer of that same public Module-facing boundary rather than calling privileged Kernel internals.
+
+The SDK must not absorb Agent memory/state, WorkPlans, Workflow execution or domain semantics; those remain Module-owned.
+
 ## Validation owner
 
-CI remains the repository authority for locked pytest/Ruff/mypy/build/wheel-import validation. The suite contains 16 deterministic tests and performs direct SQLite content inspection.
+CI remains the repository authority for locked pytest/Ruff/mypy/build/wheel-import validation. The current implemented suite contains 16 deterministic tests and performs direct SQLite content inspection.
