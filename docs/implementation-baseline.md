@@ -2,13 +2,13 @@
 
 This document describes current repository state only. It is not product authority.
 
-Product meaning comes from `MADRE.md`; detailed architecture comes from the focused documents under `docs/architecture/`.
+Product meaning comes from `MADRE.md`; detailed architecture comes from the focused documents under `docs/architecture/`. Relevant Owner rationale/correction lineage may be loaded just-in-time from `docs/design-memory/`.
 
 ## Current development stage
 
 The active stage is **Kernel foundation convergence**.
 
-The goal of this stage is to align the already-working runtime foundation with the final public execution/material/mechanism contracts required before modular SDK and CORE development begins.
+The goal of this stage is to align the already-working runtime foundation with the final public execution/material/mechanism/security contracts required before modular SDK and CORE development begins.
 
 When an agent is asked simply to continue, this stage remains the default target until the completion criteria below are satisfied or the Owner explicitly changes direction.
 
@@ -17,7 +17,7 @@ When an agent is asked simply to continue, this stage remains the default target
 The current `madre` package implements:
 
 - immutable normalized `SecurityEnvelope` facts and carried `SecurityContext` lifecycle state;
-- conservative deterministic sensitivity/trust/risk composition without registry grants, ACLs or external authorization tables;
+- a current conservative `max(sensitivity) / min(trust) / max(risk)` reduction plus `trust >= sensitivity` and `trust >= risk` admission checks;
 - durable Module manifests plus public Agent/Skill/Workflow/Operation descriptors used for discovery/routing only;
 - boundary-filtered discovery from caller-carried security state;
 - explicit Agent/Operation broker routing into Module-owned endpoints with independently evaluated return material;
@@ -35,7 +35,9 @@ The current `madre` package implements:
 - SQLite persistence for work metadata, public descriptors, broker evidence and structured security-decision evidence;
 - direct SQLite byte-inspection tests proving private input/output/provider-error sentinel content is not durably persisted.
 
-Current Kernel `trust` is boundary/provenance trust only. No prompt-injection, truth, hallucination or generic AI-content scoring is implemented.
+Current Kernel `trust` terminology is boundary/provenance/security-oriented only. No prompt-injection, truth, hallucination or generic AI-content scoring is implemented.
+
+The current security reduction is **implementation behavior, not frozen canonical semantics**. `MADRE-security-algebra.md` now explicitly requires reconciliation with the Owner's simpler compositional boundary model rather than treating the existing comparisons as architecture authority.
 
 ## Active convergence gaps
 
@@ -45,7 +47,7 @@ These are implementation gaps against current canonical architecture, not option
 
 Current code still permits `ImmediateMaterial` to be pushed into `WorkSubmission` and cached in `WorkRuntime._materials`.
 
-Canonical execution now requires **all durable accepted/queued work to be reference-only**, with Module-owned material acquired just-in-time for the concrete execution attempt. Immediate eligibility must not imply Kernel ownership of queued input.
+Canonical execution requires **all durable accepted/queued work to be reference-only**, with Module-owned material acquired just-in-time for the concrete execution attempt. Immediate eligibility must not imply Kernel ownership of queued input.
 
 Restart and retry must reacquire material from the Module.
 
@@ -71,20 +73,46 @@ The repository already has public descriptors and runtime/broker protocols, but 
 
 Material resolution, optional Agent endpoint and optional Operation endpoint responsibilities should remain independently consumable.
 
+CORE must remain an ordinary replaceable Module consumer of those contracts, not gain private semantic Kernel access merely because it is the shipped default/fallback Module.
+
+### 5. Security algebra reconciliation
+
+Current code still implements a generated clearance-like reduction:
+
+```text
+sensitivity = max(...)
+trust       = min(...)
+risk        = max(...)
+
+admit when trust >= sensitivity and trust >= risk
+```
+
+This must be reviewed against the canonical normalized boundary algebra before Kernel foundation is declared complete.
+
+Do **not** replace it with another conventional IAM/ACL/policy matrix. Preserve useful carried lifecycle, integrity/provenance continuity, registry-independence and deterministic evidence while deriving the minimum algebra/contributor shape from real MADRE cases such as:
+
+- highly sensitive medical/secret material remaining acceptable on strongly private local paths;
+- lower-privacy remote/Internet-facing boundaries increasing exposure consequence;
+- high-risk bounded Operations (including executable artifacts or destructive/external effects) remaining high risk even with low-sensitivity input.
+
+The exact final formula is intentionally open; do not freeze a speculative replacement during unrelated work.
+
 ## Stage completion criteria
 
 The Kernel foundation stage is complete only when all are demonstrated:
 
 1. accepted/queued durable work contains no private material payload in Kernel memory or SQLite;
 2. durable material is acquired just-in-time only when execution is genuinely ready;
-3. restart and retry resolve Module-owned material again and verify reference/digest/envelope continuity;
+3. restart and retry resolve Module-owned material again and verify reference/digest/security continuity;
 4. transient interactive inference works without durable work state;
 5. mechanism selection cleanly distinguishes Module requirements/preferences from installed physical mechanisms and preserves deterministic fallback/cost behavior;
-6. carried security/registry-independence invariants remain intact and no new authorization framework appears;
+6. carried security/registry-independence invariants remain intact, the algebra no longer depends on the current unapproved clearance-like relation, and no new authorization framework appears;
 7. existing broker, scheduling, cancellation/recovery, transient-result and provider-adapter behavior is not accidentally destroyed;
 8. a realistic reference Module path can consume the public boundary end-to-end without privileged Kernel internals;
-9. locked pytest/Ruff/mypy/build/wheel-import validation is green;
-10. canonical docs and this baseline agree with repository truth.
+9. the reference Module can chain generated output through Module-owned reasoning without Kernel semantic inspection;
+10. MADRE-provided external/system effects remain bounded by explicit Operations/mechanisms rather than exposing unrestricted Agent shell/Internet authority;
+11. locked pytest/Ruff/mypy/build/wheel-import validation is green;
+12. canonical docs and this baseline agree with repository truth.
 
 Once these criteria are met, stop expanding Kernel by inertia and move to the modular SDK + CORE stage unless the Owner directs otherwise.
 
@@ -97,10 +125,12 @@ The following are intentionally not Kernel responsibilities:
 - universal Workflow language/execution;
 - Skill adoption internals;
 - semantic routing over prompt contents;
+- semantic interpretation of generated output;
 - application history/private context storage;
 - durable model-output content;
 - domain learning/adaptation;
 - domain-specific result interpretation or mutations;
+- unrestricted AI shell/Internet environment;
 - local per-Module ACL/role/token/allowlist authorization infrastructure.
 
 These are exclusions, not missing Kernel features.
@@ -112,6 +142,7 @@ After Kernel foundation convergence:
 - build the modular MADRE SDK over the stable public Module boundary;
 - implement the default CORE Module as the first substantial SDK consumer;
 - use CORE/real Modules to expose remaining public-contract deficiencies;
+- refine the exact configurable default/CORE routing convention from real Module behavior;
 - add broader provider/inference mechanisms as concrete integrations are needed;
 - evolve richer resource optimization only from real workload evidence;
 - consider deterministic AI-specific security signals only when a concrete design exists.
