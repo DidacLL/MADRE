@@ -15,7 +15,7 @@ Detailed architecture is owned by focused documents:
 - `docs/architecture/MADRE-agent-interoperability.md` — public Module/Agent/Skill/Workflow/Operation contracts, discovery, brokering and SDK-facing Module interfaces;
 - `docs/architecture/MADRE-security-algebra.md` — immutable security facts, carried composition, provenance and deterministic admissibility.
 
-`docs/implementation-baseline.md` describes repository state only; it is not product authority.
+`docs/implementation-baseline.md` describes repository state only; it is not product authority. `docs/design-memory/` preserves non-normative Owner rationale, examples, correction lineage and open directions for just-in-time retrieval.
 
 ## Responsibility model
 
@@ -66,6 +66,8 @@ An **Operation** is callable behavior intentionally exported and implemented by 
 
 Modules decide what data matters, what a request means, what reasoning/delegation is useful, how outputs are interpreted, and what domain mutation should occur. Kernel performs deterministic execution functions without reconstructing that meaning.
 
+Generated model output is ordinary Module-owned material once delivered. A Module/Agent may deliberately use it as later input, evidence, state, planning material, or a basis for a bounded Operation according to its own semantics. Kernel does not impose a universal rule that generated material is semantically non-authoritative.
+
 ### 2. Interactive use is dual-lane, not blocking-chatbot execution
 
 MADRE is not fundamentally a chatbot or oracle that must synchronously answer every request.
@@ -80,6 +82,8 @@ non-blocking reasoning path
 
 The fast lane is real inference, not canned acknowledgements. It uses minimal ephemeral interaction material and is optimized for continuity/low latency. The parallel reasoning path may answer, schedule durable work, or delegate/escalate through Module-owned intelligence. Exact wording, routing and UX remain Module/Agent responsibilities.
 
+The exact topology of that fork may continue to evolve, but long reasoning must not unnecessarily block ordinary Module/MADRE interaction.
+
 ### 3. Durable work owns execution intent, never queued private material
 
 Durable execution is:
@@ -92,13 +96,15 @@ Immediately eligible and delayed durable work use the same lifecycle.
 
 For all accepted/queued durable work, Kernel persists only execution metadata and a verifiable material handle. The Module retains actual prompt/context/material. Kernel acquires it just-in-time for the concrete execution attempt, verifies it, uses it transiently and discards it. Restart and retry recover execution intent by resolving material again from the Module.
 
-### 4. Private input and generated output are transient at the Kernel boundary
+### 4. Kernel treats private/generated payload content as transient opaque material
 
 MADRE may persist public descriptors, execution/mechanism metadata, work/attempt lifecycle state, scheduling/resource evidence, material/output digests, security facts/decisions, failure/delivery evidence and opaque coordination/correlation values.
 
 MADRE does not durably persist prompts, conversation/private/retrieved context, private documents, Agent state, semantic WorkPlans, model answers/generated content, application history or domain records.
 
-Successful durable-work output is transient until consumed. A restart before consumption is recorded truthfully as result loss rather than upgraded to hidden content durability.
+Kernel does not derive semantic policy, truth, intent, permissions or scheduling meaning from prompt/output bytes. It handles only the explicit metadata, boundary/security facts, integrity references and transient material necessary for a concrete execution/transfer.
+
+Successful durable-work output is transient until consumed. A restart before consumption is recorded truthfully as result loss rather than upgraded to hidden content durability. Once delivered, its semantic meaning belongs entirely to the receiving Module.
 
 ### 5. Modules request execution properties; Kernel selects physical mechanisms
 
@@ -110,23 +116,29 @@ Provider/model identity may be a preference or a hard requirement according to t
 
 A provider is not one mechanism. The same provider may be reachable through multiple independently usable adapters/software paths with different cost, latency, authentication, modality and operational properties. MADRE must not flatten that ecosystem into one provider-shaped integration or prohibit user-installed mechanisms merely because they are unconventional.
 
-### 6. Security authority is only the carried boundary algebra
+### 6. Security admissibility comes only from the carried boundary algebra
 
-Security state belongs to the concrete request/work lifecycle as immutable `SecurityEnvelope` facts accumulated in a carried `SecurityContext`.
+Security state belongs to the concrete request/work lifecycle as immutable boundary/security facts accumulated in a carried context.
 
-Registration, installation acceptance, identity, bearer credentials, roles, ACLs, allowlists, references and previous decisions grant no MADRE authority. Concrete material, Module/Agent/Operation and inference-mechanism boundaries contribute facts when those crossings actually occur; Kernel evaluates the accumulated state deterministically.
+Registration, installation acceptance, identity, bearer credentials, roles, ACLs, allowlists, references and previous decisions grant no MADRE permission. Concrete material, Module/Agent/Operation and inference-mechanism boundaries contribute facts when those crossings actually occur; Kernel evaluates the accumulated state deterministically.
 
 Mutable registry state cannot retroactively rewrite accepted work security history.
 
-Current Kernel `trust` is boundary/provenance trust. It is not semantic truth, prompt-injection detection, hallucination probability, answer quality or generic AI-content safety. Future AI-specific security signals require an explicit deterministic design rather than being assumed today.
+The normalized algebra is deliberately small and is not a disguised clearance/matching system. Do not invent actor sensitivity ceilings, minimum-input-trust fields, mirrored requirement/property matrices, or generic policy/role machinery merely because those are conventional security patterns. The exact algebra must follow real MADRE sensitivity/privacy/risk cases; detailed current status belongs to `MADRE-security-algebra.md`.
+
+Current Kernel `trust` terminology refers only to boundary/provenance/security facts. It is not semantic truth, prompt-injection detection, hallucination probability, answer quality or generic AI-content safety. Future AI-specific security signals require an explicit deterministic design rather than being assumed today.
 
 ### 7. Public interoperability does not make Kernel an Agent framework
 
 Modules may publish discoverable Agent, Skill, Workflow and Operation descriptors. Boundary-visible requesters choose semantic targets; Kernel evaluates/routes explicit invocations and records evidence.
 
+MADRE-provided AI surfaces do not grant Agents an unbounded shell or unrestricted Internet environment. System/network/external effects are exposed through specific bounded Module Operations or concrete mechanisms with explicit boundary/risk facts. A user may install custom Modules/adapters, but their effects remain explicit integrations rather than hidden generic Agent authority.
+
 Unknown external Operation effects must not be blindly retried when dispatch outcome is uncertain.
 
-The public Module boundary should support a modular SDK. The default CORE Module must consume the same public contracts as third-party Modules except for genuinely administrative Kernel functions; CORE must not become a privileged second Kernel.
+The public Module boundary should support a modular SDK. The default CORE Module must consume the same public contracts as third-party Modules and remain independent from Kernel.
+
+CORE is a replaceable default/fallback Module role plus a shipped first-party implementation, not a privileged architectural layer. The shipped CORE may provide fallback intelligence for Agentless Modules, fast/default interaction behavior, generic UI/UX, module-independent intelligent tasks such as configuration/installation assistance, and routing/escalation for work that no more specific Module owns. Another Module may be configured to fulfill that role instead. Default status may influence fallback/routing preference but never security admissibility, resource exemption or private Kernel access.
 
 ### 8. Provider/software mechanics remain at the mechanism boundary
 
@@ -134,7 +146,13 @@ Provider request/response schemas, credentials/login/session handling, vendor CL
 
 Transport is not architecture: in-process APIs, IPC, HTTP, MCP and other adapters may realize the same logical boundaries.
 
-### 9. Greenfield development may remove superseded implementation structure
+### 9. Architecture must be minimal but concrete
+
+MADRE should define the smallest coherent, modular and human-readable set of public concepts/classes required by its real boundaries and SDK.
+
+Avoid speculative universal ontologies and framework ceremony. Equally, do not leave cross-boundary concepts undefined and then allow implementation tasks to fill the vacuum with conventional industry abstractions. Define what MADRE itself needs, no more and no less.
+
+### 10. Greenfield development may remove superseded implementation structure
 
 MADRE has no production compatibility obligation during current development. Superseded generated-state formats, classes, schemas, tests and package boundaries may be replaced rather than wrapped when they no longer realize this architecture. This does not make product/architecture decisions disposable.
 
