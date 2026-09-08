@@ -66,7 +66,7 @@ class OpenAICompatibleChatCapability:
                         headers=headers,
                     )
                     response.raise_for_status()
-                    parsed = TypeAdapter(JsonValue).validate_python(response.json())
+                    parsed: JsonValue = TypeAdapter(JsonValue).validate_python(response.json())
         except (TimeoutError, httpx.TimeoutException) as exc:
             raise CapabilityError("timeout") from exc
         except httpx.HTTPStatusError as exc:
