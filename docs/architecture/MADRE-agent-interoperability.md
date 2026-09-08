@@ -96,14 +96,37 @@ The intelligent participant decides which Module/Agent/Skill/Operation is releva
 
 A public Agent can submit ordinary MADRE inference work from its owning Module. Kernel still does not manage that Agent's reasoning state.
 
-## 9. Transport and provider credentials
+## 9. Public SDK boundary
+
+These public contracts are intended to be the foundation of a modular MADRE SDK.
+
+The SDK should make the public boundary easy to consume without becoming another semantic framework. Module-facing interfaces should be segregated so a Module implements only the surfaces it actually uses or exports, for example:
+
+```text
+work submission / inspection / result access
+material resolution for durable work
+optional Agent endpoint
+optional Operation endpoint
+manifest/descriptor publication
+SecurityEnvelope / SecurityContext propagation
+```
+
+Module code should not need Kernel storage classes, scheduler internals, FastAPI implementation objects or provider-adapter internals.
+
+The SDK must not own Agent memory/state, prompts, private context, WorkPlans, Workflow execution or domain persistence.
+
+The default CORE Module should use the same public SDK/contracts as third-party Modules. If CORE requires privileged semantic access to Kernel internals, treat that as evidence that the public boundary is incomplete or ownership has drifted.
+
+## 10. Transport and provider credentials
 
 Transport is not architecture.
 
 The current MADRE installation is local and administered by the machine owner; MADRE does not add a separate bearer-token/per-Module authentication framework to authorize ordinary local work.
 
-Provider authentication is different: an OpenAI/provider adapter may use API keys, OAuth or provider SDK credentials because that adapter must authenticate to its external backend. Those credentials remain inside the adapter/configuration boundary and do not become MADRE authorization.
+Provider authentication is a different concern and can vary by concrete inference mechanism. An adapter may use an API key, OAuth/browser login, an account-authenticated vendor CLI/session, MCP, a provider SDK credential flow, a local gateway or another user-installed adapter over software the user controls. Those mechanics stay inside the adapter/external-software boundary and do not become MADRE authorization.
 
-## 10. Guided Agent tooling
+Do not flatten one provider into one connection model. Multiple adapters may reach the same provider/model family while exposing materially different cost, latency, authentication and operational properties.
+
+## 11. Guided Agent tooling
 
 Future Agent creator/import tooling should consume these public contracts to generate Modules, manifests, descriptors, boundary metadata and integration scaffolding. Tooling does not move Agent internals into Kernel.
