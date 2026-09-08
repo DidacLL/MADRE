@@ -1,135 +1,224 @@
 # MADRE Execution Contract
 
-This document defines the durable execution boundary beneath Module semantics.
+This document defines the execution boundary beneath Module semantics.
 
-## 1. Work lifecycle
+## 1. Two execution classes
+
+MADRE exposes two logically distinct inference paths because latency-sensitive interaction and durable work have different ownership/recovery requirements.
+
+### Transient interactive inference
+
+```text
+Module -> minimal ephemeral input -> Kernel inference mechanism -> transient result -> Module
+```
+
+This path is:
+
+- optimized for low interaction latency;
+- never queued as durable work;
+- allowed to carry minimal input directly;
+- not restart/recovery durable;
+- discarded after the invocation/result handoff.
+
+It exists to support natural interaction on constrained machines. Interactive Modules may use it as the fast lane of the dual-lane interaction pattern described in `MADRE.md`.
+
+### Durable work
 
 ```text
 WorkSubmission -> WorkRecord -> 0..N WorkAttempts
 ```
 
-A `WorkSubmission` is an explicit request for computation. The caller has already made the semantic decision that the computation is useful.
+A `WorkSubmission` is an explicit request for recoverable/schedulable computation. The caller has already made the semantic decision that the computation is useful.
 
-The durable `WorkRecord` stores execution metadata and carried security state. It never embeds prompt/context/result content.
+The durable `WorkRecord` stores execution metadata and carried security state. It never embeds or queues prompt/context/result content.
 
-A WorkAttempt records physical truth: selected capability/model/boundary, start/end, failure classification, output digest/size and execution evidence.
+A WorkAttempt records physical truth: selected inference mechanism/model/boundary, start/end, failure classification, output digest/size and execution evidence.
 
-## 2. Submission projection
+## 2. Durable submission projection
 
-The public submission contains:
+A durable submission contains, in substance:
 
 - originator identity for routing/correlation;
 - the current carried `SecurityContext`;
-- capability/model requirements;
-- material reference plus immutable material envelope;
-- transient material for immediate work **or** expected digest for delayed work;
+- inference requirements/preferences;
+- a verifiable material handle;
 - eligibility, priority and execution constraints;
 - opaque semantic correlation identifiers.
 
-The originator identity is not an authorization credential. MADRE does not look up registered Module trust to decide whether the submission is permitted.
+The material handle contains the information necessary to retrieve and verify the prepared Module-owned material later:
+
+```text
+material reference
+expected digest
+immutable material SecurityEnvelope
+opaque retrieval coordination value / claim
+```
+
+The retrieval value is not a MADRE authorization token, trust grant, role, identity credential or replacement for `SecurityAlgebra`. It is opaque coordination data supplied back to the owning Module so that the correct prepared material can be resolved rather than an ambiguous/stale reference.
+
+The originator identity is likewise not an authorization credential. MADRE does not look up registered Module trust to decide whether the submission is permitted.
 
 At admission, the material envelope is appended to the supplied security context and the algebra is evaluated. The resulting context is persisted in `WorkSpec` and becomes the security history carried by that work lifecycle.
 
-The durable projection contains no transient payload.
+The durable projection contains no payload.
 
-## 3. Immediate material
+## 3. Durable material ownership and just-in-time resolution
 
-For immediate execution the caller may submit actual material transiently. MADRE verifies its digest/envelope binding, appends that envelope to the carried context, writes only the durable execution projection, and holds content only while needed.
+For all durable work, whether eligible immediately or much later:
 
-Transient material is discarded on terminal cancellation, admission failure, execution completion or execution failure.
+> MADRE never owns queued or merely accepted prompt/context/material content.
 
-## 4. Delayed material and restart
+The Module retains the actual prepared material. Kernel should establish all execution facts that do not require the payload before requesting it, including eligibility, compatible inference mechanisms, relevant boundary algebra and executable resource availability where practical.
 
-For delayed work, the Module retains source material. MADRE persists:
+Only when the work is genuinely about to execute does Kernel ask the originator to resolve the material handle.
+
+Kernel then verifies at least:
 
 ```text
-originator
-opaque material reference
+reference continuity
 expected digest
-immutable material envelope
-carried SecurityContext
-capability/model requirements
-eligible_at / scheduling metadata
+exact immutable material envelope / integrity
 ```
 
-When work becomes eligible, MADRE asks the originator for the material, recomputes its digest, and verifies reference/envelope continuity.
-
-The carried security context is **not reconstructed from registry state**. A registry update cannot raise or lower the authority of previously accepted work.
-
-If a new boundary is actually crossed later—for example a capability is selected—its current boundary envelope is appended at that point and the algebra is evaluated again.
+Only verified material enters transient Kernel memory. It is discarded after execution/failure/cancellation of that concrete attempt.
 
 Unavailable material produces truthful `material_unavailable` failure. Mismatched material produces `material_integrity` failure.
 
-## 5. Capability selection
+There is no durable prompt cache, temporary encrypted prompt vault or queued in-memory material cache in Kernel.
 
-A `CapabilityRequest` describes physical execution requirements such as capability class, modality, model and optional exact capability identity.
+## 4. Restart and retry
 
-Kernel selection is deterministic over registered capability availability, explicit execution constraints and current resource state. It is not semantic prompt routing.
+Accepted work survives restart as execution intent and verification metadata, not as private content.
 
-For each compatible candidate, its capability boundary/security envelope is appended to the WorkRecord's carried security context and evaluated. A rejected candidate grants or denies nothing beyond that candidate crossing; selection may continue to another compatible candidate.
+After restart:
 
-`local_only` remains an explicit execution constraint available to Modules. It is not a default policy and does not create an authentication mechanism.
+```text
+WorkRecord restored
+    -> wait until selected for execution
+    -> resolve material again from originator
+    -> verify
+    -> execute
+```
 
-The current Python reference execution payload is JSON-like because the implemented adapters currently use that representation. This is an implementation surface, not a universal MADRE architecture restriction. Binary/streaming representations should be introduced only when a concrete capability requires them.
+A retry likewise resolves material again rather than reusing stale Kernel-owned bytes.
 
-## 6. Capability adapters and providers
+The carried security context is **not reconstructed from registry state**. A registry update cannot raise or lower the authority of previously accepted work.
 
-Provider/backend integration belongs to Capability adapters.
+If a new boundary is actually crossed later—for example an inference mechanism is selected—its current boundary envelope is appended at that point and the algebra is evaluated again.
+
+Work that was physically running when the process/machine stopped becomes `interrupted`. Kernel does not pretend to resume model computation unless a concrete mechanism later provides explicit checkpoint/resume semantics.
+
+Operations/external effects retain conservative unknown-effect behavior and must not be blindly repeated.
+
+## 5. Inference requirements and mechanism selection
+
+The current code calls physical execution implementations **Capabilities**. In this contract they should be understood as available physical inference/execution mechanisms with known properties.
+
+Modules generally request execution properties rather than knowing the installed mechanism inventory. The request model should be able to express hard constraints separately from preferences/fallbacks. Relevant dimensions include, as concrete needs emerge:
+
+```text
+modality / specialization
+latency class (interactive / normal / background)
+reasoning effort / quality target
+cost policy (forbid paid / prefer free / paid allowed)
+locality/privacy constraints
+resource/availability constraints
+preferred provider/model/mechanism
+fallback permission/ordering
+```
+
+Kernel deterministically matches those requirements/preferences against registered mechanism descriptors and current resource/availability facts. It does not inspect prompt meaning to choose a reasoning strategy.
+
+A preferred provider/model is not automatically an exact hard requirement. For example a user preference to use Claude may allow fallback to the closest compatible available mechanism if the Module/request explicitly permits fallback.
+
+Paid execution is an execution property with application-visible evidence. User-facing cost information should normally be surfaced by the Module/UI rather than forced into awkward conversational permission text.
+
+## 6. Mechanism adapters and provider ecosystems
+
+Provider/backend integration belongs to Capability adapters or external provider software.
 
 An adapter may manage:
 
 ```text
 provider request/response schemas
-OpenAI-compatible contracts
-provider API keys or login flows
-HTTP / SDK details
+API keys
+OAuth/browser/account login
+vendor CLI sessions
+MCP client/server paths
+HTTP / SDK / local IPC details
 backend-specific validation
 model loading
 backend/device/cache behavior
+user-installed automation bridges over local software
 ```
 
-None of those provider details define Kernel work semantics or MADRE authorization.
+One provider may therefore contribute many different mechanisms. They must not be flattened into one provider abstraction when their cost, latency, authentication, modalities or operational behavior differ.
 
-The generic Capability layer only needs the bounded execution descriptor, physical execution boundary, model/modality compatibility, resource facts and callable adapter interface.
+The current OpenAI-compatible HTTP adapter is one reference implementation only. Its API-key option is not a statement that API keys are MADRE's preferred or universal provider connection mechanism.
 
-## 7. Scheduling/resources
+The generic Kernel layer needs only bounded mechanism descriptors, execution properties, boundary/security facts and a callable adapter interface.
 
-Kernel retains global deterministic scheduling state. The current reference implementation preserves:
+## 7. Security admission
 
-- delayed eligibility;
-- originator round-robin fairness;
-- priority within an originator;
-- FIFO tie breaking;
-- one heavyweight local execution slot;
-- durable queue sequencing;
-- cancellation and retry transitions.
+Kernel security is deterministic boundary/provenance algebra over explicit carried facts.
 
-The execution loop remains deliberately simple and does not claim a complete resource optimizer.
+Current `trust` does not mean semantic truth, resistance to prompt injection, hallucination probability, answer quality or generic AI safety.
 
-## 8. Result lifecycle
+For a durable execution mechanism candidate:
+
+```text
+persisted carried SecurityContext
+    + candidate mechanism SecurityEnvelope
+    -> SecurityAlgebra
+```
+
+For the material crossing itself, the previously carried material envelope must remain consistent with the material resolved from the Module.
+
+Provider login/API-key/session mechanics do not grant Kernel authorization. They are only adapter/provider access mechanisms.
+
+## 8. Scheduling/resources
+
+Kernel retains global deterministic scheduling/resource state.
+
+The architecture requires support for:
+
+- latency-sensitive interactive inference;
+- immediately eligible and delayed durable work;
+- application/originator fairness and priority;
+- budgets/deadlines as execution metadata where implemented;
+- GPU/CPU/RAM admission;
+- model residency/device coordination where implemented;
+- cancellation and retry;
+- restart recovery.
+
+The current reference scheduler preserves delayed eligibility, originator round-robin fairness, priority/FIFO ordering, one heavyweight local execution slot and durable queue sequencing. It is not presented as a complete resource optimizer.
+
+The fast transient lane should receive latency-sensitive treatment appropriate to the resource-constrained target machines, but this requirement does not itself prescribe a particular preemption algorithm.
+
+## 9. Result lifecycle
 
 Successful physical output is transient:
 
 ```text
-Capability -> transient result -> originator consumes -> bytes discarded
+inference mechanism -> transient result -> originator consumes -> bytes discarded
 ```
 
 Durable evidence contains output digest, size, production time, attempt reference and delivery state.
 
-A restart turns any unconsumed transient result into `lost`; it does not preserve result bytes.
+A restart turns any unconsumed transient durable-work result into `lost`; it does not preserve result bytes.
 
-## 9. Cancellation/retry/recovery
+Transient interactive inference has no durable result/recovery promise at all.
 
-Cancellation records whether accepted work was prevented or a request arrived while an attempt was running.
+## 10. Cancellation/recovery evidence
 
-Interrupted physical execution is recorded as failure with unknown provider outcome. Retrying such work requires explicit `allow_unknown_outcome` intent.
+Cancellation records whether accepted durable work was prevented or a request arrived while an attempt was running.
 
-At startup, work still marked running is failed as interrupted. Operations with external side effects preserve uncertain effects rather than being blindly retried.
+Interrupted physical execution is recorded as failure with unknown backend outcome. Retrying such work requires explicit policy where the outcome may matter.
 
 Provider exception messages are not persisted; durable failure evidence stores adapter/runtime failure codes.
 
-## 10. Persistence invariant
+## 11. Persistence invariant
 
-The runtime database may contain work/capability/registry/security metadata, references, digests, delivery state and evidence codes. It must contain no prompt/context/output payload columns.
+The runtime database may contain work/inference-mechanism/registry/security metadata, references, retrieval coordination values, digests, delivery state and evidence codes. It must contain no prompt/context/output payload columns.
 
 Privacy claims are validated against actual storage, not only object models.
