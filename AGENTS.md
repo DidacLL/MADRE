@@ -55,7 +55,11 @@ Use suitable concrete dependencies directly when they make the current solution 
 
 A concrete language, database, library, transport, framework or provider integration may become a stable implementation dependency when the working system benefits from that choice. Product meaning remains defined by `MADRE.md`.
 
-Keep application semantics in the application, runtime execution semantics in MADRE, and provider or tool mechanics at the capability boundary.
+Keep application semantics in the application, runtime execution semantics in MADRE, and provider or tool mechanics at the capability/inference-mechanism boundary.
+
+Treat names as part of software correctness and maintainability, not aesthetics. Prefer terminology that lets a human reader infer the MADRE responsibility from code without reconstructing hidden architectural meaning. Do not retain a misleading name merely because renaming has no runtime effect.
+
+Do not flatten a provider ecosystem into one assumed connection mechanism. APIs, account-authenticated CLIs, MCP paths, SDKs, local gateways and user-installed adapters may expose materially different inference mechanisms even when they reach the same provider/model family. Keep provider-specific mechanics behind adapters and let Kernel reason over declared execution properties rather than one fashionable integration pattern.
 
 Resolve genuine product-meaning ambiguity with the Owner. Resolve implementation uncertainty through code, documentation, experiments and tests whenever those can provide the answer.
 
