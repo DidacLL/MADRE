@@ -30,7 +30,7 @@ Load only the context required by the task.
 
 - Product/architecture work: read `MADRE.md`, then the focused architecture owner. Load the matching design-memory topic when product rationale, examples, constraints or an open direction materially affect the decision.
 - Runtime convergence work: read `MADRE.md`, `docs/implementation-baseline.md`, the relevant architecture owner, then the smallest code/test surface that answers the task.
-- SDK/Module work: read `MADRE.md`, `MADRE-agent-interoperability.md`, the directly relevant design-memory topic, then the public contracts and smallest implementation surface.
+- SDK/Module work: read `MADRE.md`, `docs/architecture/MADRE-agent-interoperability.md`, the directly relevant design-memory topic, then the public contracts and smallest implementation surface.
 - Build/setup/usage work: start from `README.md`, configuration and directly relevant code; load product architecture only if the task reaches it.
 - Historical/refactor investigation: inspect `docs/refactors/` or Git history only when the task explicitly concerns that transition or provenance.
 
