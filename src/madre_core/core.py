@@ -179,10 +179,10 @@ def _interactive_requirement() -> InferenceRequirement:
         hard=InferenceHardRequirements(
             specialization="model.inference.chat",
             modality="text",
-            latency_class="interactive",
         ),
         preferences=InferencePreferences(
             execution_boundaries=("local", "isolated"),
+            latency_classes=("interactive", "standard"),
             reasoning_efforts=("low", "medium"),
         ),
     )
