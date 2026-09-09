@@ -22,6 +22,7 @@ from madre_sdk import (
     JsonValue,
     MaterialRepository,
     Module,
+    SecurityContext,
     SecurityLevel,
     Skill,
     TransientInference,
@@ -46,9 +47,13 @@ class CoreContinuation:
         self,
         *,
         durable_follow_up: bool = False,
+        delegate_module_id: str | None = None,
         delegate_agent_id: str | None = None,
     ) -> None:
+        if (delegate_module_id is None) != (delegate_agent_id is None):
+            raise ValueError("delegation requires both target Module and Agent identities")
         self.durable_follow_up = durable_follow_up
+        self.delegate_module_id = delegate_module_id
         self.delegate_agent_id = delegate_agent_id
 
 
@@ -81,6 +86,7 @@ class _InteractionBehavior(AgentBehavior):
         *,
         agent_id: str,
         instructions: tuple[str, ...],
+        security: SecurityContext,
         payload: JsonValue,
     ) -> Artifact:
         sequence = next(self._ids)
@@ -95,7 +101,11 @@ class _InteractionBehavior(AgentBehavior):
             },
             sensitivity=SecurityLevel.LEVEL_5,
         )
-        immediate = await self._inference.infer(context, _interactive_requirement())
+        immediate = await self._inference.infer(
+            context,
+            _interactive_requirement(),
+            security=security,
+        )
         generated = Artifact.from_inference_result(
             artifact_id=f"{CORE_MODULE_ID}:response:{sequence}",
             result=immediate,
@@ -109,7 +119,11 @@ class _InteractionBehavior(AgentBehavior):
         follow_up_work_id: str | None = None
         delegated_result: JsonValue = None
 
-        if decision.delegate_agent_id is not None and self._delegation is not None:
+        if (
+            decision.delegate_module_id is not None
+            and decision.delegate_agent_id is not None
+            and self._delegation is not None
+        ):
             delegated_context = ContextBundle.create(
                 bundle_id=f"{CORE_MODULE_ID}:delegation:{sequence}",
                 purpose="explicit-agent-delegation",
@@ -117,8 +131,10 @@ class _InteractionBehavior(AgentBehavior):
                 sensitivity=SecurityLevel.LEVEL_5,
             )
             delegated_result = await self._delegation.invoke(
+                decision.delegate_module_id,
                 decision.delegate_agent_id,
                 delegated_context,
+                security=security,
             )
 
         if decision.durable_follow_up and self._work is not None:
@@ -132,6 +148,7 @@ class _InteractionBehavior(AgentBehavior):
                 follow_up,
                 _follow_up_requirement(),
                 correlation=(),
+                security=security,
             )
             follow_up_work_id = accepted.id
 
@@ -199,7 +216,13 @@ class CoreModule(Module):
             trust=SecurityLevel.LEVEL_5,
             isolation=SecurityLevel.LEVEL_5,
         )
-        carried = security_context(module_security)
+        interaction_security = actor_security(
+            subject_id=CORE_INTERACTION_AGENT_ID,
+            subject_kind="agent",
+            trust=SecurityLevel.LEVEL_5,
+            isolation=SecurityLevel.LEVEL_5,
+        )
+        carried = security_context(module_security, interaction_security)
         materials = MaterialRepository()
         inference_client = InferenceClient(
             originator=CORE_MODULE_ID,
@@ -255,12 +278,7 @@ class CoreModule(Module):
                 "Give a genuine response to the request; do not expose scheduler ceremony.",
                 "Use bounded delegation or continued work when the task benefits from it.",
             ),
-            security=actor_security(
-                subject_id=CORE_INTERACTION_AGENT_ID,
-                subject_kind="agent",
-                trust=SecurityLevel.LEVEL_5,
-                isolation=SecurityLevel.LEVEL_5,
-            ),
+            security=interaction_security,
             behavior=behavior,
             skills=(skill,),
             workflows=(workflow,),
