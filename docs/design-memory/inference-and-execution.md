@@ -4,89 +4,95 @@ Authority: non-normative design memory. Canonical execution semantics remain in 
 
 ## Capability means physical mechanism
 
-Provenance: **DIRECT OWNER / OWNER CONFIRMED**
-Status: **CONFIRMED**
+**OWNER — CONFIRMED**
 
-A Capability is an available physical inference/execution mechanism with known properties. It is not a semantic statement that an Agent is capable of a task.
+A Capability is an available physical inference/execution mechanism with known properties. It is not a semantic statement that an Agent can solve a task.
 
-One provider can expose multiple mechanisms: direct API, account-authenticated CLI/session, SDK, MCP path, local gateway/bridge, externally supplied credentials, or an unconventional user-installed adapter over software the user controls. Provider identity must not be flattened into one connection model.
+One provider can expose many different mechanisms:
 
-The current OpenAI-compatible HTTP adapter is one implemented mechanism, not provider architecture.
+```text
+direct API
+account-authenticated CLI/session
+SDK
+MCP path
+local gateway/bridge
+externally supplied credentials
+user-installed adapter over software the user controls
+```
 
-## Modules request properties, Kernel selects installed mechanisms
+Those mechanisms may differ in model inventory, cost, latency, modality, privacy, authentication and resource behavior.
 
-Provenance: **DIRECT OWNER / OWNER CONFIRMED**
-Status: **CONFIRMED**
+## Requirements versus installed mechanisms
 
-Modules generally should not need to know the installed model/provider inventory. They express execution requirements/preferences such as:
+**OWNER — CONFIRMED**
+
+Modules generally should not need to know the installed provider/model inventory.
+
+They express requirements/preferences such as:
 
 - modality/specialization;
-- latency class;
+- latency;
 - reasoning effort/quality;
-- cost policy (forbid paid / prefer free / paid allowed, etc.);
+- cost policy;
 - locality/privacy;
 - resource/availability constraints;
 - optional provider/model/mechanism preference;
-- fallback permission/ordering.
+- fallback permission/order.
 
-Kernel deterministically matches those requests against installed physical mechanisms and current resource state.
+Kernel matches them deterministically against installed mechanism facts and current resources.
 
-An explicit preference such as "use Claude" is normally a preference/fallback concern unless the Module says the exact mechanism/model is semantically required.
+A provider/model name may be a preference or a hard requirement depending on the request.
 
-Cost should preferably be made visible by the Module/UI rather than awkwardly negotiated through conversational permission text.
+## Local-first ecosystem
 
-## Local-first does not mean local-only
+**OWNER — CONFIRMED**
 
-Provenance: **DIRECT OWNER / OWNER CONFIRMED**
-Status: **CONFIRMED**
+Local inference is the primary focus, but local/cloud is only one dimension. Remote mechanisms remain valid when the security algebra and request permit them.
 
-Local inference is the primary product focus because MADRE targets personal machines and privacy/resource control. Admissible remote/provider mechanisms remain valid first-class options. Local/cloud is only one execution dimension among modality, specialization, cost, latency, privacy and others.
+MADRE should make a diverse local/remote ecosystem usable without forcing every application developer to integrate each provider/runtime personally.
 
-## Durable material stays Module-owned
+## Durable material ownership
 
-Provenance: **DIRECT OWNER / OWNER CONFIRMED**
-Status: **CONFIRMED**
+**OWNER — CONFIRMED**
 
 All durable accepted/queued work is reference-only from Kernel's perspective.
 
-Durable state contains only a verifiable material handle:
+The owning Module retains actual material. Kernel keeps a `MaterialHandle` containing reference/integrity/security binding plus a simple opaque retrieval coordination value.
 
-```text
-reference
-expected digest
-immutable material security binding/envelope
-simple opaque retrieval claim/coordination value
-```
+Actual bytes are resolved only when the concrete attempt is ready, verified, used transiently and discarded. Restart/retry resolve the material again.
 
-The retrieval claim is not authorization, trust, identity or a permission token. It exists only so the Module can resolve the exact prepared material later without ambiguous/random lookup.
+This is both a privacy property and a resource property: private application context should not be duplicated merely because work is scheduled for later.
 
-Kernel should establish eligibility, compatible mechanism/boundary facts and resource readiness where practical before requesting the payload. Actual material is acquired just-in-time for the concrete execution attempt, verified, used transiently and discarded. Restart/retry reacquire it from the Module.
+## Transient inference
 
-No durable prompt cache, encrypted prompt vault or queued in-memory payload cache belongs in Kernel.
+**OWNER — CONFIRMED**
 
-## Transient interaction is intentionally different
+Transient inference is a non-durable execution primitive and may directly carry minimal ephemeral material.
 
-Provenance: **DIRECT OWNER / OWNER CONFIRMED**
-Status: **CONFIRMED**
+Modules/Agents decide why they use it. One important use is CORE's fast interaction behavior, but Kernel should not encode that semantic strategy as a special lane.
 
-Fast transient inference may directly carry minimal ephemeral input because it is not accepted/queued durable work and has no restart/recovery promise.
+## Advanced local inference experiments
 
-Do not force the privacy/recovery mechanics of durable work onto the fast interaction path.
+**OWNER — DIRECTION**
 
-## Generated outputs are Module material, not forbidden state
+MADRE should leave room for research/optimization over local inference mechanisms: model residency, KV-cache/session reuse, resource-aware switching and mechanism-native execution state can be important on constrained machines.
 
-Provenance: **DIRECT OWNER**
-Status: **CONFIRMED**
+These are mechanism/adapter concerns unless a generic execution requirement genuinely emerges.
 
-A Module/Agent may freely use generated output as the next inference input, store it in Module-owned state, treat it as evidence, incorporate it into a WorkPlan, or let it influence a later bounded Operation according to the Module's own semantics.
+The SDK should allow optional advanced adapter extensions so researchers/developers can reach such native functionality without contaminating every generic Kernel contract.
 
-Kernel does not interpret prompt/output content. It only handles the explicit execution/security metadata and transient bytes needed for the concrete crossing. There is therefore no need for a generic Kernel rule saying generated output "has no authority"; the relevant invariant is that payload text cannot rewrite Kernel boundary/security state by semantic assertion.
+## Generated output
 
-## Provider access remains adapter-specific
+**OWNER — CONFIRMED**
 
-Provenance: **DIRECT OWNER / OWNER CONFIRMED**
-Status: **CONFIRMED**
+Once delivered, generated output is ordinary Module-owned Artifact material. It may be stored, fed into another Agent/model, incorporated into a WorkPlan, treated as evidence or used to select a bounded Operation according to Module semantics.
 
-Provider API keys, OAuth/login, vendor sessions, CLI authentication, SDK credentials and similar mechanics stay inside the concrete adapter or external provider software. MADRE Kernel should not become a generic credential framework merely because a mechanism requires credentials.
+Kernel is content-opaque and has no semantic rule that generated material is inherently authoritative or non-authoritative.
 
-Flexibility should not structurally forbid unusual user-created adapters. The user/developer is responsible for the software/account implications of an adapter they install; MADRE evaluates the declared execution boundary and risk rather than assuming only vendor-standard access paths exist.
+## Provider access
+
+**OWNER — CONFIRMED**
+
+API keys, OAuth/account sessions, vendor login, CLI authentication and similar details belong inside a Capability adapter or external provider software.
+
+MADRE should not become a generic credential framework, nor should it structurally forbid unconventional user-created adapters.
