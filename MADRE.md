@@ -1,513 +1,208 @@
 # MADRE
 
-**MADRE — Model-Agnostic Delayed Reasoning Effort Agentic System** is a local-first governed execution layer between AI-capable applications and the computation they use.
+**MADRE — Model-Agnostic Delayed Reasoning Effort Agentic System** is a local-first platform that lets independent applications share heterogeneous intelligence resources while keeping semantic ownership in those applications.
 
-MADRE makes intelligence execution manageable runtime work. Applications and their Modules decide what work means; MADRE decides how permitted work is admitted, scheduled, executed, recovered and evidenced across scarce local or explicitly permitted remote capabilities.
+Modules decide what intelligence work is useful, what information it means, and what consequences should follow. MADRE provides deterministic infrastructure for interoperability, security evaluation, durable execution, resource coordination, inference-mechanism selection, recovery, brokering, result delivery and execution evidence.
 
-The product thesis is:
+## Authority map
 
-> Useful intelligence on ordinary personal computers improves when reasoning work can be scheduled, delayed, decomposed by its semantic owner, routed across replaceable models/capabilities, constrained by deterministic security relations, and recovered without forcing every application to implement its own inference runtime.
+This file is the canonical product contract.
 
-## 1. Responsibility model
+Detailed architecture is owned by:
 
-```text
-Module / application
-    owns user/domain semantics
-    owns interaction surfaces
-    owns Agents, Skills, Workflows and WorkPlans
-    owns domain state and domain mutations
-    selects/minimizes material for execution
-    interprets generated results
-            |
-            | explicit executable work
-            v
-MADRE Runtime
-    accepts durable work
-    evaluates execution-boundary algebra
-    schedules immediate and delayed work
-    arbitrates scarce resources globally
-    selects permitted model/capability execution paths
-    records attempts, outcomes and runtime evidence
-    recovers accepted work after interruption
-            |
-            v
-Capability / execution backend
-    performs bounded computation
-```
+- `docs/architecture/MADRE-platform-architecture.md` — topology and responsibility placement;
+- `docs/architecture/MADRE-execution-contract.md` — transient and durable execution, material lifecycle, mechanism selection, scheduling-facing semantics, results and recovery;
+- `docs/architecture/MADRE-agent-interoperability.md` — Module/Agent/Skill/Workflow/Operation contracts, CORE contract, discovery, brokering and SDK;
+- `docs/architecture/MADRE-security-algebra.md` — object-bound security identities, carried composition and deterministic admissibility.
 
-The deterministic core of MADRE Runtime is referred to as the **Kernel**. Kernel responsibility is execution control: work, models/capabilities, scheduling, security evaluation, lifecycle and evidence.
+`docs/implementation-baseline.md` describes current repository state only. `docs/design-memory/` preserves non-normative product rationale, examples, constraints, ecosystem observations and open research directions.
 
-## 2. Module
-
-A **Module** is the application/domain integration boundary that uses MADRE.
-
-A Module may be a desktop application, service, script, library, editor integration, local domain system, compatibility adapter or first-party MADRE component. Its internal architecture is its own.
-
-A Module may own, as useful to its product:
-
-- domain data and persistence;
-- interaction surfaces and UI state;
-- domain semantics and truth/evaluation rules;
-- Agents and their state;
-- Skills and Workflows;
-- semantic planning and WorkPlans;
-- context selection, projection and minimization;
-- artifacts;
-- domain Operations and mutations;
-- learning, memory and adaptation.
-
-MADRE sees only the bounded integration surfaces required for execution.
-
-### 2.1 Module integration surface
-
-A native Module may expose some combination of:
+## Responsibility model
 
 ```text
-Module descriptor
-    identity
-    human/semantic routing descriptors
-    boundary metadata
-    optional exposed Operations
-    optional context/projection surfaces
-    optional local UI projections
-
-MADRE work client
-    submit work
-    inspect/cancel/retry work
-    retrieve results/evidence
-
-optional governed invocation surface
-    receive explicit Operation invocations
-    return bounded results/evidence
+Module
+    owns meaning, data, interaction and agentic behavior
+        |
+        | public contracts / execution requests
+        v
+MADRE SDK + interoperability
+    stable typed boundary for Modules and tooling
+        |
+        v
+Kernel
+    deterministic shared execution, resources, security evaluation,
+    durable lifecycle, mechanism selection, routing and evidence
+        |
+        v
+Inference mechanism / Capability adapter
+    concrete physical computation and provider/software integration
 ```
 
-Module descriptors support discovery by Module-owned intelligence. They are not a semantic router inside Kernel.
+A **Module** is an independently owned application or integration boundary. It may be a desktop application, service, script, editor integration, adapter, first-party MADRE Module or another bounded software system.
 
-## 3. Interaction surfaces
-
-Users interact with **Module-owned surfaces**.
-
-Examples include a domain application's UI, CLI, editor integration, voice interface or the standard first-party CORE Module UI.
-
-The surface, its assigned Agent, or ordinary Module logic interprets the interaction before MADRE receives executable work.
-
-A simple path may be:
+A Module owns, as applicable:
 
 ```text
-User
-  -> Module UI
-  -> Module interaction logic
-  -> MADRE immediate inference work
-  -> result
-  -> Module UI
+domain records and persistence
+UI / interaction state
+private context and history
+Agents and Agent state/memory
+Skills
+Workflows
+WorkPlans
+artifacts
+Operations and domain mutations
+domain-specific context selection/minimization
+knowledge, learning and adaptation
+result interpretation
 ```
 
-The submitted inference input may contain the user's text unchanged when the Module decides that is the correct bounded input. MADRE receives it as execution input, not as an unowned user request requiring semantic routing.
+A Module may expose no Agents at all.
 
-A richer surface may instead decide to use a Workflow, create a WorkPlan, request another Module, invoke a domain Operation, submit delayed reasoning, or combine several of these behaviors.
+Kernel owns deterministic shared execution. If a Kernel decision requires understanding the semantic meaning of private Module content, that decision belongs elsewhere.
 
-## 4. Agent
+A **Capability** is an available physical inference/execution mechanism with known properties. It is not a semantic Skill or a claim that an Agent can perform a user task.
 
-An **Agent** is a Module-local abstraction for reasoning behavior.
+## Core semantic entities
 
-An Agent may be implemented as:
+An **Agent** is a Module-owned intelligent actor. MADRE defines enough public/SDK structure for Agents to interoperate without prescribing one private reasoning implementation. At the simplest end an Agent may be instructions plus execution behavior; state, memory, delegation and richer orchestration are optional Module-owned concerns.
 
-- a named/persistent configuration;
-- an ephemeral object;
-- a stateless function around one model call;
-- a state machine;
-- a planner/reasoner architecture;
-- several collaborating internal actors;
-- interaction logic integrated directly into the Module.
+A **Skill** is reusable Agent behavior, knowledge or instruction material that can be adopted or translated into an Agent implementation.
 
-MADRE does not require an Agent registry or a universal Agent persistence model. A Module may expose no separate Agent configuration at all while still using agentic reasoning internally.
+A **Workflow** is reusable semantic behavior or a recipe used by an Agent/Module. MADRE does not require one universal Workflow execution language.
 
-Agent identity, prompts, state, memory, Skill repertoire, Workflow repertoire and learning semantics remain Module concerns.
+A **WorkPlan** is semantic planning state owned by the Module/Agent that created it. Executable portions are projected into ordinary MADRE work; Kernel does not own or interpret the semantic plan.
 
-An Agent is above models: it decides why computation is useful and how results are interpreted. Models/capabilities are physical resources MADRE may use to execute the requested computation.
+An **Operation** is bounded callable behavior intentionally exported and implemented by a Module. Operations are how Module/system/external effects are exposed to intelligent actors without granting a generic shell or unrestricted Internet environment.
 
-## 5. Skills and Workflows
+An **Artifact** is Module-owned material. A **ContextBundle** is an artifact-like bounded collection of material prepared for a concrete use/boundary.
 
-**Skills** and **Workflows** are part of a Module's Agent architecture.
+## Product invariants
 
-A Module may define portable formats, versions, user customization, imported Skill packages, reusable Workflows or no explicit Skill/Workflow system.
+### 1. Module semantics remain outside Kernel
 
-When an Agent selects a Skill or Workflow, that selection has semantic meaning inside the Module. Executable portions are submitted to MADRE as ordinary work.
+Modules decide what data matters, what requests mean, what Agents/Skills/Workflows are useful, how results are interpreted, and what domain mutation occurs.
 
-MADRE scheduling does not depend on understanding Skill or Workflow semantics.
+Generated output is ordinary Module-owned material once delivered. A Module may use it as later input, evidence, memory/state, WorkPlan material, a persisted artifact or the basis for a later bounded Operation. Kernel does not impose a universal semantic status on generated content.
 
-## 6. WorkPlan
+### 2. Interaction belongs to the interaction-owning Module
 
-A **WorkPlan** is semantic planning state owned by the Module/Agent that created it.
+MADRE supports multiple interaction surfaces: Module-owned UI, CLI, provider/application surfaces, automation, or the shipped CORE Module's general UI/UX.
 
-A WorkPlan may describe an objective, decomposition, dependencies, verification strategy, chosen Workflows, expected outputs, application coordination and interpretation of intermediate results.
+When CORE owns the interaction surface, its interaction Agent may implement a low-latency fast-response strategy and continue/delegate/schedule additional reasoning as Module-owned behavior. MADRE-native Modules may deliberately delegate governed input to that CORE interaction surface, and Modules/adapters without their own UI may use CORE as the default interaction experience.
 
-The semantic owner decides:
+Kernel does not own a semantic "fast lane". It exposes execution primitives such as transient inference and durable work with latency, resource and scheduling properties; Agents/Modules decide how to compose them into user experience.
 
-- whether a plan is necessary;
-- which steps/tasks exist;
-- why dependencies exist;
-- when new work should be added;
-- how results revise the plan;
-- when the objective is complete.
+### 3. Durable work owns execution intent, never queued private material
 
-Executable portions of a WorkPlan become MADRE `WorkSubmission`s.
+Durable execution is:
 
 ```text
-Module-owned WorkPlan
-    step/task A -> WorkSubmission A
-    step/task B -> WorkSubmission B
-    step/task C -> WorkSubmission C
+WorkSubmission -> WorkRecord -> 0..N WorkAttempts
 ```
 
-MADRE may receive opaque correlation/group metadata linking these work items. It interprets only scheduling fields that have execution meaning.
+All accepted/queued durable work is reference-only from Kernel's perspective. The Module retains actual prompt/context/material. Kernel persists only execution metadata plus a verifiable material handle/security binding, resolves material just-in-time for a concrete attempt, verifies it, uses it transiently and discards it.
 
-If a scheduling policy needs to know that several work items form one attention/fairness group, the Module may submit an explicit scheduling-group relation. The rationale behind the group remains opaque.
+Restart and retry recover execution intent and reacquire material from the Module.
 
-A Module that requires restart-safe semantic planning persists the WorkPlan in its own state. MADRE independently preserves every accepted durable work item and its execution evidence.
+### 4. Kernel treats payload bytes as transient opaque material
 
-## 7. Runtime work
+MADRE may persist public descriptors, execution/mechanism metadata, work/attempt lifecycle state, scheduling/resource evidence, material/output digests, security facts/decisions, failure/delivery evidence and opaque coordination/correlation values.
 
-`WorkSubmission`, `WorkRecord` and `WorkAttempt` are MADRE's durable execution foundation.
+MADRE does not durably persist prompts, conversation/private/retrieved context, private documents, Agent state, semantic WorkPlans, model answers/generated content, application history or domain records.
 
-Immediate and delayed work converge on the same lifecycle.
+Kernel does not derive semantic policy, intent, truth or routing meaning from prompt/output bytes.
 
-A work submission carries only information needed to execute correctly, such as:
+### 5. Modules request execution properties; Kernel selects physical mechanisms
 
-- originating Module/application for accounting, return routing and correlation;
-- execution input;
-- capability/model requirements;
-- eligibility time;
-- scheduling priority/budget/resource constraints;
-- execution-boundary factors;
-- cancellation/retry/idempotency semantics where applicable;
-- opaque semantic correlation metadata.
+Modules normally describe what execution they need rather than enumerate installed provider/model inventory.
 
-Once accepted, work becomes durable runtime state.
-
-MADRE owns:
-
-- acceptance and idempotent submission behavior;
-- immediate/delayed eligibility;
-- global scheduling and fairness;
-- scarce-resource admission;
-- capability/model execution choice;
-- attempts;
-- cancellation and retry;
-- interruption/restart recovery;
-- physical result/failure truth;
-- runtime evidence.
-
-The originating Module owns the meaning of the result.
-
-## 8. Delayed Reasoning Effort
-
-**Delayed Reasoning Effort (DRE)** is the ability to control intelligence work in time while preserving reliable execution.
-
-A Module may:
-
-- answer immediately and schedule follow-up reasoning;
-- schedule work without producing an immediate answer;
-- continue interacting while background work runs;
-- submit several independent or correlated jobs;
-- request later verification, synthesis or evidence processing;
-- cancel or retry eligible work according to truthful execution semantics.
-
-The Module/Agent decides why delayed work is valuable. MADRE provides the durable timing, execution and recovery behavior.
-
-Delayed work is therefore an execution property rather than a universal semantic progression such as “fast then deeper.”
-
-## 9. Models and capabilities
-
-A **Capability** is a replaceable bounded computation provider used by MADRE Runtime.
-
-Important capability classes include model inference, embeddings, speech, image processing and other specialized computation. A capability may be implemented by a local library, local process, sidecar, service or explicitly permitted remote provider.
-
-A Module submits semantic execution requirements; MADRE combines them with runtime evidence.
-
-Examples of Module-provided requirements:
+Execution requirements/preferences may include:
 
 ```text
-local-only
-interactive latency preferred
-high reasoning quality required
-specific modality
-minimum context capacity
-exact model required
-background execution acceptable
+modality / specialization
+latency class
+reasoning effort / quality
+cost policy
+locality/privacy
+resource/availability constraints
+preferred provider/model/mechanism
+fallback permission/order
 ```
 
-Examples of Runtime evidence:
+Kernel deterministically matches these against installed mechanisms and current resource state.
+
+Local inference is the primary product focus, while admissible remote/provider mechanisms remain first-class options.
+
+One provider may expose several distinct mechanisms: API, account-authenticated CLI/session, SDK, MCP path, gateway, local bridge or user-installed adapter. Provider-specific login, credentials, protocol schemas and software mechanics remain adapter concerns.
+
+### 6. Security is object-bound carried algebra
+
+Every security-relevant Module/Agent/Artifact/ContextBundle/Operation/Capability contributes a **SecurityObject** identified by a stable `SecurityID`. The SecurityObject is structurally bound to its subject and contains only the normalized security values that are meaningful for that subject kind.
+
+Examples of distinct dimensions include material sensitivity, actor/boundary trust or isolation/privacy, Operation/Capability risk or consequence, Artifact/ContextBundle intended use, and Operation autonomy. These dimensions are independent; high trust does not imply low sensitivity, and high-sensitivity material may be appropriate on a strongly isolated/private path.
+
+A concrete request/work lifecycle carries the SecurityIDs/SecurityObjects introduced by its participants and crossings. The algebra composes those objects at each relevant boundary and deterministically decides whether execution may continue.
+
+Registration, installation acceptance, ordinary identity, possession of a reference, roles, ACLs, allowlists and provider credentials are not independent MADRE permission sources.
+
+The exact algebraic formula remains a dedicated architecture/research problem. It must remain small, normalized and understandable rather than becoming a policy language or a matrix of mirrored requirements.
+
+### 7. CORE is a replaceable Module with a required capability/security contract
+
+MADRE ships with a default **CORE-capable Module**. The user may configure another compatible Module as CORE.
+
+CORE is not a second Kernel and receives no security bypass, resource exemption or private semantic Kernel API. It uses the same public SDK/interoperability boundary as other Modules.
+
+A CORE-capable Module must provide the generic functionality required by the installation's default/general interaction and fallback role, and it must satisfy the strongest applicable isolation/security characteristics defined by MADRE's algebra because CORE may legitimately handle extremely sensitive personal/system material.
+
+CORE-owned data may itself have the highest Sensitivity values. Security strength and material sensitivity are independent dimensions.
+
+Typical shipped CORE behavior may include:
 
 ```text
-model residency
-RAM / VRAM pressure
-load/swap cost
-context capacity
-recent latency / throughput
-failure history
-other eligible work
-resource admission state
+default/general UI and interaction Agent
+fallback intelligence for Agentless or UI-less Modules
+generic delegation/escalation
+module-independent intelligent assistance such as configuration/install support
+system/user profile and interaction continuity owned by CORE
 ```
 
-MADRE makes the final physical execution-path decision among permitted candidates. An exact requested target either executes if admissible/available under policy or returns a truthful rejection/failure.
+Cross-domain material still moves through ordinary algebraic boundaries. CORE minimizes/anonymizes/transforms material when necessary before sending it toward less-private or higher-risk participants.
 
-Provider-specific request/response dialects remain at capability adapters. The MADRE architecture is not defined by a universal chat-message protocol.
+### 8. Public interoperability does not make Kernel an Agent framework
 
-Capability output is generated material. Its semantic value, truth status and domain consequence are assigned by Module-owned software.
+Modules may publish Agent, Skill, Workflow and Operation descriptors. Intelligent participants choose semantic targets; Kernel provides discovery facts, deterministic boundary evaluation, routing and execution evidence.
 
-## 10. Operations
+MADRE-provided AI surfaces do not grant unrestricted shell or Internet access. External/system effects remain specific bounded Operations or mechanisms.
 
-An **Operation** is bounded functionality a Module intentionally exposes for governed invocation by another Module/CORE behavior.
+Unknown external Operation effects must not be blindly retried when dispatch outcome is uncertain.
 
-Operations remain Module-owned because the Module owns the domain and any durable mutation.
+### 9. The SDK is a first-class architectural boundary
 
-An exposed Operation has a typed boundary describing at least what is required for safe invocation:
+The SDK materializes the smallest stable object-oriented contract needed to build Modules without depending on Kernel internals.
 
-- identity/routing reference;
-- typed input/output contract;
-- execution-boundary factors;
-- effect/repeatability semantics;
-- scope transition information.
+It should provide typed, modular interfaces/value objects for the public MADRE concepts and reusable helpers for common patterns while keeping Module-private semantics optional and extensible.
 
-Semantic intelligence chooses whether an Operation is useful. A MADRE-mediated invocation then performs deterministic admission, dispatch and evidence recording.
+The SDK must be flexible enough that Agents, Skills and Workflows from fast-changing external ecosystems or informal/natural-language definitions can be translated into MADRE-compatible Modules/contracts without requiring those ecosystems to adopt MADRE internally.
 
-Private functions used entirely inside a Module remain ordinary Module implementation and require no MADRE Operation representation.
+Current Python implementation choices are not product architecture. Public contracts should remain language-neutral and suitable for a future more strongly typed implementation.
 
-Generated model output cannot itself mutate domain state. Module-owned software converts a proposed action into an explicit Operation invocation when appropriate.
+### 10. Architecture is minimal but concrete
 
-## 11. Context and material
+MADRE defines the smallest coherent and human-readable object model required by its real boundaries, execution lifecycle and SDK.
 
-A Module owns its source data and determines the actual material needed for a piece of intelligence work.
+Do not create universal classes merely because a concept can be named. Equally, do not leave shared cross-boundary concepts undefined and then let implementation convention define them accidentally.
 
-Before material crosses a Module boundary, the Module can project/minimize it according to its domain semantics and intended use.
+### 11. Greenfield development may replace superseded implementation structure
 
-```text
-Module private state
-    -> domain-aware projection/minimization
-    -> bounded execution material
-    -> MADRE work
-    -> selected capability
-```
+MADRE has no production compatibility obligation during current development. Generated local state, schemas or implementation structures that no longer realize this contract may be replaced rather than wrapped.
 
-MADRE retains only the material or references required to execute/recover accepted work.
+## Responsibility test
 
-When a transformation produces materially different content, the derived material receives its own current boundary factors and provenance. The source material remains unchanged.
+Place a concept by asking what decision requires it:
 
-Local artifact generation, local observation and external transfer are distinct boundaries. A Module may create sensitive local artifacts while requiring a stronger boundary relation for sending/uploading/exporting those artifacts externally.
-
-## 12. Security algebra
-
-MADRE security is deterministic **algebraic admissibility** over the current execution-boundary values involved in an attempted crossing.
-
-The normalized level vocabulary is:
-
-```text
-SecurityLevel
-    SYSTEM_RESERVED = 0
-    LEVEL_1 = 1
-    LEVEL_2 = 2
-    LEVEL_3 = 3
-    LEVEL_4 = 4
-    LEVEL_5 = 5
-```
-
-Ordinary values use levels 1..5. Level `0` is reserved for system/kernel representation.
-
-The initial independent dimensions are:
-
-```text
-sensitivity    higher -> more sensitive material
-trust          higher -> more trusted material/actor/destination
-risk           higher -> more execution/action risk
-```
-
-These dimensions share a normalized range for simple deterministic comparison. They are not added, averaged or collapsed into one score.
-
-Module/domain scope is a separate non-numeric relation.
-
-For an attempted execution, the crossing carries the current boundary values required for evaluation, conceptually including:
-
-```text
-MaterialBoundary
-    sensitivity
-    trust
-    scopes
-
-ActorBoundary
-    trust
-    maximum_handled_sensitivity
-    execution_risk
-
-OperationBoundary (when present)
-    risk
-    minimum_input_trust
-    maximum_input_sensitivity
-    source/destination scopes
-    execution boundary
-    effect/classification-transform properties
-
-DestinationBoundary
-    trust
-    execution_risk
-    local / isolated / remote boundary
-
-CurrentPolicy
-    dimension-specific thresholds/relations
-```
-
-The Kernel performs a pure deterministic relation over these current values.
-
-At minimum, admissibility can require relations such as:
-
-- material sensitivity fits the actor handling ceiling;
-- material trust meets the attempted operation/capability input floor;
-- material sensitivity fits the target input ceiling;
-- actor risk and operation risk fit policy for the actual material and destination;
-- source/destination scopes are compatible with the explicit boundary relation;
-- the actual execution boundary matches the permitted boundary;
-- a sensitivity reduction corresponds to an actual transformation producing new material.
-
-Policy may use one dimension to select a threshold in another dimension. That is still a relation, not arithmetic aggregation.
-
-The evaluation is repeated for every governed crossing. A previous accepted decision is evidence of that earlier evaluation only.
-
-References and IDs are used for routing/correlation/evidence. Security admissibility comes from the current boundary values, never from possession of a reference.
-
-## 13. Cross-Module collaboration
-
-Cross-Module semantic decisions are made by Module-owned intelligence.
-
-A Module/Agent may inspect permitted Module descriptors and decide to:
-
-- request bounded context from another Module;
-- invoke an exposed Operation;
-- send a semantic request to another Module-owned surface/agent contract;
-- keep semantic responsibility locally while using another Module's Operations;
-- combine independently minimized projections from several domains.
-
-MADRE provides registration, governed transport/execution and runtime evidence. It executes an explicit destination chosen by the semantic owner.
-
-Domain authority remains with each participating Module.
-
-## 14. CORE
-
-**CORE** is the standard first-party general intelligence Module commonly configured as the installation's default Module/surface.
-
-CORE may own its own:
-
-- interaction UI;
-- generic Agents;
-- Skills and Workflows;
-- semantic planning/WorkPlans;
-- cross-domain coordination logic;
-- context reduction logic;
-- conversation or long-lived state.
-
-CORE submits computation through the same MADRE Runtime boundary as every other Module.
-
-The Module registry may expose which registered Module is configured as the default. Interaction/integration surfaces use that registration when they require the installation's generic Module. Default status is a routing convention at the Module/surface layer, not an alternate runtime authority path.
-
-CORE can receive richer context than a remote capability when the current boundary algebra permits it, while every later transfer/execution is independently evaluated.
-
-## 15. Persistence ownership
-
-Persistence follows why state exists:
-
-| Purpose | Owner |
-| --- | --- |
-| Domain data, semantics, truth, artifacts and mutations | Module |
-| UI/surface state and conversation semantics | Module |
-| Agents, Skills, Workflows, memory and learning | Module |
-| WorkPlans and semantic decomposition | Module |
-| Accepted executable work and scheduling state | MADRE Runtime |
-| Work attempts, cancellation/retry/recovery state | MADRE Runtime |
-| Security-decision and execution evidence | MADRE Runtime |
-| Runtime model/capability telemetry used for selection | MADRE Runtime |
-| Provider/model implementation state and caches | Capability/backend |
-
-Physical storage location does not change semantic ownership.
-
-## 16. Observability and result delivery
-
-MADRE exposes execution provenance rather than hidden semantic reasoning.
-
-Runtime evidence can include:
-
-- originating Module/application;
-- opaque semantic correlation;
-- submission and eligibility times;
-- scheduling/admission decisions;
-- selected capability/model;
-- boundary-algebra decision evidence;
-- attempts;
-- cancellation/retry/recovery evidence;
-- timing/resource metrics;
-- result/failure references.
-
-The Module decides how that evidence and generated result are presented to users and how they affect its domain state.
-
-## 17. Integration depth
-
-MADRE supports different application integration depths while preserving one runtime execution path.
-
-```text
-Compatibility client
-    -> standard inference-compatible facade
-    -> MADRE work
-
-Native Module
-    -> richer WorkSubmission with timing/resource/boundary semantics
-    -> MADRE work
-
-Module-to-Module collaboration
-    -> explicit Module-owned semantic decision
-    -> governed Operation/context/work boundary
-    -> MADRE execution where applicable
-```
-
-A richer integration adds execution metadata; it does not transfer domain ownership into MADRE.
-
-## 18. Architectural tests
-
-A proposed core concept belongs in MADRE when its meaning changes at least one of:
-
-```text
-admission
-security/boundary evaluation
-scheduling
-resource allocation
-capability/model selection
-physical execution
-retry/cancellation/recovery
-runtime evidence
-```
-
-A concept whose meaning is primarily about understanding, planning, remembering, presenting, learning or mutating a domain belongs to the Module that owns those semantics.
-
-When a concern spans both sides, the architecture defines a narrow boundary representation carrying only the execution-relevant projection.
-
-## 19. Durable invariants
-
-1. Users interact through Module-owned surfaces.
-2. Modules decide semantic intent before submitting executable work.
-3. Agents are Module-local abstractions above model execution.
-4. Skills and Workflows remain inside Module Agent architectures.
-5. WorkPlans are semantically owned by their creating Module/Agent.
-6. MADRE's durable primitive is executable work, not semantic planning state.
-7. Immediate and delayed work share one runtime lifecycle.
-8. MADRE owns global resource admission and final permitted physical model/capability selection.
-9. Domain source data is projected/minimized before crossing its owning Module boundary when needed.
-10. Security is recomputed from current boundary values at every governed crossing.
-11. References are correlation/routing identities rather than execution authority.
-12. Module Operations remain authoritative for domain mutation.
-13. Capability/model output is generated data until Module-owned software gives it semantic consequence.
-14. CORE is an ordinary first-party Module using the ordinary MADRE execution plane.
-15. Runtime evidence records execution truth without absorbing application semantics.
-16. Consumer-hardware scarcity is a primary scheduling/resource design input.
-17. New MADRE abstractions are justified by executable runtime behavior rather than by completeness of an Agent framework.
-
-The detailed responsibility model and concrete execution-boundary contract are maintained in:
-
-- `docs/architecture/MADRE-execution-architecture.md`
-- `docs/architecture/MADRE-execution-contract.md`
+- understand meaning, plan, remember, present, learn, choose semantic behavior or mutate a domain → **Module**;
+- provide reusable typed public integration → **SDK/interoperability**;
+- evaluate security objects, execute transient inference, admit/schedule durable work, allocate scarce resources, select a physical mechanism, recover execution, route an explicit target, deliver results or record evidence → **Kernel**;
+- load/talk to a model/provider or expose mechanism-native optimization → **Capability adapter/external mechanism software**.

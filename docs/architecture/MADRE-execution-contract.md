@@ -1,531 +1,215 @@
-# MADRE execution contract
+# MADRE Execution Contract
 
-This document defines the smallest concrete MADRE-facing execution vocabulary justified by the current architecture.
+Authority: `MADRE.md` defines product meaning. This document owns transient/durable execution, material lifecycle, inference requirements/mechanism selection, scheduling-facing behavior, results and recovery.
 
-It is intentionally limited to values whose meaning changes admission, scheduling, model/capability selection, physical execution, recovery or runtime evidence.
+## 1. Execution classes
 
-## 1. Contract layers
+MADRE exposes two execution lifecycles.
 
-```text
-Module-owned semantic layer
-    Agent / Skills / Workflows / WorkPlan / UI / domain state
-        |
-        | projects executable work
-        v
-MADRE execution contract
-    WorkSubmission / WorkRecord / WorkAttempt
-    scheduling and capability requirements
-    execution-boundary factors
-    runtime evidence
-        |
-        v
-Capability adapter
-    provider-specific request / response / lifecycle
-```
-
-Semantic identifiers may appear only as opaque correlation metadata unless a runtime policy explicitly uses them.
-
-## 2. Reference values
-
-References identify runtime records and registered endpoints. They are routing/correlation values rather than execution authority.
+### Transient inference
 
 ```text
-OpaqueId
-    non-empty opaque value
-
-ModuleRef
-    module_id: OpaqueId
-
-OperationRef
-    module: ModuleRef
-    operation_id: OpaqueId
-    revision: positive integer
-
-CapabilityRef
-    capability_id: OpaqueId
-
-WorkRef
-    work_id: OpaqueId
-
-AttemptRef
-    work: WorkRef
-    attempt_no: positive integer
-
-SecurityDecisionRef
-    decision_id: OpaqueId
+Module -> minimal ephemeral material -> Kernel -> Capability -> transient result -> Module
 ```
 
-A Module may use its own internal identifiers inside opaque correlation values. MADRE does not interpret them as domain identities.
+Transient inference:
 
-## 3. Typed execution payload
+- creates no durable `WorkRecord`;
+- may carry minimal input directly;
+- has no restart/recovery guarantee;
+- discards request/result bytes after handoff;
+- may request low latency or other execution properties.
 
-MADRE must be able to carry different execution modalities without making one provider protocol canonical.
+A Module/Agent may use this primitive for interactive response, validation, probing, background reasoning or another semantic purpose. Kernel does not assign that meaning.
+
+### Durable work
 
 ```text
-SchemaRef
-    namespace: OpaqueId
-    schema_id: OpaqueId
-    revision: positive integer
-
-PayloadEncoding
-    implementation-extensible encoding identifier
-
-TypedPayload
-    schema_ref: SchemaRef
-    encoding: PayloadEncoding
-    content: bytes
+WorkSubmission -> WorkRecord -> 0..N WorkAttempts
 ```
 
-The runtime validates the payload against the exact schema/codec required by the selected capability adapter where validation is applicable.
+A `WorkSubmission` is an explicit request for schedulable/recoverable physical computation. The caller has already decided semantically that the computation is useful.
 
-A chat-completion adapter may define its own message schema. Another adapter may define embeddings, image, audio or structured reasoning schemas.
+The durable `WorkRecord` stores execution metadata, material identity/integrity binding, carried security identities and scheduling state. It never embeds or queues prompt/context/result content.
 
-## 4. Security levels
+A `WorkAttempt` records physical truth: selected mechanism/model, relevant security/boundary identities, timing, outcome, failure classification, output digest/size and execution evidence.
+
+## 2. Durable submission projection
+
+A durable submission contains, in substance:
+
+- originator identity for routing/correlation;
+- carried SecurityIDs/SecurityObjects for the lifecycle so far;
+- inference requirements/preferences;
+- a verifiable `MaterialHandle`;
+- eligibility, priority and execution constraints;
+- opaque semantic correlation identifiers.
+
+A `MaterialHandle` contains enough information to reacquire exactly the prepared material later:
 
 ```text
-SecurityLevel
-    SYSTEM_RESERVED = 0
-    LEVEL_1 = 1
-    LEVEL_2 = 2
-    LEVEL_3 = 3
-    LEVEL_4 = 4
-    LEVEL_5 = 5
+material reference
+expected digest
+material SecurityID / immutable security binding
+opaque retrieval coordination value
 ```
 
-Ordinary boundary values use `LEVEL_1..LEVEL_5`.
+The retrieval coordination value is not MADRE permission or an authentication credential. It only identifies the prepared material to its owning Module/resolver.
 
-The independent dimensions are:
+The durable projection contains no private payload.
+
+## 3. Durable material ownership and just-in-time resolution
+
+For every durable work item, immediately eligible or delayed:
+
+> Kernel owns execution intent, not queued private material.
+
+The Module retains actual prepared material.
+
+Before requesting the payload, Kernel should establish all practical facts that do not require it, including eligibility, compatible mechanism candidates, relevant security evaluation and resource readiness.
+
+Only when a concrete attempt is genuinely ready does Kernel resolve the `MaterialHandle` through the Module-facing resolver.
+
+Kernel verifies at least:
 
 ```text
-sensitivity
-trust
-risk
+reference continuity
+expected digest
+security binding continuity
 ```
 
-The shared range enables uniform deterministic comparison. The dimensions are never arithmetically combined into one score.
+Verified bytes exist only transiently for that attempt and are discarded afterwards.
 
-## 5. Scope boundary
+Unavailable material produces truthful material-unavailable failure. Mismatch produces integrity/security-continuity failure.
 
-Scope/domain compatibility is non-numeric.
+No durable prompt cache, prompt vault or queued private-material cache belongs in Kernel.
+
+## 4. Restart, retry and external effects
+
+Accepted work survives restart as execution intent and verification metadata.
 
 ```text
-ScopeRef
-    namespace: OpaqueId
-    scope_id: OpaqueId
+restore WorkRecord
+    -> select when eligible/resources permit
+    -> resolve material again
+    -> verify
+    -> execute
 ```
 
-A scope value is opaque to Kernel semantics. Runtime policy can compare explicit scope relations supplied by registered boundary contracts.
+Retries reacquire material rather than depending on stale Kernel-owned bytes.
 
-Possession of a `ScopeRef` carries no authority.
+Interrupted inference normally recomputes unless the selected mechanism exposes a concrete checkpoint/resume capability.
 
-## 6. Material boundary
+Externally effectful Operations require different handling: if dispatch may have happened but outcome is unknown, Kernel records that uncertainty and does not blindly repeat the effect.
 
-Every bounded material item supplied to a governed execution carries the current values relevant to that material.
+## 5. Inference requirements and mechanism selection
+
+A **Capability** is an available physical inference/execution mechanism with known properties.
+
+Modules generally express what execution they need, while Kernel knows which mechanisms are currently installed/available.
+
+Hard constraints must remain distinguishable from preferences/fallbacks.
+
+Relevant dimensions include, when required by real use cases:
 
 ```text
-MaterialBoundary
-    sensitivity: SecurityLevel
-    trust: SecurityLevel
-    scopes: set[ScopeRef]
+modality / specialization
+latency class
+reasoning effort / quality target
+cost policy
+locality/privacy constraints
+resource/availability constraints
+preferred provider/model/mechanism
+fallback permission/order
 ```
 
-The values describe the actual material being sent in this execution.
+Kernel deterministically matches these against `CapabilityDescriptor` facts and current resource state. It does not inspect prompt semantics to choose a reasoning strategy.
 
-If a Module creates a new minimized/anonymized/derived payload, the new payload receives a new `MaterialBoundary` appropriate to the actual derived content.
+A preferred provider/model may be a soft preference unless the caller marks it as a hard requirement.
 
-## 7. Actor boundary
+Paid execution is an execution property and should be visible to the owning Module/UI. Conversational negotiation is not a Kernel requirement.
 
-The Module-side reasoning/execution actor contributes the values needed for the current crossing.
+## 6. Mechanism adapters and provider ecosystems
+
+A concrete Capability adapter may use:
 
 ```text
-ActorBoundary
-    trust: SecurityLevel
-    maximum_handled_sensitivity: SecurityLevel
-    execution_risk: SecurityLevel
+provider request/response schemas
+API keys or OAuth/account sessions
+vendor CLI
+SDK
+MCP
+HTTP / IPC
+local gateway/bridge
+model loading/runtime management
+backend/device/cache/session controls
+user-installed automation over local software
 ```
 
-The execution algebra consumes these values directly. It does not require a global Agent identity, Agent definition or Agent state object.
+One provider may therefore contribute several distinct mechanisms.
 
-A Module with integrated/stateless interaction logic can provide the same boundary values without materializing a separate Agent configuration.
+Provider credentials access the provider/mechanism; they do not grant MADRE work authority.
 
-## 8. Execution destination boundary
+Mechanism-native optimization such as model residency, KV-cache/session reuse or vectorized backend state belongs behind the adapter boundary. The SDK may expose controlled optional extension APIs for such mechanisms without making them universal Kernel request fields.
 
-The actual selected execution destination contributes the current values required for admission.
+## 7. Security at execution boundaries
 
-```text
-ExecutionBoundaryKind
-    LOCAL_TRUSTED
-    LOCAL_ISOLATED
-    REMOTE
-
-DestinationBoundary
-    trust: SecurityLevel
-    execution_risk: SecurityLevel
-    kind: ExecutionBoundaryKind
-```
-
-These values come from the actual execution path selected for the attempt, not from a semantic WorkPlan.
-
-## 9. Operation boundary
-
-A Module-exposed Operation can carry an immutable execution boundary profile for one exact revision.
-
-```text
-ClassificationTransform
-    NONE
-    MAY_RECALCULATE
-
-OperationBoundary
-    risk: SecurityLevel
-    minimum_input_trust: SecurityLevel
-    maximum_input_sensitivity: SecurityLevel
-    source_scopes: set[ScopeRef]
-    destination_scopes: set[ScopeRef]
-    execution_boundary: ExecutionBoundaryKind
-    classification_transform: ClassificationTransform
-```
-
-This profile is one input to algebraic evaluation; it is not an authorization grant.
-
-## 10. Security policy and evaluation
-
-Kernel evaluates one attempted crossing from the current boundary values.
+Every participating security-relevant object contributes its `SecurityID`/`SecurityObject` as defined in `MADRE-security-algebra.md`.
 
 Conceptually:
 
 ```text
-SecurityDecision = SecurityAlgebra.evaluate(
-    material_boundaries,
-    actor_boundary,
-    operation_boundary?,
-    destination_boundary,
-    current_policy,
-)
+carried SecurityObjects
+    + candidate Capability SecurityObject
+    + material SecurityObject
+    -> SecurityAlgebra
 ```
 
-A policy revision defines deterministic relations such as:
+The exact algebra is owned by the security document.
+
+Kernel handles declared security facts and material integrity; it does not infer semantic truth or content safety from prompt/output bytes.
+
+## 8. Scheduling and resources
+
+Kernel owns global deterministic scheduling/resource state.
+
+The architecture requires support for:
+
+- transient inference with latency requirements;
+- immediately eligible and delayed durable work;
+- originator/application fairness and priority;
+- budgets/deadlines as execution metadata where implemented;
+- GPU/CPU/RAM admission;
+- model residency/device coordination where useful;
+- cancellation and retry;
+- restart recovery.
+
+MADRE targets ordinary personal machines where inference resources may be scarce and already shared with the OS and other applications. Resource coordination must therefore prevent long background work from unnecessarily degrading interactive workloads.
+
+The exact scheduling/optimization algorithm should evolve from measured workloads rather than from speculative scheduler features.
+
+## 9. Result lifecycle
+
+Successful physical output is transient at the Kernel boundary:
 
 ```text
-for every material:
-    material.sensitivity <= actor.maximum_handled_sensitivity
-
-when operation is present:
-    material.trust >= operation.minimum_input_trust
-    material.sensitivity <= operation.maximum_input_sensitivity
-
-actor.execution_risk <=
-    policy.actor_risk_limit(materials, destination)
-
-operation.risk <=
-    policy.operation_risk_limit(materials, destination)
-
-scope relation is compatible with the explicit crossing
-
-actual destination kind is compatible with the operation/work requirement
+Capability -> transient result -> originator consumes -> bytes discarded
 ```
 
-`actor_risk_limit` and `operation_risk_limit` may depend on material sensitivity/trust, destination and other current dimensions. This remains a lookup/relational calculation rather than addition or averaging.
+Durable-work evidence may retain output digest, size, production time, attempt reference and delivery state.
 
-Every governed execution is re-evaluated immediately before dispatch with the actual destination selected for that attempt.
+A restart turns an unconsumed transient durable result into truthful result loss; Kernel does not gain hidden content durability.
 
-## 11. Security decision evidence
+Once delivered, output is Module-owned `Artifact` material and may be used according to Module semantics.
 
-```text
-SecurityDecisionEvidence
-    ref: SecurityDecisionRef
-    evaluated_at: timestamp
-    policy_revision: positive integer
-    material_boundaries: MaterialBoundary[]
-    actor_boundary: ActorBoundary
-    operation_boundary: OperationBoundary | null
-    destination_boundary: DestinationBoundary
-    accepted: bool
-    deficits: SecurityDeficit[]
-```
+## 10. Cancellation and failure evidence
 
-A deficit is diagnostic evidence for a failed relation.
+Cancellation records whether accepted durable work was prevented or whether cancellation arrived during a running attempt.
 
-```text
-SecurityDeficit
-    dimension: sensitivity | trust | risk | scope | execution_boundary | policy
-    supplied_level: SecurityLevel | null
-    required_level: SecurityLevel | null
-    explanation_code: OpaqueId
-```
+Durable failure evidence should use stable runtime/adapter codes rather than persist arbitrary provider exception text containing private material.
 
-An accepted decision describes one past evaluation. It is never reused as authority for another crossing.
+## 11. Persistence invariant
 
-## 12. Capability requirement
+Runtime persistence may contain public registry/mechanism metadata, work/attempt state, SecurityIDs/SecurityObjects or their durable representation, opaque references/coordination values, digests, delivery state and evidence codes.
 
-A Module describes the semantic/operational properties required of computation without embedding provider-specific request mechanics.
-
-```text
-CapabilityRequirement
-    capability_class: OpaqueId
-    preferred_capabilities: CapabilityRef[]
-    exact_capability: CapabilityRef | null
-    locality: LocalityRequirement
-    resource_requirements: ResourceRequirement[]
-    output_schema_ref: SchemaRef | null
-```
-
-```text
-LocalityRequirement
-    LOCAL_REQUIRED
-    LOCAL_PREFERRED
-    REMOTE_PERMITTED
-```
-
-The exact field set can grow only when a concrete selection/scheduling behavior requires it.
-
-A Module may request an exact configured capability/model. Runtime still validates availability, boundary algebra and execution policy.
-
-## 13. Scheduling request
-
-Scheduling fields are independent from semantic WorkPlan meaning.
-
-```text
-SchedulingRequest
-    eligible_at: timestamp | null
-    priority: implementation-defined bounded value
-    budget: BudgetConstraint[]
-    resource_class: OpaqueId | null
-    scheduling_group: SchedulingGroupRef | null
-```
-
-`SchedulingGroupRef` is an opaque runtime scheduling grouping when an actual fairness/admission policy needs group-level behavior.
-
-The runtime may also carry member ordering/count hints when a concrete scheduler consumes them.
-
-## 14. Correlation metadata
-
-```text
-CorrelationMetadata
-    origin_module: ModuleRef
-    values: map[OpaqueId, OpaqueValue]
-```
-
-Correlation values can identify a Module-owned conversation, Agent invocation, Workflow, WorkPlan or task for the originator.
-
-MADRE stores/returns them without deriving semantic execution behavior unless a value is explicitly promoted into a separate typed scheduling field.
-
-Correlation is not authorization.
-
-## 15. WorkSubmission
-
-The durable runtime input is conceptually:
-
-```text
-WorkSubmission
-    input_payloads: TypedPayload[]
-    material_boundaries: MaterialBoundary[]
-    actor_boundary: ActorBoundary
-    capability_requirement: CapabilityRequirement
-    scheduling: SchedulingRequest
-    correlation: CorrelationMetadata
-    intended_execution: IntendedExecution
-    idempotency_key: OpaqueId | null
-    retry_contract: RetryContract
-```
-
-`IntendedExecution` identifies the bounded capability/action class required by Runtime without encoding a semantic Agent task ontology.
-
-```text
-IntendedExecution
-    capability_class: OpaqueId
-    operation_ref: OperationRef | null
-```
-
-If an Operation is invoked, Runtime resolves the exact Operation boundary/effect profile before admission.
-
-## 16. Retry and effect contract
-
-Physical retry semantics are explicit because durable work may be interrupted after an external effect.
-
-```text
-Repeatability
-    REPEATABLE
-    IDEMPOTENT
-    NON_REPEATABLE
-    UNKNOWN
-
-InterruptedOutcome
-    DETERMINATE
-    MAY_BE_UNKNOWN
-
-RetryContract
-    repeatability: Repeatability
-    interrupted_outcome: InterruptedOutcome
-```
-
-Automatic or requested retry must preserve truthful prior attempt evidence.
-
-A work item with `MAY_BE_UNKNOWN` cannot be treated as safely repeatable solely because the process restarted.
-
-## 17. WorkRecord
-
-An accepted submission becomes durable runtime truth.
-
-Conceptually:
-
-```text
-WorkRecord
-    ref: WorkRef
-    accepted_submission
-    accepted_at
-    eligibility facts
-    cancellation facts
-    terminal result/failure facts
-    attempt refs
-    selected execution evidence
-```
-
-The exact storage schema is implementation-owned. The invariant is that accepted work is recoverable and inspectable independently of the originating Module process.
-
-## 18. WorkAttempt
-
-```text
-WorkAttempt
-    ref: AttemptRef
-    started_at
-    selected_capability: CapabilityRef
-    destination_boundary: DestinationBoundary
-    security_decision: SecurityDecisionRef
-    finished_at: timestamp | null
-    outcome: AttemptOutcome
-    metrics: ExecutionMetric[]
-```
-
-Attempt outcome records physical truth such as:
-
-```text
-SUCCESS
-DETERMINATE_FAILURE
-INTERRUPTED
-UNKNOWN_EXTERNAL_EFFECT
-CANCELLED_BEFORE_EXECUTION
-```
-
-Generated output is stored/referenced as execution result material.
-
-## 19. Runtime result
-
-```text
-WorkResult
-    work: WorkRef
-    output_payloads: TypedPayload[]
-    output_material_boundaries: MaterialBoundary[]
-    evidence_refs: OpaqueId[]
-```
-
-The output is returned to the originating Module, which interprets it according to its Agent/Workflow/WorkPlan/domain semantics.
-
-A capability response never directly becomes a domain mutation.
-
-## 20. Operation descriptor
-
-An exposed Module Operation can be registered conceptually as:
-
-```text
-OperationDescriptor
-    ref: OperationRef
-    purpose: string
-    input_schema_refs: SchemaRef[]
-    output_schema_refs: SchemaRef[]
-    boundary: OperationBoundary
-    effects: OperationEffectContract
-    routing_metadata: OpaqueMetadata
-```
-
-```text
-OperationEffectContract
-    repeatability: Repeatability
-    interrupted_outcome: InterruptedOutcome
-```
-
-Kernel uses the descriptor only for routing, validation, security/effect evaluation and execution evidence.
-
-The destination Module owns implementation and domain mutation.
-
-## 21. Module registry projection
-
-MADRE may maintain a deterministic registry of integration endpoints.
-
-Conceptually:
-
-```text
-ModuleRegistryEntry
-    module: ModuleRef
-    descriptor_revision
-    routing_metadata
-    operation_refs
-    context_projection_metadata
-    surface_projection_metadata
-    boundary_metadata
-```
-
-The registry can additionally expose the installation's configured `default_module_ref`.
-
-Module-owned intelligence interprets routing metadata. Runtime uses exact explicit references for dispatch.
-
-## 22. Context/reference retention
-
-Durable work can store either the actual bounded payload required for execution or a stable bounded reference whose retrieval semantics are part of the accepted work contract.
-
-The runtime must preserve enough information for restart-safe execution.
-
-A reference to Module-private state does not authorize broad retrieval. Any material crossing at execution time must have current boundary values and pass the algebra.
-
-## 23. Runtime evidence
-
-Runtime evidence is execution provenance.
-
-Minimum useful evidence may include:
-
-```text
-WorkRef
-origin Module
-correlation metadata
-accepted/eligible timestamps
-selected capability/model
-resource admission decision
-security decision
-attempts
-result/failure
-cancellation/retry/recovery
-execution metrics
-```
-
-Raw model chain-of-thought is not required for runtime provenance.
-
-## 24. Ownership matrix
-
-| Contract concept | Runtime interprets? | Semantic owner |
-| --- | --- | --- |
-| WorkSubmission lifecycle | yes | MADRE |
-| eligible_at / priority / resource constraints | yes | MADRE execution semantics |
-| capability/model requirement | yes | Module requirement + MADRE physical selection |
-| security boundary values | yes, algebraically | crossing participants / current execution boundary |
-| WorkAttempt / result/failure | yes | MADRE execution truth |
-| correlation metadata | opaque | Module |
-| Agent identity/state | no | Module |
-| Skill/Workflow | no | Module |
-| WorkPlan/objective rationale | no | Module |
-| conversation/UI state | no | Module |
-| domain truth/knowledge | no | Module |
-| domain mutation | no | destination Module Operation |
-
-## 25. Contract invariants
-
-1. Every accepted work item has one durable runtime identity.
-2. Immediate and delayed work use the same acceptance/lifecycle path.
-3. The runtime can recover accepted work without reconstructing Module semantic state.
-4. A Module can reconstruct semantic correlation from returned opaque metadata and its own persistence.
-5. Capability/provider dialects remain behind adapters.
-6. Final physical selection is made from submitted requirements, current runtime evidence and current boundary policy.
-7. Security evaluation consumes current normalized boundary values and is repeated for each governed crossing.
-8. IDs/references are routing and evidence values rather than security grants.
-9. A minimized/derived payload has its own current material boundary rather than a relabeled source record.
-10. Domain mutations remain inside Module-owned Operations.
-11. Unknown external effects remain distinguishable from determinate failure.
-12. Runtime evidence records execution truth without standardizing Agent/Skill/Workflow/WorkPlan semantics.
+It must not contain prompt/context/output payload columns.

@@ -1,52 +1,107 @@
-"""Submission and inspection contracts for bounded runtime work."""
+"""Public execution contracts. Durable records deliberately exclude content bytes."""
+
+from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import AwareDatetime, Field, JsonValue, field_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    JsonValue,
+    field_validator,
+    model_validator,
+)
 
-from madre.config import StrictModel
+from madre.security import ExecutionBoundary, Identifier, SecurityContext, SecurityEnvelope
 
 
-class ExecutionConstraints(StrictModel):
-    timeout_seconds: float = Field(default=120, gt=0, le=3600, allow_inf_nan=False)
-    local_only: bool = True
+class FrozenModel(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class WorkSubmission(StrictModel):
-    application_id: str = Field(min_length=1)
-    capability_id: str = Field(min_length=1)
-    input: dict[str, JsonValue]
+class ExecutionConstraints(FrozenModel):
+    timeout_seconds: float = Field(default=120, gt=0, allow_inf_nan=False)
+    local_only: bool = False
+
+
+class CorrelationEntry(FrozenModel):
+    key: Identifier
+    value: Identifier
+
+
+class CapabilityRequest(FrozenModel):
+    capability_id: Identifier | None = None
+    kind: Identifier
+    modality: Identifier = "text"
+    model_id: Identifier | None = None
+
+
+class ImmediateMaterial(FrozenModel):
+    kind: Literal["immediate"] = "immediate"
+    reference: Identifier
+    payload: JsonValue
+    envelope: SecurityEnvelope
+
+
+class DelayedMaterial(FrozenModel):
+    kind: Literal["delayed"] = "delayed"
+    reference: Identifier
+    digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    envelope: SecurityEnvelope
+
+
+ExecutionMaterial = Annotated[ImmediateMaterial | DelayedMaterial, Field(discriminator="kind")]
+
+
+class WorkSubmission(FrozenModel):
+    originator: Identifier
+    security: SecurityContext
+    capability: CapabilityRequest
+    material: ExecutionMaterial
     eligible_at: AwareDatetime | None = None
-    priority: int = Field(default=0, ge=-100, le=100)
+    priority: int = 0
     constraints: ExecutionConstraints = Field(default_factory=ExecutionConstraints)
+    correlation: tuple[CorrelationEntry, ...] = ()
 
     @field_validator("eligible_at")
     @classmethod
     def utc_time(cls, value: datetime | None) -> datetime | None:
         return value.astimezone(UTC) if value is not None else None
 
-
-class WorkRetryRequest(StrictModel):
-    allow_unknown_outcome: bool = False
-
-
-WorkStatus = Literal["accepted", "running", "succeeded", "failed", "cancelled"]
-AttemptStatus = Literal["running", "succeeded", "failed"]
-CancellationDisposition = Literal["prevented", "requested_while_running"]
+    @model_validator(mode="after")
+    def unique_correlation_keys(self) -> WorkSubmission:
+        keys = [entry.key for entry in self.correlation]
+        if len(keys) != len(set(keys)):
+            raise ValueError("correlation keys must be unique")
+        return self
 
 
-class WorkFailure(StrictModel):
-    code: str = Field(min_length=1)
-    message: str = Field(min_length=1)
+class WorkSpec(FrozenModel):
+    originator: Identifier
+    security: SecurityContext
+    capability: CapabilityRequest
+    material_reference: Identifier
+    input_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    material_envelope: SecurityEnvelope
+    eligible_at: AwareDatetime | None = None
+    priority: int = 0
+    constraints: ExecutionConstraints = Field(default_factory=ExecutionConstraints)
+    correlation: tuple[CorrelationEntry, ...] = ()
 
 
-class WorkCancellation(StrictModel):
+class WorkFailure(FrozenModel):
+    code: Identifier
+
+
+class WorkCancellation(FrozenModel):
     requested_at: AwareDatetime
-    disposition: CancellationDisposition
+    disposition: Literal["prevented", "requested_while_running"]
 
 
-class WorkRetry(StrictModel):
+class WorkRetry(FrozenModel):
     number: int = Field(ge=1)
     requested_at: AwareDatetime
     allow_unknown_outcome: bool = False
@@ -54,25 +109,43 @@ class WorkRetry(StrictModel):
     previous_failure: WorkFailure
 
 
-class WorkAttempt(StrictModel):
+class WorkAttempt(FrozenModel):
     number: int = Field(ge=1)
     retry_number: int | None = Field(default=None, ge=1)
-    status: AttemptStatus
+    status: Literal["running", "succeeded", "failed"]
     started_at: AwareDatetime
     completed_at: AwareDatetime | None = None
-    result: dict[str, JsonValue] | None = None
+    capability_id: Identifier | None = None
+    model_id: Identifier | None = None
+    execution_boundary: ExecutionBoundary | None = None
+    output_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    output_size: int | None = Field(default=None, ge=0)
     failure: WorkFailure | None = None
 
 
-class WorkRecord(StrictModel):
-    id: str = Field(min_length=1)
-    submission: WorkSubmission
+class ResultEvidence(FrozenModel):
+    digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    size: int = Field(ge=0)
+    produced_at: AwareDatetime
+    delivery_status: Literal["awaiting_consumption", "consumed", "lost"]
+
+
+WorkStatus = Literal["accepted", "running", "succeeded", "failed", "cancelled"]
+
+
+class WorkRecord(FrozenModel):
+    id: Identifier
+    spec: WorkSpec
     status: WorkStatus
     submitted_at: AwareDatetime
     started_at: AwareDatetime | None = None
     completed_at: AwareDatetime | None = None
-    result: dict[str, JsonValue] | None = None
     failure: WorkFailure | None = None
     cancellation: WorkCancellation | None = None
-    retries: list[WorkRetry] = Field(default_factory=list)
-    attempts: list[WorkAttempt] = Field(default_factory=list)
+    retries: tuple[WorkRetry, ...] = ()
+    attempts: tuple[WorkAttempt, ...] = ()
+    result: ResultEvidence | None = None
+
+
+class WorkRetryRequest(FrozenModel):
+    allow_unknown_outcome: bool = False

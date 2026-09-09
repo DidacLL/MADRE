@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "madre-runtime"
 version = "0.1.0"
-description = "Local-first execution runtime for independent AI applications"
+description = "Local-first governed execution and agent interoperability platform"
 readme = "README.md"
 requires-python = ">=3.13"
 license = "GPL-3.0-only"
@@ -20,13 +20,12 @@ dependencies = [
 
 [project.scripts]
 madre = "madre.cli:main"
-madre-core = "madre_core.cli:main"
 
 [dependency-groups]
 dev = ["hatchling==1.32.0", "mypy>=1.15,<2", "pytest>=8.3,<10", "ruff>=0.11,<1"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/madre", "src/madre_core"]
+packages = ["src/madre"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -41,7 +40,7 @@ select = ["E", "F", "I", "UP", "B"]
 [tool.mypy]
 python_version = "3.13"
 strict = true
-files = ["src/madre", "src/madre_core"]
+files = ["src/madre"]
 
 [tool.uv]
 required-version = "==0.12.10"
