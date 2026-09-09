@@ -6,7 +6,7 @@ MADRE is a personal, single-owner research and software project. Optimize for du
 
 ## Authority and precedence
 
-Use the current explicit Owner request as the task goal and highest project-specific authority for that task.
+The current explicit Owner request is the task goal and highest project-specific authority for that task.
 
 If an Owner decision changes enduring product meaning, propagate it into the appropriate canonical repository document during the task so chat does not become shadow product authority.
 
@@ -17,21 +17,22 @@ Repository authority is otherwise:
 3. `docs/implementation-baseline.md` — descriptive current implementation stage, gaps and validation state;
 4. current code, tests and runtime evidence — implementation truth;
 5. `README.md` — runnable setup and current usage;
-6. `docs/design-memory/` — non-normative Owner intent, rationale, examples, corrections, failed interpretations and open directions, loaded only when relevant;
+6. `docs/design-memory/` — non-normative product rationale, examples, constraints, research directions and ecosystem notes, loaded only when relevant;
 7. Git history, PRs, issues and generated/supporting material — provenance/evidence only.
 
-Generated documents, commits, PR descriptions, schemas and implementation artifacts are not proof of Owner intent merely because they were committed, merged or labelled canonical. Use them to understand attempted interpretations and implementation history; corroborate product meaning against direct Owner guidance, current canonical contracts and relevant design memory.
+Generated documents, commits, PR descriptions, schemas and implementation artifacts are not proof of Owner intent merely because they were committed, merged or labelled canonical. Use them as implementation/history evidence and resolve product meaning from direct Owner guidance plus the current canonical corpus.
 
-History does not restore superseded product semantics. If the descriptive baseline disagrees with current executable behavior, code/tests/runtime evidence establish what actually works and the baseline must be corrected; they do not silently redefine product architecture.
+If the descriptive baseline disagrees with current executable behavior, code/tests/runtime evidence establish what actually works and the baseline must be corrected; executable behavior does not silently redefine product architecture.
 
 ## Context loading
 
-Load only the context needed for the task.
+Load only the context required by the task.
 
-- Product/architecture work: read `MADRE.md`, then the focused architecture owner for the responsibility being changed. Load the matching `docs/design-memory/` topic when the task touches a nuanced Owner principle, a known drift area, or an unresolved design direction.
-- Runtime convergence work: read `MADRE.md`, `docs/implementation-baseline.md`, the relevant architecture owner, then the smallest code/test surface that answers the task. Load design memory only for concepts the implementation could otherwise misinterpret.
-- Build/setup/usage work: start from `README.md`, configuration and the directly relevant code; load product architecture only if the task reaches it.
-- Historical investigation: inspect history only when provenance or an unresolved question requires it.
+- Product/architecture work: read `MADRE.md`, then the focused architecture owner. Load the matching design-memory topic when product rationale, examples, constraints or an open direction materially affect the decision.
+- Runtime convergence work: read `MADRE.md`, `docs/implementation-baseline.md`, the relevant architecture owner, then the smallest code/test surface that answers the task.
+- SDK/Module work: read `MADRE.md`, `MADRE-agent-interoperability.md`, the directly relevant design-memory topic, then the public contracts and smallest implementation surface.
+- Build/setup/usage work: start from `README.md`, configuration and directly relevant code; load product architecture only if the task reaches it.
+- Historical/refactor investigation: inspect `docs/refactors/` or Git history only when the task explicitly concerns that transition or provenance.
 
 Expand context just in time through concrete dependencies, interfaces, failing behavior and tests. Prefer targeted repository search and direct inspection over broad ingestion.
 
@@ -56,7 +57,7 @@ For each task:
 
 1. Identify the observable behavior or product decision required.
 2. Inspect the nearest authoritative contract and current implementation evidence.
-3. Load any directly relevant design-memory topic before filling a semantic gap from convention.
+3. Load relevant design memory before filling a semantic gap from convention.
 4. Choose the simplest coherent implementation suited to the present system.
 5. Implement the behavior end to end.
 6. Validate it with evidence proportional to the changed surface and use failures to steer corrections.
@@ -70,11 +71,11 @@ Preserve the ownership model in `MADRE.md` while allowing implementation archite
 
 A conventional architecture, security mechanism, policy, abstraction, service or dependency is not justified merely because it is common or considered best practice. Introduce it only when required by the current Owner request, canonical MADRE behavior, a demonstrated implementation need or concrete evidence.
 
-Do not confuse avoiding over-engineering with leaving architecture undefined. MADRE needs the smallest coherent, modular and human-readable set of contracts/classes required for its real boundaries and SDK. Define cross-boundary concepts deliberately enough that later implementation does not fill a vacuum with unrelated industry conventions; do not universalize Module-private semantics into Kernel/framework ontology.
+Do not confuse avoiding over-engineering with leaving architecture undefined. MADRE needs the smallest coherent, modular and human-readable set of contracts/classes required for its actual boundaries and SDK. Define cross-boundary concepts deliberately enough that later implementation does not fill a vacuum with unrelated conventions; keep Module-private semantics out of Kernel/framework ontology.
 
-Use suitable concrete dependencies directly when they make the current solution simpler, clearer or more reliable. Introduce a distinct abstraction when an observed responsibility becomes clearer, safer, more reusable or easier to test because of it.
+Use suitable concrete dependencies directly when they make the current solution simpler, clearer or more reliable. Introduce a distinct abstraction only when an observed responsibility becomes clearer, safer, more reusable or easier to test because of it.
 
-When correcting architectural drift, preserve unrelated useful behavior. Fix the violated responsibility or contract rather than compensating by deleting the surrounding subsystem unless that subsystem itself conflicts with MADRE. Do not turn one detected flaw into a wholesale redesign without evidence that the wider structure is wrong.
+When correcting architectural drift, preserve unrelated useful behavior. Fix the violated responsibility or contract rather than redesigning the surrounding subsystem without evidence that the wider structure is wrong.
 
 Treat names as part of software correctness and maintainability. Prefer terminology that lets a human reader infer responsibility without reconstructing hidden architectural meaning.
 
@@ -107,16 +108,15 @@ Put durable knowledge in the narrowest owner:
 - product invariants → `MADRE.md`;
 - detailed architecture → the focused `docs/architecture/` owner;
 - current development stage/gaps → `docs/implementation-baseline.md`;
-- nuanced Owner intent, rationale, examples, correction lineage and unresolved directions → `docs/design-memory/`;
+- product rationale, examples, constraints, exploratory directions and external-project lessons → `docs/design-memory/`;
 - recurring repository-wide agent behavior → `AGENTS.md`;
 - implementation behavior → code and tests;
-- historical/generated evidence → Git/PR history or a focused source note when that evidence remains useful.
+- temporary migration/refactor instructions → a focused folder under `docs/refactors/`;
+- historical/generated evidence → Git/PR history.
 
-When an Owner clarification exists mainly to prevent a recurring misinterpretation, preserve both the current interpretation and the failed interpretation in design memory rather than bloating canonical docs with conversational history.
+Before adding durable design memory, search the existing topic and update it when the new material refines the same concept. Prefer one maintained statement over parallel formulations.
 
-Do not add a standing harness rule merely because one agent made a mistake. First ask whether the correction belongs in product authority, architecture, design memory, baseline, code/tests/tooling or history.
-
-A rule belongs here only when it is recurring, repository-wide and continues to reduce future reasoning. Remove rules that stop earning permanent context.
+Do not add a standing harness rule merely because one task exposed a local mistake. A rule belongs here only when it is recurring, repository-wide and continues to reduce future reasoning.
 
 ## Completion
 
