@@ -44,8 +44,6 @@ def _capabilities(settings: Settings) -> CapabilityRegistry:
                 privacy=config.privacy,
                 risk=config.risk,
             ),
-            origin=f"adapter:{capability_id}",
-            provenance=("openai-compatible",),
         )
         descriptor = CapabilityDescriptor(
             id=capability_id,
