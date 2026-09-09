@@ -24,6 +24,7 @@ PreferenceDimension = Literal[
     "mechanism",
     "model",
     "provider",
+    "cost",
     "execution_boundary",
     "latency",
     "reasoning_effort",
@@ -58,6 +59,7 @@ class InferencePreferences(FrozenModel):
     mechanism_ids: tuple[Identifier, ...] = ()
     model_ids: tuple[Identifier, ...] = ()
     provider_ids: tuple[Identifier, ...] = ()
+    prefer_free: bool = False
     execution_boundaries: tuple[ExecutionBoundary, ...] = ()
     latency_classes: tuple[LatencyClass, ...] = ()
     reasoning_efforts: tuple[ReasoningEffort, ...] = ()
@@ -70,6 +72,7 @@ class FallbackPolicy(FrozenModel):
         "mechanism",
         "model",
         "provider",
+        "cost",
         "execution_boundary",
         "latency",
         "reasoning_effort",
