@@ -160,6 +160,8 @@ class CapabilityRegistry:
             values, candidate = preferences.model_ids, descriptor.model_id
         elif dimension == "provider":
             values, candidate = preferences.provider_ids, descriptor.provider_id
+        elif dimension == "cost":
+            return int(preferences.prefer_free and descriptor.paid)
         elif dimension == "execution_boundary":
             values, candidate = preferences.execution_boundaries, descriptor.execution_boundary
         elif dimension == "latency":
