@@ -33,7 +33,6 @@ def actor(subject: str, *, kind: str, trust=SecurityLevel.LEVEL_5) -> SecurityOb
         subject_id=subject,
         subject_kind=kind,  # type: ignore[arg-type]
         values=ActorSecurityValues(trust=trust, isolation=SecurityLevel.LEVEL_5),
-        origin="fixture",
     )
 
 
@@ -42,7 +41,6 @@ def operation_security(subject: str, *, risk=SecurityLevel.LEVEL_1) -> SecurityO
         subject_id=subject,
         subject_kind="operation",
         values=OperationSecurityValues(risk=risk, autonomy=SecurityLevel.LEVEL_2),
-        origin="fixture",
     )
 
 
@@ -64,7 +62,6 @@ def material(
             subject_id=reference,
             subject_kind="artifact",
             values=MaterialSecurityValues(sensitivity=sensitivity),
-            origin="fixture",
         ),
     )
 
