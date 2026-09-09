@@ -30,7 +30,6 @@ from madre.security import (
     Identifier,
     SecurityObject,
 )
-
 from madre_sdk.material import Material, MaterialRepository
 
 
