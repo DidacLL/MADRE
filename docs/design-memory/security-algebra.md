@@ -2,103 +2,105 @@
 
 Authority: non-normative design memory. Canonical security architecture is `docs/architecture/MADRE-security-algebra.md`.
 
-## Original intent: simple normalized algebra, not permission matching
+## Why the algebra exists
 
-Provenance: **DIRECT OWNER**
-Status: **CONFIRMED**
+**OWNER — CONFIRMED**
 
-The security model is intentionally novel and small. It should not be reconstructed from ACLs, clearances, role systems, policy matrices, zero-trust boilerplate, or paired `requirement`/`capability` property checks.
+MADRE needs a compact deterministic way to evaluate the real consequence of moving material through Agents, Modules, Operations and inference mechanisms without requiring case-by-case user approval for every internal step.
 
-The Owner's original intuition is to normalize a few security-relevant dimensions to a small common scale (`1..5`, with `0` system-reserved) so heterogeneous facts can be composed deterministically across the concrete lifecycle.
+The original idea is to normalize a small number of independent security dimensions to a common scale so a single compositional algorithm can evaluate the actual request/work path.
 
-The purpose of normalization is **not** to create dozens of counterpart fields such as:
+The common numeric range exists for algebraic simplicity. It is not intended to create a conventional permission matrix.
 
-```text
-actor maximum sensitivity
-context required trust
-operation minimum input trust
-target maximum input sensitivity
-clearance vs classification
-```
+## Independent dimensions
 
-Those are list/matrix checks expressed numerically, not the intended algebra.
+**OWNER — CONFIRMED**
 
-## Concrete intuition
-
-Provenance: **DIRECT OWNER**
-Status: **CONFIRMED examples, not a frozen formula**
-
-Different participants contribute different kinds of consequence.
+Different things contribute different security facts.
 
 Examples:
 
-- medical information is highly sensitive;
-- known user secrets are among the most sensitive material;
-- an encapsulated local UX Agent or local inference mechanism generally preserves more privacy than a broad Internet-facing or remote-cloud path;
-- an Operation or capability has its own consequence/risk contribution;
-- creating executable material such as a Bash/shell script is high-risk and must not be casually classified as an ordinary moderate file write;
-- an action that can publish, destroy, execute or otherwise materially affect the outside world contributes substantially more risk than a bounded local transformation.
+- medical data is highly sensitive;
+- known user secrets may carry maximum Sensitivity;
+- CORE-owned personal/profile material can be extremely sensitive;
+- a strongly isolated local Agent can have strong actor/security characteristics while handling that high-sensitivity material;
+- a local inference mechanism can preserve substantially more privacy than a remote/cloud path;
+- a destructive, publishing or executable Operation can be very high risk even when its input is public;
+- direct user involvement can materially change whether a risky action is acceptable compared with fully autonomous continuation.
 
-The algebra evaluates the actual combination of carried material sensitivity, boundary/privacy/provenance facts, capability/Operation risk, and prior crossings.
+Sensitivity, trust/isolation/privacy, risk/consequence, IntendedUse and Autonomy therefore describe different axes. One should not be inferred from another.
 
-Do not invent the final formula from these examples. Derive it from real MADRE cases.
+## SecurityObject intuition
 
-## Carried lifecycle is essential
+**OWNER — CONFIRMED**
 
-Provenance: **DIRECT OWNER / OWNER CONFIRMED**
-Status: **CONFIRMED**
+Every actor/action/artifact/mechanism that matters to the algebra should expose one unique bound security identity describing only its relevant values.
 
-Security facts travel with the concrete request/work lifecycle. Later crossings add facts; mutable registry state does not retroactively rewrite the history of accepted work.
+A request from an Agent therefore carries that Agent's SecurityObject and the owning Module's SecurityObject; material contributes Artifact/ContextBundle SecurityObjects; a selected Operation and Capability contribute theirs; later participants add theirs.
 
-Registration, installation acceptance, identity, possession of references, bearer tokens, roles, ACLs, allowlists and previous successful decisions grant no MADRE permission.
+The algebra evaluates the carried set repeatedly as new boundaries are proposed.
 
-The retrieval claim used for durable material resolution is coordination only, never authority.
+This should stay structurally simple enough to reason about and test.
 
-## Kernel does not interpret payload semantics
+## Remediation is part of the model
 
-Provenance: **DIRECT OWNER**
-Status: **CONFIRMED**
+**OWNER — CONFIRMED**
 
-Kernel does not read prompts or generated outputs for semantic meaning. It operates on explicit metadata, security/boundary facts, references/digests and physical execution state.
+A failed boundary can return control/evidence to the nearest capable Agent/Module so it can try a valid alternative.
 
-A generated output therefore cannot change Kernel security merely by saying something. The relevant protection is structural: any later use of that material occurs through Module-owned semantics and new bounded crossings.
+Examples:
 
-Inside a Module, generated output may deliberately be used as the next input, persisted as domain state, accepted as evidence, or otherwise given whatever semantic role the Module's Agent architecture requires. MADRE must not impose a universal rule that model-generated material can never become authoritative inside a Module.
+```text
+minimize
+anonymize
+omit some context
+use another representation
+choose another Operation
+choose a different/local Capability
+require user involvement
+stop the route
+```
 
-## Bounded effects, not broad AI shell/Internet authority
+The new representation or participant receives its own SecurityObject and the algebra runs again.
 
-Provenance: **DIRECT OWNER**
-Status: **CONFIRMED**
+## Concrete examples for formula research
 
-MADRE-provided integration surfaces do not give AI actors an unbounded shell or unrestricted Internet environment. External/system effects are exposed through specific bounded Operations or concrete mechanisms with known boundary/risk properties.
+**EXAMPLE**
 
-This boundedness is part of why the algebra can remain small and meaningful: MADRE evaluates concrete operations/crossings instead of trying to secure an arbitrary omnipotent agent process.
+The eventual formula should be tested against cases such as:
 
-A user may deliberately install custom Modules/adapters with different behavior; that explicit integration must still declare and cross the relevant MADRE boundaries rather than becoming hidden generic authority.
+1. maximum-sensitivity secret used only by an isolated local CORE Agent and local inference;
+2. the same secret considered for remote inference;
+3. public text passed to an Operation that can execute a shell script;
+4. a high-consequence Operation requiring active user acknowledgement;
+5. the same Operation running fully autonomously;
+6. sensitive context transformed into a genuinely minimized/anonymized new Artifact before an external crossing;
+7. several Modules/Agents contributing context over a long durable work lifecycle.
 
-## Rejected generated interpretations
+These cases are more useful than inventing a large vocabulary before the formula exists.
 
-Provenance: **GENERATED INTERPRETATION**
-Status: **REJECTED**
+## Open formula
 
-Do not resurrect without fresh Owner evidence:
+**OPEN**
 
-- actor sensitivity ceilings;
-- clearance/classification matching;
-- minimum-input-trust fields;
-- policy/role/grant registries;
-- ACL-style scope authorization;
-- generic bearer authorization for local Modules;
-- large mirrored requirement/property taxonomies;
-- semantic prompt/output inspection by Kernel as current security;
-- assuming conventional security vocabulary has its conventional industry meaning inside MADRE.
+The exact algorithm remains a specialized design/research problem.
 
-## Current implementation warning
+It should be derived deliberately, represented with small case tables/tests and remain understandable enough that developers can predict why a boundary passes or fails.
 
-Status: **OPEN / REQUIRES RECONCILIATION**
+## Unknown/third-party valuation
 
-The current implementation reduces carried envelopes with `max(sensitivity)`, `min(trust)`, `max(risk)` and admits when `trust >= sensitivity` and `trust >= risk`.
+**OPEN**
 
-That relation is implementation history, not a frozen Owner formula. Preserve useful carried-context/integrity/provenance behavior while re-deriving the minimal contributor structure and algebra from MADRE cases. Do not overreact by deleting the whole security lifecycle because this particular reduction is questionable.
+A third-party/unknown Module or adapter may not arrive with a trustworthy MADRE-native SecurityObject valuation.
 
-Future deterministic AI-specific signals such as prompt-injection detection or content-quality evidence are separate research directions and must not be silently folded into today's boundary/provenance semantics.
+Possible future inputs include conservative defaults, explicit installer/user declarations, facts inferred from its concrete adapter/mechanism, and SDK-assisted analysis of MADRE-native source/contracts.
+
+The final rule should be chosen together with the algebra rather than guessed in advance.
+
+## Bounded effects simplify the problem
+
+**OWNER — CONFIRMED**
+
+MADRE does not give its Agents generic unrestricted shell or Internet authority. Effects are represented as concrete Operations/mechanisms.
+
+This is important because the security formula only needs to reason about declared bounded participants and consequences rather than an omnipotent AI process.
