@@ -27,7 +27,6 @@ from madre.interfaces import (
 )
 from madre.registry import AgentDescriptor, OperationDescriptor, SkillDescriptor, WorkflowDescriptor
 from madre.security import SecurityContext
-
 from madre_sdk.material import Material, MaterialRepository
 
 
