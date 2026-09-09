@@ -1,49 +1,51 @@
 # MADRE Design Memory
 
-This directory preserves high-value Owner intent that should not be compressed into canonical architecture or left only in chat/Git history.
+This directory preserves useful product reasoning that is too rich, illustrative or exploratory for the canonical architecture.
 
-It is **not product authority**. `MADRE.md` and the focused documents under `docs/architecture/` remain normative. Design memory exists to preserve why those contracts exist, recurring misinterpretations, examples, constraints, and strong directions that are not yet frozen.
+It is **not product authority**. `MADRE.md` and the focused documents under `docs/architecture/` are normative.
 
-## Evidence discipline
+Design memory should help a fresh developer understand product intent without loading old conversations or implementation history.
 
-Generated documents, commits, PRs, schemas and implementation artifacts may contain valuable reasoning, but they are not proof of Owner intent by themselves. Treat them as evidence of an attempted interpretation unless corroborated by direct Owner statements or later Owner-confirmed corrections.
+## What belongs here
 
-Use these provenance labels in topic notes:
+Keep information such as:
 
-- **DIRECT OWNER** — explicitly stated by the Owner.
-- **OWNER CONFIRMED** — synthesized wording that the Owner explicitly accepted.
-- **CURRENT DIRECTION** — strong design direction still open to refinement.
-- **GENERATED INTERPRETATION** — agent-produced realization; useful as forensic evidence, not Owner authority.
-- **EXTERNAL RESEARCH** — comparison/example only.
+- product rationale and constraints;
+- interaction/UX intuition;
+- representative examples that help test an architecture;
+- research directions not yet frozen;
+- future product/module ideas;
+- external-project observations worth remembering;
+- implementation-language/engineering preferences that should guide, but not define, product architecture.
 
-Use these semantic statuses:
+Migration notes, obsolete schemas and instructions for reconciling the current branch belong under `docs/refactors/`, not here.
 
-- **CONFIRMED** — durable current intent.
-- **OPEN** — deliberately unresolved.
-- **EXAMPLE** — illustrative, not normative.
-- **SUPERSEDED** — earlier interpretation replaced by later understanding.
-- **REJECTED** — known bad interpretation that should not be reintroduced without new Owner evidence.
+## Evidence labels
+
+Use simple labels only when useful:
+
+- **OWNER** — directly stated or explicitly confirmed product intent;
+- **DIRECTION** — strong but still refinable direction;
+- **OPEN** — deliberately unresolved;
+- **EXAMPLE** — illustrative, not normative;
+- **EXTERNAL** — outside-project observation only.
+
+Generated historical documents are not Owner authority by themselves.
 
 ## Retrieval map
 
-Load only the relevant topic for the task.
+Load only the relevant topic.
 
 | Working on | Read |
 | --- | --- |
-| CORE, default/fallback intelligence, fast interaction, UX | `core-and-interaction.md` |
-| security, privacy, risk, sensitivity, trust, admissibility | `security-algebra.md` |
-| public classes/contracts, SDK, Agents/Skills/Workflows/WorkPlans | `architecture-and-sdk.md` |
-| inference mechanisms, provider/model selection, material lifecycle | `inference-and-execution.md` |
-| ambiguous historical intent or recurring drift | relevant topic note first; use Git/old documents only for provenance |
+| CORE, default UI/UX, interaction Agent, resource-constrained UX | `core-and-interaction.md` |
+| security algebra rationale, examples, unresolved formula | `security-algebra.md` |
+| SDK, public object model, Agents/Skills/Workflows/WorkPlans, developer tooling | `architecture-and-sdk.md` |
+| inference mechanisms, provider ecosystem, durable material, advanced adapters | `inference-and-execution.md` |
+| comparable projects / harness and ecosystem observations | `ecosystem-notes.md` |
 
-## Reading rule
+## Maintenance rule
 
-A topic note should answer five questions where applicable:
+Search the relevant topic before adding another statement. Refine the existing concept when possible instead of creating parallel formulations.
 
-1. What underlying Owner problem/principle is being protected?
-2. What generated interpretation was attempted?
-3. What failed or drifted?
-4. What later Owner correction refined it?
-5. What is current consequence versus still-open design?
-
-Do not normalize contradictions away. Preserve the distinction between an enduring principle and a superseded implementation mechanism.
+If a design-memory direction becomes a required product invariant, move the normative statement to the correct canonical document and leave only the rationale/example here.
