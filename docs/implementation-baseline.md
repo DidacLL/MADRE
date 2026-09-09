@@ -20,7 +20,8 @@ The `madre` package continues to provide:
 - carried `SecurityContext` composition persisted with durable work;
 - the explicitly named compatibility evaluator behind the replaceable `SecurityEvaluator` seam;
 - durable Module manifests plus Agent/Skill/Workflow/Operation descriptors;
-- security-filtered discovery and explicit Agent/Operation brokering;
+- security-filtered discovery and explicit owning-Module + exported-identity Agent/Operation brokering;
+- broker propagation of the evaluated carried `SecurityContext` into the invoked Agent/Operation endpoint so downstream work can continue the same lifecycle state;
 - `WorkSubmission -> WorkRecord -> WorkAttempt` durable execution;
 - reference-only `MaterialHandle` work with JIT Module-owned material resolution and continuity verification;
 - restart/retry reacquisition, delayed eligibility, cancellation and result evidence;
@@ -29,7 +30,7 @@ The `madre` package continues to provide:
 - one OpenAI-compatible HTTP Capability adapter;
 - SQLite persistence without prompt/context/output/provider-error payload fields.
 
-The only Kernel-facing protocol change required by the SDK stage is to expose existing runtime/broker behavior through the public interface-segregated protocols: material-resolver registration, Agent endpoint registration/brokering and Operation endpoint registration/brokering. No new Kernel semantic responsibility was introduced.
+The SDK stage exposed two narrow public-brokering deficiencies in the Kernel-facing protocols: target lookup had relied on the exported Agent/Operation id without using its owning Module, and the already-evaluated carried security context stopped at the broker instead of reaching the invoked endpoint. Those seams now route by owning Module plus exported identity and forward the carried context. They correct routing/security continuity without adding semantic target choice, authorization machinery or other Module meaning to Kernel.
 
 ### Modular SDK
 
@@ -46,8 +47,9 @@ It provides:
 - new security binding for each derived material representation while preserving independent Sensitivity/IntendedUse values unless the Module explicitly changes them;
 - `MaterialRepository` as an optional Module-owned resolver helper producing valid transient material and durable `MaterialHandle`s;
 - small clients for transient inference, durable submission/result access, discovery, Agent brokering and Operation brokering;
+- continuation of an incoming carried `SecurityContext` through nested inference, durable submission and explicit brokering;
 - typed security-object construction/context helpers;
-- `CoreSelection` + `CoreDelegate` as ordinary Module configuration/fallback helpers.
+- `CoreSelection` + `CoreDelegate` as ordinary Module configuration/fallback helpers whose selected Module identity participates in routing.
 
 The SDK does not define Agent sessions, mandatory memory/state, a generic Planner, a Workflow engine, Skill instances, Task ontology or a generic credential/shell/Internet framework.
 
@@ -58,8 +60,9 @@ The `madre_core` package implements the default CORE-capable Module entirely thr
 Its current behavior demonstrates:
 
 - ordinary Module registration and Agent endpoint publication;
-- a default interaction Agent using transient `model.inference.chat` for its immediate natural-response path;
+- a default interaction Agent using transient `model.inference.chat` for its immediate natural-response path, preferring interactive/standard latency rather than requiring a special Kernel lane;
 - optional CORE-private continuation decisions that can explicitly delegate to another visible Agent or submit ordinary durable follow-up inference;
+- preservation of inbound carried security facts through CORE transient inference, delegation and durable continuation;
 - no `[[MADRE_REASONING:...]]` marker protocol and no Kernel fast lane;
 - strongest currently expressible actor trust/isolation values for the shipped Module and interaction Agent;
 - independently high/max Sensitivity on CORE-owned interaction/context/output material;
@@ -79,6 +82,8 @@ Tests enforce that:
 - `madre_sdk` imports only `madre.contracts`, `madre.interfaces`, `madre.registry` and `madre.security` from the Kernel namespace;
 - `madre_core` imports no `madre.*` package directly and reaches MADRE only through `madre_sdk`;
 - `madre` imports neither `madre_sdk` nor `madre_core`, keeping CORE/Agent/Workflow/WorkPlan semantics outside Kernel;
+- brokered material/participant SecurityIDs remain present in CORE's downstream transient and durable security contexts;
+- CORE selection uses both the configured Module and interaction-Agent identity;
 - CORE contains no legacy fast/deeper marker protocol.
 
 ## Structurally outside Kernel
