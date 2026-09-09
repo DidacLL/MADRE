@@ -15,7 +15,12 @@ from madre.security import (
     SecurityObject,
 )
 from madre.storage import PlatformStore, open_database
-from madre_core import DEFAULT_CORE_SELECTION, CoreContinuation, CoreModule
+from madre_core import (
+    CORE_INTERACTION_AGENT_ID,
+    DEFAULT_CORE_SELECTION,
+    CoreContinuation,
+    CoreModule,
+)
 from madre_sdk import (
     Agent,
     AgentBehavior,
@@ -96,15 +101,26 @@ class _AlwaysContinue:
 
 
 class _DelegateTo:
-    def __init__(self, agent_id: str) -> None:
+    def __init__(self, module_id: str, agent_id: str) -> None:
+        self._module_id = module_id
         self._agent_id = agent_id
 
     def decide(self, *, user_input, immediate_result) -> CoreContinuation:
-        return CoreContinuation(delegate_agent_id=self._agent_id)
+        return CoreContinuation(
+            delegate_module_id=self._module_id,
+            delegate_agent_id=self._agent_id,
+        )
 
 
 class _EchoAgent(AgentBehavior):
-    async def execute(self, *, agent_id: str, instructions: tuple[str, ...], payload):
+    async def execute(
+        self,
+        *,
+        agent_id: str,
+        instructions: tuple[str, ...],
+        security: SecurityContext,
+        payload,
+    ):
         return Artifact.create(
             artifact_id=f"{agent_id}:result",
             payload={"handled_by": agent_id, "input": payload},
@@ -112,8 +128,37 @@ class _EchoAgent(AgentBehavior):
         )
 
 
+class _LabeledAgent(AgentBehavior):
+    def __init__(self, implementation: str) -> None:
+        self._implementation = implementation
+
+    async def execute(
+        self,
+        *,
+        agent_id: str,
+        instructions: tuple[str, ...],
+        security: SecurityContext,
+        payload,
+    ):
+        return Artifact.create(
+            artifact_id=f"{self._implementation}:result",
+            payload={
+                "handled_by": agent_id,
+                "implementation": self._implementation,
+                "input": payload,
+            },
+            sensitivity=SecurityLevel.LEVEL_2,
+        )
+
+
 class _BoundedOperation(OperationBehavior):
-    async def execute(self, *, operation_id: str, payload):
+    async def execute(
+        self,
+        *,
+        operation_id: str,
+        security: SecurityContext,
+        payload,
+    ):
         return Artifact.create(
             artifact_id=f"{operation_id}:result",
             payload={"operation": operation_id, "input": payload},
@@ -295,7 +340,23 @@ def test_sdk_reference_module_core_and_replaceability(tmp_path: Path) -> None:
             assert delegated["response"] == {"text": "immediate inference response"}
             follow_up_id = delegated["follow_up_work_id"]
             assert isinstance(follow_up_id, str)
-            assert runtime.inspect(follow_up_id).status == "accepted"
+            follow_up = runtime.inspect(follow_up_id)
+            assert follow_up is not None and follow_up.status == "accepted"
+            assert source.security.security_id in follow_up.spec.security.security_ids
+            interaction_agent = core.agent(CORE_INTERACTION_AGENT_ID)
+            assert interaction_agent is not None
+            assert interaction_agent.security.security_id in follow_up.spec.security.security_ids
+            transient_context = connection.execute(
+                """
+                SELECT context_json
+                FROM security_decision
+                WHERE crossing_kind='transient-admission'
+                ORDER BY id DESC
+                LIMIT 1
+                """
+            ).fetchone()[0]
+            assert source.security.security_id in transient_context
+            assert interaction_agent.security.security_id in transient_context
             assert await runtime.run_eligible() == 1
             assert runtime.consume_result(follow_up_id) == {"text": "durable follow-up result"}
 
@@ -325,12 +386,15 @@ def test_sdk_reference_module_core_and_replaceability(tmp_path: Path) -> None:
             )
             specialist_module.register(registry)
             specialist_module.register_agent_endpoint(broker)
-            native_result = await specialist.execute({"input": "native UI request"})
+            native_result = await specialist_module.execute_agent(
+                "specialist.agent",
+                {"input": "native UI request"},
+            )
             assert native_result.payload["handled_by"] == "specialist.agent"
 
             delegating_core = CoreModule(
                 inference=runtime,
-                continuation=_DelegateTo("specialist.agent"),
+                continuation=_DelegateTo("specialist.module", "specialist.agent"),
                 agent_broker=broker,
             )
             delegating_core.register(registry)
@@ -339,16 +403,16 @@ def test_sdk_reference_module_core_and_replaceability(tmp_path: Path) -> None:
             assert delegated_to_specialist["delegated_result"]["handled_by"] == "specialist.agent"
 
             alternate_agent = Agent.from_instructions(
-                agent_id="alternate.core.interaction",
+                agent_id=CORE_INTERACTION_AGENT_ID,
                 purpose="Alternative compatible CORE interaction",
                 instructions="Return the alternate CORE response",
                 security=actor_security(
-                    subject_id="alternate.core.interaction",
+                    subject_id=CORE_INTERACTION_AGENT_ID,
                     subject_kind="agent",
                     trust=SecurityLevel.LEVEL_5,
                     isolation=SecurityLevel.LEVEL_5,
                 ),
-                behavior=_EchoAgent(),
+                behavior=_LabeledAgent("alternate.core"),
             )
             alternate_core = Module(
                 module_id="alternate.core",
@@ -372,11 +436,12 @@ def test_sdk_reference_module_core_and_replaceability(tmp_path: Path) -> None:
                 ),
                 CoreSelection(
                     module_id="alternate.core",
-                    interaction_agent_id="alternate.core.interaction",
+                    interaction_agent_id=CORE_INTERACTION_AGENT_ID,
                 ),
             )
             alternate_result = await alternate_delegate.interact(source)
-            assert alternate_result["handled_by"] == "alternate.core.interaction"
+            assert alternate_result["handled_by"] == CORE_INTERACTION_AGENT_ID
+            assert alternate_result["implementation"] == "alternate.core"
 
     asyncio.run(scenario())
 
