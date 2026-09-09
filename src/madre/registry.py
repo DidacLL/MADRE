@@ -136,19 +136,17 @@ class InteroperabilityRegistry:
     def get_module(self, module_id: str) -> ModuleManifest | None:
         return next((item for item in self._store.manifests() if item.module_id == module_id), None)
 
-    def get_agent(self, agent_id: str) -> AgentDescriptor | None:
-        for manifest in self._store.manifests():
-            for descriptor in manifest.agents:
-                if descriptor.id == agent_id:
-                    return descriptor
-        return None
+    def get_agent(self, module_id: str, agent_id: str) -> AgentDescriptor | None:
+        manifest = self.get_module(module_id)
+        if manifest is None:
+            return None
+        return next((item for item in manifest.agents if item.id == agent_id), None)
 
-    def get_operation(self, operation_id: str) -> OperationDescriptor | None:
-        for manifest in self._store.manifests():
-            for descriptor in manifest.operations:
-                if descriptor.id == operation_id:
-                    return descriptor
-        return None
+    def get_operation(self, module_id: str, operation_id: str) -> OperationDescriptor | None:
+        manifest = self.get_module(module_id)
+        if manifest is None:
+            return None
+        return next((item for item in manifest.operations if item.id == operation_id), None)
 
     def discover_agents(self, security: SecurityContext) -> tuple[AgentDescriptor, ...]:
         visible: list[AgentDescriptor] = []
@@ -160,21 +158,21 @@ class InteroperabilityRegistry:
                     security.extend(manifest.security, descriptor.security)
                 ).admissible
             )
-        return tuple(sorted(visible, key=lambda descriptor: descriptor.id))
+        return tuple(sorted(visible, key=lambda descriptor: (descriptor.module_id, descriptor.id)))
 
     def discover_skills(self, security: SecurityContext) -> tuple[SkillDescriptor, ...]:
         visible: list[SkillDescriptor] = []
         for manifest in self._store.manifests():
             if self._security_evaluator.evaluate(security.extend(manifest.security)).admissible:
                 visible.extend(manifest.skills)
-        return tuple(sorted(visible, key=lambda descriptor: descriptor.id))
+        return tuple(sorted(visible, key=lambda descriptor: (descriptor.module_id, descriptor.id)))
 
     def discover_workflows(self, security: SecurityContext) -> tuple[WorkflowDescriptor, ...]:
         visible: list[WorkflowDescriptor] = []
         for manifest in self._store.manifests():
             if self._security_evaluator.evaluate(security.extend(manifest.security)).admissible:
                 visible.extend(manifest.workflows)
-        return tuple(sorted(visible, key=lambda descriptor: descriptor.id))
+        return tuple(sorted(visible, key=lambda descriptor: (descriptor.module_id, descriptor.id)))
 
     def discover_operations(self, security: SecurityContext) -> tuple[OperationDescriptor, ...]:
         visible: list[OperationDescriptor] = []
@@ -186,4 +184,4 @@ class InteroperabilityRegistry:
                     security.extend(manifest.security, descriptor.security)
                 ).admissible
             )
-        return tuple(sorted(visible, key=lambda descriptor: descriptor.id))
+        return tuple(sorted(visible, key=lambda descriptor: (descriptor.module_id, descriptor.id)))
