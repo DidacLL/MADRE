@@ -2,9 +2,9 @@
 
 Status: temporary refactor brief; not product authority.
 
-Work in `DidacLL/MADRE` on `architecture/reconcile-standalone-system` from the latest head of PR #40.
+Start from the latest `architecture/modular-agentic-clean-slate` in `DidacLL/MADRE`.
 
-Do not merge or mark the PR ready unless explicitly instructed by the Owner.
+PR #40 has already been squash-merged into that branch. Treat it as provenance only. Create a fresh implementation branch/PR for this refactor; do not work from the old `architecture/reconcile-standalone-system` branch.
 
 ## Read first
 
@@ -75,7 +75,7 @@ speculative multi-agent ontology
 
 ## Security handling
 
-Treat `SecurityID` as the stable link from a participating MADRE object to its bound SecurityObject.
+Treat `SecurityID` as the stable link from a participating MADRE object to its bound `SecurityObject`.
 
 Different subject kinds may carry different applicable dimensions. Do not infer Sensitivity from trust/isolation or vice versa.
 
@@ -85,10 +85,11 @@ The final algorithm remains open; do not silently fill it with conventional secu
 
 Before ending:
 
-- satisfy as many `docs/implementation-baseline.md` Kernel completion criteria as can be implemented coherently;
+- satisfy the `docs/implementation-baseline.md` Kernel completion criteria as a coherent set; if one criterion is genuinely blocked by an unresolved architecture fact, stop only that dependent part and report the exact blocker rather than substituting a conventional design;
 - add/update tests for changed contracts and negative paths;
 - run locked pytest, Ruff, strict mypy, package build/wheel reinstall and isolated import validation;
 - verify private payload bytes are absent from durable runtime storage;
 - update `docs/implementation-baseline.md` to executable truth;
-- keep PR #40 draft/unmerged;
+- update or remove this temporary refactor folder when its instructions are no longer needed;
+- open/update the implementation PR against `architecture/modular-agentic-clean-slate` and leave integration for Owner review unless explicitly instructed otherwise;
 - report any remaining blocker as a concrete architectural or implementation fact, not a generic follow-up list.
