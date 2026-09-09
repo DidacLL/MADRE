@@ -43,6 +43,7 @@ def _canonical(value: object) -> bytes:
 class MaterialSecurityValues(FrozenModel):
     kind: Literal["material"] = "material"
     sensitivity: OrdinarySecurityLevel
+    intended_use: OrdinarySecurityLevel | None = None
 
 
 class ActorSecurityValues(FrozenModel):
@@ -89,10 +90,6 @@ class SecurityObject(FrozenModel):
     subject_id: Identifier
     subject_kind: SecuritySubjectKind
     values: SecurityValues
-    origin: Identifier
-    provenance: tuple[Identifier, ...] = ()
-    derivation: tuple[Identifier, ...] = ()
-    descriptor_version: Identifier = "1"
     integrity: str = Field(pattern=r"^[0-9a-f]{64}$")
 
     @model_validator(mode="after")
@@ -116,10 +113,6 @@ class SecurityObject(FrozenModel):
             "subject_id": self.subject_id,
             "subject_kind": self.subject_kind,
             "values": self.values.model_dump(mode="json"),
-            "origin": self.origin,
-            "provenance": list(self.provenance),
-            "derivation": list(self.derivation),
-            "descriptor_version": self.descriptor_version,
         }
 
     def verify_integrity(self) -> bool:
@@ -132,11 +125,7 @@ class SecurityObject(FrozenModel):
         subject_id: str,
         subject_kind: SecuritySubjectKind,
         values: SecurityValues,
-        origin: str,
         security_id: str | None = None,
-        provenance: tuple[str, ...] = (),
-        derivation: tuple[str, ...] = (),
-        descriptor_version: str = "1",
     ) -> SecurityObject:
         identity = security_id or f"security:{subject_kind}:{subject_id}"
         payload = {
@@ -144,20 +133,12 @@ class SecurityObject(FrozenModel):
             "subject_id": subject_id,
             "subject_kind": subject_kind,
             "values": values.model_dump(mode="json"),
-            "origin": origin,
-            "provenance": list(provenance),
-            "derivation": list(derivation),
-            "descriptor_version": descriptor_version,
         }
         return cls(
             security_id=identity,
             subject_id=subject_id,
             subject_kind=subject_kind,
             values=values,
-            origin=origin,
-            provenance=provenance,
-            derivation=derivation,
-            descriptor_version=descriptor_version,
             integrity=hashlib.sha256(_canonical(payload)).hexdigest(),
         )
 
