@@ -33,6 +33,8 @@ class SkillDescriptor(FrozenModel):
     module_id: Identifier
     purpose: str = Field(min_length=1)
     version: Identifier
+    instructions: tuple[str, ...] = ()
+    resources: tuple[Identifier, ...] = ()
     input_contract: Identifier | None = None
     output_contract: Identifier | None = None
     related_operations: tuple[Identifier, ...] = ()
@@ -46,6 +48,7 @@ class WorkflowDescriptor(FrozenModel):
     module_id: Identifier
     purpose: str = Field(min_length=1)
     version: Identifier
+    instructions: tuple[str, ...] = ()
     input_contract: Identifier
     output_contract: Identifier
     provenance: tuple[Identifier, ...] = ()
