@@ -28,6 +28,7 @@ from madre.security import (
     ExecutionBoundary,
     FrozenModel,
     Identifier,
+    SecurityContext,
     SecurityObject,
 )
 from madre_sdk.material import Material, MaterialRepository
@@ -100,12 +101,19 @@ class AgentBehavior(Protocol):
         *,
         agent_id: str,
         instructions: tuple[str, ...],
+        security: SecurityContext,
         payload: JsonValue,
     ) -> Material: ...
 
 
 class OperationBehavior(Protocol):
-    async def execute(self, *, operation_id: str, payload: JsonValue) -> Material: ...
+    async def execute(
+        self,
+        *,
+        operation_id: str,
+        security: SecurityContext,
+        payload: JsonValue,
+    ) -> Material: ...
 
 
 class Agent:
@@ -202,10 +210,11 @@ class Agent:
             provenance=self.provenance,
         )
 
-    async def execute(self, payload: JsonValue) -> Material:
+    async def execute(self, payload: JsonValue, *, security: SecurityContext) -> Material:
         return await self._behavior.execute(
             agent_id=self.id,
             instructions=self.instructions,
+            security=security,
             payload=payload,
         )
 
@@ -265,8 +274,12 @@ class Operation:
             provenance=self.provenance,
         )
 
-    async def execute(self, payload: JsonValue) -> Material:
-        return await self._behavior.execute(operation_id=self.id, payload=payload)
+    async def execute(self, payload: JsonValue, *, security: SecurityContext) -> Material:
+        return await self._behavior.execute(
+            operation_id=self.id,
+            security=security,
+            payload=payload,
+        )
 
 
 class _AgentEndpoint(AgentEndpoint):
@@ -281,11 +294,13 @@ class _AgentEndpoint(AgentEndpoint):
     def security(self) -> SecurityObject:
         return self._module.endpoint_security
 
-    async def invoke_agent(self, agent_id: str, payload: JsonValue) -> TransientMaterial:
-        agent = self._module.agent(agent_id)
-        if agent is None:
-            raise KeyError(agent_id)
-        return (await agent.execute(payload)).transient()
+    async def invoke_agent(
+        self,
+        agent_id: str,
+        security: SecurityContext,
+        payload: JsonValue,
+    ) -> TransientMaterial:
+        return (await self._module.execute_agent(agent_id, payload, security=security)).transient()
 
 
 class _OperationEndpoint(OperationEndpoint):
@@ -300,11 +315,15 @@ class _OperationEndpoint(OperationEndpoint):
     def security(self) -> SecurityObject:
         return self._module.endpoint_security
 
-    async def invoke_operation(self, operation_id: str, payload: JsonValue) -> TransientMaterial:
-        operation = self._module.operation(operation_id)
-        if operation is None:
-            raise KeyError(operation_id)
-        return (await operation.execute(payload)).transient()
+    async def invoke_operation(
+        self,
+        operation_id: str,
+        security: SecurityContext,
+        payload: JsonValue,
+    ) -> TransientMaterial:
+        return (
+            await self._module.execute_operation(operation_id, payload, security=security)
+        ).transient()
 
 
 class Module:
@@ -400,3 +419,42 @@ class Module:
 
     def operation(self, operation_id: str) -> Operation | None:
         return self._operations.get(operation_id)
+
+    def agent_context(self, agent_id: str) -> SecurityContext:
+        agent = self.agent(agent_id)
+        if agent is None:
+            raise KeyError(agent_id)
+        return SecurityContext(objects=(self.security, agent.security))
+
+    def operation_context(self, operation_id: str) -> SecurityContext:
+        operation = self.operation(operation_id)
+        if operation is None:
+            raise KeyError(operation_id)
+        return SecurityContext(objects=(self.security, operation.security))
+
+    async def execute_agent(
+        self,
+        agent_id: str,
+        payload: JsonValue,
+        *,
+        security: SecurityContext | None = None,
+    ) -> Material:
+        agent = self.agent(agent_id)
+        if agent is None:
+            raise KeyError(agent_id)
+        return await agent.execute(payload, security=security or self.agent_context(agent_id))
+
+    async def execute_operation(
+        self,
+        operation_id: str,
+        payload: JsonValue,
+        *,
+        security: SecurityContext | None = None,
+    ) -> Material:
+        operation = self.operation(operation_id)
+        if operation is None:
+            raise KeyError(operation_id)
+        return await operation.execute(
+            payload,
+            security=security or self.operation_context(operation_id),
+        )
