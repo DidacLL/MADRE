@@ -1,75 +1,111 @@
 # Architecture and SDK Design Memory
 
-Authority: non-normative design memory. Canonical ownership remains in `MADRE.md` and focused architecture contracts.
+Authority: non-normative design memory. Canonical ownership remains in `MADRE.md` and `docs/architecture/MADRE-agent-interoperability.md`.
 
-## Minimum coherent architecture, not ontology inflation
+## Minimum coherent architecture
 
-Provenance: **DIRECT OWNER**
-Status: **CONFIRMED**
+**OWNER — CONFIRMED**
 
-MADRE must avoid two opposite failure modes.
+MADRE needs enough structure that independent implementations share the same concepts, while avoiding a universal ontology for everything an Agent or Module might do internally.
 
-### Over-definition
+A useful admission test for a public class/contract is:
 
-Do not turn every useful noun into a universal MADRE class hierarchy or framework ceremony. Avoid speculative ontologies for Agent internals, planners, session/memory systems, universal Workflow engines, policy objects, or other structures that belong inside Modules unless cross-boundary interoperability truly requires them.
+```text
+Does this concept have stable meaning across a MADRE boundary?
+    no -> keep it Module/private when possible
+    yes
+      |
+      v
+Do independent implementations need to agree on its structure?
+    no -> keep it opaque/value-level
+    yes -> define the smallest clear public contract
+```
 
-### Under-definition
+The architecture should be concrete enough that implementation work does not invent unrelated conventions by default.
 
-Do not leave core concepts structurally vague and then implement them additively as individual features arrive. That vacuum repeatedly causes unrelated industry conventions to leak into MADRE simply because they are familiar.
+## SDK as the materialized semantic boundary
 
-The target is the smallest coherent, modular, human-readable object model that makes MADRE's actual boundaries explicit enough for independent Modules and the SDK to interoperate safely.
+**OWNER — CONFIRMED**
 
-## Class/materialization rule
+The SDK is where MADRE can deliberately provide structure that would be inappropriate inside Kernel.
 
-Provenance: **DIRECT OWNER / OWNER CONFIRMED**
-Status: **CONFIRMED principle**
+It should expose typed, object-oriented, interface-segregated contracts for the real public concepts and provide small reusable helpers around them.
 
-Classes/contracts are justified when a concept has stable meaning across a MADRE boundary and independent implementations need to agree on its structure.
+The target is not an opinionated Agent framework. A Module developer should be able to use only the parts required by that Module.
 
-Examples that plausibly earn explicit public contracts include Module/public descriptors, executable work, material handles/resolution, inference requirements/mechanisms, bounded Agent/Operation endpoints, and carried security state.
+Useful SDK responsibilities include:
 
-Module-private reasoning internals should remain opaque unless a concrete interoperability requirement proves otherwise.
+```text
+Module/manifest publication
+Agent/Skill/Workflow/Operation contracts
+Artifact / ContextBundle construction
+SecurityObject binding/propagation
+transient inference
+Durable WorkSubmission + material resolution
+result consumption
+discovery/brokering helpers
+Capability adapter scaffolding
+CORE interaction/delegation helpers
+```
 
-Do not preserve or reject a class merely because it already exists. Evaluate whether the responsibility itself belongs in MADRE.
+## Agent simplicity and interoperability
+
+**OWNER — CONFIRMED**
+
+A basic Agent should remain simple enough to infer from another ecosystem or even from an informal description.
+
+Conceptually, the simplest Agent is close to:
+
+```text
+instructions / pre-prompt
+execution behavior
+optional parallel/delegated execution
+optional state
+optional memory
+```
+
+Richer internal implementations remain possible without forcing them into the public contract.
+
+MADRE should be able to translate external Agent definitions into a bounded Module/Agent representation. AI-assisted conversion of repositories or protocol-specific Agent configurations is a desirable interoperability/experimentation feature.
+
+## Skills and Workflows
+
+**OWNER — CONFIRMED**
+
+Skills and Workflows should be similarly portable and simple.
+
+A Skill may be inferred from another protocol, repository instructions or natural-language description. A Workflow may be derived from documented procedures such as `AGENTS.md`/command descriptions when that procedure can be expressed through bounded MADRE concepts.
+
+The SDK should make this conversion easy; Kernel should not become the translator or workflow engine.
 
 ## WorkPlans
 
-Provenance: **DIRECT OWNER / later correction**
-Status: **CONFIRMED**
+**OWNER — CONFIRMED**
 
-Semantic WorkPlans belong to the Agent/Module doing the planning. Kernel receives only the executable projection needed for deterministic work scheduling/recovery.
+A WorkPlan is semantic Agent/Module state. Kernel receives only executable work projected from it.
 
-Earlier generated schemas that persisted semantic WorkPlans or planning step machines inside Kernel are superseded.
+The SDK may provide a useful base representation/helper library, but it should not require every Module to use one universal planning schema.
 
-The exact Module-side WorkPlan schema remains open and may vary by Agent/Module implementation.
+## OOP and implementation language
 
-## Agents, Skills and Workflows
+**OWNER — DIRECTION**
 
-Provenance: **DIRECT OWNER / CURRENT DIRECTION**
-Status: **CONFIRMED concepts; exact public class shapes OPEN**
+Python is useful for rapid AI-assisted prototyping, but Python-specific idioms must not become the architecture.
 
-MADRE should support Agents, reusable Skills and Workflows as meaningful interoperable concepts without forcing one universal private implementation model.
+Public contracts should remain suitable for a future more strongly typed implementation. Favor clear ownership, typed interfaces/value objects, explicit lifecycles, composition and human-readable naming without importing ceremonial enterprise patterns.
 
-The Owner has explicitly rejected the old `ReasoningModule`/ClassPath framing. A more natural direction is that Agents expose/adopt useful Workflows and Skills through clear public contracts while retaining their internal reasoning architecture inside their Module.
+## Advanced extension seams
 
-Do not respond to past ontology drift by declaring these concepts undefinable. They eventually need simple materialized contracts where interoperability requires them.
+**OWNER — DIRECTION**
 
-## SDK
+Some developers/research may need lower-level inference controls such as model residency, KV-cache/session reuse or backend-native vectorized state.
 
-Provenance: **DIRECT OWNER / OWNER CONFIRMED**
-Status: **CONFIRMED**
+These should be accessible through optional SDK/Capability adapter extensions when useful rather than being universal generic Kernel fields.
 
-The SDK should expose the actual MADRE protocol in a modular, SOLID/interface-segregated form. It should make correct MADRE integration pleasant and difficult to misuse without becoming an opinionated Agent/Workflow framework.
+## Developer-facing Modules
 
-A Module should depend on the public surfaces it actually needs, not Kernel persistence, scheduler internals, FastAPI objects, provider-specific adapters, or unrelated semantic framework classes.
+**OWNER — DIRECTION**
 
-CORE should be the first substantial SDK consumer through exactly the same public Module contracts as third-party Modules. If CORE needs privileged semantic access, that is evidence the public boundary is incomplete or ownership has drifted.
+A future `MADREDeveloper` Module, no-code builder or similar shipped Module could expose creation/customization of Modules, Agents, Skills, Workflows and inference experiments.
 
-## Owner consultation rule behind the architecture
-
-Provenance: **DIRECT OWNER**
-Status: **CONFIRMED**
-
-When a material architectural gap cannot be resolved from canonical contracts and relevant design memory, ask the Owner rather than importing a conventional pattern. This does not mean asking for approval of routine code or sending large engineering documents for review.
-
-The useful question is narrow: identify the unresolved concept, the concrete alternatives/consequences, and ask only for the product/architecture intent that cannot be inferred safely.
+This is a good product/research direction, especially because MADRE should support later PhD software development quickly. It is not a prerequisite for Kernel foundation; a good SDK should make such a Module straightforward to build.
