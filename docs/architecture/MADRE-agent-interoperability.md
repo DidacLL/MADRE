@@ -176,7 +176,7 @@ This is not a privilege grant. CORE receives no bypass and every crossing is eva
 
 CORE-owned Artifacts/ContextBundles may simultaneously have the highest Sensitivity levels. Actor/containment security and material sensitivity are independent dimensions.
 
-CORE must be able to minimize, anonymize, omit or otherwise transform Module-owned material before sending it through a less-private or higher-risk boundary when the owning semantics permit such a transformation.
+CORE must be able to minimize, anonymize, omit or otherwise transform material that belongs to CORE's own semantic domain, including representations it has deliberately accepted into that domain, before sending them through a less-private or higher-risk boundary when its semantics permit such a transformation. A source Module remains responsible for domain-specific minimization/classification that only it can perform before exporting its representation to CORE.
 
 ### Default selection
 
