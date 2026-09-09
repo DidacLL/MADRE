@@ -15,7 +15,7 @@ from madre.security import (
     SecurityObject,
 )
 from madre.storage import PlatformStore, open_database
-from madre_core import CoreContinuation, CoreModule, DEFAULT_CORE_SELECTION
+from madre_core import DEFAULT_CORE_SELECTION, CoreContinuation, CoreModule
 from madre_sdk import (
     Agent,
     AgentBehavior,
@@ -32,8 +32,8 @@ from madre_sdk import (
     OperationBehavior,
     SecurityContext,
     Skill,
-    Workflow,
     WorkClient,
+    Workflow,
     WorkPlan,
     actor_security,
     operation_security,
