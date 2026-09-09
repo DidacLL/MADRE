@@ -37,7 +37,6 @@ from madre.security import (
     SecurityLevel,
     SecurityObject,
 )
-
 from madre_sdk.material import Artifact, ContextBundle, MaterialRepository, content_digest
 from madre_sdk.security import actor_security, operation_security, security_context
 from madre_sdk.semantic import (
