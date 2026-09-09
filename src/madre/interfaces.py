@@ -85,7 +85,12 @@ class AgentEndpoint(Protocol):
     @property
     def security(self) -> SecurityObject: ...
 
-    async def invoke_agent(self, agent_id: str, payload: JsonValue) -> TransientMaterial: ...
+    async def invoke_agent(
+        self,
+        agent_id: str,
+        security: SecurityContext,
+        payload: JsonValue,
+    ) -> TransientMaterial: ...
 
 
 class OperationEndpoint(Protocol):
@@ -96,7 +101,10 @@ class OperationEndpoint(Protocol):
     def security(self) -> SecurityObject: ...
 
     async def invoke_operation(
-        self, operation_id: str, payload: JsonValue
+        self,
+        operation_id: str,
+        security: SecurityContext,
+        payload: JsonValue,
     ) -> TransientMaterial: ...
 
 
@@ -113,6 +121,7 @@ class AgentBrokering(Protocol):
         self,
         requester_module_id: str,
         security: SecurityContext,
+        target_module_id: str,
         agent_id: str,
         material: TransientMaterial,
     ) -> JsonValue: ...
@@ -123,6 +132,7 @@ class OperationBrokering(Protocol):
         self,
         requester_module_id: str,
         security: SecurityContext,
+        target_module_id: str,
         operation_id: str,
         material: TransientMaterial,
     ) -> JsonValue: ...
