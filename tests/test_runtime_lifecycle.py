@@ -37,7 +37,6 @@ def module_security(module_id: str, *, trust=SecurityLevel.LEVEL_5) -> SecurityO
         subject_id=module_id,
         subject_kind="module",
         values=ActorSecurityValues(trust=trust, isolation=SecurityLevel.LEVEL_5),
-        origin=module_id,
     )
 
 
@@ -59,7 +58,6 @@ def material(
             subject_id=reference,
             subject_kind="artifact",
             values=MaterialSecurityValues(sensitivity=sensitivity),
-            origin="module",
         ),
     )
 
@@ -89,7 +87,6 @@ def capabilities(function, *, trust=SecurityLevel.LEVEL_5) -> CapabilityRegistry
                 privacy=SecurityLevel.LEVEL_5,
                 risk=SecurityLevel.LEVEL_1,
             ),
-            origin="fixture",
         ),
     )
     result = CapabilityRegistry()
@@ -226,7 +223,6 @@ def test_material_unavailable_and_continuity_mismatches_fail_safely(tmp_path: Pa
                 subject_id=original.reference,
                 subject_kind="artifact",
                 values=MaterialSecurityValues(sensitivity=SecurityLevel.LEVEL_3),
-                origin="changed",
             ),
         ),
     }
