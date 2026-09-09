@@ -32,11 +32,16 @@ def actor(subject: str, *, kind: str = "module", trust=SecurityLevel.LEVEL_5) ->
         subject_id=subject,
         subject_kind=kind,  # type: ignore[arg-type]
         values=ActorSecurityValues(trust=trust, isolation=SecurityLevel.LEVEL_5),
-        origin="fixture",
     )
 
 
-def material(reference: str, payload, *, sensitivity=SecurityLevel.LEVEL_2) -> TransientMaterial:
+def material(
+    reference: str,
+    payload,
+    *,
+    sensitivity=SecurityLevel.LEVEL_2,
+    intended_use: SecurityLevel | None = None,
+) -> TransientMaterial:
     return TransientMaterial(
         reference=reference,
         payload=payload,
@@ -44,8 +49,10 @@ def material(reference: str, payload, *, sensitivity=SecurityLevel.LEVEL_2) -> T
         security=SecurityObject.issue(
             subject_id=reference,
             subject_kind="artifact",
-            values=MaterialSecurityValues(sensitivity=sensitivity),
-            origin="fixture",
+            values=MaterialSecurityValues(
+                sensitivity=sensitivity,
+                intended_use=intended_use,  # type: ignore[arg-type]
+            ),
         ),
     )
 
@@ -59,7 +66,6 @@ def capability_security(subject: str, *, trust=SecurityLevel.LEVEL_5) -> Securit
             privacy=SecurityLevel.LEVEL_5,
             risk=SecurityLevel.LEVEL_1,
         ),
-        origin="fixture",
     )
 
 
@@ -118,6 +124,26 @@ def test_security_object_binding_detects_downstream_rewrite() -> None:
     assert f"invalid_integrity:{original.security_id}" in decision.deficits
 
 
+def test_security_object_is_minimal_and_material_intended_use_is_independent() -> None:
+    secured = material(
+        "artifact.a",
+        {"value": 1},
+        sensitivity=SecurityLevel.LEVEL_5,
+        intended_use=SecurityLevel.LEVEL_2,
+    ).security
+    assert secured.values == MaterialSecurityValues(
+        sensitivity=SecurityLevel.LEVEL_5,
+        intended_use=SecurityLevel.LEVEL_2,
+    )
+    assert set(secured.model_dump()) == {
+        "security_id",
+        "subject_id",
+        "subject_kind",
+        "values",
+        "integrity",
+    }
+
+
 def test_security_object_rejects_irrelevant_universal_dimensions() -> None:
     with pytest.raises(ValidationError):
         SecurityObject.issue(
@@ -127,7 +153,6 @@ def test_security_object_rejects_irrelevant_universal_dimensions() -> None:
                 trust=SecurityLevel.LEVEL_5,
                 isolation=SecurityLevel.LEVEL_5,
             ),
-            origin="fixture",
         )
 
 
@@ -166,6 +191,28 @@ def test_preferences_are_soft_and_fallback_order_is_deterministic() -> None:
 
     no_fallback = request.model_copy(update={"fallback": FallbackPolicy(allow_unlisted=False)})
     assert [item.descriptor.id for item in registry.candidates(no_fallback)] == ["a"]
+
+
+def test_free_execution_can_be_required_preferred_or_merely_allowed() -> None:
+    registry = CapabilityRegistry()
+    registry.register(adapter("a-paid", paid=True))
+    registry.register(adapter("z-free", paid=False))
+
+    allowed = requirement(cost_policy="paid_allowed")
+    assert [item.descriptor.id for item in registry.candidates(allowed)] == ["a-paid", "z-free"]
+
+    preferred = InferenceRequirement(
+        hard=InferenceHardRequirements(
+            specialization="structured.compute",
+            modality="json",
+            cost_policy="paid_allowed",
+        ),
+        preferences=InferencePreferences(prefer_free=True),
+    )
+    assert [item.descriptor.id for item in registry.candidates(preferred)] == ["z-free", "a-paid"]
+
+    required = requirement(cost_policy="free_only")
+    assert [item.descriptor.id for item in registry.candidates(required)] == ["z-free"]
 
 
 def test_provider_and_model_preferences_do_not_become_exact_requirements() -> None:
