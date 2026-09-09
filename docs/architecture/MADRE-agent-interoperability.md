@@ -1,159 +1,234 @@
-# MADRE Agent Interoperability
+# MADRE Agent Interoperability and SDK
 
-Authority: `MADRE.md` defines product meaning. This document owns public Module/Agent/Skill/Workflow/Operation contracts, discovery, explicit brokering and the SDK-facing Module boundary.
+Authority: `MADRE.md` defines product meaning. This document owns public Module/Agent/Skill/Workflow/Operation contracts, CORE capability, discovery/brokering and the SDK-facing boundary.
 
-MADRE interoperability standardizes what Modules intentionally publish without standardizing their private agentic implementation.
+MADRE standardizes only the structure independent implementations need to share. Module-private reasoning remains Module-owned.
 
-## 1. Module Manifest
+## 1. SDK role
 
-A Module Manifest publishes:
+The SDK is a first-class architectural boundary, not merely an HTTP convenience wrapper.
+
+It should provide a small, typed, object-oriented and interface-segregated contract that:
+
+- exposes real MADRE functions without Kernel internals;
+- gives developers reusable helpers for common patterns;
+- is difficult to misuse accidentally;
+- remains flexible enough for very different Module/Agent implementations;
+- can be represented in languages other than the current Python prototype.
+
+A Module should implement only the surfaces it needs.
+
+The public spine currently includes concepts such as:
+
+```text
+Module / ModuleManifest
+Agent / AgentDescriptor
+Skill / SkillDescriptor
+Workflow / WorkflowDescriptor
+Operation / OperationDescriptor
+Artifact / ContextBundle
+WorkSubmission / WorkRecord / WorkAttempt
+MaterialHandle / material resolver
+InferenceRequirement / CapabilityDescriptor
+SecurityID / SecurityObject
+```
+
+This list defines conceptual responsibility, not a requirement for one class per noun in every language. Exact APIs should remain as small as possible while preserving stable boundaries.
+
+## 2. Module Manifest
+
+A Module publishes only intentionally interoperable surfaces:
 
 ```text
 module identity / version / description
-semantic discovery terms
-provenance
+discovery terms
 exported Agent descriptors
 exported Skill descriptors
 exported Workflow descriptors
 exported Operation descriptors
+optional UI/interaction endpoints
+material-resolution endpoint when durable work is used
+SecurityID / public security facts required by those surfaces
 ```
 
-The manifest exposes no private database, prompt, Agent memory/state, WorkPlan or implementation object.
+The manifest exposes no private database, Agent memory, WorkPlan, prompt history or implementation object graph.
 
-Registration means only that MADRE knows a descriptor exists and which Module publishes it. Registration does not authorize the Module, grant trust or establish reusable permission.
+Registration means that MADRE can find and route the published surface. Security admissibility is evaluated separately through the carried algebra.
 
-Descriptors may carry boundary/security envelopes because invoking that published surface introduces facts into a concrete crossing. Those envelopes participate in the carried algebra when the crossing is formed; they are not registry grants. Detailed algebra belongs to `MADRE-security-algebra.md`.
+## 3. Agent
 
-## 2. Agent Descriptor
+An `Agent` is a Module-owned intelligent actor.
 
-A public Agent descriptor carries interoperability facts such as:
+MADRE should define a minimal public/SDK contract, while the Module remains free to implement the Agent with one model call, a reasoning loop, deterministic logic, several models, internal tools, memory, state machines or other mechanisms.
 
-- public identity and owning Module;
-- purpose/discovery text;
-- accepted input/result contract references;
-- published Skill/Workflow references when useful;
-- boundary/security envelope;
-- invocation metadata/provenance.
-
-Kernel may discover and explicitly route this Agent. The owning Module remains responsible for prompts, memory, internal state, reasoning loops, internal Operations, Skill choice and Workflow choice.
-
-Generated material returned to the owning/requesting Module may be used in subsequent reasoning exactly as that Module chooses. Kernel does not impose a universal semantic status on generated output.
-
-## 3. Skill Descriptor
-
-A Skill is reusable behavior/knowledge for adoption by compatible Agents. Its public descriptor may include version, purpose, input/output contracts, related Operations/Workflows, compatibility information, boundary facts and provenance.
-
-Adoption is Module-defined. Kernel does not install Skill semantics into Agent implementations.
-
-## 4. Workflow Descriptor
-
-A Workflow is reusable semantic behavior. Public Workflow contracts support discovery, compatibility, input/output description, provenance and adaptation. MADRE does not require a universal Workflow executor.
-
-## 5. Operation Descriptor
-
-An Operation is callable Module-owned behavior. Its descriptor contains enough public information for discovery and deterministic brokering, including:
-
-- identity and owner Module;
-- purpose;
-- input/output contract;
-- effect characteristics;
-- repeatability semantics;
-- boundary/security envelope;
-- provenance.
-
-MADRE-provided external/system effects are bounded through specific Operations rather than an unrestricted generic Agent shell/Internet authority surface.
-
-MADRE does not impose an arbitrary global naming hierarchy on descriptor IDs. Ownership is an explicit field, not inferred from string syntax.
-
-## 6. Boundary-filtered discovery
-
-Discovery receives the requester's carried `SecurityContext`.
-
-For each descriptor, Kernel evaluates the caller context with the descriptor's boundary facts. It does not reconstruct requester trust from Module registry state.
-
-Changing unrelated Module registry metadata therefore cannot rewrite the carried security state of a discovery request.
-
-The requester decides which visible descriptor is semantically useful. Actual invocation is evaluated again with concrete material and endpoint boundary facts.
-
-## 7. Explicit brokering
-
-The broker takes an exact published identity and the request's carried security context:
+A minimal Agent can be understood as:
 
 ```text
-requesting Module identity (routing/evidence only)
-    + carried SecurityContext
-    + request material envelope
-    + selected Agent/Operation descriptor envelope
-    + concrete target endpoint boundary envelope
-    -> input algebra evaluation
-    -> Module-owned endpoint dispatch
-    -> returned material envelope
-    -> continued carried context
-    -> output algebra evaluation
+identity / purpose
+instructions or behavior definition
+accepted input / result contract
+available Skills / Workflows / Operations
+SecurityID
+execution behavior
+
+optional:
+    state
+    memory
+    delegation / parallel execution
+    persistent configuration
 ```
 
-The registry supplies descriptor/owner routing information. It supplies no authorization.
+MADRE does not currently require a universal `AgentDefinition` + `AgentInstance` ontology. A Module may use those concepts internally if useful.
 
-Broker evidence is append-only around the physical dispatch boundary. For Operations, an exception after dispatch is conservatively recorded as an unknown external effect unless stronger effect evidence exists; uncertain side effects must not be blindly repeated.
+A public `AgentDescriptor` carries only discoverable/invocable facts and references the owning Module.
 
-## 8. Cross-Module cooperation
+## 4. Skills and Workflows
 
-The intelligent participant decides which Module/Agent/Skill/Operation is relevant and what context to provide. MADRE supplies public descriptors, boundary-filtered discovery, deterministic algebra, routing, transient transfer and execution evidence.
+A **Skill** is portable Agent behavior, knowledge or instruction material.
 
-A public Agent can submit ordinary MADRE inference work from its owning Module. Kernel still does not manage that Agent's reasoning state.
-
-## 9. Public SDK boundary
-
-These contracts are intended to form the basis of a modular MADRE SDK.
-
-The SDK should make the public boundary easy to consume without becoming another semantic framework. Module-facing responsibilities should be segregated so a Module implements only surfaces it actually uses or exports, for example:
+A public Skill contract may contain:
 
 ```text
-work submission / inspection / result access
-material resolution for durable work
-optional Agent endpoint
-optional Operation endpoint
-manifest/descriptor publication
-SecurityEnvelope / SecurityContext propagation
+identity / purpose / revision
+instructions/resources
+input/output expectations
+related Operations
+related Workflows
+compatibility information
+SecurityID where relevant
 ```
 
-Module code should not need Kernel storage classes, scheduler internals, FastAPI implementation objects or provider-adapter internals.
+A **Workflow** is a reusable semantic recipe/behavior owned by an Agent or Module. MADRE does not prescribe one universal workflow engine or language.
 
-The SDK must not own Agent memory/state, prompts/private context, WorkPlans, Workflow execution or domain persistence.
+The SDK should make both concepts simple enough to construct from other ecosystems. An external Agent package, `AGENTS.md`, `CLAUDE.md`, command description or natural-language specification may be translated—manually or with AI-assisted tooling—into MADRE Agents/Skills/Workflows when its behavior can be bounded by MADRE contracts.
 
-The target is a **minimal but concrete** public object model: define enough stable cross-boundary structure for independent implementations to interoperate, but do not turn Module-private semantics into universal MADRE classes merely for completeness.
+Translation/import tooling is an interoperability feature, not Kernel reasoning.
 
-## 10. Default / CORE Module designation
+## 5. WorkPlans
 
-A MADRE installation may designate one ordinary registered Module as its default/CORE Module.
+A `WorkPlan` belongs to the Agent/Module that created it.
 
-The shipped MADRE CORE implementation is the first-party default, but the designation is replaceable. Another Module may be configured to provide the same generic/fallback role.
+The SDK may provide a useful base representation or helper interfaces, but it must not force all Modules into one planning ontology.
 
-Typical generic responsibilities may include fallback intelligence for Agentless Modules, fast/default interaction behavior, generic UI/UX support, module-independent intelligent tasks (for example configuration/installation assistance), and escalation/routing when no more specific Module owns the work.
+A WorkPlan may express semantic tasks, dependencies, delegation, research, verification, user decisions, Workflow use or expected artifacts. Only physical executable projections become Kernel `WorkSubmission`s.
 
-These are ordinary Module capabilities exposed through public contracts. Default/CORE status may influence fallback/routing preference, but it must not grant:
+## 6. Operations
+
+An `Operation` is bounded callable behavior exported by a Module.
+
+Its public descriptor includes only facts needed to discover, invoke and evaluate its concrete boundary, for example:
 
 ```text
-security bypass
-private semantic Kernel API
-resource exemption
-hidden registry authority
-special Agent ontology
-irreplaceable behavior
+identity / owner
+purpose
+input/output contract
+effect/risk characteristics
+autonomy characteristics
+repeatability/idempotency facts
+SecurityID
 ```
 
-If CORE requires privileged semantic access to Kernel internals, treat that as evidence that the public boundary is incomplete or ownership has drifted.
+MADRE-provided AI integrations expose external/system effects through specific Operations or bounded mechanisms. There is no generic Agent shell or unrestricted Internet capability.
 
-The exact configuration/routing representation of the default designation remains open until real SDK/CORE implementation proves the minimum needed contract.
+An Operation may internally run deterministic code, use another service, invoke a Workflow or submit MADRE inference work; those internals remain Module-owned.
 
-## 11. Transport and mechanism access
+## 7. Artifacts and ContextBundles
 
-Transport is not architecture. Public Module contracts may be exposed through in-process APIs, IPC, HTTP, MCP or other adapters.
+An `Artifact` is material owned by a Module.
 
-Provider/mechanism credentials and login/session mechanics do not belong to interoperability contracts and do not authorize Module work. Detailed provider/mechanism integration belongs to `MADRE-execution-contract.md`; security admissibility belongs to `MADRE-security-algebra.md`.
+A `ContextBundle` is an artifact-like bounded collection of material prepared for a concrete purpose. It should preserve enough structure for the Module to assign the relevant SecurityObject and for later boundaries to identify the material being used.
 
-The current local single-owner installation does not add a separate bearer-token/per-Module authorization framework merely because a transport exists.
+Generated model output becomes ordinary Artifact material once delivered. It can be fed into subsequent Agents/Workflows/Operations according to Module semantics.
 
-## 12. Guided Agent tooling
+## 8. Discovery and brokering
 
-Future Agent creator/import tooling should consume these public contracts to generate Modules, manifests, descriptors, boundary metadata and integration scaffolding. Tooling does not move Agent internals into Kernel.
+Discovery exposes descriptors visible/admissible under the caller's current carried security objects.
+
+The registry supplies discovery and routing facts. It does not choose semantic usefulness.
+
+The intelligent participant chooses the target Agent/Operation/Skill/Workflow. Actual invocation is evaluated again with the concrete participants/material.
+
+The broker routes an explicit published identity and records physical dispatch/result evidence. If an externally effectful Operation may have executed but outcome is unknown, the effect must not be blindly repeated.
+
+## 9. CORE-capable Module contract
+
+MADRE ships with a default CORE Module. A user may select another installed Module that satisfies the CORE contract.
+
+CORE is an ordinary Module at the Kernel boundary and uses the same SDK/security/execution mechanisms as other Modules.
+
+### Required functional capability
+
+A CORE-capable Module must be able to provide the installation's generic/default intelligent role, including:
+
+- a general interaction endpoint suitable for MADRE's default UI/UX;
+- a default interaction Agent or equivalent intelligent behavior;
+- fallback handling/delegation for Modules that do not provide their own suitable Agent/UI path;
+- generic delegation/escalation across visible Module surfaces;
+- MADRE-system-oriented intelligent assistance required by the standard experience, such as configuration/install guidance.
+
+The shipped default CORE may add richer personal-assistant behavior, profiles, memory, Skills, Workflows and developer tooling. Those are Module-owned features, not Kernel requirements.
+
+### Required security capability
+
+CORE may legitimately handle extremely sensitive user/system material. A CORE-capable Module must therefore satisfy the strongest applicable isolation/privacy/trust characteristics defined by MADRE's final security algebra.
+
+This is not a privilege grant. CORE receives no bypass and every crossing is evaluated by the same algebra.
+
+CORE-owned Artifacts/ContextBundles may simultaneously have the highest Sensitivity levels. Actor/containment security and material sensitivity are independent dimensions.
+
+CORE must be able to minimize, anonymize, omit or otherwise transform Module-owned material before sending it through a less-private or higher-risk boundary when the owning semantics permit such a transformation.
+
+### Default selection
+
+The shipped CORE remains selected by default. If another installed Module satisfies the CORE contract, the user may configure it as CORE. No elaborate election/role-management system is required.
+
+## 10. Interaction surfaces
+
+MADRE does not require one UI.
+
+An interaction may originate from:
+
+- a Module-owned native UI;
+- the default CORE UI/UX;
+- a provider/tool application GUI or CLI through an adapter;
+- an automation or machine-facing integration.
+
+When CORE owns the interaction surface, all direct user input enters CORE's interaction Agent/behavior. That Agent may use transient low-latency inference for immediate natural interaction and create/delegate further work as necessary.
+
+A native Module with its own UI may handle its own semantics or explicitly send governed input to CORE's interaction endpoint.
+
+A Module or adapter without its own UI may delegate its default interaction to CORE; this is the normal fallback for simple third-party/unknown wrappers.
+
+These are SDK/Module patterns. Kernel only sees the resulting inference/work/Operation requests.
+
+## 11. SDK helpers and extension seams
+
+The SDK should provide small reusable helpers where they remove repeated integration work without defining new Kernel semantics. Likely examples include:
+
+```text
+Module/descriptor registration
+Agent/Operation endpoint adapters
+ContextBundle/Artifact construction
+SecurityObject binding/propagation
+transient inference helper
+Durable WorkSubmission + material resolver helper
+result consumption
+CORE interaction/delegation helper
+Capability adapter scaffolding
+```
+
+Mechanism-specific advanced features may use optional adapter extension interfaces. For example, a local inference mechanism could expose cache/session/residency controls needed for a KV-cache management experiment without adding raw vector/KV fields to every generic `InferenceRequirement`.
+
+## 12. Developer/import tooling
+
+The SDK should make later tools straightforward rather than making them Kernel features.
+
+Examples include:
+
+- AI-assisted conversion of external Agent packages/protocols into MADRE Modules/Agents;
+- Skill/Workflow extraction from repository instruction files or natural descriptions;
+- a `MADREDeveloper` Module;
+- a no-code Module/Agent builder;
+- inference-mechanism experimentation and benchmarking.
+
+These are valuable product/research directions but are not required for Kernel foundation.
