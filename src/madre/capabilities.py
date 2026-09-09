@@ -1,4 +1,4 @@
-"""Replaceable physical computation backends and deterministic selection."""
+"""Replaceable physical inference/execution mechanisms and deterministic selection."""
 
 from __future__ import annotations
 
@@ -8,8 +8,16 @@ from typing import Protocol
 
 from pydantic import JsonValue
 
-from madre.contracts import CapabilityRequest, ExecutionConstraints
-from madre.security import ExecutionBoundary, FrozenModel, Identifier, SecurityEnvelope
+from madre.contracts import (
+    ExecutionConstraints,
+    InferencePreferences,
+    InferenceRequirement,
+    LatencyClass,
+    PreferenceDimension,
+    QualityTier,
+    ReasoningEffort,
+)
+from madre.security import ExecutionBoundary, FrozenModel, Identifier, SecurityObject
 
 
 class CapabilityError(RuntimeError):
@@ -20,12 +28,18 @@ class CapabilityError(RuntimeError):
 
 class CapabilityDescriptor(FrozenModel):
     id: Identifier
-    kind: Identifier
+    specialization: Identifier
     modality: Identifier
+    provider_id: Identifier | None = None
     model_id: Identifier | None = None
     execution_boundary: ExecutionBoundary
+    latency_class: LatencyClass = "standard"
+    supported_reasoning_efforts: frozenset[ReasoningEffort] = frozenset({"low", "medium", "high"})
+    quality_tier: QualityTier = "standard"
+    paid: bool = False
+    resources: frozenset[Identifier] = frozenset()
     heavyweight: bool = False
-    security: SecurityEnvelope
+    security: SecurityObject
 
 
 class CapabilityAdapter(Protocol):
@@ -43,63 +57,135 @@ class CapabilityRegistry:
         descriptor = adapter.descriptor
         if descriptor.id in self._adapters:
             raise ValueError(f"duplicate capability id: {descriptor.id}")
-        if descriptor.security.subject != descriptor.id:
-            raise ValueError("Capability security envelope subject must equal capability id")
+        if descriptor.security.subject_kind != "capability":
+            raise ValueError("Capability requires capability SecurityObject")
+        if descriptor.security.subject_id != descriptor.id:
+            raise ValueError("Capability SecurityObject subject must equal capability id")
         if not descriptor.security.verify_integrity():
-            raise ValueError("Capability security envelope integrity is invalid")
+            raise ValueError("Capability SecurityObject integrity is invalid")
         self._adapters[descriptor.id] = adapter
 
-    def candidates(
-        self,
-        request: CapabilityRequest,
-        constraints: ExecutionConstraints,
-    ) -> tuple[CapabilityAdapter, ...]:
-        if request.capability_id is not None:
-            adapter = self._adapters.get(request.capability_id)
-            if (
-                adapter is None
-                or not self._compatible(adapter.descriptor, request)
-                or (constraints.local_only and adapter.descriptor.execution_boundary != "local")
-            ):
-                return ()
-            return (adapter,)
-        return tuple(
-            sorted(
-                (
-                    adapter
-                    for adapter in self._adapters.values()
-                    if self._compatible(adapter.descriptor, request)
-                    and (
-                        not constraints.local_only
-                        or adapter.descriptor.execution_boundary == "local"
-                    )
-                ),
-                key=lambda item: (
-                    item.descriptor.execution_boundary != "local",
-                    item.descriptor.id,
-                ),
-            )
-        )
+    def candidates(self, request: InferenceRequirement) -> tuple[CapabilityAdapter, ...]:
+        compatible = [
+            adapter
+            for adapter in self._adapters.values()
+            if self._hard_compatible(adapter.descriptor, request)
+            and self._fallback_compatible(adapter.descriptor, request)
+        ]
+        return tuple(sorted(compatible, key=lambda item: self._sort_key(item.descriptor, request)))
 
-    def select(
-        self,
-        request: CapabilityRequest,
-        constraints: ExecutionConstraints,
-    ) -> CapabilityAdapter | None:
-        candidates = self.candidates(request, constraints)
+    def select(self, request: InferenceRequirement) -> CapabilityAdapter | None:
+        candidates = self.candidates(request)
         return candidates[0] if candidates else None
 
     @staticmethod
-    def _compatible(descriptor: CapabilityDescriptor, request: CapabilityRequest) -> bool:
-        return (
-            descriptor.kind == request.kind
-            and descriptor.modality == request.modality
-            and (request.model_id is None or descriptor.model_id == request.model_id)
+    def _hard_compatible(descriptor: CapabilityDescriptor, request: InferenceRequirement) -> bool:
+        hard = request.hard
+        if descriptor.specialization != hard.specialization or descriptor.modality != hard.modality:
+            return False
+        if hard.latency_class is not None and descriptor.latency_class != hard.latency_class:
+            return False
+        if (
+            hard.reasoning_effort is not None
+            and hard.reasoning_effort not in descriptor.supported_reasoning_efforts
+        ):
+            return False
+        if hard.quality_tier is not None and descriptor.quality_tier != hard.quality_tier:
+            return False
+        if hard.cost_policy == "free_only" and descriptor.paid:
+            return False
+        if hard.locality == "local_only" and descriptor.execution_boundary != "local":
+            return False
+        if hard.locality == "non_remote" and descriptor.execution_boundary == "remote":
+            return False
+        if not hard.required_resources.issubset(descriptor.resources):
+            return False
+        if hard.provider_id is not None and descriptor.provider_id != hard.provider_id:
+            return False
+        if hard.model_id is not None and descriptor.model_id != hard.model_id:
+            return False
+        return hard.mechanism_id is None or descriptor.id == hard.mechanism_id
+
+    @classmethod
+    def _fallback_compatible(
+        cls,
+        descriptor: CapabilityDescriptor,
+        request: InferenceRequirement,
+    ) -> bool:
+        if request.fallback.allow_unlisted:
+            return True
+        preferences = request.preferences
+        checks = (
+            (preferences.mechanism_ids, descriptor.id in preferences.mechanism_ids),
+            (preferences.model_ids, descriptor.model_id in preferences.model_ids),
+            (preferences.provider_ids, descriptor.provider_id in preferences.provider_ids),
+            (
+                preferences.execution_boundaries,
+                descriptor.execution_boundary in preferences.execution_boundaries,
+            ),
+            (preferences.latency_classes, descriptor.latency_class in preferences.latency_classes),
+            (
+                preferences.reasoning_efforts,
+                bool(set(preferences.reasoning_efforts) & descriptor.supported_reasoning_efforts),
+            ),
+            (preferences.quality_tiers, descriptor.quality_tier in preferences.quality_tiers),
         )
+        return all(not values or matched for values, matched in checks)
+
+    @classmethod
+    def _sort_key(
+        cls,
+        descriptor: CapabilityDescriptor,
+        request: InferenceRequirement,
+    ) -> tuple[int | str, ...]:
+        return (
+            *(
+                cls._preference_rank(descriptor, request.preferences, dimension)
+                for dimension in request.fallback.preference_order
+            ),
+            descriptor.id,
+        )
+
+    @staticmethod
+    def _preference_rank(
+        descriptor: CapabilityDescriptor,
+        preferences: InferencePreferences,
+        dimension: PreferenceDimension,
+    ) -> int:
+        values: tuple[object, ...]
+        candidate: object
+        if dimension == "mechanism":
+            values, candidate = preferences.mechanism_ids, descriptor.id
+        elif dimension == "model":
+            values, candidate = preferences.model_ids, descriptor.model_id
+        elif dimension == "provider":
+            values, candidate = preferences.provider_ids, descriptor.provider_id
+        elif dimension == "execution_boundary":
+            values, candidate = preferences.execution_boundaries, descriptor.execution_boundary
+        elif dimension == "latency":
+            values, candidate = preferences.latency_classes, descriptor.latency_class
+        elif dimension == "quality":
+            values, candidate = preferences.quality_tiers, descriptor.quality_tier
+        else:
+            values = preferences.reasoning_efforts
+            if not values:
+                return 0
+            matching = [
+                index
+                for index, value in enumerate(values)
+                if value in descriptor.supported_reasoning_efforts
+            ]
+            return min(matching, default=len(values) + 1)
+        if not values:
+            return 0
+        try:
+            return values.index(candidate)
+        except ValueError:
+            return len(values) + 1
 
 
 class FunctionCapability:
-    """Deterministic local/embedded capability adapter, also useful in tests."""
+    """Deterministic local/embedded mechanism adapter, also useful in tests."""
 
     def __init__(
         self,

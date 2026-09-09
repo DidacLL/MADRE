@@ -1,4 +1,4 @@
-"""Explicit Agent/Operation routing with carried boundary algebra."""
+"""Explicit Agent/Operation routing with carried security-object evaluation."""
 
 from __future__ import annotations
 
@@ -10,14 +10,15 @@ from uuid import uuid4
 
 from pydantic import JsonValue
 
-from madre.contracts import ImmediateMaterial
+from madre.contracts import TransientMaterial
+from madre.interfaces import AgentEndpoint, OperationEndpoint
 from madre.registry import AgentDescriptor, InteroperabilityRegistry, OperationDescriptor
 from madre.security import (
+    DEFAULT_SECURITY_EVALUATOR,
     ExecutionBoundary,
-    SecurityAlgebra,
     SecurityContext,
     SecurityDecision,
-    SecurityEnvelope,
+    SecurityEvaluator,
 )
 
 
@@ -32,20 +33,6 @@ def material_digest(payload: JsonValue) -> str:
 
 def material_size(payload: JsonValue) -> int:
     return len(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode())
-
-
-class ModuleEndpoint(Protocol):
-    @property
-    def boundary(self) -> ExecutionBoundary: ...
-
-    @property
-    def security(self) -> SecurityEnvelope: ...
-
-    async def invoke_agent(self, agent_id: str, payload: JsonValue) -> ImmediateMaterial: ...
-
-    async def invoke_operation(
-        self, operation_id: str, payload: JsonValue
-    ) -> ImmediateMaterial: ...
 
 
 class BrokerEvidenceStore(Protocol):
@@ -100,29 +87,37 @@ class Broker:
         self,
         registry: InteroperabilityRegistry,
         evidence: BrokerEvidenceStore,
+        *,
+        security_evaluator: SecurityEvaluator = DEFAULT_SECURITY_EVALUATOR,
     ) -> None:
         self._registry = registry
         self._evidence = evidence
-        self._endpoints: dict[str, ModuleEndpoint] = {}
+        self._security_evaluator = security_evaluator
+        self._agent_endpoints: dict[str, AgentEndpoint] = {}
+        self._operation_endpoints: dict[str, OperationEndpoint] = {}
 
-    def attach_module(self, module_id: str, endpoint: ModuleEndpoint) -> None:
-        self._endpoints[module_id] = endpoint
+    def attach_agent_endpoint(self, module_id: str, endpoint: AgentEndpoint) -> None:
+        self._agent_endpoints[module_id] = endpoint
+
+    def attach_operation_endpoint(self, module_id: str, endpoint: OperationEndpoint) -> None:
+        self._operation_endpoints[module_id] = endpoint
 
     async def invoke_agent(
         self,
         requester_module_id: str,
         security: SecurityContext,
         agent_id: str,
-        material: ImmediateMaterial,
+        material: TransientMaterial,
     ) -> JsonValue:
         descriptor = self._registry.get_agent(agent_id)
         if descriptor is None:
             raise PublishedTargetNotFound(agent_id)
-        return await self._invoke(
-            crossing_kind="agent",
+        endpoint = self._agent_endpoint(descriptor.module_id)
+        return await self._invoke_agent(
             requester_module_id=requester_module_id,
             security=security,
             descriptor=descriptor,
+            endpoint=endpoint,
             material=material,
         )
 
@@ -131,30 +126,128 @@ class Broker:
         requester_module_id: str,
         security: SecurityContext,
         operation_id: str,
-        material: ImmediateMaterial,
+        material: TransientMaterial,
     ) -> JsonValue:
         descriptor = self._registry.get_operation(operation_id)
         if descriptor is None:
             raise PublishedTargetNotFound(operation_id)
-        return await self._invoke(
+        endpoint = self._operation_endpoint(descriptor.module_id)
+        return await self._invoke_operation(
+            requester_module_id=requester_module_id,
+            security=security,
+            descriptor=descriptor,
+            endpoint=endpoint,
+            material=material,
+        )
+
+    async def _invoke_agent(
+        self,
+        *,
+        requester_module_id: str,
+        security: SecurityContext,
+        descriptor: AgentDescriptor,
+        endpoint: AgentEndpoint,
+        material: TransientMaterial,
+    ) -> JsonValue:
+        invocation_id, input_context = self._prepare_input(
+            crossing_kind="agent",
+            requester_module_id=requester_module_id,
+            security=security,
+            descriptor=descriptor,
+            endpoint=endpoint,
+            material=material,
+        )
+        self._event(
+            invocation_id,
+            "agent",
+            requester_module_id,
+            descriptor.module_id,
+            descriptor.id,
+            "dispatched",
+        )
+        try:
+            output = await endpoint.invoke_agent(descriptor.id, material.payload)
+        except Exception:
+            self._event(
+                invocation_id,
+                "agent",
+                requester_module_id,
+                descriptor.module_id,
+                descriptor.id,
+                "failed",
+            )
+            raise
+        return self._finish_output(
+            invocation_id=invocation_id,
+            crossing_kind="agent",
+            requester_module_id=requester_module_id,
+            descriptor=descriptor,
+            endpoint=endpoint,
+            input_context=input_context,
+            output=output,
+        )
+
+    async def _invoke_operation(
+        self,
+        *,
+        requester_module_id: str,
+        security: SecurityContext,
+        descriptor: OperationDescriptor,
+        endpoint: OperationEndpoint,
+        material: TransientMaterial,
+    ) -> JsonValue:
+        invocation_id, input_context = self._prepare_input(
             crossing_kind="operation",
             requester_module_id=requester_module_id,
             security=security,
             descriptor=descriptor,
+            endpoint=endpoint,
             material=material,
         )
+        self._event(
+            invocation_id,
+            "operation",
+            requester_module_id,
+            descriptor.module_id,
+            descriptor.id,
+            "dispatched",
+        )
+        try:
+            output = await endpoint.invoke_operation(descriptor.id, material.payload)
+        except Exception as exc:
+            self._event(
+                invocation_id,
+                "operation",
+                requester_module_id,
+                descriptor.module_id,
+                descriptor.id,
+                "unknown-effect",
+            )
+            raise UnknownOperationEffect(descriptor.id) from exc
+        return self._finish_output(
+            invocation_id=invocation_id,
+            crossing_kind="operation",
+            requester_module_id=requester_module_id,
+            descriptor=descriptor,
+            endpoint=endpoint,
+            input_context=input_context,
+            output=output,
+        )
 
-    async def _invoke(
+    def _prepare_input(
         self,
         *,
         crossing_kind: str,
         requester_module_id: str,
         security: SecurityContext,
         descriptor: AgentDescriptor | OperationDescriptor,
-        material: ImmediateMaterial,
-    ) -> JsonValue:
+        endpoint: AgentEndpoint | OperationEndpoint,
+        material: TransientMaterial,
+    ) -> tuple[str, SecurityContext]:
         invocation_id = uuid4().hex
-        endpoint = self._endpoint(descriptor.module_id)
+        manifest = self._registry.get_module(descriptor.module_id)
+        if manifest is None:
+            raise PublishedTargetNotFound(descriptor.module_id)
         self._event(
             invocation_id,
             crossing_kind,
@@ -163,8 +256,12 @@ class Broker:
             descriptor.id,
             "requested",
         )
-
-        input_context = security.extend(material.envelope, descriptor.security, endpoint.security)
+        input_context = security.extend(
+            material.security,
+            manifest.security,
+            descriptor.security,
+            endpoint.security,
+        )
         input_decision = self._evaluate(
             crossing_id=invocation_id,
             crossing_kind=f"{crossing_kind}-input",
@@ -183,34 +280,19 @@ class Broker:
                 "input-security-rejected",
             )
             raise SecurityDenied(",".join(input_decision.deficits))
+        return invocation_id, input_context
 
-        self._event(
-            invocation_id,
-            crossing_kind,
-            requester_module_id,
-            descriptor.module_id,
-            descriptor.id,
-            "dispatched",
-        )
-        try:
-            if crossing_kind == "agent":
-                output = await endpoint.invoke_agent(descriptor.id, material.payload)
-            else:
-                output = await endpoint.invoke_operation(descriptor.id, material.payload)
-        except Exception as exc:
-            event = "failed" if crossing_kind == "agent" else "unknown-effect"
-            self._event(
-                invocation_id,
-                crossing_kind,
-                requester_module_id,
-                descriptor.module_id,
-                descriptor.id,
-                event,
-            )
-            if crossing_kind == "operation":
-                raise UnknownOperationEffect(descriptor.id) from exc
-            raise
-
+    def _finish_output(
+        self,
+        *,
+        invocation_id: str,
+        crossing_kind: str,
+        requester_module_id: str,
+        descriptor: AgentDescriptor | OperationDescriptor,
+        endpoint: AgentEndpoint | OperationEndpoint,
+        input_context: SecurityContext,
+        output: TransientMaterial,
+    ) -> JsonValue:
         output_digest = material_digest(output.payload)
         output_size = material_size(output.payload)
         self._event(
@@ -223,7 +305,11 @@ class Broker:
             output_digest=output_digest,
             output_size=output_size,
         )
-        if output.envelope.subject != output_digest or not output.envelope.verify_integrity():
+        if (
+            output.digest != output_digest
+            or output.security.subject_id != output.reference
+            or not output.security.verify_integrity()
+        ):
             self._event(
                 invocation_id,
                 crossing_kind,
@@ -236,8 +322,8 @@ class Broker:
             )
             raise InvalidModuleResult(descriptor.id)
 
-        output_context = input_context.extend(output.envelope)
-        output_decision = SecurityAlgebra.evaluate(output_context)
+        output_context = input_context.extend(output.security)
+        output_decision = self._security_evaluator.evaluate(output_context)
         self._evidence.record_security_decision(
             crossing_id=invocation_id,
             crossing_kind=f"{crossing_kind}-output",
@@ -271,8 +357,14 @@ class Broker:
         )
         return output.payload
 
-    def _endpoint(self, module_id: str) -> ModuleEndpoint:
-        endpoint = self._endpoints.get(module_id)
+    def _agent_endpoint(self, module_id: str) -> AgentEndpoint:
+        endpoint = self._agent_endpoints.get(module_id)
+        if endpoint is None:
+            raise ModuleEndpointUnavailable(module_id)
+        return endpoint
+
+    def _operation_endpoint(self, module_id: str) -> OperationEndpoint:
+        endpoint = self._operation_endpoints.get(module_id)
         if endpoint is None:
             raise ModuleEndpointUnavailable(module_id)
         return endpoint
@@ -285,19 +377,16 @@ class Broker:
         target_id: str,
         context: SecurityContext,
         execution_boundary: ExecutionBoundary,
-        material: ImmediateMaterial,
+        material: TransientMaterial,
     ) -> SecurityDecision:
-        if material_digest(material.payload) != material.envelope.subject:
+        if material_digest(material.payload) != material.digest:
             decision = SecurityDecision(
                 admissible=False,
                 deficits=("material_integrity",),
-                sensitivity=context.sensitivity,
-                trust=context.trust,
-                risk=context.risk,
-                scopes=context.scopes,
+                evaluator="structural-material-integrity",
             )
         else:
-            decision = SecurityAlgebra.evaluate(context)
+            decision = self._security_evaluator.evaluate(context)
         self._evidence.record_security_decision(
             crossing_id=crossing_id,
             crossing_kind=crossing_kind,

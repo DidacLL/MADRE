@@ -42,20 +42,17 @@ class PlatformStore(WorkStore):
             self.connection.execute(
                 """
                 INSERT INTO security_decision(
-                    crossing_id,crossing_kind,target_id,context_json,
-                    effective_sensitivity,effective_trust,effective_risk,scopes_json,
+                    crossing_id,crossing_kind,target_id,context_json,evaluator,evidence_json,
                     execution_boundary,admissible,deficits_json,decided_at
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                ) VALUES (?,?,?,?,?,?,?,?,?,?)
                 """,
                 (
                     crossing_id,
                     crossing_kind,
                     target_id,
                     _json(context),
-                    int(decision.sensitivity),
-                    int(decision.trust),
-                    int(decision.risk),
-                    _json(sorted(decision.scopes)),
+                    decision.evaluator,
+                    _json(decision.evidence),
                     execution_boundary,
                     int(decision.admissible),
                     _json(list(decision.deficits)),

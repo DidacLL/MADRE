@@ -6,13 +6,7 @@ import json
 import sqlite3
 from datetime import datetime
 
-from madre.contracts import (
-    ResultEvidence,
-    WorkCancellation,
-    WorkFailure,
-    WorkRecord,
-    WorkSpec,
-)
+from madre.contracts import ResultEvidence, WorkCancellation, WorkFailure, WorkRecord, WorkSpec
 from madre.storage_db import _json
 from madre.storage_work_base import WorkStoreBase
 
@@ -32,20 +26,17 @@ class WorkRecordStore(WorkStoreBase):
                 self.connection.execute(
                     """
                     INSERT INTO runtime_work(
-                        id,originator,security_context_json,capability_json,material_reference,
-                        input_digest,material_envelope_json,eligible_at,priority,constraints_json,
-                        correlation_json,idempotency_key,status,submitted_at,enqueued_at,
-                        queue_sequence
-                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?, 'accepted',?,?,?)
+                        id,originator,security_context_json,inference_json,material_handle_json,
+                        eligible_at,priority,constraints_json,correlation_json,idempotency_key,
+                        status,submitted_at,enqueued_at,queue_sequence
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?, 'accepted',?,?,?)
                     """,
                     (
                         work_id,
                         spec.originator,
                         _json(spec.security),
-                        _json(spec.capability),
-                        spec.material_reference,
-                        spec.input_digest,
-                        _json(spec.material_envelope),
+                        _json(spec.inference),
+                        _json(spec.material),
                         spec.eligible_at.isoformat() if spec.eligible_at else None,
                         spec.priority,
                         _json(spec.constraints),
@@ -81,10 +72,8 @@ class WorkRecordStore(WorkStoreBase):
             {
                 "originator": row["originator"],
                 "security": json.loads(row["security_context_json"]),
-                "capability": json.loads(row["capability_json"]),
-                "material_reference": row["material_reference"],
-                "input_digest": row["input_digest"],
-                "material_envelope": json.loads(row["material_envelope_json"]),
+                "inference": json.loads(row["inference_json"]),
+                "material": json.loads(row["material_handle_json"]),
                 "eligible_at": row["eligible_at"],
                 "priority": row["priority"],
                 "constraints": json.loads(row["constraints_json"]),

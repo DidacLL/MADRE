@@ -1,16 +1,17 @@
-"""Immutable carried security state and deterministic MADRE boundary algebra."""
+"""Bound security objects, carried composition, and the temporary compatibility evaluator."""
 
 from __future__ import annotations
 
 import hashlib
 import json
 from enum import IntEnum
-from typing import Annotated, Literal, cast
+from typing import Annotated, Literal, Protocol, cast
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 Identifier = Annotated[str, Field(min_length=1)]
-ScopeIdentifier = Annotated[str, Field(min_length=1)]
+SecurityID = Identifier
+ExecutionBoundary = Literal["local", "isolated", "remote"]
 
 
 class FrozenModel(BaseModel):
@@ -33,34 +34,88 @@ OrdinarySecurityLevel = Literal[
     SecurityLevel.LEVEL_4,
     SecurityLevel.LEVEL_5,
 ]
-ExecutionBoundary = Literal["local", "isolated", "remote"]
 
 
 def _canonical(value: object) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), default=int).encode()
 
 
-class SecurityEnvelope(FrozenModel):
-    """Immutable security facts bound to one material, descriptor, actor, or boundary."""
-
-    subject: Identifier
+class MaterialSecurityValues(FrozenModel):
+    kind: Literal["material"] = "material"
     sensitivity: OrdinarySecurityLevel
+
+
+class ActorSecurityValues(FrozenModel):
+    kind: Literal["actor"] = "actor"
     trust: OrdinarySecurityLevel
+    isolation: OrdinarySecurityLevel
+
+
+class OperationSecurityValues(FrozenModel):
+    kind: Literal["operation"] = "operation"
     risk: OrdinarySecurityLevel
-    scopes: frozenset[ScopeIdentifier] = Field(default_factory=frozenset)
+    autonomy: OrdinarySecurityLevel
+
+
+class CapabilitySecurityValues(FrozenModel):
+    kind: Literal["capability"] = "capability"
+    trust: OrdinarySecurityLevel
+    privacy: OrdinarySecurityLevel
+    risk: OrdinarySecurityLevel
+
+
+SecurityValues = Annotated[
+    MaterialSecurityValues
+    | ActorSecurityValues
+    | OperationSecurityValues
+    | CapabilitySecurityValues,
+    Field(discriminator="kind"),
+]
+SecuritySubjectKind = Literal[
+    "artifact",
+    "context_bundle",
+    "module",
+    "agent",
+    "operation",
+    "capability",
+    "endpoint",
+]
+
+
+class SecurityObject(FrozenModel):
+    """Immutable normalized facts structurally bound to one security-relevant subject."""
+
+    security_id: SecurityID
+    subject_id: Identifier
+    subject_kind: SecuritySubjectKind
+    values: SecurityValues
     origin: Identifier
     provenance: tuple[Identifier, ...] = ()
     derivation: tuple[Identifier, ...] = ()
     descriptor_version: Identifier = "1"
     integrity: str = Field(pattern=r"^[0-9a-f]{64}$")
 
+    @model_validator(mode="after")
+    def values_match_subject_kind(self) -> SecurityObject:
+        expected: dict[str, type[BaseModel]] = {
+            "artifact": MaterialSecurityValues,
+            "context_bundle": MaterialSecurityValues,
+            "module": ActorSecurityValues,
+            "agent": ActorSecurityValues,
+            "operation": OperationSecurityValues,
+            "capability": CapabilitySecurityValues,
+            "endpoint": ActorSecurityValues,
+        }
+        if not isinstance(self.values, expected[self.subject_kind]):
+            raise ValueError(f"{self.subject_kind} has incompatible security values")
+        return self
+
     def integrity_payload(self) -> dict[str, object]:
         return {
-            "subject": self.subject,
-            "sensitivity": int(self.sensitivity),
-            "trust": int(self.trust),
-            "risk": int(self.risk),
-            "scopes": sorted(self.scopes),
+            "security_id": self.security_id,
+            "subject_id": self.subject_id,
+            "subject_kind": self.subject_kind,
+            "values": self.values.model_dump(mode="json"),
             "origin": self.origin,
             "provenance": list(self.provenance),
             "derivation": list(self.derivation),
@@ -74,33 +129,31 @@ class SecurityEnvelope(FrozenModel):
     def issue(
         cls,
         *,
-        subject: str,
-        sensitivity: OrdinarySecurityLevel,
-        trust: OrdinarySecurityLevel,
-        risk: OrdinarySecurityLevel,
-        scopes: frozenset[str] | set[str] = frozenset(),
+        subject_id: str,
+        subject_kind: SecuritySubjectKind,
+        values: SecurityValues,
         origin: str,
+        security_id: str | None = None,
         provenance: tuple[str, ...] = (),
         derivation: tuple[str, ...] = (),
         descriptor_version: str = "1",
-    ) -> SecurityEnvelope:
+    ) -> SecurityObject:
+        identity = security_id or f"security:{subject_kind}:{subject_id}"
         payload = {
-            "subject": subject,
-            "sensitivity": int(sensitivity),
-            "trust": int(trust),
-            "risk": int(risk),
-            "scopes": sorted(scopes),
+            "security_id": identity,
+            "subject_id": subject_id,
+            "subject_kind": subject_kind,
+            "values": values.model_dump(mode="json"),
             "origin": origin,
             "provenance": list(provenance),
             "derivation": list(derivation),
             "descriptor_version": descriptor_version,
         }
         return cls(
-            subject=subject,
-            sensitivity=sensitivity,
-            trust=trust,
-            risk=risk,
-            scopes=frozenset(scopes),
+            security_id=identity,
+            subject_id=subject_id,
+            subject_kind=subject_kind,
+            values=values,
             origin=origin,
             provenance=provenance,
             derivation=derivation,
@@ -110,65 +163,76 @@ class SecurityEnvelope(FrozenModel):
 
 
 class SecurityContext(FrozenModel):
-    """Security state carried by one request/work lifecycle.
+    """Security objects carried by one concrete request/work lifecycle."""
 
-    Each boundary contributes another immutable envelope. No registry entry, token,
-    allowlist, or previous decision grants authority to the context.
-    """
+    objects: tuple[SecurityObject, ...] = Field(min_length=1)
 
-    envelopes: tuple[SecurityEnvelope, ...] = Field(min_length=1)
-
-    def extend(self, *envelopes: SecurityEnvelope) -> SecurityContext:
-        return SecurityContext(envelopes=(*self.envelopes, *envelopes))
+    def extend(self, *objects: SecurityObject) -> SecurityContext:
+        return SecurityContext(objects=(*self.objects, *objects))
 
     @property
-    def sensitivity(self) -> OrdinarySecurityLevel:
-        return cast(
-            OrdinarySecurityLevel,
-            SecurityLevel(max(int(item.sensitivity) for item in self.envelopes)),
-        )
+    def security_ids(self) -> tuple[SecurityID, ...]:
+        return tuple(item.security_id for item in self.objects)
 
-    @property
-    def trust(self) -> OrdinarySecurityLevel:
-        return cast(
-            OrdinarySecurityLevel,
-            SecurityLevel(min(int(item.trust) for item in self.envelopes)),
-        )
 
-    @property
-    def risk(self) -> OrdinarySecurityLevel:
-        return cast(
-            OrdinarySecurityLevel,
-            SecurityLevel(max(int(item.risk) for item in self.envelopes)),
-        )
-
-    @property
-    def scopes(self) -> frozenset[ScopeIdentifier]:
-        return frozenset(scope for item in self.envelopes for scope in item.scopes)
+class DecisionEvidence(FrozenModel):
+    key: Identifier
+    value: Identifier
 
 
 class SecurityDecision(FrozenModel):
     admissible: bool
     deficits: tuple[Identifier, ...] = ()
-    sensitivity: OrdinarySecurityLevel
-    trust: OrdinarySecurityLevel
-    risk: OrdinarySecurityLevel
-    scopes: frozenset[ScopeIdentifier] = Field(default_factory=frozenset)
+    evaluator: Identifier
+    evidence: tuple[DecisionEvidence, ...] = ()
 
 
-class SecurityAlgebra:
-    """Pure additive boundary algebra over the security context carried by the work."""
+class SecurityEvaluator(Protocol):
+    def evaluate(self, context: SecurityContext) -> SecurityDecision: ...
 
-    @staticmethod
-    def evaluate(context: SecurityContext) -> SecurityDecision:
+
+class CompatibilitySecurityEvaluator:
+    """Temporary implementation evaluator retained behind the SecurityObject seam.
+
+    This preserves the repository's existing max/min behavior while the canonical algebra remains
+    intentionally open. Callers depend only on ``SecurityEvaluator`` and ``SecurityDecision``.
+    """
+
+    name = "compatibility-max-min-v1"
+
+    def evaluate(self, context: SecurityContext) -> SecurityDecision:
         deficits: list[str] = []
-        for envelope in context.envelopes:
-            if not envelope.verify_integrity():
-                deficits.append(f"invalid_integrity:{envelope.subject}")
+        for item in context.objects:
+            if not item.verify_integrity():
+                deficits.append(f"invalid_integrity:{item.security_id}")
 
-        sensitivity = context.sensitivity
-        trust = context.trust
-        risk = context.risk
+        sensitivities = [
+            int(item.values.sensitivity)
+            for item in context.objects
+            if isinstance(item.values, MaterialSecurityValues)
+        ]
+        trusts = [
+            int(item.values.trust)
+            for item in context.objects
+            if isinstance(item.values, (ActorSecurityValues, CapabilitySecurityValues))
+        ]
+        risks = [
+            int(item.values.risk)
+            for item in context.objects
+            if isinstance(item.values, (OperationSecurityValues, CapabilitySecurityValues))
+        ]
+        sensitivity = cast(
+            OrdinarySecurityLevel,
+            SecurityLevel(max(sensitivities, default=int(SecurityLevel.LEVEL_1))),
+        )
+        trust = cast(
+            OrdinarySecurityLevel,
+            SecurityLevel(min(trusts, default=int(SecurityLevel.LEVEL_5))),
+        )
+        risk = cast(
+            OrdinarySecurityLevel,
+            SecurityLevel(max(risks, default=int(SecurityLevel.LEVEL_1))),
+        )
 
         if int(trust) < int(sensitivity):
             deficits.append("trust_below_sensitivity")
@@ -178,8 +242,13 @@ class SecurityAlgebra:
         return SecurityDecision(
             admissible=not deficits,
             deficits=tuple(deficits),
-            sensitivity=sensitivity,
-            trust=trust,
-            risk=risk,
-            scopes=context.scopes,
+            evaluator=self.name,
+            evidence=(
+                DecisionEvidence(key="effective_sensitivity", value=str(int(sensitivity))),
+                DecisionEvidence(key="effective_trust", value=str(int(trust))),
+                DecisionEvidence(key="effective_risk", value=str(int(risk))),
+            ),
         )
+
+
+DEFAULT_SECURITY_EVALUATOR: SecurityEvaluator = CompatibilitySecurityEvaluator()
