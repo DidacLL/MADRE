@@ -1,4 +1,4 @@
-"""Public interoperability descriptors. Registries expose existence, not authority."""
+"""Public interoperability descriptors. Registries expose existence and routing, not authority."""
 
 from __future__ import annotations
 
@@ -7,11 +7,12 @@ from typing import Protocol
 from pydantic import Field, model_validator
 
 from madre.security import (
+    DEFAULT_SECURITY_EVALUATOR,
     FrozenModel,
     Identifier,
-    SecurityAlgebra,
     SecurityContext,
-    SecurityEnvelope,
+    SecurityEvaluator,
+    SecurityObject,
 )
 
 
@@ -23,7 +24,7 @@ class AgentDescriptor(FrozenModel):
     output_contract: Identifier
     published_skills: tuple[Identifier, ...] = ()
     published_workflows: tuple[Identifier, ...] = ()
-    security: SecurityEnvelope
+    security: SecurityObject
     provenance: tuple[Identifier, ...] = ()
 
 
@@ -37,7 +38,6 @@ class SkillDescriptor(FrozenModel):
     related_operations: tuple[Identifier, ...] = ()
     related_workflows: tuple[Identifier, ...] = ()
     compatibility: tuple[Identifier, ...] = ()
-    security: SecurityEnvelope
     provenance: tuple[Identifier, ...] = ()
 
 
@@ -48,7 +48,6 @@ class WorkflowDescriptor(FrozenModel):
     version: Identifier
     input_contract: Identifier
     output_contract: Identifier
-    security: SecurityEnvelope
     provenance: tuple[Identifier, ...] = ()
 
 
@@ -60,7 +59,7 @@ class OperationDescriptor(FrozenModel):
     output_contract: Identifier
     effect: Identifier
     repeatability: Identifier
-    security: SecurityEnvelope
+    security: SecurityObject
     provenance: tuple[Identifier, ...] = ()
 
 
@@ -71,6 +70,7 @@ class ModuleManifest(FrozenModel):
     module_id: Identifier
     version: Identifier
     description: str = Field(min_length=1)
+    security: SecurityObject
     discovery_terms: tuple[str, ...] = ()
     agents: tuple[AgentDescriptor, ...] = ()
     skills: tuple[SkillDescriptor, ...] = ()
@@ -80,6 +80,11 @@ class ModuleManifest(FrozenModel):
 
     @model_validator(mode="after")
     def exports_belong_to_module(self) -> ModuleManifest:
+        if self.security.subject_kind != "module" or self.security.subject_id != self.module_id:
+            raise ValueError("Module security must be bound to the Module identity")
+        if not self.security.verify_integrity():
+            raise ValueError("Module SecurityObject integrity is invalid")
+
         exports: tuple[PublicDescriptor, ...] = (
             *self.agents,
             *self.skills,
@@ -89,10 +94,20 @@ class ModuleManifest(FrozenModel):
         for descriptor in exports:
             if descriptor.module_id != self.module_id:
                 raise ValueError("every exported descriptor must identify its owning Module")
-            if descriptor.security.subject != descriptor.id:
-                raise ValueError("descriptor security envelope subject must equal descriptor id")
-            if not descriptor.security.verify_integrity():
-                raise ValueError(f"invalid descriptor security envelope: {descriptor.id}")
+        for descriptor in self.agents:
+            if (
+                descriptor.security.subject_kind != "agent"
+                or descriptor.security.subject_id != descriptor.id
+                or not descriptor.security.verify_integrity()
+            ):
+                raise ValueError(f"invalid Agent SecurityObject: {descriptor.id}")
+        for descriptor in self.operations:
+            if (
+                descriptor.security.subject_kind != "operation"
+                or descriptor.security.subject_id != descriptor.id
+                or not descriptor.security.verify_integrity()
+            ):
+                raise ValueError(f"invalid Operation SecurityObject: {descriptor.id}")
         return self
 
 
@@ -103,8 +118,14 @@ class RegistryStoreProtocol(Protocol):
 
 
 class InteroperabilityRegistry:
-    def __init__(self, store: RegistryStoreProtocol) -> None:
+    def __init__(
+        self,
+        store: RegistryStoreProtocol,
+        *,
+        security_evaluator: SecurityEvaluator = DEFAULT_SECURITY_EVALUATOR,
+    ) -> None:
         self._store = store
+        self._security_evaluator = security_evaluator
 
     def register(self, manifest: ModuleManifest) -> None:
         self._store.put_manifest(manifest)
@@ -132,28 +153,24 @@ class InteroperabilityRegistry:
             visible.extend(
                 descriptor
                 for descriptor in manifest.agents
-                if SecurityAlgebra.evaluate(security.extend(descriptor.security)).admissible
+                if self._security_evaluator.evaluate(
+                    security.extend(manifest.security, descriptor.security)
+                ).admissible
             )
         return tuple(sorted(visible, key=lambda descriptor: descriptor.id))
 
     def discover_skills(self, security: SecurityContext) -> tuple[SkillDescriptor, ...]:
         visible: list[SkillDescriptor] = []
         for manifest in self._store.manifests():
-            visible.extend(
-                descriptor
-                for descriptor in manifest.skills
-                if SecurityAlgebra.evaluate(security.extend(descriptor.security)).admissible
-            )
+            if self._security_evaluator.evaluate(security.extend(manifest.security)).admissible:
+                visible.extend(manifest.skills)
         return tuple(sorted(visible, key=lambda descriptor: descriptor.id))
 
     def discover_workflows(self, security: SecurityContext) -> tuple[WorkflowDescriptor, ...]:
         visible: list[WorkflowDescriptor] = []
         for manifest in self._store.manifests():
-            visible.extend(
-                descriptor
-                for descriptor in manifest.workflows
-                if SecurityAlgebra.evaluate(security.extend(descriptor.security)).admissible
-            )
+            if self._security_evaluator.evaluate(security.extend(manifest.security)).admissible:
+                visible.extend(manifest.workflows)
         return tuple(sorted(visible, key=lambda descriptor: descriptor.id))
 
     def discover_operations(self, security: SecurityContext) -> tuple[OperationDescriptor, ...]:
@@ -162,6 +179,8 @@ class InteroperabilityRegistry:
             visible.extend(
                 descriptor
                 for descriptor in manifest.operations
-                if SecurityAlgebra.evaluate(security.extend(descriptor.security)).admissible
+                if self._security_evaluator.evaluate(
+                    security.extend(manifest.security, descriptor.security)
+                ).admissible
             )
         return tuple(sorted(visible, key=lambda descriptor: descriptor.id))

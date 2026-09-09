@@ -11,7 +11,13 @@ from fastapi import FastAPI, Header, HTTPException, Response
 from madre.adapters.openai import OpenAICompatibleChatCapability
 from madre.capabilities import CapabilityDescriptor, CapabilityRegistry
 from madre.config import Settings
-from madre.contracts import WorkRecord, WorkRetryRequest, WorkSubmission
+from madre.contracts import (
+    TransientInferenceRequest,
+    TransientInferenceResult,
+    WorkRecord,
+    WorkRetryRequest,
+    WorkSubmission,
+)
 from madre.registry import InteroperabilityRegistry, ModuleManifest
 from madre.runtime import (
     CancellationConflict,
@@ -19,33 +25,40 @@ from madre.runtime import (
     ResultLost,
     ResultUnavailable,
     RetryConflict,
+    TransientInferenceError,
     WorkNotFound,
     WorkRuntime,
 )
-from madre.security import SecurityEnvelope, SecurityLevel
+from madre.security import CapabilitySecurityValues, SecurityObject
 from madre.storage import PlatformStore, open_database
 
 
 def _capabilities(settings: Settings) -> CapabilityRegistry:
     registry = CapabilityRegistry()
     for capability_id, config in settings.capabilities.items():
-        envelope = SecurityEnvelope.issue(
-            subject=capability_id,
-            sensitivity=SecurityLevel.LEVEL_1,
-            trust=config.trust,
-            risk=config.risk,
-            scopes=set(config.scopes),
-            origin=f"adapter:{capability_id}",
-            provenance=("openai-compatible",),
+        security = SecurityObject.issue(
+            subject_id=capability_id,
+            subject_kind="capability",
+            values=CapabilitySecurityValues(
+                trust=config.trust,
+                privacy=config.privacy,
+                risk=config.risk,
+            ),
         )
         descriptor = CapabilityDescriptor(
             id=capability_id,
-            kind="model.inference.chat",
+            specialization="model.inference.chat",
             modality="text",
+            provider_id=config.provider_id,
             model_id=config.model,
             execution_boundary=config.boundary,
+            latency_class=config.latency_class,
+            supported_reasoning_efforts=config.reasoning_efforts,
+            quality_tier=config.quality_tier,
+            paid=config.paid,
+            resources=config.resources,
             heavyweight=config.heavyweight,
-            security=envelope,
+            security=security,
         )
         registry.register(OpenAICompatibleChatCapability(descriptor, config))
     return registry
@@ -91,6 +104,13 @@ def create_app(settings: Settings) -> FastAPI:
     async def register_module(manifest: ModuleManifest) -> ModuleManifest:
         interoperability().register(manifest)
         return manifest
+
+    @app.post("/v1/inference", response_model=TransientInferenceResult)
+    async def transient_inference(request: TransientInferenceRequest) -> TransientInferenceResult:
+        try:
+            return await runtime().infer(request)
+        except TransientInferenceError as exc:
+            raise HTTPException(status_code=422, detail=exc.code) from exc
 
     @app.post("/v1/work", response_model=WorkRecord, status_code=202)
     async def submit_work(

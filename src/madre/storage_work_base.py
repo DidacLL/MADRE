@@ -62,6 +62,7 @@ class WorkStoreBase:
                         datetime.fromisoformat(row["completed_at"]) if row["completed_at"] else None
                     ),
                     capability_id=row["capability_id"],
+                    provider_id=row["provider_id"],
                     model_id=row["model_id"],
                     execution_boundary=row["execution_boundary"],
                     output_digest=row["output_digest"],

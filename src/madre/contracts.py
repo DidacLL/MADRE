@@ -1,30 +1,39 @@
-"""Public execution contracts. Durable records deliberately exclude content bytes."""
+"""Language-neutral public execution contracts; durable records contain no private bytes."""
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Annotated, Literal
+from typing import Literal
 
-from pydantic import (
-    AwareDatetime,
-    BaseModel,
-    ConfigDict,
-    Field,
-    JsonValue,
-    field_validator,
-    model_validator,
+from pydantic import AwareDatetime, Field, JsonValue, field_validator, model_validator
+
+from madre.security import (
+    ExecutionBoundary,
+    FrozenModel,
+    Identifier,
+    SecurityContext,
+    SecurityObject,
 )
 
-from madre.security import ExecutionBoundary, Identifier, SecurityContext, SecurityEnvelope
-
-
-class FrozenModel(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
+LatencyClass = Literal["interactive", "standard", "batch"]
+ReasoningEffort = Literal["low", "medium", "high"]
+QualityTier = Literal["basic", "standard", "high"]
+CostPolicy = Literal["free_only", "paid_allowed"]
+LocalityRequirement = Literal["local_only", "non_remote", "any"]
+PreferenceDimension = Literal[
+    "mechanism",
+    "model",
+    "provider",
+    "cost",
+    "execution_boundary",
+    "latency",
+    "reasoning_effort",
+    "quality",
+]
 
 
 class ExecutionConstraints(FrozenModel):
     timeout_seconds: float = Field(default=120, gt=0, allow_inf_nan=False)
-    local_only: bool = False
 
 
 class CorrelationEntry(FrozenModel):
@@ -32,35 +41,104 @@ class CorrelationEntry(FrozenModel):
     value: Identifier
 
 
-class CapabilityRequest(FrozenModel):
-    capability_id: Identifier | None = None
-    kind: Identifier
+class InferenceHardRequirements(FrozenModel):
+    specialization: Identifier
     modality: Identifier = "text"
+    latency_class: LatencyClass | None = None
+    reasoning_effort: ReasoningEffort | None = None
+    quality_tier: QualityTier | None = None
+    cost_policy: CostPolicy = "paid_allowed"
+    locality: LocalityRequirement = "any"
+    required_resources: frozenset[Identifier] = Field(default_factory=frozenset)
+    provider_id: Identifier | None = None
     model_id: Identifier | None = None
+    mechanism_id: Identifier | None = None
 
 
-class ImmediateMaterial(FrozenModel):
-    kind: Literal["immediate"] = "immediate"
+class InferencePreferences(FrozenModel):
+    mechanism_ids: tuple[Identifier, ...] = ()
+    model_ids: tuple[Identifier, ...] = ()
+    provider_ids: tuple[Identifier, ...] = ()
+    prefer_free: bool = False
+    execution_boundaries: tuple[ExecutionBoundary, ...] = ()
+    latency_classes: tuple[LatencyClass, ...] = ()
+    reasoning_efforts: tuple[ReasoningEffort, ...] = ()
+    quality_tiers: tuple[QualityTier, ...] = ()
+
+
+class FallbackPolicy(FrozenModel):
+    allow_unlisted: bool = True
+    preference_order: tuple[PreferenceDimension, ...] = (
+        "mechanism",
+        "model",
+        "provider",
+        "cost",
+        "execution_boundary",
+        "latency",
+        "reasoning_effort",
+        "quality",
+    )
+
+    @model_validator(mode="after")
+    def unique_dimensions(self) -> FallbackPolicy:
+        if len(self.preference_order) != len(set(self.preference_order)):
+            raise ValueError("preference_order dimensions must be unique")
+        return self
+
+
+class InferenceRequirement(FrozenModel):
+    hard: InferenceHardRequirements
+    preferences: InferencePreferences = Field(default_factory=InferencePreferences)
+    fallback: FallbackPolicy = Field(default_factory=FallbackPolicy)
+
+
+class TransientMaterial(FrozenModel):
     reference: Identifier
     payload: JsonValue
-    envelope: SecurityEnvelope
+    digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    security: SecurityObject
+
+    @model_validator(mode="after")
+    def security_matches_reference(self) -> TransientMaterial:
+        if self.security.subject_kind not in {"artifact", "context_bundle"}:
+            raise ValueError("transient material requires artifact/context_bundle security")
+        if self.security.subject_id != self.reference:
+            raise ValueError("material SecurityObject subject must equal material reference")
+        if not self.security.verify_integrity():
+            raise ValueError("material SecurityObject integrity is invalid")
+        return self
+
+    def to_handle(self, *, coordination: str | None = None) -> MaterialHandle:
+        return MaterialHandle(
+            reference=self.reference,
+            digest=self.digest,
+            security=self.security,
+            coordination=coordination,
+        )
 
 
-class DelayedMaterial(FrozenModel):
-    kind: Literal["delayed"] = "delayed"
+class MaterialHandle(FrozenModel):
     reference: Identifier
     digest: str = Field(pattern=r"^[0-9a-f]{64}$")
-    envelope: SecurityEnvelope
+    security: SecurityObject
+    coordination: Identifier | None = None
 
-
-ExecutionMaterial = Annotated[ImmediateMaterial | DelayedMaterial, Field(discriminator="kind")]
+    @model_validator(mode="after")
+    def security_matches_reference(self) -> MaterialHandle:
+        if self.security.subject_kind not in {"artifact", "context_bundle"}:
+            raise ValueError("MaterialHandle requires artifact/context_bundle security")
+        if self.security.subject_id != self.reference:
+            raise ValueError("MaterialHandle SecurityObject subject must equal material reference")
+        if not self.security.verify_integrity():
+            raise ValueError("MaterialHandle SecurityObject integrity is invalid")
+        return self
 
 
 class WorkSubmission(FrozenModel):
     originator: Identifier
     security: SecurityContext
-    capability: CapabilityRequest
-    material: ExecutionMaterial
+    inference: InferenceRequirement
+    material: MaterialHandle
     eligible_at: AwareDatetime | None = None
     priority: int = 0
     constraints: ExecutionConstraints = Field(default_factory=ExecutionConstraints)
@@ -82,14 +160,30 @@ class WorkSubmission(FrozenModel):
 class WorkSpec(FrozenModel):
     originator: Identifier
     security: SecurityContext
-    capability: CapabilityRequest
-    material_reference: Identifier
-    input_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
-    material_envelope: SecurityEnvelope
+    inference: InferenceRequirement
+    material: MaterialHandle
     eligible_at: AwareDatetime | None = None
     priority: int = 0
     constraints: ExecutionConstraints = Field(default_factory=ExecutionConstraints)
     correlation: tuple[CorrelationEntry, ...] = ()
+
+
+class TransientInferenceRequest(FrozenModel):
+    originator: Identifier
+    security: SecurityContext
+    inference: InferenceRequirement
+    material: TransientMaterial
+    constraints: ExecutionConstraints = Field(default_factory=ExecutionConstraints)
+
+
+class TransientInferenceResult(FrozenModel):
+    payload: JsonValue
+    capability_id: Identifier
+    provider_id: Identifier | None = None
+    model_id: Identifier | None = None
+    execution_boundary: ExecutionBoundary
+    output_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    output_size: int = Field(ge=0)
 
 
 class WorkFailure(FrozenModel):
@@ -116,6 +210,7 @@ class WorkAttempt(FrozenModel):
     started_at: AwareDatetime
     completed_at: AwareDatetime | None = None
     capability_id: Identifier | None = None
+    provider_id: Identifier | None = None
     model_id: Identifier | None = None
     execution_boundary: ExecutionBoundary | None = None
     output_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")

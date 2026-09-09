@@ -15,7 +15,7 @@ import httpx
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, TypeAdapter
 
 from madre.capabilities import CapabilityDescriptor, CapabilityError
-from madre.contracts import ExecutionConstraints
+from madre.contracts import ExecutionConstraints, LatencyClass, QualityTier, ReasoningEffort
 from madre.security import ExecutionBoundary, OrdinarySecurityLevel, SecurityLevel
 
 
@@ -25,11 +25,17 @@ class OpenAIChatConfig(BaseModel):
     kind: Literal["openai_chat"] = "openai_chat"
     endpoint: str
     model: str = Field(min_length=1)
+    provider_id: str | None = None
     boundary: ExecutionBoundary = "local"
+    latency_class: LatencyClass = "standard"
+    quality_tier: QualityTier = "standard"
+    reasoning_efforts: frozenset[ReasoningEffort] = frozenset({"low", "medium", "high"})
+    paid: bool = False
+    resources: frozenset[str] = Field(default_factory=frozenset)
     heavyweight: bool = True
     trust: OrdinarySecurityLevel = SecurityLevel.LEVEL_5
+    privacy: OrdinarySecurityLevel = SecurityLevel.LEVEL_5
     risk: OrdinarySecurityLevel = SecurityLevel.LEVEL_1
-    scopes: frozenset[str] = Field(default_factory=frozenset)
     api_key_env: str | None = None
 
 

@@ -14,6 +14,7 @@ class WorkStore(WorkRecordStore):
         self,
         work_id: str,
         capability_id: str,
+        provider_id: str | None,
         model_id: str | None,
         execution_boundary: ExecutionBoundary,
         started_at: datetime,
@@ -42,8 +43,8 @@ class WorkStore(WorkRecordStore):
                 """
                 INSERT INTO runtime_attempt(
                     work_id,number,retry_number,status,started_at,capability_id,
-                    model_id,execution_boundary
-                ) VALUES (?,?,?,'running',?,?,?,?)
+                    provider_id,model_id,execution_boundary
+                ) VALUES (?,?,?,'running',?,?,?,?,?)
                 """,
                 (
                     work_id,
@@ -51,6 +52,7 @@ class WorkStore(WorkRecordStore):
                     retry_number,
                     started_at.isoformat(),
                     capability_id,
+                    provider_id,
                     model_id,
                     execution_boundary,
                 ),
