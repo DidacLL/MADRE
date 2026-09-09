@@ -73,19 +73,22 @@ class Endpoint:
         self.module_id = module_id
         self.security = actor(f"{module_id}:endpoint", kind="endpoint", trust=trust)
         self.calls: list[tuple[str, str, object]] = []
+        self.contexts: list[SecurityContext] = []
         self.fail_operation = False
         self.output_sensitivity = SecurityLevel.LEVEL_1
 
-    async def invoke_agent(self, agent_id: str, payload):
+    async def invoke_agent(self, agent_id: str, security: SecurityContext, payload):
         self.calls.append(("agent", agent_id, payload))
+        self.contexts.append(security)
         return material(
             "result/agent",
             {"agent": agent_id},
             sensitivity=self.output_sensitivity,
         )
 
-    async def invoke_operation(self, operation_id: str, payload):
+    async def invoke_operation(self, operation_id: str, security: SecurityContext, payload):
         self.calls.append(("operation", operation_id, payload))
+        self.contexts.append(security)
         if self.fail_operation:
             raise RuntimeError("effect may already have occurred")
         return material(
@@ -161,6 +164,7 @@ def test_agent_and_operation_endpoints_are_interface_segregated(tmp_path: Path) 
             broker.invoke_agent(
                 "module.a",
                 context("module.a"),
+                "module.b",
                 "analyse",
                 material("call/agent", {"question": "explicit"}),
             )
@@ -171,10 +175,43 @@ def test_agent_and_operation_endpoints_are_interface_segregated(tmp_path: Path) 
                 broker.invoke_operation(
                     "module.a",
                     context("module.a"),
+                    "module.b",
                     "write",
                     material("call/op", {"x": 1}),
                 )
             )
+
+
+def test_broker_routes_module_local_identity_and_propagates_carried_context(tmp_path: Path) -> None:
+    with open_database(tmp_path / "runtime") as connection:
+        store = PlatformStore(connection)
+        registry = InteroperabilityRegistry(store)
+        registry.register(manifest("module.b"))
+        registry.register(manifest("module.c"))
+        endpoint_b = Endpoint("module.b")
+        endpoint_c = Endpoint("module.c")
+        broker = Broker(registry, store)
+        broker.attach_agent_endpoint("module.b", endpoint_b)
+        broker.attach_agent_endpoint("module.c", endpoint_c)
+        source = material("call/shared", {"question": "route explicitly"})
+
+        assert asyncio.run(
+            broker.invoke_agent(
+                "module.a",
+                context("module.a"),
+                "module.c",
+                "analyse",
+                source,
+            )
+        ) == {"agent": "analyse"}
+        assert endpoint_b.calls == []
+        assert len(endpoint_c.calls) == 1
+        carried_ids = endpoint_c.contexts[0].security_ids
+        assert source.security.security_id in carried_ids
+        assert registry.get_module("module.c").security.security_id in carried_ids  # type: ignore[union-attr]
+        target = registry.get_agent("module.c", "analyse")
+        assert target is not None and target.security.security_id in carried_ids
+        assert endpoint_c.security.security_id in carried_ids
 
 
 def test_explicit_agent_and_operation_brokering_evaluates_return_boundary(tmp_path: Path) -> None:
@@ -191,6 +228,7 @@ def test_explicit_agent_and_operation_brokering_evaluates_return_boundary(tmp_pa
             broker.invoke_agent(
                 "module.a",
                 context("module.a"),
+                "module.b",
                 "analyse",
                 material("call/agent", {"question": "explicit"}),
             )
@@ -199,6 +237,7 @@ def test_explicit_agent_and_operation_brokering_evaluates_return_boundary(tmp_pa
             broker.invoke_operation(
                 "module.a",
                 context("module.a"),
+                "module.b",
                 "write",
                 material("call/operation", {"value": 1}),
             )
@@ -229,6 +268,7 @@ def test_broker_blocks_sensitive_output_on_weaker_return_path(tmp_path: Path) ->
                 broker.invoke_agent(
                     "module.a",
                     context("module.a"),
+                    "module.b",
                     "analyse",
                     material("call/agent", {"question": "explicit"}),
                 )
@@ -255,6 +295,7 @@ def test_operation_exception_is_recorded_as_unknown_effect_and_not_retried(tmp_p
                 broker.invoke_operation(
                     "module.a",
                     context("module.a"),
+                    "module.b",
                     "write",
                     material("call/operation", {"value": 1}),
                 )

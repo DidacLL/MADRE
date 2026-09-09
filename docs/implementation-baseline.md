@@ -6,90 +6,106 @@ Product meaning comes from `MADRE.md`; detailed architecture comes from `docs/ar
 
 ## Current development stage
 
-**Kernel foundation convergence is complete.**
+**The Kernel foundation and the first modular SDK + shipped default CORE foundation are implemented.**
 
-The next substantive stage is the modular SDK plus the shipped default CORE Module. The final Security Algebra formula remains a separate focused architecture/research task and is not part of the completed Kernel convergence.
+The SDK/CORE stage proves the public architecture with two independent consumers: the shipped CORE Module and an Agentless reference Module used by integration tests. The final Security Algebra formula remains a separate focused architecture/research task.
 
 ## Implemented repository truth
 
-The current `madre` package implements:
+### Kernel foundation
+
+The `madre` package continues to provide:
 
 - bound `SecurityID` / `SecurityObject` state with subject-kind-specific normalized values and immutable integrity binding;
 - carried `SecurityContext` composition persisted with durable work;
-- an explicitly named compatibility evaluator preserving the previous max/min implementation behavior behind a replaceable `SecurityEvaluator` seam rather than presenting that formula as canonical architecture;
-- durable Module manifests plus public Agent/Skill/Workflow/Operation descriptors;
-- boundary-filtered discovery from carried security facts without making registry state an independent authorization source;
-- explicit interface-segregated Agent and Operation broker endpoints with return-boundary evaluation;
-- broker dispatch/effect evidence, including unknown Operation effect after uncertain dispatch failure;
-- `WorkSubmission -> WorkRecord -> WorkAttempt` durable execution records;
-- reference-only `MaterialHandle` durable work with no pushed/cached durable payload path;
-- just-in-time Module-owned material resolution after eligibility, compatible Capability selection, security evaluation and scarce-resource readiness;
-- material reference, digest and bound-SecurityObject continuity verification;
-- restart/retry material reacquisition from the Module resolver;
-- generic non-durable transient inference with no `WorkRecord`, queue entry or recovery promise;
-- `InferenceRequirement` separation of hard constraints, ordered preferences and fallback permission across specialization/modality, latency, effort/quality, cost, locality, resources and provider/model/mechanism identity;
-- Capability descriptors and deterministic selection that keep provider identity distinct from mechanism identity;
-- one OpenAI-compatible HTTP Capability adapter whose transport/authentication schema remains adapter-private;
-- delayed eligibility, originator fairness, priority/FIFO ordering and one heavyweight local execution slot shared by transient and durable inference;
-- cancellation, retry and interrupted-attempt recovery;
-- transient durable-result delivery with digest/size/delivery evidence and truthful loss after restart;
-- SQLite persistence with no prompt/context/output/provider-error payload fields;
-- interface-segregated Module-facing protocols for registration, transient inference, durable work, material resolution, inspection/result access, discovery and optional Agent/Operation endpoints.
+- the explicitly named compatibility evaluator behind the replaceable `SecurityEvaluator` seam;
+- durable Module manifests plus Agent/Skill/Workflow/Operation descriptors;
+- security-filtered discovery and explicit owning-Module + exported-identity Agent/Operation brokering;
+- broker propagation of the evaluated carried `SecurityContext` into the invoked Agent/Operation endpoint so downstream work can continue the same lifecycle state;
+- `WorkSubmission -> WorkRecord -> WorkAttempt` durable execution;
+- reference-only `MaterialHandle` work with JIT Module-owned material resolution and continuity verification;
+- restart/retry reacquisition, delayed eligibility, cancellation and result evidence;
+- generic non-durable transient inference;
+- deterministic requirement/preference/fallback Capability selection;
+- one OpenAI-compatible HTTP Capability adapter;
+- SQLite persistence without prompt/context/output/provider-error payload fields.
 
-The implementation has no semantic prompt/output inspection and no generic AI shell/Internet surface.
+The SDK stage exposed two narrow public-brokering deficiencies in the Kernel-facing protocols: target lookup had relied on the exported Agent/Operation id without using its owning Module, and the already-evaluated carried security context stopped at the broker instead of reaching the invoked endpoint. Those seams now route by owning Module plus exported identity and forward the carried context. They correct routing/security continuity without adding semantic target choice, authorization machinery or other Module meaning to Kernel.
 
-## Kernel foundation completion criteria
+### Modular SDK
 
-The Kernel foundation now demonstrates:
+The `madre_sdk` package now materializes the public Module semantic boundary without importing Kernel runtime/storage/service/provider internals.
 
-1. accepted/queued durable work contains no private payload in Kernel accepted-work state or SQLite;
-2. durable material resolves just in time and restart/retry reacquire and verify it;
-3. generic transient inference works without durable work state;
-4. mechanism selection separates Module hard requirements, soft preferences/fallbacks and installed physical mechanisms;
-5. public Module contracts are interface-segregated and do not require persistence, scheduler, FastAPI or provider-adapter internals;
-6. security state uses bound per-object SecurityIDs/SecurityObjects with carried composition and no independent ACL/role/grant/token authorization machinery;
-7. the current compatibility formula is isolated as implementation behavior and not represented as canonical product meaning;
-8. broker, scheduling, cancellation/recovery, result and provider-adapter behavior remains working;
-9. generated results can be consumed/reused by Modules without Kernel semantic interpretation;
-10. external/system effects remain bounded by explicit Operations/mechanisms;
-11. persistence/schema tests inspect SQLite columns and raw database bytes for private-material absence;
-12. canonical architecture docs and this baseline agree with executable responsibility placement.
+It provides:
 
-Locked pytest/Ruff/mypy/build/wheel validation is defined by `.github/workflows/ci.yml` and remains the validation authority for each implementation commit/PR.
+- `Module` manifest/endpoint composition over public registration protocols;
+- a minimal `Agent` with purpose, instructions, contracts, security and execution behavior, plus `from_instructions(...)`;
+- portable `Skill` and `Workflow` value structures with public descriptors and no universal executor;
+- a lightweight `WorkPlan` projection protocol whose semantic state remains Module-owned;
+- bounded `Operation` behavior over the existing public effect/repeatability/security contract;
+- `Artifact` and `ContextBundle` construction, derivation and generated-output reuse;
+- new security binding for each derived material representation while preserving independent Sensitivity/IntendedUse values unless the Module explicitly changes them;
+- `MaterialRepository` as an optional Module-owned resolver helper producing valid transient material and durable `MaterialHandle`s;
+- small clients for transient inference, durable submission/result access, discovery, Agent brokering and Operation brokering;
+- continuation of an incoming carried `SecurityContext` through nested inference, durable submission and explicit brokering;
+- typed security-object construction/context helpers;
+- `CoreSelection` + `CoreDelegate` as ordinary Module configuration/fallback helpers whose selected Module identity participates in routing.
+
+The SDK does not define Agent sessions, mandatory memory/state, a generic Planner, a Workflow engine, Skill instances, Task ontology or a generic credential/shell/Internet framework.
+
+### Shipped default CORE
+
+The `madre_core` package implements the default CORE-capable Module entirely through `madre_sdk`.
+
+Its current behavior demonstrates:
+
+- ordinary Module registration and Agent endpoint publication;
+- a default interaction Agent using transient `model.inference.chat` for its immediate natural-response path, preferring interactive/standard latency rather than requiring a special Kernel lane;
+- optional CORE-private continuation decisions that can explicitly delegate to another visible Agent or submit ordinary durable follow-up inference;
+- preservation of inbound carried security facts through CORE transient inference, delegation and durable continuation;
+- no `[[MADRE_REASONING:...]]` marker protocol and no Kernel fast lane;
+- strongest currently expressible actor trust/isolation values for the shipped Module and interaction Agent;
+- independently high/max Sensitivity on CORE-owned interaction/context/output material;
+- Module-owned material resolution for durable continuation;
+- ordinary configured replacement through `CoreSelection`, with no Kernel awareness of the literal shipped CORE module identity.
+
+### Reference Module proof
+
+The integration suite includes an Agentless reference Module implemented with the SDK. It demonstrates registration, Artifact/ContextBundle preparation, transient inference, durable work with Module-owned JIT material, generated-output reuse and fallback delegation to configured CORE.
+
+A second test CORE-capable Module is selected through SDK configuration without Kernel modification.
+
+## Architecture boundary evidence
+
+Tests enforce that:
+
+- `madre_sdk` imports only `madre.contracts`, `madre.interfaces`, `madre.registry` and `madre.security` from the Kernel namespace;
+- `madre_core` imports no `madre.*` package directly and reaches MADRE only through `madre_sdk`;
+- `madre` imports neither `madre_sdk` nor `madre_core`, keeping CORE/Agent/Workflow/WorkPlan semantics outside Kernel;
+- brokered material/participant SecurityIDs remain present in CORE's downstream transient and durable security contexts;
+- CORE selection uses both the configured Module and interaction-Agent identity;
+- CORE contains no legacy fast/deeper marker protocol.
 
 ## Structurally outside Kernel
 
-Kernel does not own:
+Kernel still does not own Agent private reasoning/state/memory, semantic WorkPlans, Workflow/Skill execution, conversation state, interaction strategy, semantic fallback routing, prompt construction, user profiles, generated-result meaning, domain mutations, generic unrestricted shell/Internet authority or the final Security Algebra formula.
 
-- Agent private reasoning/state/memory;
-- semantic WorkPlans;
-- Workflow execution semantics;
-- Skill adoption internals;
-- interaction/fast-response strategy;
-- semantic routing over private prompt contents;
-- generated-result meaning;
-- application history/private context;
-- durable model-output content;
-- domain learning/adaptation;
-- domain result interpretation/mutations;
-- generic unrestricted AI shell/Internet authority;
-- a local ACL/role/token/allowlist authorization system.
+## Validation authority
 
-## Next stage: SDK + CORE
+The locked validation suite remains `.github/workflows/ci.yml`:
 
-Development can now move to:
+```text
+uv sync --locked
+uv run --locked pytest
+uv run --locked ruff check .
+uv run --locked ruff format --check .
+uv run --locked mypy
+uv build --python .venv --no-build-isolation
+wheel reinstall + isolated madre/madre_sdk/madre_core imports
+```
 
-- materializing the public MADRE SDK over the stable interface-segregated boundary;
-- typed/OOP-friendly contracts while remaining language-neutral;
-- implementing the shipped CORE Module as the first substantial SDK consumer;
-- implementing CORE interaction/fallback behavior as Module/Agent behavior using ordinary transient/durable primitives;
-- using real Module/CORE integration to refine public contracts without moving semantics into Kernel;
-- adding broader provider/mechanism integrations from concrete need;
-- pursuing richer resource optimization from measured workloads;
-- designing and validating the final Security Algebra formula as a focused research/architecture task.
+The implementation PR is the final CI authority for this stage.
 
-## Validation state
+## Next substantive stage
 
-Focused convergence tests cover the required positive and negative paths, including JIT resolver timing behind the heavyweight-local slot, restart/retry reacquisition, material continuity failures, transient non-durability, hard/preferred/fallback selection, security binding tamper detection, durable carried-security recovery, registry independence, broker return evaluation, unknown Operation effects and generated-result reuse.
-
-CI is the final locked-suite authority for the implementation PR.
+With the SDK/public Module boundary and shipped CORE foundation materialized, MADRE can move to the next product/research stage without extending Kernel by inertia. Candidate work now includes focused final Security Algebra design/validation, richer real CORE product behavior/UI, concrete third-party/domain Module integration and additional inference mechanisms when demanded by real consumers.

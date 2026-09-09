@@ -1,4 +1,4 @@
-"""Interface-segregated Module-facing contracts for the future MADRE SDK."""
+"""Interface-segregated Module-facing contracts for the MADRE SDK."""
 
 from __future__ import annotations
 
@@ -64,6 +64,10 @@ class MaterialResolver(Protocol):
     async def resolve(self, handle: MaterialHandle) -> TransientMaterial | None: ...
 
 
+class MaterialResolutionRegistration(Protocol):
+    def register_material_resolver(self, originator: str, resolver: MaterialResolver) -> None: ...
+
+
 class Discovery(Protocol):
     def discover_agents(self, security: SecurityContext) -> tuple[AgentDescriptor, ...]: ...
 
@@ -81,7 +85,12 @@ class AgentEndpoint(Protocol):
     @property
     def security(self) -> SecurityObject: ...
 
-    async def invoke_agent(self, agent_id: str, payload: JsonValue) -> TransientMaterial: ...
+    async def invoke_agent(
+        self,
+        agent_id: str,
+        security: SecurityContext,
+        payload: JsonValue,
+    ) -> TransientMaterial: ...
 
 
 class OperationEndpoint(Protocol):
@@ -92,5 +101,38 @@ class OperationEndpoint(Protocol):
     def security(self) -> SecurityObject: ...
 
     async def invoke_operation(
-        self, operation_id: str, payload: JsonValue
+        self,
+        operation_id: str,
+        security: SecurityContext,
+        payload: JsonValue,
     ) -> TransientMaterial: ...
+
+
+class AgentEndpointRegistration(Protocol):
+    def attach_agent_endpoint(self, module_id: str, endpoint: AgentEndpoint) -> None: ...
+
+
+class OperationEndpointRegistration(Protocol):
+    def attach_operation_endpoint(self, module_id: str, endpoint: OperationEndpoint) -> None: ...
+
+
+class AgentBrokering(Protocol):
+    async def invoke_agent(
+        self,
+        requester_module_id: str,
+        security: SecurityContext,
+        target_module_id: str,
+        agent_id: str,
+        material: TransientMaterial,
+    ) -> JsonValue: ...
+
+
+class OperationBrokering(Protocol):
+    async def invoke_operation(
+        self,
+        requester_module_id: str,
+        security: SecurityContext,
+        target_module_id: str,
+        operation_id: str,
+        material: TransientMaterial,
+    ) -> JsonValue: ...

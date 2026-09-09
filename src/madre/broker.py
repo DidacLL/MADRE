@@ -106,13 +106,14 @@ class Broker:
         self,
         requester_module_id: str,
         security: SecurityContext,
+        target_module_id: str,
         agent_id: str,
         material: TransientMaterial,
     ) -> JsonValue:
-        descriptor = self._registry.get_agent(agent_id)
+        descriptor = self._registry.get_agent(target_module_id, agent_id)
         if descriptor is None:
-            raise PublishedTargetNotFound(agent_id)
-        endpoint = self._agent_endpoint(descriptor.module_id)
+            raise PublishedTargetNotFound(f"{target_module_id}:{agent_id}")
+        endpoint = self._agent_endpoint(target_module_id)
         return await self._invoke_agent(
             requester_module_id=requester_module_id,
             security=security,
@@ -125,13 +126,14 @@ class Broker:
         self,
         requester_module_id: str,
         security: SecurityContext,
+        target_module_id: str,
         operation_id: str,
         material: TransientMaterial,
     ) -> JsonValue:
-        descriptor = self._registry.get_operation(operation_id)
+        descriptor = self._registry.get_operation(target_module_id, operation_id)
         if descriptor is None:
-            raise PublishedTargetNotFound(operation_id)
-        endpoint = self._operation_endpoint(descriptor.module_id)
+            raise PublishedTargetNotFound(f"{target_module_id}:{operation_id}")
+        endpoint = self._operation_endpoint(target_module_id)
         return await self._invoke_operation(
             requester_module_id=requester_module_id,
             security=security,
@@ -166,7 +168,7 @@ class Broker:
             "dispatched",
         )
         try:
-            output = await endpoint.invoke_agent(descriptor.id, material.payload)
+            output = await endpoint.invoke_agent(descriptor.id, input_context, material.payload)
         except Exception:
             self._event(
                 invocation_id,
@@ -213,7 +215,7 @@ class Broker:
             "dispatched",
         )
         try:
-            output = await endpoint.invoke_operation(descriptor.id, material.payload)
+            output = await endpoint.invoke_operation(descriptor.id, input_context, material.payload)
         except Exception as exc:
             self._event(
                 invocation_id,

@@ -41,4 +41,4 @@ jobs:
         run: |
           project_python="$(uv python find)"
           cd "$RUNNER_TEMP"
-          "$project_python" -I -c "import madre; from pathlib import Path; assert 'site-packages' in Path(madre.__file__).parts; print(madre.__file__)"
+          "$project_python" -I -c "import madre, madre_core, madre_sdk; from pathlib import Path; assert all('site-packages' in Path(module.__file__).parts for module in (madre, madre_core, madre_sdk)); print(madre.__file__); print(madre_sdk.__file__); print(madre_core.__file__)"
