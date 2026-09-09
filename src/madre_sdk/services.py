@@ -48,11 +48,12 @@ class InferenceClient:
         requirement: InferenceRequirement,
         *,
         constraints: ExecutionConstraints | None = None,
+        security: SecurityContext | None = None,
     ) -> TransientInferenceResult:
         return await self._inference.infer(
             TransientInferenceRequest(
                 originator=self._originator,
-                security=self._security,
+                security=security or self._security,
                 inference=requirement,
                 material=material.transient(),
                 constraints=constraints or ExecutionConstraints(),
@@ -86,12 +87,13 @@ class WorkClient:
         constraints: ExecutionConstraints | None = None,
         correlation: tuple[CorrelationEntry, ...] = (),
         idempotency_key: str | None = None,
+        security: SecurityContext | None = None,
     ) -> WorkRecord:
         handle = self._materials.retain(material)
         return await self._submission.submit(
             WorkSubmission(
                 originator=self._originator,
-                security=self._security,
+                security=security or self._security,
                 inference=requirement,
                 material=handle,
                 eligible_at=eligible_at,
@@ -161,10 +163,18 @@ class AgentBrokerClient:
         self._security = security
         self._broker = broker
 
-    async def invoke(self, agent_id: str, material: Material) -> JsonValue:
+    async def invoke(
+        self,
+        module_id: str,
+        agent_id: str,
+        material: Material,
+        *,
+        security: SecurityContext | None = None,
+    ) -> JsonValue:
         return await self._broker.invoke_agent(
             self._requester_module_id,
-            self._security,
+            security or self._security,
+            module_id,
             agent_id,
             material.transient(),
         )
@@ -182,10 +192,18 @@ class OperationBrokerClient:
         self._security = security
         self._broker = broker
 
-    async def invoke(self, operation_id: str, material: Material) -> JsonValue:
+    async def invoke(
+        self,
+        module_id: str,
+        operation_id: str,
+        material: Material,
+        *,
+        security: SecurityContext | None = None,
+    ) -> JsonValue:
         return await self._broker.invoke_operation(
             self._requester_module_id,
-            self._security,
+            security or self._security,
+            module_id,
             operation_id,
             material.transient(),
         )
@@ -213,4 +231,8 @@ class CoreDelegate:
         return self._selection
 
     async def interact(self, material: Material) -> JsonValue:
-        return await self._broker.invoke(self._selection.interaction_agent_id, material)
+        return await self._broker.invoke(
+            self._selection.module_id,
+            self._selection.interaction_agent_id,
+            material,
+        )
