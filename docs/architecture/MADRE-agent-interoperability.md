@@ -25,12 +25,12 @@ Module / ModuleManifest
 Agent / AgentDescriptor
 Skill / SkillDescriptor
 Workflow / WorkflowDescriptor
-Operation / OperationDescriptor
+Operation / OperationDescriptor / EffectProfile
 Artifact / ContextBundle
 WorkSubmission / WorkRecord / WorkAttempt
 MaterialHandle / material resolver
 InferenceRequirement / CapabilityDescriptor
-SecurityID / SecurityObject
+SecurityID / SecurityObject / SecurityTransition
 ```
 
 This list defines conceptual responsibility, not a requirement for one class per noun in every language. Exact APIs should remain as small as possible while preserving stable boundaries.
@@ -45,7 +45,7 @@ discovery terms
 exported Agent descriptors
 exported Skill descriptors
 exported Workflow descriptors
-exported Operation descriptors
+exported Operation descriptors + bound EffectProfiles
 optional UI/interaction endpoints
 material-resolution endpoint when durable work is used
 SecurityID / public security facts required by those surfaces
@@ -53,7 +53,7 @@ SecurityID / public security facts required by those surfaces
 
 The manifest exposes no private database, Agent memory, WorkPlan, prompt history or implementation object graph.
 
-Registration means that MADRE can find and route the published surface. Security admissibility is evaluated separately through the carried algebra.
+Registration means that MADRE can find and route the published surface. Security admissibility is evaluated separately through the transition algebra.
 
 ## 3. Agent
 
@@ -112,43 +112,63 @@ The SDK may provide a useful base representation or helper interfaces, but it mu
 
 A WorkPlan may express semantic tasks, dependencies, delegation, research, verification, user decisions, Workflow use or expected artifacts. Only physical executable projections become Kernel `WorkSubmission`s.
 
-## 6. Operations
+## 6. Operations and EffectProfiles
 
 An `Operation` is bounded callable behavior exported by a Module.
 
-Its public descriptor includes only facts needed to discover, invoke and evaluate its concrete boundary, for example:
+Its public descriptor includes only facts needed to discover and invoke the bounded callable, for example:
 
 ```text
 identity / owner
 purpose
 input/output contract
-effect/risk characteristics
-autonomy characteristics
 repeatability/idempotency facts
-SecurityID
+available EffectProfiles
 ```
+
+Security-significant execution shapes of the same Operation are represented by immutable **EffectProfiles** owned by that Operation.
+
+Conceptually:
+
+```text
+EffectProfile
+    SecurityID
+    bound Operation reference
+    Risk
+    Autonomy
+    Integrity
+    Privacy?   # only if the effect itself exposes material
+```
+
+A concrete effect transition selects one bound EffectProfile. The caller does not invent or override Risk, Autonomy, Integrity or Privacy numerically.
+
+This allows one semantic Operation to expose, for example, both a direct-user-controlled effect shape and an autonomous effect shape without introducing `approved=true`, an ACL, a role, or another authority mechanism.
 
 MADRE-provided AI integrations expose external/system effects through specific Operations or bounded mechanisms. There is no generic Agent shell or unrestricted Internet capability.
 
-An Operation may internally run deterministic code, use another service, invoke a Workflow or submit MADRE inference work; those internals remain Module-owned.
+An Operation may internally run deterministic code, use another service, invoke a Workflow or submit MADRE inference work; those internals remain Module-owned. The EffectProfile describes the security-relevant execution contract visible at the MADRE boundary, not the Module's private implementation ontology.
 
 ## 7. Artifacts and ContextBundles
 
 An `Artifact` is material owned by a Module.
 
-A `ContextBundle` is an artifact-like bounded collection of material prepared for a concrete purpose. It should preserve enough structure for the Module to assign the relevant SecurityObject and for later boundaries to identify the material being used.
+A `ContextBundle` is an artifact-like bounded collection of material prepared for a concrete purpose. It carries a material SecurityObject with the values required by the final Security Algebra, including Sensitivity and Integrity.
 
 Generated model output becomes ordinary Artifact material once delivered. It can be fed into subsequent Agents/Workflows/Operations according to Module semantics.
 
+Security-relevant transformation produces a new representation/security binding rather than mutating the source. A Module may therefore create a minimized representation with lower Sensitivity or an explicitly validated representation with stronger Integrity when its own semantics and validation path justify doing so.
+
 ## 8. Discovery and brokering
 
-Discovery exposes descriptors visible/admissible under the caller's current carried security objects.
+Discovery exposes descriptors visible/admissible under the caller's current carried security history and the prospective discovery/invocation boundary.
 
-The registry supplies discovery and routing facts. It does not choose semantic usefulness.
+The registry supplies discovery and routing facts. It does not choose semantic usefulness and registration is not authority.
 
-The intelligent participant chooses the target Agent/Operation/Skill/Workflow. Actual invocation is evaluated again with the concrete participants/material.
+The intelligent participant chooses the target Agent/Operation/Skill/Workflow. Actual invocation is evaluated again with the concrete participants/material and transition roles.
 
-The broker routes an explicit published identity and records physical dispatch/result evidence. If an externally effectful Operation may have executed but outcome is unknown, the effect must not be blindly repeated.
+The broker routes an explicit owning-Module + exported identity and records physical dispatch/result evidence. Brokered security context continues through the invoked endpoint so nested inference/work/delegation remains part of the same security lifecycle.
+
+If an externally effectful Operation may have executed but outcome is unknown, the effect must not be blindly repeated.
 
 ## 9. CORE-capable Module contract
 
@@ -170,13 +190,13 @@ The shipped default CORE may add richer personal-assistant behavior, profiles, m
 
 ### Required security capability
 
-CORE may legitimately handle extremely sensitive user/system material. A CORE-capable Module must therefore satisfy the strongest applicable isolation/privacy/trust characteristics defined by MADRE's final security algebra.
+CORE may legitimately handle extremely sensitive user/system material. A CORE-capable Module must therefore provide sufficiently strong Privacy and Integrity characteristics for the disclosure/control paths it is expected to participate in under MADRE's Security Algebra.
 
-This is not a privilege grant. CORE receives no bypass and every crossing is evaluated by the same algebra.
+This is not a privilege grant. CORE receives no bypass and every transition is evaluated by the same predicates.
 
-CORE-owned Artifacts/ContextBundles may simultaneously have the highest Sensitivity levels. Actor/containment security and material sensitivity are independent dimensions.
+CORE-owned Artifacts/ContextBundles may simultaneously have the highest Sensitivity levels. Participant Privacy/Integrity and material Sensitivity are independent dimensions.
 
-CORE must be able to minimize, anonymize, omit or otherwise transform material that belongs to CORE's own semantic domain, including representations it has deliberately accepted into that domain, before sending them through a less-private or higher-risk boundary when its semantics permit such a transformation. A source Module remains responsible for domain-specific minimization/classification that only it can perform before exporting its representation to CORE.
+CORE must be able to minimize, anonymize, omit, validate or otherwise transform material that belongs to CORE's own semantic domain, including representations it has deliberately accepted into that domain, before sending or using them through another transition when its semantics permit such a transformation. A source Module remains responsible for domain-specific classification/transformation that only it can perform before exporting its representation to CORE.
 
 ### Default selection
 
@@ -199,23 +219,27 @@ A native Module with its own UI may handle its own semantics or explicitly send 
 
 A Module or adapter without its own UI may delegate its default interaction to CORE; this is the normal fallback for simple third-party/unknown wrappers.
 
-These are SDK/Module patterns. Kernel only sees the resulting inference/work/Operation requests.
+These are SDK/Module patterns. Kernel only sees the resulting inference/work/Operation requests and security transitions.
 
 ## 11. SDK helpers and extension seams
 
-The SDK should provide small reusable helpers where they remove repeated integration work without defining new Kernel semantics. Likely examples include:
+The SDK should provide small reusable helpers where they remove repeated integration work without defining new Kernel semantics. Relevant examples include:
 
 ```text
 Module/descriptor registration
 Agent/Operation endpoint adapters
 ContextBundle/Artifact construction
 SecurityObject binding/propagation
+SecurityTransition construction for known disclosure/control/effect relationships
+EffectProfile declaration/selection
 transient inference helper
 Durable WorkSubmission + material resolver helper
 result consumption
 CORE interaction/delegation helper
 Capability adapter scaffolding
 ```
+
+Correct transition construction should be difficult to omit accidentally. Semantic roles that require private content understanding remain Module-owned; Kernel evaluates the supplied bound facts/relationships without reading payload meaning.
 
 Mechanism-specific advanced features may use optional adapter extension interfaces. For example, a local inference mechanism could expose cache/session/residency controls needed for a KV-cache management experiment without adding raw vector/KV fields to every generic `InferenceRequirement`.
 
@@ -229,6 +253,7 @@ Examples include:
 - Skill/Workflow extraction from repository instruction files or natural descriptions;
 - a `MADREDeveloper` Module;
 - a no-code Module/Agent builder;
-- inference-mechanism experimentation and benchmarking.
+- inference-mechanism experimentation and benchmarking;
+- Module/adapter security valuation and validation tooling that emits complete bound SecurityObjects before runtime algebra evaluation.
 
 These are valuable product/research directions but are not required for Kernel foundation.

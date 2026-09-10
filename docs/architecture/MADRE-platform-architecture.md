@@ -26,7 +26,7 @@ Logical responsibility, not process topology, defines the architecture. Kernel, 
 
 A Module is an independently owned application or integration boundary.
 
-It owns semantic decisions and private state: domain data, UI, context/history, Agents, Skills, Workflows, WorkPlans, artifacts, Operations, domain-specific minimization, learning and result interpretation.
+It owns semantic decisions and private state: domain data, UI, context/history, Agents, Skills, Workflows, WorkPlans, artifacts, Operations, domain-specific minimization/validation, learning and result interpretation.
 
 A Module may expose zero Agents and may rely on CORE for generic interaction/fallback behavior.
 
@@ -43,20 +43,20 @@ Module + ModuleManifest
 Agent + public AgentDescriptor
 Skill + SkillDescriptor
 Workflow + WorkflowDescriptor
-Operation + OperationDescriptor
+Operation + OperationDescriptor + EffectProfile
 Artifact / ContextBundle
 Work submission/inspection/result access
 MaterialHandle + durable material resolver
 InferenceRequirement
 CapabilityDescriptor
-SecurityID / SecurityObject propagation
+SecurityID / SecurityObject / SecurityTransition propagation
 ```
 
 These contracts do not imply that every Module must implement every concept. Module-facing responsibilities should be interface-segregated.
 
 Module code should not depend on Kernel persistence classes, scheduler internals, HTTP/FastAPI implementation details or provider-adapter internals.
 
-The SDK may provide higher-level reusable helpers and reference implementations without turning them into Kernel semantics. Examples include interaction patterns, delegation helpers, material/context construction helpers and adapter scaffolding.
+The SDK may provide higher-level reusable helpers and reference implementations without turning them into Kernel semantics. Examples include interaction patterns, delegation helpers, material/context construction helpers, EffectProfile/transition builders and adapter scaffolding.
 
 Public contracts should remain language-neutral even while the current prototype is implemented in Python.
 
@@ -64,7 +64,7 @@ Public contracts should remain language-neutral even while the current prototype
 
 Kernel responsibility is deterministic shared execution:
 
-- evaluate carried SecurityObjects at governed boundaries;
+- validate/evaluate SecurityObjects and prospective SecurityTransitions at governed boundaries;
 - execute transient inference requests;
 - admit and schedule durable work;
 - allocate scarce GPU/CPU/RAM and execution resources;
@@ -77,7 +77,7 @@ Kernel responsibility is deterministic shared execution:
 - deliver transient results;
 - retain execution/security evidence without private payloads.
 
-Kernel does not own semantic UI behavior, Agent reasoning, WorkPlans, prompt interpretation, generated-result meaning or domain mutation.
+Kernel does not own semantic UI behavior, Agent reasoning, WorkPlans, prompt interpretation, generated-result meaning, material classification, semantic validation or domain mutation.
 
 Transient inference and durable work are execution primitives. Whether a Module uses transient inference as a fast-response lane, validation step, background probe or another pattern is Module/Agent semantics.
 
@@ -115,15 +115,17 @@ Durable work never queues private material inside Kernel.
 
 The semantic composition of these primitives belongs to Modules/Agents.
 
+At governed boundaries, the public execution structure identifies actual disclosure/control/effect participants so Kernel can construct/evaluate the corresponding SecurityTransition without inspecting payload semantics.
+
 ## 7. CORE placement
 
 CORE is a Module satisfying the installation's CORE contract.
 
 MADRE ships with a default CORE Module. The user may select another CORE-capable Module.
 
-CORE uses the same SDK, registry, security algebra and execution boundaries as other Modules. It is not a second Kernel.
+CORE uses the same SDK, registry, Security Algebra and execution boundaries as other Modules. It is not a second Kernel.
 
-CORE eligibility requires the strongest applicable isolation/security characteristics because it may handle highly sensitive personal/system material. This does not imply low material Sensitivity: CORE-owned information may itself carry the highest Sensitivity levels.
+CORE eligibility requires sufficiently strong Privacy and Integrity characteristics for the sensitive disclosure/control paths it is expected to participate in. This does not imply low material Sensitivity: CORE-owned information may itself carry the highest Sensitivity levels.
 
 The shipped CORE commonly provides:
 
@@ -140,7 +142,7 @@ HTTP, IPC, in-process APIs, MCP, vendor CLIs and other adapters can realize the 
 
 ## 9. Responsibility test
 
-- semantic meaning, interaction, planning, memory, learning, Skills/Workflows and domain mutation → Module;
-- reusable public typed integration and helpers → SDK/interoperability;
-- deterministic security evaluation, durable lifecycle, resources, mechanism selection, recovery, explicit routing and evidence → Kernel;
+- semantic meaning, interaction, planning, memory, learning, Skills/Workflows, material classification/validation and domain mutation → Module;
+- reusable public typed integration, security-object/transition construction and helpers → SDK/interoperability;
+- deterministic security validation/evaluation, durable lifecycle, resources, mechanism selection, recovery, explicit routing and evidence → Kernel;
 - provider/model/backend/software-specific computation and optimization → Capability adapter/external mechanism.
