@@ -32,7 +32,9 @@ from madre_sdk.material import Material, MaterialRepository
 
 
 class InferenceClient:
-    def __init__(self, *, originator: str, security: SecurityHistory, inference: TransientInference) -> None:
+    def __init__(
+        self, *, originator: str, security: SecurityHistory, inference: TransientInference
+    ) -> None:
         self._originator = originator
         self._security = security
         self._inference = inference
@@ -109,7 +111,9 @@ class WorkResults:
     def consume(self, work_id: str) -> JsonValue:
         return self._results.consume_result(work_id)
 
-    async def retry(self, work_id: str, *, idempotency_key: str, allow_unknown_outcome: bool = False) -> WorkRecord:
+    async def retry(
+        self, work_id: str, *, idempotency_key: str, allow_unknown_outcome: bool = False
+    ) -> WorkRecord:
         return await self._results.retry(
             work_id,
             WorkRetryRequest(allow_unknown_outcome=allow_unknown_outcome),
@@ -139,7 +143,9 @@ class DiscoveryClient:
 
 
 class AgentBrokerClient:
-    def __init__(self, *, requester_module_id: str, security: SecurityHistory, broker: AgentBrokering) -> None:
+    def __init__(
+        self, *, requester_module_id: str, security: SecurityHistory, broker: AgentBrokering
+    ) -> None:
         self._requester_module_id = requester_module_id
         self._security = security
         self._broker = broker
@@ -162,7 +168,9 @@ class AgentBrokerClient:
 
 
 class OperationBrokerClient:
-    def __init__(self, *, requester_module_id: str, security: SecurityHistory, broker: OperationBrokering) -> None:
+    def __init__(
+        self, *, requester_module_id: str, security: SecurityHistory, broker: OperationBrokering
+    ) -> None:
         self._requester_module_id = requester_module_id
         self._security = security
         self._broker = broker

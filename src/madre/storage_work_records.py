@@ -50,7 +50,10 @@ class WorkRecordStore(WorkStoreBase):
                     ),
                 )
         except sqlite3.IntegrityError:
-            if idempotency_key is None or self._idempotency_id(spec.originator, idempotency_key) is None:
+            if (
+                idempotency_key is None
+                or self._idempotency_id(spec.originator, idempotency_key) is None
+            ):
                 raise
             return False
         return True
@@ -70,7 +73,9 @@ class WorkRecordStore(WorkStoreBase):
     def get(self, work_id: str | None) -> WorkRecord | None:
         if work_id is None:
             return None
-        row = self.connection.execute("SELECT * FROM runtime_work WHERE id=?", (work_id,)).fetchone()
+        row = self.connection.execute(
+            "SELECT * FROM runtime_work WHERE id=?", (work_id,)
+        ).fetchone()
         if row is None:
             return None
         spec = WorkSpec.model_validate(
@@ -109,7 +114,9 @@ class WorkRecordStore(WorkStoreBase):
             status=row["status"],
             submitted_at=datetime.fromisoformat(row["submitted_at"]),
             started_at=datetime.fromisoformat(row["started_at"]) if row["started_at"] else None,
-            completed_at=datetime.fromisoformat(row["completed_at"]) if row["completed_at"] else None,
+            completed_at=datetime.fromisoformat(row["completed_at"])
+            if row["completed_at"]
+            else None,
             failure=failure,
             cancellation=cancellation,
             retries=self._retries(work_id),

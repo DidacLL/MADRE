@@ -338,7 +338,9 @@ class Broker:
         path = [manifest.security.security_id, endpoint.security.security_id]
         if profile.discloses_material:
             path.append(profile.security.security_id)
-        controllers = tuple(dict.fromkeys((material.security.security_id, *controller_security_ids)))
+        controllers = tuple(
+            dict.fromkeys((material.security.security_id, *controller_security_ids))
+        )
         transition = SecurityTransition.issue(
             disclosures=(
                 Disclosure(
@@ -353,7 +355,10 @@ class Broker:
             effect_execution=EffectExecution(
                 operation=profile.operation,
                 effect_profile_security_id=profile.security.security_id,
-                executor_security_ids=(manifest.security.security_id, endpoint.security.security_id),
+                executor_security_ids=(
+                    manifest.security.security_id,
+                    endpoint.security.security_id,
+                ),
             ),
         )
         self._require_admissible(

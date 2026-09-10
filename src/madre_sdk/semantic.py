@@ -149,7 +149,10 @@ class Agent:
     ) -> None:
         if not agent_id or not purpose:
             raise ValueError("Agent identity and purpose must not be empty")
-        if security.subject_ref.subject_kind != "agent" or security.subject_ref.local_id != agent_id:
+        if (
+            security.subject_ref.subject_kind != "agent"
+            or security.subject_ref.local_id != agent_id
+        ):
             raise ValueError("Agent security must be bound to the Agent identity")
         if not security.verify_binding():
             raise ValueError("Agent SecurityObject binding is invalid")
@@ -264,7 +267,10 @@ class Operation:
         if len(self._profiles) != len(self.effect_profiles):
             raise ValueError("EffectProfile identities must be unique within an Operation")
         for profile in self.effect_profiles:
-            if profile.operation.operation_id != operation_id or profile.operation.operation_revision != revision:
+            if (
+                profile.operation.operation_id != operation_id
+                or profile.operation.operation_revision != revision
+            ):
                 raise ValueError("EffectProfile must be bound to this Operation revision")
         self._behavior = behavior
 
@@ -444,7 +450,9 @@ class Module:
             discovery_terms=self.discovery_terms,
             agents=tuple(agent.descriptor(self.module_id) for agent in self.agents),
             skills=tuple(skill.descriptor(self.module_id) for skill in skill_map.values()),
-            workflows=tuple(workflow.descriptor(self.module_id) for workflow in workflow_map.values()),
+            workflows=tuple(
+                workflow.descriptor(self.module_id) for workflow in workflow_map.values()
+            ),
             operations=tuple(operation.descriptor(self.module_id) for operation in self.operations),
             provenance=self.provenance,
         )
@@ -494,7 +502,9 @@ class Module:
         agent = self.agent(agent_id)
         if agent is None:
             raise KeyError(agent_id)
-        transient = material.transient() if not isinstance(material, TransientMaterial) else material
+        transient = (
+            material.transient() if not isinstance(material, TransientMaterial) else material
+        )
         history = (security or self.agent_context(agent_id)).merge(transient.history)
         return await agent.execute(transient, security=history)
 
@@ -509,8 +519,12 @@ class Module:
         operation = self.operation(operation_id)
         if operation is None:
             raise KeyError(operation_id)
-        transient = material.transient() if not isinstance(material, TransientMaterial) else material
-        history = (security or self.operation_context(operation_id, effect_profile_id)).merge(transient.history)
+        transient = (
+            material.transient() if not isinstance(material, TransientMaterial) else material
+        )
+        history = (security or self.operation_context(operation_id, effect_profile_id)).merge(
+            transient.history
+        )
         return await operation.execute(
             transient,
             effect_profile_id=effect_profile_id,

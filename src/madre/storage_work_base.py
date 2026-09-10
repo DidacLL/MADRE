@@ -34,7 +34,9 @@ class WorkStoreBase:
             ).fetchone()
             payload = _json(transition)
             if row is not None and str(row["transition_json"]) != payload:
-                raise ValueError(f"conflicting persisted transition identity: {transition.transition_id}")
+                raise ValueError(
+                    f"conflicting persisted transition identity: {transition.transition_id}"
+                )
             if row is None:
                 self.connection.execute(
                     "INSERT INTO security_transition(transition_id,transition_json) VALUES (?,?)",
@@ -47,7 +49,9 @@ class WorkStoreBase:
             ).fetchone()
             payload = _json(derivation)
             if row is not None and str(row["derivation_json"]) != payload:
-                raise ValueError(f"conflicting persisted derivation identity: {derivation.derivation_id}")
+                raise ValueError(
+                    f"conflicting persisted derivation identity: {derivation.derivation_id}"
+                )
             if row is None:
                 self.connection.execute(
                     "INSERT INTO security_derivation(derivation_id,derivation_json) VALUES (?,?)",
@@ -100,7 +104,9 @@ class WorkStoreBase:
                     retry_number=row["retry_number"],
                     status=row["status"],
                     started_at=datetime.fromisoformat(row["started_at"]),
-                    completed_at=datetime.fromisoformat(row["completed_at"]) if row["completed_at"] else None,
+                    completed_at=datetime.fromisoformat(row["completed_at"])
+                    if row["completed_at"]
+                    else None,
                     capability_id=row["capability_id"],
                     provider_id=row["provider_id"],
                     model_id=row["model_id"],

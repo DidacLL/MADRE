@@ -70,7 +70,9 @@ def test_kernel_does_not_import_sdk_or_core() -> None:
     for path in (SRC / "madre").rglob("*.py"):
         imported.update(imported_modules(path))
     assert not any(module == "madre_sdk" or module.startswith("madre_sdk.") for module in imported)
-    assert not any(module == "madre_core" or module.startswith("madre_core.") for module in imported)
+    assert not any(
+        module == "madre_core" or module.startswith("madre_core.") for module in imported
+    )
 
 
 def test_pre_freeze_security_symbols_are_removed() -> None:

@@ -146,7 +146,9 @@ class SecurityObject(FrozenModel):
         return cast(SecurityID, f"security:v1:{_digest(self.identity_payload())}")
 
     def expected_binding_digest(self) -> str:
-        return _digest({"security_id": self.expected_security_id(), "identity": self.identity_payload()})
+        return _digest(
+            {"security_id": self.expected_security_id(), "identity": self.identity_payload()}
+        )
 
     def verify_binding(self) -> bool:
         return (
@@ -270,7 +272,9 @@ class SecurityTransition(FrozenModel):
         payload = {
             "disclosures": [item.model_dump(mode="json") for item in disclosures],
             "control": control.model_dump(mode="json") if control else None,
-            "effect_execution": effect_execution.model_dump(mode="json") if effect_execution else None,
+            "effect_execution": effect_execution.model_dump(mode="json")
+            if effect_execution
+            else None,
         }
         return cls(
             transition_id=f"transition:v1:{_digest(payload)}",
@@ -440,7 +444,9 @@ class SecurityDecision(FrozenModel):
 
 
 class SecurityEvaluator(Protocol):
-    def evaluate(self, history: SecurityHistory, transition: SecurityTransition) -> SecurityDecision: ...
+    def evaluate(
+        self, history: SecurityHistory, transition: SecurityTransition
+    ) -> SecurityDecision: ...
 
 
 def _ordinary(value: object) -> OrdinarySecurityLevel | None:
@@ -457,7 +463,12 @@ def _integrity_value(obj: SecurityObject) -> OrdinarySecurityLevel | None:
     values = obj.values
     if isinstance(
         values,
-        (MaterialSecurityValues, ParticipantSecurityValues, CapabilitySecurityValues, EffectProfileSecurityValues),
+        (
+            MaterialSecurityValues,
+            ParticipantSecurityValues,
+            CapabilitySecurityValues,
+            EffectProfileSecurityValues,
+        ),
     ):
         return _ordinary(values.integrity)
     return None
@@ -477,7 +488,9 @@ class SecurityAlgebra:
 
     name = "madre-security-algebra-v1"
 
-    def evaluate(self, history: SecurityHistory, transition: SecurityTransition) -> SecurityDecision:
+    def evaluate(
+        self, history: SecurityHistory, transition: SecurityTransition
+    ) -> SecurityDecision:
         failures: list[StructuralFailure] = []
         disclosures: list[DisclosureEvidence] = []
         effect_evidence: EffectEvidence | None = None
@@ -488,7 +501,9 @@ class SecurityAlgebra:
         for obj in history.objects:
             if not obj.verify_binding():
                 failures.append(
-                    StructuralFailure(code="invalid_security_binding", security_ids=(obj.security_id,))
+                    StructuralFailure(
+                        code="invalid_security_binding", security_ids=(obj.security_id,)
+                    )
                 )
             failures.extend(self._validate_object_schema(obj))
 
@@ -503,7 +518,9 @@ class SecurityAlgebra:
             failures.extend(disclosure_failures)
 
         if (transition.control is None) != (transition.effect_execution is None):
-            failures.append(StructuralFailure(code="invalid_effect_profile", detail="incomplete-effect"))
+            failures.append(
+                StructuralFailure(code="invalid_effect_profile", detail="incomplete-effect")
+            )
         elif transition.control is not None and transition.effect_execution is not None:
             effect_evidence, effect_failures = self._evaluate_effect(
                 transition.control,
@@ -555,7 +572,9 @@ class SecurityAlgebra:
                 ("privacy", values.privacy),
             )
         else:
-            return [StructuralFailure(code="invalid_subject_values", security_ids=(obj.security_id,))]
+            return [
+                StructuralFailure(code="invalid_subject_values", security_ids=(obj.security_id,))
+            ]
         for field, value in fields:
             if value is not None and _ordinary(value) is None:
                 failures.append(
@@ -745,7 +764,9 @@ class SecurityAlgebra:
     ) -> tuple[EffectEvidence, list[StructuralFailure]]:
         failures: list[StructuralFailure] = []
         if control.effect_profile_security_id != execution.effect_profile_security_id:
-            failures.append(StructuralFailure(code="invalid_effect_profile", detail="profile-mismatch"))
+            failures.append(
+                StructuralFailure(code="invalid_effect_profile", detail="profile-mismatch")
+            )
 
         profile_id = execution.effect_profile_security_id
         profile = index.get(profile_id)
@@ -813,7 +834,14 @@ class SecurityAlgebra:
         controller_pairs, controller_failures = self._integrities(
             control.controller_security_ids,
             index,
-            allowed_kinds={"artifact", "context_bundle", "module", "agent", "endpoint", "capability"},
+            allowed_kinds={
+                "artifact",
+                "context_bundle",
+                "module",
+                "agent",
+                "endpoint",
+                "capability",
+            },
             role="controller_role",
         )
         failures.extend(controller_failures)
@@ -847,10 +875,9 @@ class SecurityAlgebra:
                 OrdinarySecurityLevel,
                 SecurityLevel(min(int(risk), int(autonomy))),
             )
-            if (
-                len(controller_pairs) == len(control.controller_security_ids)
-                and int(control_demand) > int(controller_integrity)
-            ):
+            if len(controller_pairs) == len(control.controller_security_ids) and int(
+                control_demand
+            ) > int(controller_integrity):
                 limiting = tuple(
                     security_id
                     for security_id, value in controller_pairs
@@ -947,11 +974,15 @@ class SecurityAlgebra:
         for derivation in history.derivations:
             prior = seen.get(derivation.derivation_id)
             if prior is not None and prior != derivation:
-                failures.append(StructuralFailure(code="invalid_derivation", detail="derivation-conflict"))
+                failures.append(
+                    StructuralFailure(code="invalid_derivation", detail="derivation-conflict")
+                )
             else:
                 seen[derivation.derivation_id] = derivation
             if not derivation.verify_identity():
-                failures.append(StructuralFailure(code="invalid_derivation", detail="derivation-binding"))
+                failures.append(
+                    StructuralFailure(code="invalid_derivation", detail="derivation-binding")
+                )
                 continue
             output = index.get(derivation.output_security_id)
             sources = [index.get(item) for item in derivation.source_security_ids]
@@ -1015,7 +1046,11 @@ class SecurityAlgebra:
                 continue
             if derivation.kind == "ordinary":
                 if derivation.validator_security_ids:
-                    failures.append(StructuralFailure(code="invalid_derivation", detail="ordinary-has-validators"))
+                    failures.append(
+                        StructuralFailure(
+                            code="invalid_derivation", detail="ordinary-has-validators"
+                        )
+                    )
                     continue
                 participants = (*concrete_sources, *concrete_producers)
                 assurance = [_integrity_value(item) for item in participants]
@@ -1043,7 +1078,11 @@ class SecurityAlgebra:
                     )
             else:
                 if not concrete_validators:
-                    failures.append(StructuralFailure(code="invalid_derivation", detail="validation-without-validator"))
+                    failures.append(
+                        StructuralFailure(
+                            code="invalid_derivation", detail="validation-without-validator"
+                        )
+                    )
                     continue
                 assurance = [_integrity_value(item) for item in concrete_validators]
                 if any(value is None for value in assurance):

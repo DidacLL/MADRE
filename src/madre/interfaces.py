@@ -15,7 +15,13 @@ from madre.contracts import (
     WorkRetryRequest,
     WorkSubmission,
 )
-from madre.registry import AgentDescriptor, ModuleManifest, OperationDescriptor, SkillDescriptor, WorkflowDescriptor
+from madre.registry import (
+    AgentDescriptor,
+    ModuleManifest,
+    OperationDescriptor,
+    SkillDescriptor,
+    WorkflowDescriptor,
+)
 from madre.security import ExecutionBoundary, SecurityHistory, SecurityObject
 
 
@@ -28,7 +34,9 @@ class TransientInference(Protocol):
 
 
 class DurableWorkSubmission(Protocol):
-    async def submit(self, submission: WorkSubmission, *, idempotency_key: str | None = None) -> WorkRecord: ...
+    async def submit(
+        self, submission: WorkSubmission, *, idempotency_key: str | None = None
+    ) -> WorkRecord: ...
 
 
 class WorkInspection(Protocol):
@@ -38,7 +46,9 @@ class WorkInspection(Protocol):
 class WorkResultAccess(Protocol):
     def consume_result(self, work_id: str) -> JsonValue: ...
 
-    async def retry(self, work_id: str, request: WorkRetryRequest, *, idempotency_key: str) -> WorkRecord: ...
+    async def retry(
+        self, work_id: str, request: WorkRetryRequest, *, idempotency_key: str
+    ) -> WorkRecord: ...
 
     async def cancel(self, work_id: str) -> WorkRecord: ...
 

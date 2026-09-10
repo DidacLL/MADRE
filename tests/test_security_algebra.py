@@ -6,9 +6,9 @@ import pytest
 from pydantic import ValidationError
 
 from madre.security import (
+    DEFAULT_SECURITY_EVALUATOR,
     BindingEvidence,
     CapabilitySecurityValues,
-    DEFAULT_SECURITY_EVALUATOR,
     Disclosure,
     MaterialSecurityValues,
     ParticipantSecurityValues,
@@ -99,7 +99,9 @@ def test_disclosure_predicate_is_exact(
     assert decision.admissible is (int(sensitivity) <= int(privacy))
 
 
-@pytest.mark.parametrize(("risk", "autonomy", "controller_integrity"), product(LEVELS, LEVELS, LEVELS))
+@pytest.mark.parametrize(
+    ("risk", "autonomy", "controller_integrity"), product(LEVELS, LEVELS, LEVELS)
+)
 def test_control_predicate_is_exact(
     risk: SecurityLevel,
     autonomy: SecurityLevel,
@@ -132,9 +134,7 @@ def test_control_predicate_is_exact(
     decision = DEFAULT_SECURITY_EVALUATOR.evaluate(
         SecurityHistory(objects=(profile.security, controller, executor)), transition
     )
-    assert decision.admissible is (
-        min(int(risk), int(autonomy)) <= int(controller_integrity)
-    )
+    assert decision.admissible is (min(int(risk), int(autonomy)) <= int(controller_integrity))
 
 
 @pytest.mark.parametrize(("risk", "executor_integrity"), product(LEVELS, LEVELS))
@@ -422,7 +422,11 @@ def test_conflicting_same_security_id_is_structural_failure() -> None:
         integrity=SecurityLevel.LEVEL_5,
     )
     conflicting = subject.model_copy(
-        update={"values": ParticipantSecurityValues(privacy=SecurityLevel.LEVEL_1, integrity=SecurityLevel.LEVEL_1)}
+        update={
+            "values": ParticipantSecurityValues(
+                privacy=SecurityLevel.LEVEL_1, integrity=SecurityLevel.LEVEL_1
+            )
+        }
     )
     decision = DEFAULT_SECURITY_EVALUATOR.evaluate(
         SecurityHistory(objects=(subject, conflicting)), SecurityTransition.issue()

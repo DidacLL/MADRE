@@ -310,7 +310,9 @@ def test_low_integrity_display_material_is_not_an_effect_controller(tmp_path: Pa
         database.__exit__(None, None, None)
 
 
-def test_direct_user_effect_passes_control_but_still_requires_effect_integrity(tmp_path: Path) -> None:
+def test_direct_user_effect_passes_control_but_still_requires_effect_integrity(
+    tmp_path: Path,
+) -> None:
     database, _, _, registry, broker = broker_fixture(tmp_path)
     try:
         direct = profile(

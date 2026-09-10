@@ -106,7 +106,9 @@ class WorkRuntime:
     async def infer(self, request: TransientInferenceRequest) -> TransientInferenceResult:
         self._verify_transient_material(request.material)
         invocation_id = uuid4().hex
-        history = request.security.merge(request.material.history).extend(objects=(request.material.security,))
+        history = request.security.merge(request.material.history).extend(
+            objects=(request.material.security,)
+        )
         self._require_structural_history(
             crossing_id=invocation_id,
             crossing_kind="transient-admission",
@@ -143,7 +145,9 @@ class WorkRuntime:
             execution_boundary=descriptor.execution_boundary,
             output_digest=content_digest(result),
             output_size=content_size(result),
-            output_integrity=self._generated_integrity(request.material, descriptor.security.values),
+            output_integrity=self._generated_integrity(
+                request.material, descriptor.security.values
+            ),
             producer_security_ids=(descriptor.security.security_id,),
             source_security_ids=(request.material.security.security_id,),
             security=accepted,
@@ -179,7 +183,8 @@ class WorkRuntime:
         self._require_structural_history(
             crossing_id=work_id,
             crossing_kind="work-admission",
-            target_id=submission.inference.hard.mechanism_id or submission.inference.hard.specialization,
+            target_id=submission.inference.hard.mechanism_id
+            or submission.inference.hard.specialization,
             history=security,
         )
 
@@ -244,7 +249,10 @@ class WorkRuntime:
             and not request.allow_unknown_outcome
         ):
             raise RetryConflict("interrupted work requires allow_unknown_outcome=true")
-        if self.store.requeue_failed(work_id, key, request.allow_unknown_outcome, self._clock()) is None:
+        if (
+            self.store.requeue_failed(work_id, key, request.allow_unknown_outcome, self._clock())
+            is None
+        ):
             raise RetryConflict("work is no longer failed")
         self._schedule_changed.set()
         return self._require(work_id)
@@ -429,7 +437,9 @@ class WorkRuntime:
         if not decision.admissible:
             if crossing_kind.startswith("transient"):
                 raise TransientInferenceError("security_denied")
-            raise ValueError(f"security evaluator rejected work: {','.join(decision.failure_codes)}")
+            raise ValueError(
+                f"security evaluator rejected work: {','.join(decision.failure_codes)}"
+            )
 
     @staticmethod
     def _generated_integrity(
@@ -439,7 +449,10 @@ class WorkRuntime:
         material_values = cast(MaterialSecurityValues, material.security.values)
         if material_values.integrity is None:
             raise TransientInferenceError("security_denied")
-        if not isinstance(capability_values, CapabilitySecurityValues) or capability_values.integrity is None:
+        if (
+            not isinstance(capability_values, CapabilitySecurityValues)
+            or capability_values.integrity is None
+        ):
             raise TransientInferenceError("security_denied")
         value = min(int(material_values.integrity), int(capability_values.integrity))
         return cast(OrdinarySecurityLevel, SecurityLevel(value))

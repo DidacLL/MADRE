@@ -13,7 +13,11 @@ from madre.storage_work import WorkStore
 class PlatformStore(WorkStore):
     def put_manifest(self, manifest: ModuleManifest) -> None:
         objects = [manifest.security, *(agent.security for agent in manifest.agents)]
-        objects.extend(profile.security for operation in manifest.operations for profile in operation.effect_profiles)
+        objects.extend(
+            profile.security
+            for operation in manifest.operations
+            for profile in operation.effect_profiles
+        )
         history = SecurityHistory(objects=tuple(objects))
         with self.connection:
             self._persist_security_history(history)

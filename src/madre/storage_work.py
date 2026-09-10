@@ -199,7 +199,9 @@ class WorkStore(WorkRecordStore):
 
     def fail_interrupted_attempts(self, now: datetime) -> int:
         with self.connection:
-            rows = self.connection.execute("SELECT id FROM runtime_work WHERE status='running'").fetchall()
+            rows = self.connection.execute(
+                "SELECT id FROM runtime_work WHERE status='running'"
+            ).fetchall()
             for row in rows:
                 work_id = str(row["id"])
                 attempt = self.connection.execute(

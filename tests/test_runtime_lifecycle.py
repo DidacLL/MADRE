@@ -215,7 +215,9 @@ def test_durable_success_persists_accepted_transition_and_no_private_bytes(tmp_p
         assert completed.result.output_integrity == SecurityLevel.LEVEL_5
         assert completed.attempts[0].security_transition_id is not None
         assert len(completed.spec.security.transitions) == 1
-        assert connection.execute("SELECT COUNT(*) AS n FROM security_transition").fetchone()["n"] == 1
+        assert (
+            connection.execute("SELECT COUNT(*) AS n FROM security_transition").fetchone()["n"] == 1
+        )
     for path in tmp_path.glob("runtime.sqlite3*"):
         data = path.read_bytes()
         assert b"private-input-marker" not in data
@@ -389,7 +391,9 @@ def test_unconsumed_result_is_marked_lost_after_restart(tmp_path: Path) -> None:
             restarted.consume_result(record.id)
 
 
-def test_transient_no_compatible_capability_is_distinct_from_security_denial(tmp_path: Path) -> None:
+def test_transient_no_compatible_capability_is_distinct_from_security_denial(
+    tmp_path: Path,
+) -> None:
     source = artifact({"value": 1}, sensitivity=SecurityLevel.LEVEL_1)
     with open_database(tmp_path) as connection:
         runtime = WorkRuntime(PlatformStore(connection), CapabilityRegistry())

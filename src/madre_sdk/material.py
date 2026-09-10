@@ -11,8 +11,8 @@ from pydantic import Field, JsonValue, model_validator
 from madre.contracts import MaterialHandle, TransientInferenceResult, TransientMaterial, WorkRecord
 from madre.interfaces import MaterialResolver
 from madre.security import (
-    BindingEvidence,
     DEFAULT_SECURITY_EVALUATOR,
+    BindingEvidence,
     FrozenModel,
     Identifier,
     MaterialSecurityValues,
@@ -57,7 +57,9 @@ def _material_security(
     )
 
 
-def _required_integrity(history: SecurityHistory, security_ids: tuple[str, ...]) -> OrdinarySecurityLevel:
+def _required_integrity(
+    history: SecurityHistory, security_ids: tuple[str, ...]
+) -> OrdinarySecurityLevel:
     if not security_ids:
         raise ValueError("derivation assurance path must not be empty")
     values: list[int] = []
@@ -106,7 +108,10 @@ class Artifact(FrozenModel):
 
     @model_validator(mode="after")
     def validate_security(self) -> Artifact:
-        if self.security.subject_ref.subject_kind != "artifact" or self.security.subject_ref.local_id != self.id:
+        if (
+            self.security.subject_ref.subject_kind != "artifact"
+            or self.security.subject_ref.local_id != self.id
+        ):
             raise ValueError("Artifact security must be bound to the Artifact identity")
         if not self.security.verify_binding():
             raise ValueError("Artifact SecurityObject binding is invalid")
@@ -182,7 +187,9 @@ class Artifact(FrozenModel):
         )
         history = history.extend(derivations=(derivation,))
         _validate_history(history)
-        return cls(id=artifact_id, payload=result.payload, security=security, security_history=history)
+        return cls(
+            id=artifact_id, payload=result.payload, security=security, security_history=history
+        )
 
     @classmethod
     def from_work_result(
@@ -345,7 +352,10 @@ class ContextBundle(FrozenModel):
 
     @model_validator(mode="after")
     def validate_security(self) -> ContextBundle:
-        if self.security.subject_ref.subject_kind != "context_bundle" or self.security.subject_ref.local_id != self.id:
+        if (
+            self.security.subject_ref.subject_kind != "context_bundle"
+            or self.security.subject_ref.local_id != self.id
+        ):
             raise ValueError("ContextBundle security must be bound to the ContextBundle identity")
         if not self.security.verify_binding():
             raise ValueError("ContextBundle SecurityObject binding is invalid")
@@ -381,7 +391,13 @@ class ContextBundle(FrozenModel):
         )
         history = (security_history or SecurityHistory()).extend(objects=(security,))
         _validate_history(history)
-        return cls(id=bundle_id, purpose=purpose, payload=payload, security=security, security_history=history)
+        return cls(
+            id=bundle_id,
+            purpose=purpose,
+            payload=payload,
+            security=security,
+            security_history=history,
+        )
 
     @classmethod
     def derive_from(
@@ -483,6 +499,10 @@ class MaterialRepository(MaterialResolver):
         material = self._materials.get(handle.reference)
         if material is None:
             return None
-        if material.digest != handle.digest or material.security != handle.security or material.history != handle.history:
+        if (
+            material.digest != handle.digest
+            or material.security != handle.security
+            or material.history != handle.history
+        ):
             return None
         return material

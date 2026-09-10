@@ -175,10 +175,10 @@ def test_core_manifest_uses_final_participant_security_values() -> None:
     manifest = core.manifest()
     module_values = manifest.security.values
     agent_values = manifest.agents[0].security.values
-    assert getattr(module_values, "privacy") == SecurityLevel.LEVEL_5
-    assert getattr(module_values, "integrity") == SecurityLevel.LEVEL_5
-    assert getattr(agent_values, "privacy") == SecurityLevel.LEVEL_5
-    assert getattr(agent_values, "integrity") == SecurityLevel.LEVEL_5
+    assert module_values.privacy == SecurityLevel.LEVEL_5
+    assert module_values.integrity == SecurityLevel.LEVEL_5
+    assert agent_values.privacy == SecurityLevel.LEVEL_5
+    assert agent_values.integrity == SecurityLevel.LEVEL_5
     assert not hasattr(module_values, "trust")
     assert not hasattr(module_values, "isolation")
 

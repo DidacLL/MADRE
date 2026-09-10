@@ -182,23 +182,31 @@ class InteroperabilityRegistry:
     def discover_agents(self, security: SecurityHistory) -> tuple[AgentDescriptor, ...]:
         if not self._history_is_structurally_valid(security):
             return ()
-        visible = [descriptor for manifest in self._store.manifests() for descriptor in manifest.agents]
+        visible = [
+            descriptor for manifest in self._store.manifests() for descriptor in manifest.agents
+        ]
         return tuple(sorted(visible, key=lambda descriptor: (descriptor.module_id, descriptor.id)))
 
     def discover_skills(self, security: SecurityHistory) -> tuple[SkillDescriptor, ...]:
         if not self._history_is_structurally_valid(security):
             return ()
-        visible = [descriptor for manifest in self._store.manifests() for descriptor in manifest.skills]
+        visible = [
+            descriptor for manifest in self._store.manifests() for descriptor in manifest.skills
+        ]
         return tuple(sorted(visible, key=lambda descriptor: (descriptor.module_id, descriptor.id)))
 
     def discover_workflows(self, security: SecurityHistory) -> tuple[WorkflowDescriptor, ...]:
         if not self._history_is_structurally_valid(security):
             return ()
-        visible = [descriptor for manifest in self._store.manifests() for descriptor in manifest.workflows]
+        visible = [
+            descriptor for manifest in self._store.manifests() for descriptor in manifest.workflows
+        ]
         return tuple(sorted(visible, key=lambda descriptor: (descriptor.module_id, descriptor.id)))
 
     def discover_operations(self, security: SecurityHistory) -> tuple[OperationDescriptor, ...]:
         if not self._history_is_structurally_valid(security):
             return ()
-        visible = [descriptor for manifest in self._store.manifests() for descriptor in manifest.operations]
+        visible = [
+            descriptor for manifest in self._store.manifests() for descriptor in manifest.operations
+        ]
         return tuple(sorted(visible, key=lambda descriptor: (descriptor.module_id, descriptor.id)))
