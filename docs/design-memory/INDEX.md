@@ -44,6 +44,7 @@ Load only the relevant topic.
 | SDK, public object model, Agents/Skills/Workflows/WorkPlans, developer tooling | `architecture-and-sdk.md` |
 | inference mechanisms, provider ecosystem, durable material, advanced adapters | `inference-and-execution.md` |
 | comparable projects / harness and ecosystem observations | `ecosystem-notes.md` |
+| voice/audio Capability research, OpenWhispr, OS-native speech, ASR/TTS/VAD mechanism comparisons | `openwhispr-voice-ecosystem-audit.md` |
 
 ## Maintenance rule
 
