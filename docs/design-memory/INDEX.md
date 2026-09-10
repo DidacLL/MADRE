@@ -25,6 +25,7 @@ Migration notes, obsolete schemas and instructions for reconciling the current b
 Use simple labels only when useful:
 
 - **OWNER** — directly stated or explicitly confirmed product intent;
+- **AUDIT** — a mathematical/engineering derivation or adversarial check preserved as supporting evidence; it is not authority independently of the canonical document;
 - **DIRECTION** — strong but still refinable direction;
 - **OPEN** — deliberately unresolved;
 - **EXAMPLE** — illustrative, not normative;
@@ -39,7 +40,7 @@ Load only the relevant topic.
 | Working on | Read |
 | --- | --- |
 | CORE, default UI/UX, interaction Agent, resource-constrained UX | `core-and-interaction.md` |
-| security algebra rationale, examples, unresolved formula | `security-algebra.md` |
+| security algebra rationale, mathematical audit, representative cases, open valuation mechanism | `security-algebra.md` |
 | SDK, public object model, Agents/Skills/Workflows/WorkPlans, developer tooling | `architecture-and-sdk.md` |
 | inference mechanisms, provider ecosystem, durable material, advanced adapters | `inference-and-execution.md` |
 | comparable projects / harness and ecosystem observations | `ecosystem-notes.md` |
