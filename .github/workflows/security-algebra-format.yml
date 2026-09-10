@@ -1,6 +1,9 @@
 name: security-algebra-format
 
 on:
+  pull_request:
+    branches:
+      - architecture/modular-agentic-clean-slate
   workflow_dispatch:
 
 permissions:
@@ -8,6 +11,7 @@ permissions:
 
 jobs:
   format:
+    if: github.event_name == 'workflow_dispatch' || github.head_ref == 'implementation/final-security-algebra'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
