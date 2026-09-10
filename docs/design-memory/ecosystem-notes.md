@@ -51,6 +51,24 @@ Worth remembering for the MADRE harness/design-memory corpus:
 
 MADRE does not need to adopt the OKF schema or its memory ontology. The useful ideas are progressive disclosure, inspectability and duplication control.
 
+## OpenWhispr voice/audio ecosystem audit
+
+Sources: <https://openwhispr.com/> and <https://github.com/OpenWhispr/openwhispr>
+
+A dedicated audit is preserved in [`openwhispr-voice-ecosystem-audit.md`](openwhispr-voice-ecosystem-audit.md). It is reference evidence for future voice/audio work, not an adoption decision.
+
+Worth remembering:
+
+- OpenWhispr is mainly useful as a reference implementation and failure corpus rather than as a MADRE dependency;
+- its complete desktop product mixes Module-level interaction UX, cross-platform audio/device plumbing, concrete speech runtimes and unrelated notes/meetings/agent/search/cloud functionality;
+- the reusable physical mechanisms are usually better integrated directly from upstream projects such as OS-native speech services, whisper.cpp, sherpa-onnx, Vosk or PocketSphinx;
+- microphone capture, VAD, ASR, TTS, playback, system audio and diarization should remain independently selectable computations rather than becoming one provider-bound "voice" mechanism;
+- runtime Capability truth matters: installed/configured/available/selected/actually executing are different states, especially when native helpers, permissions, assets and fallbacks are involved;
+- legacy/native low-resource mechanisms remain strategically useful on constrained machines and are evidence against equating Capability with modern ML model execution;
+- OpenWhispr's platform-helper techniques, streaming finalization, event-driven monitoring and failure handling are useful implementation references without importing its application architecture.
+
+Do not infer from this audit that MADRE should adopt OpenWhispr, make it a Module, expose OpenAI-shaped speech APIs, or pre-build a general voice framework. Any architectural refinement identified by the audit remains non-authoritative until independently justified against MADRE requirements and promoted into the relevant canonical owner.
+
 ## General comparison rule
 
 External projects can supply:
