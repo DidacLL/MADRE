@@ -13,7 +13,7 @@ Detailed architecture is owned by:
 - `docs/architecture/MADRE-platform-architecture.md` — topology and responsibility placement;
 - `docs/architecture/MADRE-execution-contract.md` — transient and durable execution, material lifecycle, mechanism selection, scheduling-facing semantics, results and recovery;
 - `docs/architecture/MADRE-agent-interoperability.md` — Module/Agent/Skill/Workflow/Operation contracts, CORE contract, discovery, brokering and SDK;
-- `docs/architecture/MADRE-security-algebra.md` — object-bound security identities, carried composition and deterministic admissibility.
+- `docs/architecture/MADRE-security-algebra.md` — object-bound security identities, transition topology and deterministic admissibility.
 
 `docs/implementation-baseline.md` describes current repository state only. `docs/design-memory/` preserves non-normative product rationale, examples, constraints, ecosystem observations and open research directions.
 
@@ -73,7 +73,7 @@ A **Workflow** is reusable semantic behavior or a recipe used by an Agent/Module
 
 A **WorkPlan** is semantic planning state owned by the Module/Agent that created it. Executable portions are projected into ordinary MADRE work; Kernel does not own or interpret the semantic plan.
 
-An **Operation** is bounded callable behavior intentionally exported and implemented by a Module. Operations are how Module/system/external effects are exposed to intelligent actors without granting a generic shell or unrestricted Internet environment.
+An **Operation** is bounded callable behavior intentionally exported and implemented by a Module. An Operation may expose immutable **EffectProfiles** describing security-relevant execution shapes of that same bounded effect. Operations are how Module/system/external effects are exposed to intelligent actors without granting a generic shell or unrestricted Internet environment.
 
 An **Artifact** is Module-owned material. A **ContextBundle** is an artifact-like bounded collection of material prepared for a concrete use/boundary.
 
@@ -136,17 +136,46 @@ Local inference is the primary product focus, while admissible remote/provider m
 
 One provider may expose several distinct mechanisms: API, account-authenticated CLI/session, SDK, MCP path, gateway, local bridge or user-installed adapter. Provider-specific login, credentials, protocol schemas and software mechanics remain adapter concerns.
 
-### 6. Security is object-bound carried algebra
+### 6. Security is object-bound transition algebra
 
-Every security-relevant Module/Agent/Artifact/ContextBundle/Operation/Capability contributes a **SecurityObject** identified by a stable `SecurityID`. The SecurityObject is structurally bound to its subject and contains only the normalized security values that are meaningful for that subject kind.
+Every security-relevant Artifact/ContextBundle, Module/Agent/endpoint, Capability and Operation EffectProfile contributes an immutable **SecurityObject** identified by a stable, globally unambiguous `SecurityID`. The SecurityObject is structurally bound to its subject and contains only the normalized values meaningful for that subject kind.
 
-Examples of distinct dimensions include material sensitivity, actor/boundary trust or isolation/privacy, Operation/Capability risk or consequence, Artifact/ContextBundle intended use, and Operation autonomy. These dimensions are independent; high trust does not imply low sensitivity, and high-sensitivity material may be appropriate on a strongly isolated/private path.
+The final normalized runtime vocabulary is exactly:
 
-A concrete request/work lifecycle carries the SecurityIDs/SecurityObjects introduced by its participants and crossings. The algebra composes those objects at each relevant boundary and deterministically decides whether execution may continue.
+```text
+Sensitivity
+Privacy
+Integrity
+Risk
+Autonomy
+```
 
-Registration, installation acceptance, ordinary identity, possession of a reference, roles, ACLs, allowlists and provider credentials are not independent MADRE permission sources.
+These dimensions are independent. Sensitivity describes material confidentiality demand; Privacy describes confidentiality assurance of an actual participant/path; Integrity describes assurance of security-significant causal control/effect execution; Risk describes consequence of a bounded effect; Autonomy describes residual machine control in a bound EffectProfile.
 
-The exact algebraic formula remains a dedicated architecture/research problem. It must remain small, normalized and understandable rather than becoming a policy language or a matrix of mirrored requirements.
+Security decisions are made over explicit transition roles rather than one global score over all carried history:
+
+```text
+DISCLOSURE
+CONTROL
+EFFECT_EXECUTION
+DERIVATION
+```
+
+The runtime evaluates three obligations:
+
+```text
+Sensitivity(material) <= minimum Privacy of its actual disclosure path
+min(Risk, Autonomy) <= minimum Integrity of actual non-user controllers
+Risk <= minimum Integrity of actual effect executors
+```
+
+The last two apply only to effectful transitions.
+
+A concrete request/work lifecycle retains immutable SecurityObjects plus security-relevant transition/derivation evidence. Historical objects remain evidence and continuity facts, but an unrelated historical extreme is not blindly folded into a later transition it does not participate in.
+
+Registration, installation acceptance, ordinary identity, possession of a reference/SecurityID, roles, ACLs, allowlists, provider credentials and previous successful decisions are not independent MADRE permission sources.
+
+Missing role-required security values make a transition structurally invalid; the algebra does not silently assign default numeric values. Third-party/default valuation policy remains a separate problem.
 
 ### 7. CORE is a replaceable Module with a required capability/security contract
 
@@ -154,9 +183,9 @@ MADRE ships with a default **CORE-capable Module**. The user may configure anoth
 
 CORE is not a second Kernel and receives no security bypass, resource exemption or private semantic Kernel API. It uses the same public SDK/interoperability boundary as other Modules.
 
-A CORE-capable Module must provide the generic functionality required by the installation's default/general interaction and fallback role, and it must satisfy the strongest applicable isolation/security characteristics defined by MADRE's algebra because CORE may legitimately handle extremely sensitive personal/system material.
+A CORE-capable Module must provide the generic functionality required by the installation's default/general interaction and fallback role, and must carry sufficiently strong Privacy and Integrity characteristics for the sensitive material and control paths it is expected to handle under the same Security Algebra as every other Module.
 
-CORE-owned data may itself have the highest Sensitivity values. Security strength and material sensitivity are independent dimensions.
+CORE-owned data may itself have the highest Sensitivity values. Participant assurance and material sensitivity are independent dimensions.
 
 Typical shipped CORE behavior may include:
 
@@ -168,7 +197,7 @@ module-independent intelligent assistance such as configuration/install support
 system/user profile and interaction continuity owned by CORE
 ```
 
-Cross-domain material still moves through ordinary algebraic boundaries. CORE minimizes/anonymizes/transforms material when necessary before sending it toward less-private or higher-risk participants.
+Cross-domain material still moves through ordinary algebraic boundaries. CORE minimizes/anonymizes/transforms material when necessary before sending it toward a lower-Privacy or higher-consequence transition.
 
 ### 8. Public interoperability does not make Kernel an Agent framework
 
@@ -204,5 +233,5 @@ Place a concept by asking what decision requires it:
 
 - understand meaning, plan, remember, present, learn, choose semantic behavior or mutate a domain → **Module**;
 - provide reusable typed public integration → **SDK/interoperability**;
-- evaluate security objects, execute transient inference, admit/schedule durable work, allocate scarce resources, select a physical mechanism, recover execution, route an explicit target, deliver results or record evidence → **Kernel**;
+- evaluate security objects/transitions, execute transient inference, admit/schedule durable work, allocate scarce resources, select a physical mechanism, recover execution, route an explicit target, deliver results or record evidence → **Kernel**;
 - load/talk to a model/provider or expose mechanism-native optimization → **Capability adapter/external mechanism software**.
