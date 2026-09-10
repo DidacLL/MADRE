@@ -6,15 +6,15 @@ Product meaning comes from `MADRE.md`; detailed architecture comes from `docs/ar
 
 ## Current development stage
 
-**The Kernel foundation and the first modular SDK + shipped default CORE foundation are implemented.**
+**The Kernel foundation and the first modular SDK + shipped default CORE foundation are implemented. The final Security Algebra architecture is now frozen; its runtime/schema migration is the next foundational implementation stage.**
 
-The SDK/CORE stage proves the public architecture with two independent consumers: the shipped CORE Module and an Agentless reference Module used by integration tests. The final Security Algebra formula remains a separate focused architecture/research task.
+The canonical algebra is `docs/architecture/MADRE-security-algebra.md`. The current Python runtime still uses the pre-freeze compatibility security schema/evaluator and must not be mistaken for the final product formula.
 
 ## Implemented repository truth
 
 ### Kernel foundation
 
-The `madre` package continues to provide:
+The `madre` package currently provides:
 
 - bound `SecurityID` / `SecurityObject` state with subject-kind-specific normalized values and immutable integrity binding;
 - carried `SecurityContext` composition persisted with durable work;
@@ -34,17 +34,17 @@ The SDK stage exposed two narrow public-brokering deficiencies in the Kernel-fac
 
 ### Modular SDK
 
-The `madre_sdk` package now materializes the public Module semantic boundary without importing Kernel runtime/storage/service/provider internals.
+The `madre_sdk` package materializes the public Module semantic boundary without importing Kernel runtime/storage/service/provider internals.
 
-It provides:
+It currently provides:
 
 - `Module` manifest/endpoint composition over public registration protocols;
 - a minimal `Agent` with purpose, instructions, contracts, security and execution behavior, plus `from_instructions(...)`;
 - portable `Skill` and `Workflow` value structures with public descriptors and no universal executor;
 - a lightweight `WorkPlan` projection protocol whose semantic state remains Module-owned;
-- bounded `Operation` behavior over the existing public effect/repeatability/security contract;
+- bounded `Operation` behavior over the pre-freeze public effect/repeatability/security contract;
 - `Artifact` and `ContextBundle` construction, derivation and generated-output reuse;
-- new security binding for each derived material representation while preserving independent Sensitivity/IntendedUse values unless the Module explicitly changes them;
+- new security binding for each derived material representation;
 - `MaterialRepository` as an optional Module-owned resolver helper producing valid transient material and durable `MaterialHandle`s;
 - small clients for transient inference, durable submission/result access, discovery, Agent brokering and Operation brokering;
 - continuation of an incoming carried `SecurityContext` through nested inference, durable submission and explicit brokering;
@@ -64,10 +64,12 @@ Its current behavior demonstrates:
 - optional CORE-private continuation decisions that can explicitly delegate to another visible Agent or submit ordinary durable follow-up inference;
 - preservation of inbound carried security facts through CORE transient inference, delegation and durable continuation;
 - no `[[MADRE_REASONING:...]]` marker protocol and no Kernel fast lane;
-- strongest currently expressible actor trust/isolation values for the shipped Module and interaction Agent;
+- strongest currently expressible pre-freeze actor trust/isolation values for the shipped Module and interaction Agent;
 - independently high/max Sensitivity on CORE-owned interaction/context/output material;
 - Module-owned material resolution for durable continuation;
 - ordinary configured replacement through `CoreSelection`, with no Kernel awareness of the literal shipped CORE module identity.
+
+The CORE security declarations above are implementation truth only. The frozen architecture replaces generic Trust/Isolation runtime operands with the final `Privacy`/`Integrity` model during the next migration.
 
 ### Reference Module proof
 
@@ -75,9 +77,50 @@ The integration suite includes an Agentless reference Module implemented with th
 
 A second test CORE-capable Module is selected through SDK configuration without Kernel modification.
 
+## Frozen Security Algebra versus current implementation
+
+The normative Security Algebra is now the five-concept, transition-local model:
+
+```text
+Sensitivity
+Privacy
+Integrity
+Risk
+Autonomy
+```
+
+with explicit `DISCLOSURE`, `CONTROL`, `EFFECT_EXECUTION` and `DERIVATION` relationships and immutable Operation-owned `EffectProfile`s.
+
+Its three runtime predicates are, in substance:
+
+```text
+Sensitivity(material) <= min(Privacy(actual disclosure path))
+min(Risk(effect), Autonomy(effect)) <= min(Integrity(actual controllers))
+Risk(effect) <= min(Integrity(actual effect executors))
+```
+
+The current implementation does **not** yet realize that model.
+
+Current migration gaps include:
+
+1. `MaterialSecurityValues` still contains `sensitivity` + numeric `intended_use` rather than final `Sensitivity` + `Integrity`;
+2. actor/endpoint values still contain `trust` + `isolation` rather than final `Privacy` + `Integrity`;
+3. Capability values still contain `trust` + `privacy` + `risk` rather than final `Privacy` + `Integrity`;
+4. Operation values still contain `risk` + `autonomy` directly rather than immutable Operation-owned `EffectProfile`s carrying `Risk`, `Autonomy`, `Integrity` and optional `Privacy`;
+5. `SecurityContext` remains an append-only tuple rather than an idempotent security-history representation with explicit transition/derivation relationships;
+6. `CompatibilitySecurityEvaluator` still globally reduces carried objects through max Sensitivity/min Trust/max Risk and must be replaced by transition-local structural/confidentiality/control/effect evaluation;
+7. current decision evidence does not yet identify disclosure paths, controllers, executors or limiting SecurityIDs;
+8. missing role-required security values are not yet represented through the final structural-validation contract;
+9. SDK helpers do not yet construct final SecurityTransitions/EffectProfiles/validation derivations;
+10. persistence/recovery stores carried objects but not the final transition/derivation history required to reproduce the new model.
+
+These gaps are expected migration work, not open product architecture.
+
+The third-party/default valuation process remains intentionally open: the final algebra requires role-relevant values to exist but does not decide how unknown Modules/adapters receive those values.
+
 ## Architecture boundary evidence
 
-Tests enforce that:
+Tests currently enforce that:
 
 - `madre_sdk` imports only `madre.contracts`, `madre.interfaces`, `madre.registry` and `madre.security` from the Kernel namespace;
 - `madre_core` imports no `madre.*` package directly and reaches MADRE only through `madre_sdk`;
@@ -86,9 +129,25 @@ Tests enforce that:
 - CORE selection uses both the configured Module and interaction-Agent identity;
 - CORE contains no legacy fast/deeper marker protocol.
 
+These boundary tests must remain valid through the security migration, with new tests added for final transition/effect semantics.
+
 ## Structurally outside Kernel
 
-Kernel still does not own Agent private reasoning/state/memory, semantic WorkPlans, Workflow/Skill execution, conversation state, interaction strategy, semantic fallback routing, prompt construction, user profiles, generated-result meaning, domain mutations, generic unrestricted shell/Internet authority or the final Security Algebra formula.
+Kernel still does not own Agent private reasoning/state/memory, semantic WorkPlans, Workflow/Skill execution, conversation state, interaction strategy, semantic fallback routing, prompt construction, user profiles, generated-result meaning, material semantic classification/validation, domain mutations or generic unrestricted shell/Internet authority.
+
+Kernel does own deterministic validation/evaluation of bound security facts and explicit transition structure once supplied through public contracts.
+
+## Next stage: implement the frozen Security Algebra
+
+The next foundational implementation stage is the focused migration described under:
+
+```text
+docs/refactors/2026-09-security-algebra-implementation/
+```
+
+That run should replace the compatibility security schema/evaluator with the frozen model coherently across Kernel, SDK, CORE, broker/runtime crossings, persistence/recovery and tests.
+
+It should not simultaneously expand CORE UX, add providers, build a valuation scanner, or introduce unrelated agent/runtime features.
 
 ## Validation authority
 
@@ -104,8 +163,4 @@ uv build --python .venv --no-build-isolation
 wheel reinstall + isolated madre/madre_sdk/madre_core imports
 ```
 
-The implementation PR is the final CI authority for this stage.
-
-## Next substantive stage
-
-With the SDK/public Module boundary and shipped CORE foundation materialized, MADRE can move to the next product/research stage without extending Kernel by inertia. Candidate work now includes focused final Security Algebra design/validation, richer real CORE product behavior/UI, concrete third-party/domain Module integration and additional inference mechanisms when demanded by real consumers.
+The implementation PR will be the final CI authority for the migration stage.
