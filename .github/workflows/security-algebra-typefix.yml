@@ -55,7 +55,10 @@ jobs:
               raise SystemExit('missing security import')
           text = text.replace(old, new, 1)
           old = 'output_integrity=SecurityLevel(row["output_integrity"]),'
-          new = 'output_integrity=cast(OrdinarySecurityLevel, SecurityLevel(row["output_integrity"])), '
+          new = '''output_integrity=cast(
+                      OrdinarySecurityLevel,
+                      SecurityLevel(row["output_integrity"]),
+                  ),'''
           if old not in text:
               raise SystemExit('missing output_integrity restoration')
           text = text.replace(old, new, 1)
