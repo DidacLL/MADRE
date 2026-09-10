@@ -29,7 +29,12 @@ from madre.runtime import (
     WorkNotFound,
     WorkRuntime,
 )
-from madre.security import CapabilitySecurityValues, SecurityObject
+from madre.security import (
+    BindingEvidence,
+    CapabilitySecurityValues,
+    SecurityObject,
+    SecuritySubjectRef,
+)
 from madre.storage import PlatformStore, open_database
 
 
@@ -37,12 +42,22 @@ def _capabilities(settings: Settings) -> CapabilityRegistry:
     registry = CapabilityRegistry()
     for capability_id, config in settings.capabilities.items():
         security = SecurityObject.issue(
-            subject_id=capability_id,
-            subject_kind="capability",
+            subject_ref=SecuritySubjectRef(
+                owner_module_id="madre.platform",
+                subject_kind="capability",
+                publication_revision="1",
+                local_id=capability_id,
+            ),
             values=CapabilitySecurityValues(
-                trust=config.trust,
                 privacy=config.privacy,
-                risk=config.risk,
+                integrity=config.integrity,
+            ),
+            binding_evidence=(
+                BindingEvidence(key="adapter_kind", value=config.kind),
+                BindingEvidence(key="endpoint", value=config.endpoint),
+                BindingEvidence(key="model", value=config.model),
+                BindingEvidence(key="boundary", value=config.boundary),
+                BindingEvidence(key="provider_id", value=config.provider_id or "none"),
             ),
         )
         descriptor = CapabilityDescriptor(

@@ -6,80 +6,17 @@ Product meaning comes from `MADRE.md`; detailed architecture comes from `docs/ar
 
 ## Current development stage
 
-**The Kernel foundation and the first modular SDK + shipped default CORE foundation are implemented. The final Security Algebra architecture is now frozen; its runtime/schema migration is the next foundational implementation stage.**
+**The Kernel foundation, modular SDK, shipped default CORE foundation, and frozen MADRE Security Algebra are implemented together end to end.**
 
-The canonical algebra is `docs/architecture/MADRE-security-algebra.md`. The current Python runtime still uses the pre-freeze compatibility security schema/evaluator and must not be mistaken for the final product formula.
+The canonical security contract is `docs/architecture/MADRE-security-algebra.md`. The Python runtime now executes that five-concept, transition-local model directly; the pre-freeze compatibility evaluator and its Trust/Isolation/IntendedUse schema are gone.
+
+Third-party/default security valuation remains intentionally outside the current implementation stage. Runtime roles require complete bound values and fail structurally when they are absent.
 
 ## Implemented repository truth
 
-### Kernel foundation
+### Final Security Algebra
 
-The `madre` package currently provides:
-
-- bound `SecurityID` / `SecurityObject` state with subject-kind-specific normalized values and immutable integrity binding;
-- carried `SecurityContext` composition persisted with durable work;
-- the explicitly named compatibility evaluator behind the replaceable `SecurityEvaluator` seam;
-- durable Module manifests plus Agent/Skill/Workflow/Operation descriptors;
-- security-filtered discovery and explicit owning-Module + exported-identity Agent/Operation brokering;
-- broker propagation of the evaluated carried `SecurityContext` into the invoked Agent/Operation endpoint so downstream work can continue the same lifecycle state;
-- `WorkSubmission -> WorkRecord -> WorkAttempt` durable execution;
-- reference-only `MaterialHandle` work with JIT Module-owned material resolution and continuity verification;
-- restart/retry reacquisition, delayed eligibility, cancellation and result evidence;
-- generic non-durable transient inference;
-- deterministic requirement/preference/fallback Capability selection;
-- one OpenAI-compatible HTTP Capability adapter;
-- SQLite persistence without prompt/context/output/provider-error payload fields.
-
-The SDK stage exposed two narrow public-brokering deficiencies in the Kernel-facing protocols: target lookup had relied on the exported Agent/Operation id without using its owning Module, and the already-evaluated carried security context stopped at the broker instead of reaching the invoked endpoint. Those seams now route by owning Module plus exported identity and forward the carried context. They correct routing/security continuity without adding semantic target choice, authorization machinery or other Module meaning to Kernel.
-
-### Modular SDK
-
-The `madre_sdk` package materializes the public Module semantic boundary without importing Kernel runtime/storage/service/provider internals.
-
-It currently provides:
-
-- `Module` manifest/endpoint composition over public registration protocols;
-- a minimal `Agent` with purpose, instructions, contracts, security and execution behavior, plus `from_instructions(...)`;
-- portable `Skill` and `Workflow` value structures with public descriptors and no universal executor;
-- a lightweight `WorkPlan` projection protocol whose semantic state remains Module-owned;
-- bounded `Operation` behavior over the pre-freeze public effect/repeatability/security contract;
-- `Artifact` and `ContextBundle` construction, derivation and generated-output reuse;
-- new security binding for each derived material representation;
-- `MaterialRepository` as an optional Module-owned resolver helper producing valid transient material and durable `MaterialHandle`s;
-- small clients for transient inference, durable submission/result access, discovery, Agent brokering and Operation brokering;
-- continuation of an incoming carried `SecurityContext` through nested inference, durable submission and explicit brokering;
-- typed security-object construction/context helpers;
-- `CoreSelection` + `CoreDelegate` as ordinary Module configuration/fallback helpers whose selected Module identity participates in routing.
-
-The SDK does not define Agent sessions, mandatory memory/state, a generic Planner, a Workflow engine, Skill instances, Task ontology or a generic credential/shell/Internet framework.
-
-### Shipped default CORE
-
-The `madre_core` package implements the default CORE-capable Module entirely through `madre_sdk`.
-
-Its current behavior demonstrates:
-
-- ordinary Module registration and Agent endpoint publication;
-- a default interaction Agent using transient `model.inference.chat` for its immediate natural-response path, preferring interactive/standard latency rather than requiring a special Kernel lane;
-- optional CORE-private continuation decisions that can explicitly delegate to another visible Agent or submit ordinary durable follow-up inference;
-- preservation of inbound carried security facts through CORE transient inference, delegation and durable continuation;
-- no `[[MADRE_REASONING:...]]` marker protocol and no Kernel fast lane;
-- strongest currently expressible pre-freeze actor trust/isolation values for the shipped Module and interaction Agent;
-- independently high/max Sensitivity on CORE-owned interaction/context/output material;
-- Module-owned material resolution for durable continuation;
-- ordinary configured replacement through `CoreSelection`, with no Kernel awareness of the literal shipped CORE module identity.
-
-The CORE security declarations above are implementation truth only. The frozen architecture replaces generic Trust/Isolation runtime operands with the final `Privacy`/`Integrity` model during the next migration.
-
-### Reference Module proof
-
-The integration suite includes an Agentless reference Module implemented with the SDK. It demonstrates registration, Artifact/ContextBundle preparation, transient inference, durable work with Module-owned JIT material, generated-output reuse and fallback delegation to configured CORE.
-
-A second test CORE-capable Module is selected through SDK configuration without Kernel modification.
-
-## Frozen Security Algebra versus current implementation
-
-The normative Security Algebra is now the five-concept, transition-local model:
+The `madre.security` public contract now provides immutable, deterministically bound security facts around exactly:
 
 ```text
 Sensitivity
@@ -89,69 +26,131 @@ Risk
 Autonomy
 ```
 
-with explicit `DISCLOSURE`, `CONTROL`, `EFFECT_EXECUTION` and `DERIVATION` relationships and immutable Operation-owned `EffectProfile`s.
+Subject-specific values are:
 
-Its three runtime predicates are, in substance:
+```text
+Artifact / ContextBundle -> Sensitivity + Integrity
+Module / Agent / endpoint -> Privacy + Integrity
+Capability -> Privacy + Integrity
+Operation EffectProfile -> Risk + Autonomy + Integrity + optional Privacy
+```
+
+`SYSTEM_RESERVED = 0` is not an ordinary value. Ordinary values are levels 1 through 5 only.
+
+A `SecurityObject` is bound to a globally unambiguous `SecuritySubjectRef` containing owning Module identity, subject kind, publication revision, subject-local identity, subject/representation revision, and parent Operation identity where required. Canonical binding evidence is included in the deterministic SecurityID. The same immutable binding produces the same SecurityID across restart; changed representation/profile/evidence produces another SecurityID; conflicting contents for one SecurityID fail structurally. SecurityID possession grants no authority.
+
+Operation security is represented by immutable Operation-owned `EffectProfile`s. A concrete invocation selects an existing profile identity. Callers cannot submit ad-hoc Risk, Autonomy, Integrity, or Privacy values.
+
+`SecurityTransition` carries explicit prospective DISCLOSURE, CONTROL, and EFFECT_EXECUTION relationships. `SecurityDerivation` carries explicit DERIVATION relationships for immutable representation transformations. Kernel constructs relationships that are objectively known from public protocol topology and never interprets prompt/output meaning.
+
+`SecurityHistory` is immutable/idempotent keyed composition of SecurityObjects, accepted transitions, and derivations. Duplicate identical identities collapse; conflicting identities remain detectable structural errors. Historical objects are evidence and continuity state, not a global min/max reduction domain.
+
+The executable evaluator is `SecurityAlgebra`. It applies exactly:
 
 ```text
 Sensitivity(material) <= min(Privacy(actual disclosure path))
-min(Risk(effect), Autonomy(effect)) <= min(Integrity(actual controllers))
+min(Risk(effect), Autonomy(effect)) <= min(Integrity(actual non-user controllers))
 Risk(effect) <= min(Integrity(actual effect executors))
 ```
 
-The current implementation does **not** yet realize that model.
+The selected EffectProfile contributes its own execution Integrity. With no non-user controller, controller assurance is neutral level 5. Non-effectful transitions do not acquire control/effect predicates.
 
-Current migration gaps include:
+Decision evidence is deterministic and transition-local: algebra version, transition identity, structural failure categories, disclosure material/path/privacy/limiting SecurityIDs, and effect Risk/Autonomy/control-demand/controller/executor Integrity evidence. Evidence contains no protected payload.
 
-1. `MaterialSecurityValues` still contains `sensitivity` + numeric `intended_use` rather than final `Sensitivity` + `Integrity`;
-2. actor/endpoint values still contain `trust` + `isolation` rather than final `Privacy` + `Integrity`;
-3. Capability values still contain `trust` + `privacy` + `risk` rather than final `Privacy` + `Integrity`;
-4. Operation values still contain `risk` + `autonomy` directly rather than immutable Operation-owned `EffectProfile`s carrying `Risk`, `Autonomy`, `Integrity` and optional `Privacy`;
-5. `SecurityContext` remains an append-only tuple rather than an idempotent security-history representation with explicit transition/derivation relationships;
-6. `CompatibilitySecurityEvaluator` still globally reduces carried objects through max Sensitivity/min Trust/max Risk and must be replaced by transition-local structural/confidentiality/control/effect evaluation;
-7. current decision evidence does not yet identify disclosure paths, controllers, executors or limiting SecurityIDs;
-8. missing role-required security values are not yet represented through the final structural-validation contract;
-9. SDK helpers do not yet construct final SecurityTransitions/EffectProfiles/validation derivations;
-10. persistence/recovery stores carried objects but not the final transition/derivation history required to reproduce the new model.
+### Derivation and generated material
 
-These gaps are expected migration work, not open product architecture.
+Security-relevant transformation creates a new material representation and SecurityID.
 
-The third-party/default valuation process remains intentionally open: the final algebra requires role-relevant values to exist but does not decide how unknown Modules/adapters receive those values.
+SDK ordinary derivation cannot increase Integrity beyond the minimum Integrity of actual sources and declared producing participants. Explicit validation derivation may create a stronger-Integrity representation only up to the actual validator-path Integrity. Sensitivity may be lowered only on a new Module-classified representation; Kernel does not inspect content to decide semantic minimization correctness.
 
-## Architecture boundary evidence
+Transient and durable inference results expose output Integrity plus source/producer SecurityIDs. SDK helpers turn consumed model/work output into a new Artifact with ordinary DERIVATION evidence instead of silently relabeling generated content.
 
-Tests currently enforce that:
+Brokered endpoints returning a new representation must preserve a derivation chain back to the invoked input. A true pass-through may retain the existing immutable representation.
 
-- `madre_sdk` imports only `madre.contracts`, `madre.interfaces`, `madre.registry` and `madre.security` from the Kernel namespace;
-- `madre_core` imports no `madre.*` package directly and reaches MADRE only through `madre_sdk`;
-- `madre` imports neither `madre_sdk` nor `madre_core`, keeping CORE/Agent/Workflow/WorkPlan semantics outside Kernel;
-- brokered material/participant SecurityIDs remain present in CORE's downstream transient and durable security contexts;
-- CORE selection uses both the configured Module and interaction-Agent identity;
-- CORE contains no legacy fast/deeper marker protocol.
+### Kernel execution and brokering
 
-These boundary tests must remain valid through the security migration, with new tests added for final transition/effect semantics.
+The Kernel preserves the existing execution behavior while using the final algebra:
 
-## Structurally outside Kernel
+- reference-only durable `WorkSubmission -> WorkRecord -> WorkAttempt`;
+- Module-owned JIT material resolution and digest/security continuity checking;
+- restart/retry/cancellation and delayed eligibility;
+- originator fairness plus priority/FIFO ordering;
+- heavyweight local-resource admission;
+- generic transient inference;
+- hard requirements, preferences, fallback, provider/model/mechanism separation;
+- one OpenAI-compatible adapter;
+- explicit owning-Module + local exported-id Agent/Operation routing;
+- unknown external-effect handling and transient result/loss evidence.
 
-Kernel still does not own Agent private reasoning/state/memory, semantic WorkPlans, Workflow/Skill execution, conversation state, interaction strategy, semantic fallback routing, prompt construction, user profiles, generated-result meaning, material semantic classification/validation, domain mutations or generic unrestricted shell/Internet authority.
+Capability selection evaluates each candidate with a prospective DISCLOSURE transition before private material is resolved. A rejected candidate is retained only in decision evidence; it is not recorded as an accepted disclosure. The selected candidate transition is added to durable history only when the concrete attempt is ready to execute.
 
-Kernel does own deterministic validation/evaluation of bound security facts and explicit transition structure once supplied through public contracts.
+Broker Agent input constructs the actual disclosure path through target Module, Agent, and endpoint. Operation input constructs disclosure through target Module/endpoint, CONTROL from the concrete input material plus any explicitly supplied additional controllers, and EFFECT_EXECUTION through the target Module/endpoint plus the selected EffectProfile. A material-disclosing EffectProfile also participates in the disclosure path. Return material is independently disclosed to the requester Module.
 
-## Next stage: implement the frozen Security Algebra
+Registry identity supplies discovery and routing facts only. Registration, Module/Agent identity, credentials, references, prior successful execution, Work IDs, SecurityIDs, and CORE identity are not algebra operands or alternate authority sources.
 
-The next foundational implementation stage is the focused migration described under:
+### Persistence and recovery
+
+Generated development SQLite state is recreated when the schema format changes; no production migration layer is retained for superseded development state.
+
+Persistence now stores:
 
 ```text
-docs/refactors/2026-09-security-algebra-implementation/
+immutable SecurityObjects
+accepted SecurityTransitions
+SecurityDerivations
+transition-local decision evidence
+SecurityHistory carried by durable work
+attempt transition identity
+result digest/size/Integrity and source/producer SecurityIDs
 ```
 
-That run should replace the compatibility security schema/evaluator with the frozen model coherently across Kernel, SDK, CORE, broker/runtime crossings, persistence/recovery and tests.
+It does not store prompt/context/output payload bytes or arbitrary provider-error text. Retries restore the same immutable history. Identical operands reproduce the same transition identity and deterministic decision evidence; selecting a different Capability creates a different prospective transition.
 
-It should not simultaneously expand CORE UX, add providers, build a valuation scanner, or introduce unrelated agent/runtime features.
+### Modular SDK
 
-## Validation authority
+`madre_sdk` remains restricted to public `madre.contracts`, `madre.interfaces`, `madre.registry`, and `madre.security` imports.
 
-The locked validation suite remains `.github/workflows/ci.yml`:
+It now provides typed helpers for:
+
+- participant Privacy/Integrity SecurityObjects;
+- deterministic SecurityHistory construction;
+- immutable Operation EffectProfile declaration/selection;
+- DISCLOSURE and effect-transition construction;
+- Artifact/ContextBundle immutable binding;
+- ordinary derivation and explicit validation derivation;
+- transient inference and durable result reuse with production Integrity evidence;
+- Agent/Operation brokering with carried history continuity.
+
+`Operation` exposes immutable EffectProfiles rather than direct caller-overridable security numbers. `OperationBrokerClient` selects a profile identity; concrete Operation input is automatically represented as a controller because it determines the bounded invocation parameters/effect. Additional semantic controllers may be supplied explicitly when Module semantics require them.
+
+The SDK still does not define universal Agent sessions/memory, a Planner, a Workflow engine, Skill instances, Task ontology, a security-policy DSL, generic credential framework, shell, or unrestricted Internet interface.
+
+### Shipped default CORE
+
+`madre_core` remains an ordinary replaceable Module implemented only through `madre_sdk`.
+
+The shipped CORE Module and interaction Agent declare level-5 Privacy and Integrity through the same public participant-security API as any Module. CORE-owned interaction/context/output material may retain level-5 Sensitivity independently. Its intermediate and output representations carry ordinary derivation evidence through the actual CORE/inference path.
+
+CORE retains its existing behavior only: immediate transient interaction, optional explicit Agent delegation, and optional durable continuation. It receives no Kernel/security bypass and no richer UX/memory/routing functionality was added during this migration.
+
+### Architecture boundaries
+
+Tests enforce that:
+
+- `madre_sdk` imports only the public Kernel contract namespaces listed above;
+- `madre_core` imports no `madre.*` namespace directly;
+- Kernel imports neither `madre_sdk` nor `madre_core`;
+- CORE selection remains ordinary configuration;
+- brokered security history propagates through nested CORE inference/delegation/durable work;
+- legacy Trust/Isolation/IntendedUse/CompatibilitySecurityEvaluator symbols are absent from the shipped security implementation.
+
+## Security validation coverage
+
+The deterministic suite covers the required final-algebra cases, including maximum-sensitivity local CORE disclosure, lower-Privacy rejection, actual-path locality, rejected candidate history isolation, minimization, immutable source history, low-Integrity effect control, display-only non-control, direct-user control demand, executor Integrity independence, low-risk autonomy, explicit validation, no ordinary Integrity laundering, publishing confidentiality, SecurityHistory idempotence, SecurityID conflicts, Module-local name collisions, restart/retry determinism, different-Capability transitions, missing role values, level 0 rejection, absence of alternate authority, SQLite private-material exclusion, SDK/CORE boundaries, and existing scheduling/runtime behavior.
+
+Numeric tests exhaustively enumerate ordinary levels 1..5 for disclosure, all 5^3 Risk/Autonomy/controller-Integrity control combinations, and all Risk/executor-Integrity combinations, including the required monotonicity properties.
+
+Repository completion is validated by the locked CI workflow on the exact implementation PR head:
 
 ```text
 uv sync --locked
@@ -163,4 +162,8 @@ uv build --python .venv --no-build-isolation
 wheel reinstall + isolated madre/madre_sdk/madre_core imports
 ```
 
-The implementation PR will be the final CI authority for the migration stage.
+## Structurally outside Kernel
+
+Kernel still does not own Agent private reasoning/state/memory, semantic WorkPlans, Workflow/Skill execution, conversation state, interaction strategy, semantic fallback routing, prompt construction, user profiles, generated-result meaning, material classification/validation, domain mutations, third-party valuation, identity/authentication architecture, ACLs, policy DSLs, generic shell, or unrestricted Internet authority.
+
+The next product stage is intentionally not selected by this migration. Further CORE, provider, valuation, developer-tooling, or agent-ontology work remains separate Owner-directed work.

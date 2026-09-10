@@ -1,489 +1,269 @@
-import ast
-import asyncio
-from pathlib import Path
+from __future__ import annotations
 
-from madre.broker import Broker
-from madre.capabilities import CapabilityDescriptor, CapabilityRegistry, FunctionCapability
-from madre.registry import InteroperabilityRegistry
-from madre.runtime import WorkRuntime
-from madre.security import (
-    ActorSecurityValues,
-    CapabilitySecurityValues,
-    MaterialSecurityValues,
-    OperationSecurityValues,
-    SecurityLevel,
-    SecurityObject,
-)
-from madre.storage import PlatformStore, open_database
+import asyncio
+import json
+from datetime import UTC, datetime
+
+from madre.contracts import WorkSpec
+from madre.security import MaterialSecurityValues
 from madre_core import (
     CORE_INTERACTION_AGENT_ID,
-    DEFAULT_CORE_SELECTION,
+    CORE_MODULE_ID,
     CoreContinuation,
     CoreModule,
 )
 from madre_sdk import (
-    Agent,
-    AgentBehavior,
-    AgentBrokerClient,
     Artifact,
-    ContextBundle,
-    CoreDelegate,
+    CapabilitySecurityValues,
     CoreSelection,
-    InferenceClient,
+    Disclosure,
     InferenceHardRequirements,
     InferenceRequirement,
-    Module,
-    Operation,
-    OperationBehavior,
-    SecurityContext,
-    Skill,
-    WorkClient,
-    Workflow,
-    WorkPlan,
-    actor_security,
-    operation_security,
+    SecurityHistory,
+    SecurityLevel,
+    SecurityObject,
+    SecuritySubjectRef,
+    SecurityTransition,
+    TransientInferenceResult,
+    WorkRecord,
+    content_digest,
+    participant_security,
 )
 from tests.reference_agentless_module import ReferenceAgentlessModule
 
 
-def _capability_security(subject: str) -> SecurityObject:
-    return SecurityObject.issue(
-        subject_id=subject,
-        subject_kind="capability",
-        values=CapabilitySecurityValues(
-            trust=SecurityLevel.LEVEL_5,
-            privacy=SecurityLevel.LEVEL_5,
-            risk=SecurityLevel.LEVEL_1,
-        ),
+def payload_size(payload) -> int:
+    return len(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode())
+
+
+def client_input() -> Artifact:
+    client = participant_security(
+        owner_module_id="module.client",
+        subject_id="module.client",
+        subject_kind="module",
+        privacy=SecurityLevel.LEVEL_5,
+        integrity=SecurityLevel.LEVEL_5,
+    )
+    return Artifact.create(
+        owner_module_id="module.client",
+        artifact_id="client.input",
+        payload={"input": "hello"},
+        sensitivity=SecurityLevel.LEVEL_5,
+        integrity=SecurityLevel.LEVEL_5,
+        security_history=SecurityHistory(objects=(client,)),
     )
 
 
-def _chat_capability() -> FunctionCapability:
-    def execute(payload):
-        if isinstance(payload, dict) and "messages" in payload:
-            return {"text": "immediate inference response"}
-        if isinstance(payload, dict) and "immediate" in payload:
-            return {"text": "durable follow-up result"}
-        return {"text": "reused generated material"}
-
-    return FunctionCapability(
-        CapabilityDescriptor(
-            id="local-chat",
-            specialization="model.inference.chat",
-            modality="text",
-            provider_id="fixture",
-            model_id="fixture-chat",
-            execution_boundary="local",
-            latency_class="interactive",
-            supported_reasoning_efforts=frozenset({"low", "medium", "high"}),
-            quality_tier="standard",
-            paid=False,
-            resources=frozenset(),
-            heavyweight=False,
-            security=_capability_security("local-chat"),
-        ),
-        execute,
-    )
-
-
-def _chat_requirement() -> InferenceRequirement:
-    return InferenceRequirement(
-        hard=InferenceHardRequirements(
-            specialization="model.inference.chat",
-            modality="text",
+class FakeInference:
+    def __init__(self, *, integrity: SecurityLevel = SecurityLevel.LEVEL_3) -> None:
+        self.integrity = integrity
+        self.requests = []
+        self.capability_security = SecurityObject.issue(
+            subject_ref=SecuritySubjectRef(
+                owner_module_id="madre.platform",
+                subject_kind="capability",
+                publication_revision="1",
+                local_id="test.chat",
+            ),
+            values=CapabilitySecurityValues(
+                privacy=SecurityLevel.LEVEL_5,
+                integrity=integrity,
+            ),
         )
-    )
+
+    async def infer(self, request):
+        self.requests.append(request)
+        result_payload = {"answer": "hello"}
+        transition = SecurityTransition.issue(
+            disclosures=(
+                Disclosure(
+                    material_security_id=request.material.security.security_id,
+                    path_security_ids=(self.capability_security.security_id,),
+                ),
+            )
+        )
+        history = request.security.merge(request.material.history).extend(
+            objects=(self.capability_security,),
+            transitions=(transition,),
+        )
+        return TransientInferenceResult(
+            payload=result_payload,
+            capability_id="test.chat",
+            execution_boundary="local",
+            output_digest=content_digest(result_payload),
+            output_size=payload_size(result_payload),
+            output_integrity=self.integrity,
+            producer_security_ids=(self.capability_security.security_id,),
+            source_security_ids=(request.material.security.security_id,),
+            security=history,
+        )
 
 
-class _AlwaysContinue:
-    def decide(self, *, user_input, immediate_result) -> CoreContinuation:
+class FollowUpPolicy:
+    def decide(self, *, user_input, immediate_result):
+        del user_input, immediate_result
         return CoreContinuation(durable_follow_up=True)
 
 
-class _DelegateTo:
-    def __init__(self, module_id: str, agent_id: str) -> None:
-        self._module_id = module_id
-        self._agent_id = agent_id
-
-    def decide(self, *, user_input, immediate_result) -> CoreContinuation:
+class DelegationPolicy:
+    def decide(self, *, user_input, immediate_result):
+        del user_input, immediate_result
         return CoreContinuation(
-            delegate_module_id=self._module_id,
-            delegate_agent_id=self._agent_id,
+            delegate_module_id="module.delegate",
+            delegate_agent_id="delegate.agent",
         )
 
 
-class _EchoAgent(AgentBehavior):
-    async def execute(
+class FakeDurableWork:
+    def __init__(self) -> None:
+        self.submissions = []
+
+    async def submit(self, submission, *, idempotency_key=None):
+        del idempotency_key
+        self.submissions.append(submission)
+        spec = WorkSpec(
+            originator=submission.originator,
+            security=submission.security,
+            inference=submission.inference,
+            material=submission.material,
+            eligible_at=submission.eligible_at,
+            priority=submission.priority,
+            constraints=submission.constraints,
+            correlation=submission.correlation,
+        )
+        return WorkRecord(
+            id="work-follow-up",
+            spec=spec,
+            status="accepted",
+            submitted_at=datetime.now(UTC),
+        )
+
+
+class FakeAgentBroker:
+    def __init__(self) -> None:
+        self.calls = []
+
+    async def invoke_agent(
         self,
-        *,
-        agent_id: str,
-        instructions: tuple[str, ...],
-        security: SecurityContext,
-        payload,
+        requester_module_id,
+        security,
+        target_module_id,
+        agent_id,
+        material,
     ):
-        return Artifact.create(
-            artifact_id=f"{agent_id}:result",
-            payload={"handled_by": agent_id, "input": payload},
-            sensitivity=SecurityLevel.LEVEL_2,
+        self.calls.append((requester_module_id, target_module_id, agent_id))
+        producer = next(
+            obj.security_id
+            for obj in security.objects
+            if obj.subject_ref.subject_kind == "module"
+            and obj.subject_ref.local_id == requester_module_id
         )
-
-
-class _LabeledAgent(AgentBehavior):
-    def __init__(self, implementation: str) -> None:
-        self._implementation = implementation
-
-    async def execute(
-        self,
-        *,
-        agent_id: str,
-        instructions: tuple[str, ...],
-        security: SecurityContext,
-        payload,
-    ):
-        return Artifact.create(
-            artifact_id=f"{self._implementation}:result",
-            payload={
-                "handled_by": agent_id,
-                "implementation": self._implementation,
-                "input": payload,
-            },
-            sensitivity=SecurityLevel.LEVEL_2,
+        output = Artifact.derive_from(
+            source=material,
+            owner_module_id=target_module_id,
+            artifact_id="delegate.output",
+            payload={"delegated": True},
+            producer_security_ids=(producer,),
+            sensitivity=SecurityLevel.LEVEL_5,
+            security_history=security,
         )
+        return output.transient()
 
 
-class _BoundedOperation(OperationBehavior):
-    async def execute(
-        self,
-        *,
-        operation_id: str,
-        security: SecurityContext,
-        payload,
-    ):
-        return Artifact.create(
-            artifact_id=f"{operation_id}:result",
-            payload={"operation": operation_id, "input": payload},
-            sensitivity=SecurityLevel.LEVEL_2,
-        )
+def test_core_manifest_uses_final_participant_security_values() -> None:
+    core = CoreModule(inference=FakeInference())
+    manifest = core.manifest()
+    module_values = manifest.security.values
+    agent_values = manifest.agents[0].security.values
+    assert module_values.privacy == SecurityLevel.LEVEL_5
+    assert module_values.integrity == SecurityLevel.LEVEL_5
+    assert agent_values.privacy == SecurityLevel.LEVEL_5
+    assert agent_values.integrity == SecurityLevel.LEVEL_5
+    assert not hasattr(module_values, "trust")
+    assert not hasattr(module_values, "isolation")
 
 
-class _SimplePlan:
-    @property
-    def id(self) -> str:
-        return "module-plan"
+def test_core_immediate_path_preserves_capability_and_derivation_history() -> None:
+    inference = FakeInference(integrity=SecurityLevel.LEVEL_3)
+    core = CoreModule(inference=inference)
+    output = asyncio.run(core.execute_agent(CORE_INTERACTION_AGENT_ID, client_input()))
+    assert output.payload == {"response": {"answer": "hello"}}
+    values = output.security.values
+    assert isinstance(values, MaterialSecurityValues)
+    assert values.integrity == SecurityLevel.LEVEL_3
+    assert inference.capability_security.security_id in output.security_history.security_ids
+    assert len(output.security_history.transitions) == 1
+    assert len(output.security_history.derivations) >= 3
 
-    def project_work(self):
-        return ()
 
-
-def test_sdk_semantic_contracts_are_small_and_security_bound() -> None:
-    source = Artifact.create(
-        artifact_id="artifact/source",
-        payload={"secret": "value"},
-        sensitivity=SecurityLevel.LEVEL_5,
-        intended_use=SecurityLevel.LEVEL_3,
+def test_core_durable_continuation_is_ordinary_work_with_same_security_history() -> None:
+    inference = FakeInference()
+    durable = FakeDurableWork()
+    core = CoreModule(
+        inference=inference,
+        durable_work=durable,
+        continuation=FollowUpPolicy(),
     )
-    derived = source.derive(
-        artifact_id="artifact/minimized",
-        payload={"summary": "value omitted"},
-        sensitivity=SecurityLevel.LEVEL_2,
+    output = asyncio.run(core.execute_agent(CORE_INTERACTION_AGENT_ID, client_input()))
+    assert output.payload["follow_up_work_id"] == "work-follow-up"
+    assert len(durable.submissions) == 1
+    submitted = durable.submissions[0]
+    assert inference.capability_security.security_id in submitted.security.security_ids
+    assert submitted.material.security.security_id in submitted.security.security_ids
+    assert submitted.material.history == submitted.security
+
+
+def test_core_delegation_uses_configured_module_and_agent_and_keeps_history() -> None:
+    inference = FakeInference()
+    broker = FakeAgentBroker()
+    core = CoreModule(
+        inference=inference,
+        continuation=DelegationPolicy(),
+        agent_broker=broker,
     )
-    assert derived.id != source.id
-    assert derived.security.security_id != source.security.security_id
-    assert isinstance(source.security.values, MaterialSecurityValues)
-    assert source.security.values.sensitivity == SecurityLevel.LEVEL_5
-    assert source.security.values.intended_use == SecurityLevel.LEVEL_3
-    assert isinstance(derived.security.values, MaterialSecurityValues)
-    assert derived.security.values.sensitivity == SecurityLevel.LEVEL_2
-    assert derived.security.values.intended_use == SecurityLevel.LEVEL_3
-    assert derived.transient().to_handle().security == derived.security
-
-    bundle = ContextBundle.create(
-        bundle_id="context/analysis",
-        purpose="analysis",
-        payload={"artifact": derived.payload},
-        sensitivity=SecurityLevel.LEVEL_4,
-        intended_use=SecurityLevel.LEVEL_2,
+    output = asyncio.run(core.execute_agent(CORE_INTERACTION_AGENT_ID, client_input()))
+    assert broker.calls == [(CORE_MODULE_ID, "module.delegate", "delegate.agent")]
+    assert output.payload["delegated_result"] == {"delegated": True}
+    assert any(
+        relation.output_security_id == output.security.security_id
+        for relation in output.security_history.derivations
     )
-    assert bundle.transient().security.subject_kind == "context_bundle"
-    assert bundle.handle().digest == bundle.transient().digest
 
-    skill = Skill(
-        id="portable.skill",
-        purpose="Portable instructions",
-        instructions=("Inspect input",),
+
+def test_reference_agentless_module_derives_analysis_context_from_source() -> None:
+    module = ReferenceAgentlessModule()
+    note = module.note("secret note")
+    context = module.analysis_context(note)
+    relation = next(
+        item
+        for item in context.security_history.derivations
+        if item.output_security_id == context.security.security_id
     )
-    workflow = Workflow(
-        id="portable.workflow",
-        purpose="Reusable semantic recipe",
-        instructions=("Use the skill", "Produce a bounded result"),
+    assert relation.source_security_ids == (note.security.security_id,)
+    assert relation.producer_security_ids == (module.security.security_id,)
+
+
+def test_core_selection_is_ordinary_replaceable_configuration() -> None:
+    selection = CoreSelection(
+        module_id="custom.core",
+        interaction_agent_id="custom.interaction",
     )
-    agent = Agent.from_instructions(
-        agent_id="minimal.agent",
-        purpose="Minimal inferred Agent",
-        instructions="Follow the supplied instructions",
-        security=actor_security(
-            subject_id="minimal.agent",
-            subject_kind="agent",
-            trust=SecurityLevel.LEVEL_4,
-            isolation=SecurityLevel.LEVEL_4,
-        ),
-        behavior=_EchoAgent(),
-        skills=(skill,),
-        workflows=(workflow,),
+    assert selection.module_id == "custom.core"
+    assert selection.interaction_agent_id == "custom.interaction"
+
+
+def test_core_inference_requirements_do_not_depend_on_special_kernel_lane() -> None:
+    inference = FakeInference()
+    core = CoreModule(inference=inference)
+    asyncio.run(core.execute_agent(CORE_INTERACTION_AGENT_ID, client_input()))
+    request = inference.requests[0]
+    assert request.inference.hard.specialization == "model.inference.chat"
+    assert request.inference.hard.latency_class is None
+    assert request.inference.preferences.latency_classes == ("interactive", "standard")
+
+
+def test_public_sdk_requirement_contract_remains_generic() -> None:
+    requirement = InferenceRequirement(
+        hard=InferenceHardRequirements(specialization="model.inference.chat")
     )
-    assert agent.skills == (skill,)
-    assert agent.workflows == (workflow,)
-    assert skill.descriptor("module.a").instructions == ("Inspect input",)
-    assert workflow.descriptor("module.a").instructions == (
-        "Use the skill",
-        "Produce a bounded result",
-    )
-    assert not hasattr(agent, "session")
-    assert not hasattr(agent, "memory")
-
-    operation = Operation(
-        operation_id="bounded.publish",
-        purpose="Represent one bounded effect",
-        input_contract="json:any",
-        output_contract="json:any",
-        effect="external-publish",
-        repeatability="not-repeatable",
-        security=operation_security(
-            operation_id="bounded.publish",
-            risk=SecurityLevel.LEVEL_5,
-            autonomy=SecurityLevel.LEVEL_2,
-        ),
-        behavior=_BoundedOperation(),
-    )
-    descriptor = operation.descriptor("module.a")
-    assert isinstance(descriptor.security.values, OperationSecurityValues)
-    assert descriptor.security.values.risk == SecurityLevel.LEVEL_5
-    assert descriptor.security.values.autonomy == SecurityLevel.LEVEL_2
-
-    plan: WorkPlan = _SimplePlan()
-    assert plan.id == "module-plan"
-    assert plan.project_work() == ()
-
-
-def test_sdk_reference_module_core_and_replaceability(tmp_path: Path) -> None:
-    async def scenario() -> None:
-        with open_database(tmp_path / "runtime") as connection:
-            store = PlatformStore(connection)
-            capabilities = CapabilityRegistry()
-            capabilities.register(_chat_capability())
-            runtime = WorkRuntime(store, capabilities)
-            registry = InteroperabilityRegistry(store)
-            broker = Broker(registry, store)
-
-            reference = ReferenceAgentlessModule()
-            reference.register(registry)
-            reference.register_material_resolution(runtime)
-            assert registry.get_module(reference.module_id) is not None
-            assert reference.manifest().agents == ()
-
-            reference_context = SecurityContext(objects=(reference.security,))
-            inference = InferenceClient(
-                originator=reference.module_id,
-                security=reference_context,
-                inference=runtime,
-            )
-            work = WorkClient(
-                originator=reference.module_id,
-                security=reference_context,
-                submission=runtime,
-                materials=reference.materials,
-            )
-            source = reference.note("private note")
-            analysis_context = reference.analysis_context(source)
-            transient = await inference.infer(analysis_context, _chat_requirement())
-            assert transient.payload == {"text": "reused generated material"}
-
-            accepted = await work.submit(analysis_context, _chat_requirement())
-            assert accepted.status == "accepted"
-            assert accepted.spec.material.reference == analysis_context.id
-            assert await runtime.run_eligible() == 1
-            durable_payload = runtime.consume_result(accepted.id)
-            assert durable_payload == {"text": "reused generated material"}
-
-            generated = Artifact.create(
-                artifact_id="reference.notes:generated",
-                payload=durable_payload,
-                sensitivity=SecurityLevel.LEVEL_3,
-                intended_use=SecurityLevel.LEVEL_2,
-            )
-            reused = await inference.infer(generated, _chat_requirement())
-            assert reused.payload == {"text": "reused generated material"}
-
-            core = CoreModule(
-                inference=runtime,
-                durable_work=runtime,
-                continuation=_AlwaysContinue(),
-                agent_broker=broker,
-            )
-            core.register(registry)
-            core.register_material_resolution(runtime)
-            core.register_agent_endpoint(broker)
-            manifest = core.manifest()
-            assert isinstance(manifest.security.values, ActorSecurityValues)
-            assert manifest.security.values.trust == SecurityLevel.LEVEL_5
-            assert manifest.security.values.isolation == SecurityLevel.LEVEL_5
-
-            delegate = CoreDelegate(
-                AgentBrokerClient(
-                    requester_module_id=reference.module_id,
-                    security=reference_context,
-                    broker=broker,
-                ),
-                DEFAULT_CORE_SELECTION,
-            )
-            delegated = await delegate.interact(source)
-            assert delegated["response"] == {"text": "immediate inference response"}
-            follow_up_id = delegated["follow_up_work_id"]
-            assert isinstance(follow_up_id, str)
-            follow_up = runtime.inspect(follow_up_id)
-            assert follow_up is not None and follow_up.status == "accepted"
-            assert source.security.security_id in follow_up.spec.security.security_ids
-            interaction_agent = core.agent(CORE_INTERACTION_AGENT_ID)
-            assert interaction_agent is not None
-            assert interaction_agent.security.security_id in follow_up.spec.security.security_ids
-            transient_context = connection.execute(
-                """
-                SELECT context_json
-                FROM security_decision
-                WHERE crossing_kind='transient-admission'
-                ORDER BY id DESC
-                LIMIT 1
-                """
-            ).fetchone()[0]
-            assert source.security.security_id in transient_context
-            assert interaction_agent.security.security_id in transient_context
-            assert await runtime.run_eligible() == 1
-            assert runtime.consume_result(follow_up_id) == {"text": "durable follow-up result"}
-
-            specialist = Agent.from_instructions(
-                agent_id="specialist.agent",
-                purpose="Handle explicit delegated work",
-                instructions="Handle the bounded request",
-                security=actor_security(
-                    subject_id="specialist.agent",
-                    subject_kind="agent",
-                    trust=SecurityLevel.LEVEL_5,
-                    isolation=SecurityLevel.LEVEL_5,
-                ),
-                behavior=_EchoAgent(),
-            )
-            specialist_module = Module(
-                module_id="specialist.module",
-                version="1",
-                description="Specialist Module",
-                security=actor_security(
-                    subject_id="specialist.module",
-                    subject_kind="module",
-                    trust=SecurityLevel.LEVEL_5,
-                    isolation=SecurityLevel.LEVEL_5,
-                ),
-                agents=(specialist,),
-            )
-            specialist_module.register(registry)
-            specialist_module.register_agent_endpoint(broker)
-            native_result = await specialist_module.execute_agent(
-                "specialist.agent",
-                {"input": "native UI request"},
-            )
-            assert native_result.payload["handled_by"] == "specialist.agent"
-
-            delegating_core = CoreModule(
-                inference=runtime,
-                continuation=_DelegateTo("specialist.module", "specialist.agent"),
-                agent_broker=broker,
-            )
-            delegating_core.register(registry)
-            delegating_core.register_agent_endpoint(broker)
-            delegated_to_specialist = await delegate.interact(source)
-            assert delegated_to_specialist["delegated_result"]["handled_by"] == "specialist.agent"
-
-            alternate_agent = Agent.from_instructions(
-                agent_id=CORE_INTERACTION_AGENT_ID,
-                purpose="Alternative compatible CORE interaction",
-                instructions="Return the alternate CORE response",
-                security=actor_security(
-                    subject_id=CORE_INTERACTION_AGENT_ID,
-                    subject_kind="agent",
-                    trust=SecurityLevel.LEVEL_5,
-                    isolation=SecurityLevel.LEVEL_5,
-                ),
-                behavior=_LabeledAgent("alternate.core"),
-            )
-            alternate_core = Module(
-                module_id="alternate.core",
-                version="1",
-                description="Test replacement CORE-capable Module",
-                security=actor_security(
-                    subject_id="alternate.core",
-                    subject_kind="module",
-                    trust=SecurityLevel.LEVEL_5,
-                    isolation=SecurityLevel.LEVEL_5,
-                ),
-                agents=(alternate_agent,),
-            )
-            alternate_core.register(registry)
-            alternate_core.register_agent_endpoint(broker)
-            alternate_delegate = CoreDelegate(
-                AgentBrokerClient(
-                    requester_module_id=reference.module_id,
-                    security=reference_context,
-                    broker=broker,
-                ),
-                CoreSelection(
-                    module_id="alternate.core",
-                    interaction_agent_id=CORE_INTERACTION_AGENT_ID,
-                ),
-            )
-            alternate_result = await alternate_delegate.interact(source)
-            assert alternate_result["handled_by"] == CORE_INTERACTION_AGENT_ID
-            assert alternate_result["implementation"] == "alternate.core"
-
-    asyncio.run(scenario())
-
-
-def _imported_modules(path: Path) -> set[str]:
-    tree = ast.parse(path.read_text())
-    modules: set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            modules.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom) and node.module is not None:
-            modules.add(node.module)
-    return modules
-
-
-def test_sdk_and_core_architecture_boundaries() -> None:
-    root = Path(__file__).parents[1]
-    sdk_allowed = {
-        "madre.contracts",
-        "madre.interfaces",
-        "madre.registry",
-        "madre.security",
-    }
-    for path in (root / "src" / "madre_sdk").glob("*.py"):
-        forbidden = {
-            module
-            for module in _imported_modules(path)
-            if module.startswith("madre.") and module not in sdk_allowed
-        }
-        assert forbidden == set(), f"{path} imports non-public Kernel surface: {forbidden}"
-
-    for path in (root / "src" / "madre_core").glob("*.py"):
-        forbidden = {
-            module
-            for module in _imported_modules(path)
-            if module == "madre" or module.startswith("madre.")
-        }
-        assert forbidden == set(), f"{path} bypasses SDK: {forbidden}"
-        text = path.read_text()
-        assert "[[MADRE_REASONING:" not in text
-
-    for path in (root / "src" / "madre").rglob("*.py"):
-        imported = _imported_modules(path)
-        assert not any(module.startswith("madre_core") for module in imported)
-        assert not any(module.startswith("madre_sdk") for module in imported)
+    assert requirement.hard.specialization == "model.inference.chat"

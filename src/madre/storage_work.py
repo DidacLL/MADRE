@@ -5,7 +5,8 @@ from __future__ import annotations
 from datetime import datetime
 
 from madre.contracts import WorkFailure
-from madre.security import ExecutionBoundary
+from madre.security import ExecutionBoundary, OrdinarySecurityLevel
+from madre.storage_db import _json
 from madre.storage_work_records import WorkRecordStore
 
 
@@ -17,6 +18,7 @@ class WorkStore(WorkRecordStore):
         provider_id: str | None,
         model_id: str | None,
         execution_boundary: ExecutionBoundary,
+        security_transition_id: str,
         started_at: datetime,
     ) -> int | None:
         with self.connection:
@@ -43,8 +45,8 @@ class WorkStore(WorkRecordStore):
                 """
                 INSERT INTO runtime_attempt(
                     work_id,number,retry_number,status,started_at,capability_id,
-                    provider_id,model_id,execution_boundary
-                ) VALUES (?,?,?,'running',?,?,?,?,?)
+                    provider_id,model_id,execution_boundary,security_transition_id
+                ) VALUES (?,?,?,'running',?,?,?,?,?,?)
                 """,
                 (
                     work_id,
@@ -55,6 +57,7 @@ class WorkStore(WorkRecordStore):
                     provider_id,
                     model_id,
                     execution_boundary,
+                    security_transition_id,
                 ),
             )
             return number
@@ -65,31 +68,34 @@ class WorkStore(WorkRecordStore):
         attempt_number: int,
         output_digest: str,
         output_size: int,
+        output_integrity: OrdinarySecurityLevel,
+        producer_security_ids: tuple[str, ...],
+        source_security_ids: tuple[str, ...],
         completed_at: datetime,
     ) -> None:
         with self.connection:
             self.connection.execute(
                 """
-                UPDATE runtime_attempt
-                SET status='succeeded', completed_at=?, output_digest=?, output_size=?,
-                    error_code=NULL
-                WHERE work_id=? AND number=?
+                UPDATE runtime_attempt SET status='succeeded', completed_at=?, output_digest=?,
+                    output_size=?, error_code=NULL WHERE work_id=? AND number=?
                 """,
                 (completed_at.isoformat(), output_digest, output_size, work_id, attempt_number),
             )
             self.connection.execute(
                 """
-                UPDATE runtime_work
-                SET status='succeeded', completed_at=?, error_code=NULL,
-                    output_digest=?, output_size=?, output_produced_at=?,
-                    delivery_status='awaiting_consumption'
-                WHERE id=?
+                UPDATE runtime_work SET status='succeeded', completed_at=?, error_code=NULL,
+                    output_digest=?, output_size=?, output_produced_at=?, output_integrity=?,
+                    result_producer_security_ids_json=?, result_source_security_ids_json=?,
+                    delivery_status='awaiting_consumption' WHERE id=?
                 """,
                 (
                     completed_at.isoformat(),
                     output_digest,
                     output_size,
                     completed_at.isoformat(),
+                    int(output_integrity),
+                    _json(list(producer_security_ids)),
+                    _json(list(source_security_ids)),
                     work_id,
                 ),
             )
@@ -115,8 +121,9 @@ class WorkStore(WorkRecordStore):
             self.connection.execute(
                 """
                 UPDATE runtime_work SET status='failed',completed_at=?,error_code=?,
-                    output_digest=NULL,output_size=NULL,output_produced_at=NULL,delivery_status=NULL
-                WHERE id=?
+                    output_digest=NULL,output_size=NULL,output_produced_at=NULL,output_integrity=NULL,
+                    result_producer_security_ids_json=NULL,result_source_security_ids_json=NULL,
+                    delivery_status=NULL WHERE id=?
                 """,
                 (completed_at.isoformat(), failure.code, work_id),
             )
@@ -143,12 +150,8 @@ class WorkStore(WorkRecordStore):
                 return "prevented"
             if row["status"] == "running":
                 self.connection.execute(
-                    """
-                    UPDATE runtime_work
-                    SET cancellation_requested_at=?,
-                        cancellation_disposition='requested_while_running'
-                    WHERE id=?
-                    """,
+                    """UPDATE runtime_work SET cancellation_requested_at=?,
+                       cancellation_disposition='requested_while_running' WHERE id=?""",
                     (requested_at.isoformat(), work_id),
                 )
                 return "requested_while_running"
@@ -170,11 +173,7 @@ class WorkStore(WorkRecordStore):
     ) -> int | None:
         with self.connection:
             previous = self.connection.execute(
-                """
-                SELECT completed_at,error_code
-                FROM runtime_work
-                WHERE id=? AND status='failed'
-                """,
+                "SELECT completed_at,error_code FROM runtime_work WHERE id=? AND status='failed'",
                 (work_id,),
             ).fetchone()
             if previous is None:
@@ -188,8 +187,8 @@ class WorkStore(WorkRecordStore):
             self.connection.execute(
                 """
                 INSERT INTO runtime_retry(
-                    work_id, number, idempotency_key, allow_unknown_outcome, requested_at,
-                    previous_completed_at, previous_error_code
+                    work_id,number,idempotency_key,allow_unknown_outcome,
+                    requested_at,previous_completed_at,previous_error_code
                 ) VALUES (?,?,?,?,?,?,?)
                 """,
                 (
@@ -205,11 +204,10 @@ class WorkStore(WorkRecordStore):
             sequence = self._take_queue_sequence()
             self.connection.execute(
                 """
-                UPDATE runtime_work
-                SET status='accepted', enqueued_at=?, queue_sequence=?, completed_at=NULL,
-                    error_code=NULL, output_digest=NULL, output_size=NULL,
-                    output_produced_at=NULL, delivery_status=NULL
-                WHERE id=?
+                UPDATE runtime_work SET status='accepted', enqueued_at=?, queue_sequence=?,
+                    completed_at=NULL,error_code=NULL,output_digest=NULL,output_size=NULL,
+                    output_produced_at=NULL,output_integrity=NULL,result_producer_security_ids_json=NULL,
+                    result_source_security_ids_json=NULL,delivery_status=NULL WHERE id=?
                 """,
                 (requested_at.isoformat(), sequence, work_id),
             )
@@ -253,8 +251,7 @@ class WorkStore(WorkRecordStore):
         with self.connection:
             updated = self.connection.execute(
                 """
-                UPDATE runtime_work
-                SET delivery_status='lost'
+                UPDATE runtime_work SET delivery_status='lost'
                 WHERE delivery_status='awaiting_consumption'
                 """
             )
@@ -264,8 +261,7 @@ class WorkStore(WorkRecordStore):
         with self.connection:
             self.connection.execute(
                 """
-                UPDATE runtime_work
-                SET delivery_status='consumed'
+                UPDATE runtime_work SET delivery_status='consumed'
                 WHERE id=? AND delivery_status='awaiting_consumption'
                 """,
                 (work_id,),
@@ -275,8 +271,7 @@ class WorkStore(WorkRecordStore):
         with self.connection:
             self.connection.execute(
                 """
-                UPDATE runtime_work
-                SET delivery_status='lost'
+                UPDATE runtime_work SET delivery_status='lost'
                 WHERE id=? AND delivery_status='awaiting_consumption'
                 """,
                 (work_id,),

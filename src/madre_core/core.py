@@ -22,14 +22,15 @@ from madre_sdk import (
     JsonValue,
     MaterialRepository,
     Module,
-    SecurityContext,
+    SecurityHistory,
     SecurityLevel,
     Skill,
     TransientInference,
+    TransientMaterial,
     WorkClient,
     Workflow,
-    actor_security,
-    security_context,
+    participant_security,
+    security_history,
 )
 
 CORE_MODULE_ID = "madre.core.default"
@@ -41,7 +42,7 @@ DEFAULT_CORE_SELECTION = CoreSelection(
 
 
 class CoreContinuation:
-    """CORE-private continuation decision; it is not a universal SDK planning ontology."""
+    """CORE-private continuation decision, not a universal planning ontology."""
 
     def __init__(
         self,
@@ -70,11 +71,13 @@ class _InteractionBehavior(AgentBehavior):
     def __init__(
         self,
         *,
+        producer_security_id: str,
         inference: InferenceClient,
         work: WorkClient | None,
         continuation: ContinuationPolicy,
         delegation: AgentBrokerClient | None,
     ) -> None:
+        self._producer_security_id = producer_security_id
         self._inference = inference
         self._work = work
         self._continuation = continuation
@@ -86,81 +89,104 @@ class _InteractionBehavior(AgentBehavior):
         *,
         agent_id: str,
         instructions: tuple[str, ...],
-        security: SecurityContext,
-        payload: JsonValue,
+        security: SecurityHistory,
+        material: TransientMaterial,
     ) -> Artifact:
+        del agent_id
         sequence = next(self._ids)
-        context = ContextBundle.create(
+        context = ContextBundle.derive_from(
+            source=material,
+            owner_module_id=CORE_MODULE_ID,
             bundle_id=f"{CORE_MODULE_ID}:interaction:{sequence}",
             purpose="default-general-interaction",
             payload={
                 "messages": [
                     {"role": "system", "content": "\n".join(instructions)},
-                    {"role": "user", "content": _user_text(payload)},
+                    {"role": "user", "content": _user_text(material.payload)},
                 ]
             },
+            producer_security_ids=(self._producer_security_id,),
             sensitivity=SecurityLevel.LEVEL_5,
+            security_history=security,
         )
         immediate = await self._inference.infer(
             context,
             _interactive_requirement(),
-            security=security,
+            security=context.security_history,
         )
         generated = Artifact.from_inference_result(
+            owner_module_id=CORE_MODULE_ID,
             artifact_id=f"{CORE_MODULE_ID}:response:{sequence}",
+            source=context,
             result=immediate,
             sensitivity=SecurityLevel.LEVEL_5,
         )
 
         decision = self._continuation.decide(
-            user_input=payload,
+            user_input=material.payload,
             immediate_result=immediate.payload,
         )
         follow_up_work_id: str | None = None
-        delegated_result: JsonValue = None
+        delegated_result: TransientMaterial | None = None
 
         if (
             decision.delegate_module_id is not None
             and decision.delegate_agent_id is not None
             and self._delegation is not None
         ):
-            delegated_context = ContextBundle.create(
+            delegated_context = ContextBundle.derive_from(
+                source=context,
+                additional_sources=(generated,),
+                owner_module_id=CORE_MODULE_ID,
                 bundle_id=f"{CORE_MODULE_ID}:delegation:{sequence}",
                 purpose="explicit-agent-delegation",
-                payload={"input": payload, "immediate": immediate.payload},
+                payload={"input": material.payload, "immediate": immediate.payload},
+                producer_security_ids=(self._producer_security_id,),
                 sensitivity=SecurityLevel.LEVEL_5,
             )
             delegated_result = await self._delegation.invoke(
                 decision.delegate_module_id,
                 decision.delegate_agent_id,
                 delegated_context,
-                security=security,
+                security=delegated_context.security_history,
             )
 
         if decision.durable_follow_up and self._work is not None:
-            follow_up = ContextBundle.create(
+            follow_up = ContextBundle.derive_from(
+                source=context,
+                additional_sources=(generated,),
+                owner_module_id=CORE_MODULE_ID,
                 bundle_id=f"{CORE_MODULE_ID}:follow-up:{sequence}",
                 purpose="continued-reasoning",
-                payload={"input": payload, "immediate": immediate.payload},
+                payload={"input": material.payload, "immediate": immediate.payload},
+                producer_security_ids=(self._producer_security_id,),
                 sensitivity=SecurityLevel.LEVEL_5,
             )
             accepted = await self._work.submit(
                 follow_up,
                 _follow_up_requirement(),
                 correlation=(),
-                security=security,
+                security=follow_up.security_history,
             )
             follow_up_work_id = accepted.id
 
         output_payload: dict[str, JsonValue] = {"response": generated.payload}
+        additional_sources: tuple[TransientMaterial, ...] = ()
         if delegated_result is not None:
-            output_payload["delegated_result"] = delegated_result
+            output_payload["delegated_result"] = delegated_result.payload
+            additional_sources = (delegated_result,)
         if follow_up_work_id is not None:
             output_payload["follow_up_work_id"] = follow_up_work_id
-        return Artifact.create(
+
+        return Artifact.derive_from(
+            source=generated,
+            additional_sources=additional_sources,
+            owner_module_id=CORE_MODULE_ID,
             artifact_id=f"{CORE_MODULE_ID}:interaction-output:{sequence}",
             payload=output_payload,
+            producer_security_ids=(self._producer_security_id,),
             sensitivity=SecurityLevel.LEVEL_5,
+            security_history=security,
         )
 
 
@@ -210,19 +236,21 @@ class CoreModule(Module):
         continuation: ContinuationPolicy | None = None,
         agent_broker: AgentBrokering | None = None,
     ) -> None:
-        module_security = actor_security(
+        module_security = participant_security(
+            owner_module_id=CORE_MODULE_ID,
             subject_id=CORE_MODULE_ID,
             subject_kind="module",
-            trust=SecurityLevel.LEVEL_5,
-            isolation=SecurityLevel.LEVEL_5,
+            privacy=SecurityLevel.LEVEL_5,
+            integrity=SecurityLevel.LEVEL_5,
         )
-        interaction_security = actor_security(
+        interaction_security = participant_security(
+            owner_module_id=CORE_MODULE_ID,
             subject_id=CORE_INTERACTION_AGENT_ID,
             subject_kind="agent",
-            trust=SecurityLevel.LEVEL_5,
-            isolation=SecurityLevel.LEVEL_5,
+            privacy=SecurityLevel.LEVEL_5,
+            integrity=SecurityLevel.LEVEL_5,
         )
-        carried = security_context(module_security, interaction_security)
+        carried = security_history(module_security, interaction_security)
         materials = MaterialRepository()
         inference_client = InferenceClient(
             originator=CORE_MODULE_ID,
@@ -265,6 +293,7 @@ class CoreModule(Module):
             ),
         )
         behavior = _InteractionBehavior(
+            producer_security_id=module_security.security_id,
             inference=inference_client,
             work=work_client,
             continuation=continuation or NoContinuation(),

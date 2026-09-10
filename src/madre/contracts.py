@@ -11,7 +11,8 @@ from madre.security import (
     ExecutionBoundary,
     FrozenModel,
     Identifier,
-    SecurityContext,
+    OrdinarySecurityLevel,
+    SecurityHistory,
     SecurityObject,
 )
 
@@ -97,15 +98,20 @@ class TransientMaterial(FrozenModel):
     payload: JsonValue
     digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     security: SecurityObject
+    history: SecurityHistory = Field(default_factory=SecurityHistory)
 
     @model_validator(mode="after")
     def security_matches_reference(self) -> TransientMaterial:
-        if self.security.subject_kind not in {"artifact", "context_bundle"}:
+        if self.security.subject_ref.subject_kind not in {"artifact", "context_bundle"}:
             raise ValueError("transient material requires artifact/context_bundle security")
-        if self.security.subject_id != self.reference:
+        if self.security.subject_ref.local_id != self.reference:
             raise ValueError("material SecurityObject subject must equal material reference")
-        if not self.security.verify_integrity():
-            raise ValueError("material SecurityObject integrity is invalid")
+        if not self.security.verify_binding():
+            raise ValueError("material SecurityObject binding is invalid")
+        if self.security.evidence_value("content_digest") != self.digest:
+            raise ValueError("material SecurityObject must bind the material digest")
+        if self.history.resolve(self.security.security_id) is None:
+            raise ValueError("material history must contain its SecurityObject")
         return self
 
     def to_handle(self, *, coordination: str | None = None) -> MaterialHandle:
@@ -113,6 +119,7 @@ class TransientMaterial(FrozenModel):
             reference=self.reference,
             digest=self.digest,
             security=self.security,
+            history=self.history,
             coordination=coordination,
         )
 
@@ -121,22 +128,27 @@ class MaterialHandle(FrozenModel):
     reference: Identifier
     digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     security: SecurityObject
+    history: SecurityHistory = Field(default_factory=SecurityHistory)
     coordination: Identifier | None = None
 
     @model_validator(mode="after")
     def security_matches_reference(self) -> MaterialHandle:
-        if self.security.subject_kind not in {"artifact", "context_bundle"}:
+        if self.security.subject_ref.subject_kind not in {"artifact", "context_bundle"}:
             raise ValueError("MaterialHandle requires artifact/context_bundle security")
-        if self.security.subject_id != self.reference:
+        if self.security.subject_ref.local_id != self.reference:
             raise ValueError("MaterialHandle SecurityObject subject must equal material reference")
-        if not self.security.verify_integrity():
-            raise ValueError("MaterialHandle SecurityObject integrity is invalid")
+        if not self.security.verify_binding():
+            raise ValueError("MaterialHandle SecurityObject binding is invalid")
+        if self.security.evidence_value("content_digest") != self.digest:
+            raise ValueError("MaterialHandle SecurityObject must bind the material digest")
+        if self.history.resolve(self.security.security_id) is None:
+            raise ValueError("material history must contain its SecurityObject")
         return self
 
 
 class WorkSubmission(FrozenModel):
     originator: Identifier
-    security: SecurityContext
+    security: SecurityHistory
     inference: InferenceRequirement
     material: MaterialHandle
     eligible_at: AwareDatetime | None = None
@@ -159,7 +171,7 @@ class WorkSubmission(FrozenModel):
 
 class WorkSpec(FrozenModel):
     originator: Identifier
-    security: SecurityContext
+    security: SecurityHistory
     inference: InferenceRequirement
     material: MaterialHandle
     eligible_at: AwareDatetime | None = None
@@ -170,7 +182,7 @@ class WorkSpec(FrozenModel):
 
 class TransientInferenceRequest(FrozenModel):
     originator: Identifier
-    security: SecurityContext
+    security: SecurityHistory
     inference: InferenceRequirement
     material: TransientMaterial
     constraints: ExecutionConstraints = Field(default_factory=ExecutionConstraints)
@@ -184,6 +196,10 @@ class TransientInferenceResult(FrozenModel):
     execution_boundary: ExecutionBoundary
     output_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     output_size: int = Field(ge=0)
+    output_integrity: OrdinarySecurityLevel
+    producer_security_ids: tuple[Identifier, ...]
+    source_security_ids: tuple[Identifier, ...]
+    security: SecurityHistory
 
 
 class WorkFailure(FrozenModel):
@@ -213,6 +229,7 @@ class WorkAttempt(FrozenModel):
     provider_id: Identifier | None = None
     model_id: Identifier | None = None
     execution_boundary: ExecutionBoundary | None = None
+    security_transition_id: Identifier | None = None
     output_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     output_size: int | None = Field(default=None, ge=0)
     failure: WorkFailure | None = None
@@ -223,6 +240,9 @@ class ResultEvidence(FrozenModel):
     size: int = Field(ge=0)
     produced_at: AwareDatetime
     delivery_status: Literal["awaiting_consumption", "consumed", "lost"]
+    output_integrity: OrdinarySecurityLevel
+    producer_security_ids: tuple[Identifier, ...]
+    source_security_ids: tuple[Identifier, ...]
 
 
 WorkStatus = Literal["accepted", "running", "succeeded", "failed", "cancelled"]

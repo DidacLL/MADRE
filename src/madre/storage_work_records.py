@@ -5,8 +5,10 @@ from __future__ import annotations
 import json
 import sqlite3
 from datetime import datetime
+from typing import cast
 
 from madre.contracts import ResultEvidence, WorkCancellation, WorkFailure, WorkRecord, WorkSpec
+from madre.security import OrdinarySecurityLevel, SecurityHistory, SecurityLevel
 from madre.storage_db import _json
 from madre.storage_work_base import WorkStoreBase
 
@@ -23,10 +25,11 @@ class WorkRecordStore(WorkStoreBase):
         try:
             with self.connection:
                 sequence = self._take_queue_sequence()
+                self._persist_security_history(spec.security)
                 self.connection.execute(
                     """
                     INSERT INTO runtime_work(
-                        id,originator,security_context_json,inference_json,material_handle_json,
+                        id,originator,security_history_json,inference_json,material_handle_json,
                         eligible_at,priority,constraints_json,correlation_json,idempotency_key,
                         status,submitted_at,enqueued_at,queue_sequence
                     ) VALUES (?,?,?,?,?,?,?,?,?,?, 'accepted',?,?,?)
@@ -56,6 +59,14 @@ class WorkRecordStore(WorkStoreBase):
             return False
         return True
 
+    def update_security_history(self, work_id: str, history: SecurityHistory) -> None:
+        with self.connection:
+            self._persist_security_history(history)
+            self.connection.execute(
+                "UPDATE runtime_work SET security_history_json=? WHERE id=?",
+                (_json(history), work_id),
+            )
+
     def get_by_idempotency_key(self, originator: str, key: str) -> WorkRecord | None:
         identity = self._idempotency_id(originator, key)
         return self.get(identity) if identity else None
@@ -71,7 +82,7 @@ class WorkRecordStore(WorkStoreBase):
         spec = WorkSpec.model_validate(
             {
                 "originator": row["originator"],
-                "security": json.loads(row["security_context_json"]),
+                "security": json.loads(row["security_history_json"]),
                 "inference": json.loads(row["inference_json"]),
                 "material": json.loads(row["material_handle_json"]),
                 "eligible_at": row["eligible_at"],
@@ -94,6 +105,12 @@ class WorkRecordStore(WorkStoreBase):
                 size=row["output_size"],
                 produced_at=datetime.fromisoformat(row["output_produced_at"]),
                 delivery_status=row["delivery_status"],
+                output_integrity=cast(
+                    OrdinarySecurityLevel,
+                    SecurityLevel(row["output_integrity"]),
+                ),
+                producer_security_ids=tuple(json.loads(row["result_producer_security_ids_json"])),
+                source_security_ids=tuple(json.loads(row["result_source_security_ids_json"])),
             )
         return WorkRecord(
             id=work_id,
@@ -101,9 +118,9 @@ class WorkRecordStore(WorkStoreBase):
             status=row["status"],
             submitted_at=datetime.fromisoformat(row["submitted_at"]),
             started_at=datetime.fromisoformat(row["started_at"]) if row["started_at"] else None,
-            completed_at=(
-                datetime.fromisoformat(row["completed_at"]) if row["completed_at"] else None
-            ),
+            completed_at=datetime.fromisoformat(row["completed_at"])
+            if row["completed_at"]
+            else None,
             failure=failure,
             cancellation=cancellation,
             retries=self._retries(work_id),
@@ -152,10 +169,7 @@ class WorkRecordStore(WorkStoreBase):
 
     def next_eligibility(self) -> datetime | None:
         row = self.connection.execute(
-            """
-            SELECT MIN(eligible_at) AS eligible_at
-            FROM runtime_work
-            WHERE status='accepted' AND eligible_at IS NOT NULL
-            """
+            """SELECT MIN(eligible_at) AS eligible_at FROM runtime_work
+               WHERE status='accepted' AND eligible_at IS NOT NULL"""
         ).fetchone()
         return datetime.fromisoformat(row["eligible_at"]) if row["eligible_at"] else None

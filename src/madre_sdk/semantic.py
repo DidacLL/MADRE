@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Protocol
 
-from pydantic import Field, JsonValue
+from pydantic import Field
 
 from madre.contracts import TransientMaterial, WorkSubmission
 from madre.interfaces import (
@@ -24,14 +24,16 @@ from madre.registry import (
     WorkflowDescriptor,
 )
 from madre.security import (
-    ActorSecurityValues,
+    EffectProfile,
     ExecutionBoundary,
     FrozenModel,
     Identifier,
-    SecurityContext,
+    ParticipantSecurityValues,
+    SecurityHistory,
     SecurityObject,
 )
 from madre_sdk.material import Material, MaterialRepository
+from madre_sdk.security import participant_security
 
 
 class Skill(FrozenModel):
@@ -87,8 +89,6 @@ class Workflow(FrozenModel):
 
 
 class WorkPlan(Protocol):
-    """Module-owned semantic planning state that can project ordinary Kernel work."""
-
     @property
     def id(self) -> str: ...
 
@@ -101,8 +101,8 @@ class AgentBehavior(Protocol):
         *,
         agent_id: str,
         instructions: tuple[str, ...],
-        security: SecurityContext,
-        payload: JsonValue,
+        security: SecurityHistory,
+        material: TransientMaterial,
     ) -> Material: ...
 
 
@@ -111,14 +111,13 @@ class OperationBehavior(Protocol):
         self,
         *,
         operation_id: str,
-        security: SecurityContext,
-        payload: JsonValue,
+        effect_profile_id: str,
+        security: SecurityHistory,
+        material: TransientMaterial,
     ) -> Material: ...
 
 
 class Agent:
-    """Minimal Module-owned Agent: public identity/behavior with optional portable semantics."""
-
     __slots__ = (
         "id",
         "purpose",
@@ -150,10 +149,13 @@ class Agent:
     ) -> None:
         if not agent_id or not purpose:
             raise ValueError("Agent identity and purpose must not be empty")
-        if security.subject_kind != "agent" or security.subject_id != agent_id:
+        if (
+            security.subject_ref.subject_kind != "agent"
+            or security.subject_ref.local_id != agent_id
+        ):
             raise ValueError("Agent security must be bound to the Agent identity")
-        if not security.verify_integrity():
-            raise ValueError("Agent SecurityObject integrity is invalid")
+        if not security.verify_binding():
+            raise ValueError("Agent SecurityObject binding is invalid")
         self.id = agent_id
         self.purpose = purpose
         self.instructions = tuple(instructions)
@@ -198,6 +200,8 @@ class Agent:
         )
 
     def descriptor(self, module_id: str) -> AgentDescriptor:
+        if self.security.subject_ref.owner_module_id != module_id:
+            raise ValueError("Agent SecurityObject is bound to another Module")
         return AgentDescriptor(
             id=self.id,
             module_id=module_id,
@@ -210,27 +214,27 @@ class Agent:
             provenance=self.provenance,
         )
 
-    async def execute(self, payload: JsonValue, *, security: SecurityContext) -> Material:
+    async def execute(self, material: TransientMaterial, *, security: SecurityHistory) -> Material:
         return await self._behavior.execute(
             agent_id=self.id,
             instructions=self.instructions,
             security=security,
-            payload=payload,
+            material=material,
         )
 
 
 class Operation:
-    """Bounded Module-owned callable effect over the public Operation contract."""
-
     __slots__ = (
         "id",
+        "revision",
         "purpose",
         "input_contract",
         "output_contract",
         "effect",
         "repeatability",
-        "security",
+        "effect_profiles",
         "provenance",
+        "_profiles",
         "_behavior",
     )
 
@@ -243,42 +247,67 @@ class Operation:
         output_contract: str,
         effect: str,
         repeatability: str,
-        security: SecurityObject,
+        effect_profiles: Sequence[EffectProfile],
         behavior: OperationBehavior,
+        revision: str = "1",
         provenance: Sequence[str] = (),
     ) -> None:
-        if security.subject_kind != "operation" or security.subject_id != operation_id:
-            raise ValueError("Operation security must be bound to the Operation identity")
-        if not security.verify_integrity():
-            raise ValueError("Operation SecurityObject integrity is invalid")
+        if not effect_profiles:
+            raise ValueError("Operation requires at least one immutable EffectProfile")
         self.id = operation_id
+        self.revision = revision
         self.purpose = purpose
         self.input_contract = input_contract
         self.output_contract = output_contract
         self.effect = effect
         self.repeatability = repeatability
-        self.security = security
+        self.effect_profiles = tuple(effect_profiles)
         self.provenance = tuple(provenance)
+        self._profiles = {profile.id: profile for profile in effect_profiles}
+        if len(self._profiles) != len(self.effect_profiles):
+            raise ValueError("EffectProfile identities must be unique within an Operation")
+        for profile in self.effect_profiles:
+            if (
+                profile.operation.operation_id != operation_id
+                or profile.operation.operation_revision != revision
+            ):
+                raise ValueError("EffectProfile must be bound to this Operation revision")
         self._behavior = behavior
 
+    def effect_profile(self, profile_id: str) -> EffectProfile | None:
+        return self._profiles.get(profile_id)
+
     def descriptor(self, module_id: str) -> OperationDescriptor:
+        for profile in self.effect_profiles:
+            if profile.operation.module_id != module_id:
+                raise ValueError("EffectProfile is bound to another Module")
         return OperationDescriptor(
             id=self.id,
             module_id=module_id,
+            revision=self.revision,
             purpose=self.purpose,
             input_contract=self.input_contract,
             output_contract=self.output_contract,
             effect=self.effect,
             repeatability=self.repeatability,
-            security=self.security,
+            effect_profiles=self.effect_profiles,
             provenance=self.provenance,
         )
 
-    async def execute(self, payload: JsonValue, *, security: SecurityContext) -> Material:
+    async def execute(
+        self,
+        material: TransientMaterial,
+        *,
+        effect_profile_id: str,
+        security: SecurityHistory,
+    ) -> Material:
+        if effect_profile_id not in self._profiles:
+            raise KeyError(effect_profile_id)
         return await self._behavior.execute(
             operation_id=self.id,
+            effect_profile_id=effect_profile_id,
             security=security,
-            payload=payload,
+            material=material,
         )
 
 
@@ -297,10 +326,10 @@ class _AgentEndpoint(AgentEndpoint):
     async def invoke_agent(
         self,
         agent_id: str,
-        security: SecurityContext,
-        payload: JsonValue,
+        security: SecurityHistory,
+        material: TransientMaterial,
     ) -> TransientMaterial:
-        return (await self._module.execute_agent(agent_id, payload, security=security)).transient()
+        return (await self._module.execute_agent(agent_id, material, security=security)).transient()
 
 
 class _OperationEndpoint(OperationEndpoint):
@@ -318,17 +347,21 @@ class _OperationEndpoint(OperationEndpoint):
     async def invoke_operation(
         self,
         operation_id: str,
-        security: SecurityContext,
-        payload: JsonValue,
+        effect_profile_id: str,
+        security: SecurityHistory,
+        material: TransientMaterial,
     ) -> TransientMaterial:
         return (
-            await self._module.execute_operation(operation_id, payload, security=security)
+            await self._module.execute_operation(
+                operation_id,
+                effect_profile_id,
+                material,
+                security=security,
+            )
         ).transient()
 
 
 class Module:
-    """Reference SDK Module composition; private Module semantics remain outside this class."""
-
     def __init__(
         self,
         *,
@@ -346,10 +379,16 @@ class Module:
         endpoint_security: SecurityObject | None = None,
         materials: MaterialRepository | None = None,
     ) -> None:
-        if security.subject_kind != "module" or security.subject_id != module_id:
-            raise ValueError("Module security must be bound to the Module identity")
-        if not security.verify_integrity():
-            raise ValueError("Module SecurityObject integrity is invalid")
+        ref = security.subject_ref
+        if (
+            ref.subject_kind != "module"
+            or ref.owner_module_id != module_id
+            or ref.local_id != module_id
+            or ref.publication_revision != version
+        ):
+            raise ValueError("Module security must be bound to the Module identity/revision")
+        if not security.verify_binding():
+            raise ValueError("Module SecurityObject binding is invalid")
         self.module_id = module_id
         self.version = version
         self.description = description
@@ -361,13 +400,18 @@ class Module:
         self.operations = tuple(operations)
         self.provenance = tuple(provenance)
         self.endpoint_boundary = endpoint_boundary
-        actor_values = security.values
-        if not isinstance(actor_values, ActorSecurityValues):
-            raise ValueError("Module security must contain actor values")
-        self.endpoint_security = endpoint_security or SecurityObject.issue(
+        participant_values = security.values
+        if not isinstance(participant_values, ParticipantSecurityValues):
+            raise ValueError("Module security must contain participant values")
+        if participant_values.privacy is None or participant_values.integrity is None:
+            raise ValueError("Module requires Privacy and Integrity")
+        self.endpoint_security = endpoint_security or participant_security(
+            owner_module_id=module_id,
             subject_id=f"{module_id}:endpoint",
             subject_kind="endpoint",
-            values=actor_values,
+            privacy=participant_values.privacy,
+            integrity=participant_values.integrity,
+            publication_revision=version,
         )
         self.materials = materials or MaterialRepository()
         self._agents = {agent.id: agent for agent in self.agents}
@@ -376,6 +420,19 @@ class Module:
             raise ValueError("Agent identities must be unique within a Module")
         if len(self._operations) != len(self.operations):
             raise ValueError("Operation identities must be unique within a Module")
+        for agent in self.agents:
+            if (
+                agent.security.subject_ref.owner_module_id != module_id
+                or agent.security.subject_ref.publication_revision != version
+            ):
+                raise ValueError("Agent security binding must match its Module publication")
+        for operation in self.operations:
+            for profile in operation.effect_profiles:
+                if (
+                    profile.operation.module_id != module_id
+                    or profile.operation.publication_revision != version
+                ):
+                    raise ValueError("EffectProfile binding must match its Module publication")
         self._agent_endpoint = _AgentEndpoint(self)
         self._operation_endpoint = _OperationEndpoint(self)
 
@@ -420,41 +477,56 @@ class Module:
     def operation(self, operation_id: str) -> Operation | None:
         return self._operations.get(operation_id)
 
-    def agent_context(self, agent_id: str) -> SecurityContext:
+    def agent_context(self, agent_id: str) -> SecurityHistory:
         agent = self.agent(agent_id)
         if agent is None:
             raise KeyError(agent_id)
-        return SecurityContext(objects=(self.security, agent.security))
+        return SecurityHistory(objects=(self.security, agent.security, self.endpoint_security))
 
-    def operation_context(self, operation_id: str) -> SecurityContext:
+    def operation_context(self, operation_id: str, effect_profile_id: str) -> SecurityHistory:
         operation = self.operation(operation_id)
         if operation is None:
             raise KeyError(operation_id)
-        return SecurityContext(objects=(self.security, operation.security))
+        profile = operation.effect_profile(effect_profile_id)
+        if profile is None:
+            raise KeyError(effect_profile_id)
+        return SecurityHistory(objects=(self.security, self.endpoint_security, profile.security))
 
     async def execute_agent(
         self,
         agent_id: str,
-        payload: JsonValue,
+        material: Material | TransientMaterial,
         *,
-        security: SecurityContext | None = None,
+        security: SecurityHistory | None = None,
     ) -> Material:
         agent = self.agent(agent_id)
         if agent is None:
             raise KeyError(agent_id)
-        return await agent.execute(payload, security=security or self.agent_context(agent_id))
+        transient = (
+            material.transient() if not isinstance(material, TransientMaterial) else material
+        )
+        history = (security or self.agent_context(agent_id)).merge(transient.history)
+        return await agent.execute(transient, security=history)
 
     async def execute_operation(
         self,
         operation_id: str,
-        payload: JsonValue,
+        effect_profile_id: str,
+        material: Material | TransientMaterial,
         *,
-        security: SecurityContext | None = None,
+        security: SecurityHistory | None = None,
     ) -> Material:
         operation = self.operation(operation_id)
         if operation is None:
             raise KeyError(operation_id)
+        transient = (
+            material.transient() if not isinstance(material, TransientMaterial) else material
+        )
+        history = (security or self.operation_context(operation_id, effect_profile_id)).merge(
+            transient.history
+        )
         return await operation.execute(
-            payload,
-            security=security or self.operation_context(operation_id),
+            transient,
+            effect_profile_id=effect_profile_id,
+            security=history,
         )

@@ -1,277 +1,169 @@
-import asyncio
+from __future__ import annotations
+
+import ast
 from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
-from madre.adapters.openai import OpenAIChatConfig, OpenAICompatibleChatCapability
-from madre.capabilities import CapabilityDescriptor, CapabilityRegistry, FunctionCapability
-from madre.contracts import (
-    FallbackPolicy,
-    InferenceHardRequirements,
-    InferencePreferences,
-    InferenceRequirement,
-    TransientInferenceRequest,
-    TransientMaterial,
-)
-from madre.runtime import WorkRuntime, content_digest
+import madre.security as kernel_security
+import madre_sdk
+from madre.adapters.openai import OpenAIChatConfig
+from madre.config import Settings
+from madre.contracts import InferenceHardRequirements, InferenceRequirement
 from madre.security import (
-    ActorSecurityValues,
-    CapabilitySecurityValues,
-    CompatibilitySecurityEvaluator,
+    DEFAULT_SECURITY_EVALUATOR,
     MaterialSecurityValues,
-    SecurityContext,
+    ParticipantSecurityValues,
+    SecurityHistory,
     SecurityLevel,
     SecurityObject,
+    SecuritySubjectRef,
+    SecurityTransition,
 )
-from madre.storage import PlatformStore, open_database
+from madre.service import _capabilities
+from madre.storage import open_database
+from madre_sdk import participant_security
+
+ROOT = Path(__file__).parents[1]
+SRC = ROOT / "src"
 
 
-def actor(subject: str, *, kind: str = "module", trust=SecurityLevel.LEVEL_5) -> SecurityObject:
-    return SecurityObject.issue(
-        subject_id=subject,
-        subject_kind=kind,  # type: ignore[arg-type]
-        values=ActorSecurityValues(trust=trust, isolation=SecurityLevel.LEVEL_5),
-    )
+def imported_modules(path: Path) -> set[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    modules: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            modules.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module is not None:
+            modules.add(node.module)
+    return modules
 
 
-def material(
-    reference: str,
-    payload,
-    *,
-    sensitivity=SecurityLevel.LEVEL_2,
-    intended_use: SecurityLevel | None = None,
-) -> TransientMaterial:
-    return TransientMaterial(
-        reference=reference,
-        payload=payload,
-        digest=content_digest(payload),
-        security=SecurityObject.issue(
-            subject_id=reference,
-            subject_kind="artifact",
-            values=MaterialSecurityValues(
-                sensitivity=sensitivity,
-                intended_use=intended_use,  # type: ignore[arg-type]
-            ),
-        ),
-    )
-
-
-def capability_security(subject: str, *, trust=SecurityLevel.LEVEL_5) -> SecurityObject:
-    return SecurityObject.issue(
-        subject_id=subject,
-        subject_kind="capability",
-        values=CapabilitySecurityValues(
-            trust=trust,
-            privacy=SecurityLevel.LEVEL_5,
-            risk=SecurityLevel.LEVEL_1,
-        ),
-    )
-
-
-def requirement(**hard_overrides) -> InferenceRequirement:
-    hard = {"specialization": "structured.compute", "modality": "json", **hard_overrides}
-    return InferenceRequirement(hard=InferenceHardRequirements(**hard))
-
-
-def adapter(
-    capability_id: str,
-    function=lambda payload: payload,
-    *,
-    provider_id: str | None = None,
-    model_id: str | None = None,
-    boundary: str = "local",
-    latency: str = "standard",
-    quality: str = "standard",
-    efforts=frozenset({"low", "medium", "high"}),
-    paid: bool = False,
-    resources=frozenset(),
-    trust=SecurityLevel.LEVEL_5,
-) -> FunctionCapability:
-    return FunctionCapability(
-        CapabilityDescriptor(
-            id=capability_id,
-            specialization="structured.compute",
-            modality="json",
-            provider_id=provider_id,
-            model_id=model_id,
-            execution_boundary=boundary,  # type: ignore[arg-type]
-            latency_class=latency,  # type: ignore[arg-type]
-            supported_reasoning_efforts=efforts,
-            quality_tier=quality,  # type: ignore[arg-type]
-            paid=paid,
-            resources=resources,
-            security=capability_security(capability_id, trust=trust),
-        ),
-        function,
-    )
-
-
-def test_security_object_binding_detects_downstream_rewrite() -> None:
-    original = actor("module.a", trust=SecurityLevel.LEVEL_4)
-    assert original.verify_integrity()
-    tampered = original.model_copy(
-        update={
-            "values": ActorSecurityValues(
-                trust=SecurityLevel.LEVEL_5,
-                isolation=SecurityLevel.LEVEL_5,
-            )
-        }
-    )
-    assert not tampered.verify_integrity()
-    decision = CompatibilitySecurityEvaluator().evaluate(SecurityContext(objects=(tampered,)))
-    assert not decision.admissible
-    assert f"invalid_integrity:{original.security_id}" in decision.deficits
-
-
-def test_security_object_is_minimal_and_material_intended_use_is_independent() -> None:
-    secured = material(
-        "artifact.a",
-        {"value": 1},
-        sensitivity=SecurityLevel.LEVEL_5,
-        intended_use=SecurityLevel.LEVEL_2,
-    ).security
-    assert secured.values == MaterialSecurityValues(
-        sensitivity=SecurityLevel.LEVEL_5,
-        intended_use=SecurityLevel.LEVEL_2,
-    )
-    assert set(secured.model_dump()) == {
-        "security_id",
-        "subject_id",
-        "subject_kind",
-        "values",
-        "integrity",
+def test_sdk_imports_only_public_kernel_contract_namespaces() -> None:
+    allowed = {
+        "madre.contracts",
+        "madre.interfaces",
+        "madre.registry",
+        "madre.security",
     }
+    imported = set()
+    for path in (SRC / "madre_sdk").glob("*.py"):
+        imported.update(
+            module
+            for module in imported_modules(path)
+            if module == "madre" or module.startswith("madre.")
+        )
+    assert imported <= allowed
 
 
-def test_security_object_rejects_irrelevant_universal_dimensions() -> None:
+def test_core_reaches_madre_only_through_sdk() -> None:
+    imported = set()
+    for path in (SRC / "madre_core").glob("*.py"):
+        imported.update(imported_modules(path))
+    assert not any(module == "madre" or module.startswith("madre.") for module in imported)
+    assert any(module == "madre_sdk" or module.startswith("madre_sdk.") for module in imported)
+
+
+def test_kernel_does_not_import_sdk_or_core() -> None:
+    imported = set()
+    for path in (SRC / "madre").rglob("*.py"):
+        imported.update(imported_modules(path))
+    assert not any(module == "madre_sdk" or module.startswith("madre_sdk.") for module in imported)
+    assert not any(
+        module == "madre_core" or module.startswith("madre_core.") for module in imported
+    )
+
+
+def test_pre_freeze_security_symbols_are_removed() -> None:
+    obsolete = {
+        "ActorSecurityValues",
+        "OperationSecurityValues",
+        "SecurityContext",
+        "CompatibilitySecurityEvaluator",
+    }
+    assert all(not hasattr(kernel_security, name) for name in obsolete)
+    assert not hasattr(madre_sdk, "actor_security")
+    assert not hasattr(madre_sdk, "operation_security")
+    assert not hasattr(madre_sdk, "security_context")
+
+
+def test_pre_freeze_security_fields_are_removed() -> None:
+    assert "intended_use" not in MaterialSecurityValues.model_fields
+    assert "trust" not in ParticipantSecurityValues.model_fields
+    assert "isolation" not in ParticipantSecurityValues.model_fields
+    assert "trust" not in OpenAIChatConfig.model_fields
+    assert "risk" not in OpenAIChatConfig.model_fields
+    assert {"privacy", "integrity"} <= set(OpenAIChatConfig.model_fields)
+
+
+def test_security_binding_tamper_is_structural_failure() -> None:
+    subject = participant_security(
+        owner_module_id="module.example",
+        subject_id="module.example",
+        subject_kind="module",
+        privacy=SecurityLevel.LEVEL_5,
+        integrity=SecurityLevel.LEVEL_5,
+    )
+    tampered = subject.model_copy(update={"binding_digest": "0" * 64})
+    decision = DEFAULT_SECURITY_EVALUATOR.evaluate(
+        SecurityHistory(objects=(tampered,)),
+        SecurityTransition.issue(),
+    )
+    assert "invalid_security_binding" in decision.failure_codes
+
+
+def test_subject_kind_cannot_carry_irrelevant_value_schema() -> None:
     with pytest.raises(ValidationError):
         SecurityObject.issue(
-            subject_id="artifact.a",
-            subject_kind="artifact",
-            values=ActorSecurityValues(
-                trust=SecurityLevel.LEVEL_5,
-                isolation=SecurityLevel.LEVEL_5,
+            subject_ref=SecuritySubjectRef(
+                owner_module_id="module.example",
+                subject_kind="artifact",
+                publication_revision="1",
+                local_id="artifact",
+            ),
+            values=ParticipantSecurityValues(
+                privacy=SecurityLevel.LEVEL_5,
+                integrity=SecurityLevel.LEVEL_5,
             ),
         )
 
 
-def test_hard_inference_requirements_are_never_silently_violated() -> None:
-    registry = CapabilityRegistry()
-    registry.register(
-        adapter(
-            "remote-paid",
-            provider_id="provider.a",
-            model_id="model.a",
-            boundary="remote",
-            paid=True,
-            efforts=frozenset({"low"}),
-        )
+def capability_security_id(config: OpenAIChatConfig) -> str:
+    registry = _capabilities(Settings(capabilities={"chat": config}))
+    requirement = InferenceRequirement(
+        hard=InferenceHardRequirements(specialization="model.inference.chat")
     )
-    request = requirement(
-        locality="local_only",
-        cost_policy="free_only",
-        reasoning_effort="high",
+    return registry.candidates(requirement)[0].descriptor.security.security_id
+
+
+def test_physical_capability_facts_change_binding_but_credentials_do_not() -> None:
+    base = OpenAIChatConfig(
+        endpoint="http://127.0.0.1:11434/v1",
+        model="local-model",
+        privacy=SecurityLevel.LEVEL_5,
+        integrity=SecurityLevel.LEVEL_5,
+        api_key_env="TOKEN_A",
     )
-    assert registry.candidates(request) == ()
+    other_credential = base.model_copy(update={"api_key_env": "TOKEN_B"})
+    other_endpoint = base.model_copy(update={"endpoint": "http://127.0.0.1:11435/v1"})
+    assert capability_security_id(base) == capability_security_id(other_credential)
+    assert capability_security_id(base) != capability_security_id(other_endpoint)
 
 
-def test_preferences_are_soft_and_fallback_order_is_deterministic() -> None:
-    registry = CapabilityRegistry()
-    registry.register(adapter("z", provider_id="fallback", model_id="fallback-model"))
-    registry.register(adapter("a", provider_id="preferred", model_id="preferred-model"))
-    request = InferenceRequirement(
-        hard=InferenceHardRequirements(specialization="structured.compute", modality="json"),
-        preferences=InferencePreferences(
-            provider_ids=("preferred",),
-            model_ids=("preferred-model",),
-        ),
-    )
-    assert [item.descriptor.id for item in registry.candidates(request)] == ["a", "z"]
-
-    no_fallback = request.model_copy(update={"fallback": FallbackPolicy(allow_unlisted=False)})
-    assert [item.descriptor.id for item in registry.candidates(no_fallback)] == ["a"]
-
-
-def test_free_execution_can_be_required_preferred_or_merely_allowed() -> None:
-    registry = CapabilityRegistry()
-    registry.register(adapter("a-paid", paid=True))
-    registry.register(adapter("z-free", paid=False))
-
-    allowed = requirement(cost_policy="paid_allowed")
-    assert [item.descriptor.id for item in registry.candidates(allowed)] == ["a-paid", "z-free"]
-
-    preferred = InferenceRequirement(
-        hard=InferenceHardRequirements(
-            specialization="structured.compute",
-            modality="json",
-            cost_policy="paid_allowed",
-        ),
-        preferences=InferencePreferences(prefer_free=True),
-    )
-    assert [item.descriptor.id for item in registry.candidates(preferred)] == ["z-free", "a-paid"]
-
-    required = requirement(cost_policy="free_only")
-    assert [item.descriptor.id for item in registry.candidates(required)] == ["z-free"]
-
-
-def test_provider_and_model_preferences_do_not_become_exact_requirements() -> None:
-    registry = CapabilityRegistry()
-    registry.register(adapter("only", provider_id="available", model_id="available-model"))
-    request = InferenceRequirement(
-        hard=InferenceHardRequirements(specialization="structured.compute", modality="json"),
-        preferences=InferencePreferences(
-            provider_ids=("missing-provider",),
-            model_ids=("missing-model",),
-        ),
-    )
-    assert registry.select(request) is not None
-    hard = requirement(provider_id="missing-provider")
-    assert registry.select(hard) is None
-
-
-def test_provider_endpoint_policy_remains_inside_adapter_not_generic_kernel() -> None:
-    config = OpenAIChatConfig(
-        endpoint="https://api.example.test/v1",
-        model="provider-model",
-        provider_id="provider",
-        boundary="remote",
-    )
-    descriptor = CapabilityDescriptor(
-        id="provider-chat",
-        specialization="model.inference.chat",
-        modality="text",
-        provider_id=config.provider_id,
-        model_id=config.model,
-        execution_boundary=config.boundary,
-        security=capability_security("provider-chat"),
-    )
-    concrete = OpenAICompatibleChatCapability(descriptor, config)
-    assert concrete.descriptor.provider_id == "provider"
-    assert concrete.descriptor.id == "provider-chat"
-
-
-def test_transient_inference_creates_no_work_state_or_persisted_payload(tmp_path: Path) -> None:
-    private_input = "TRANSIENT-INPUT-MUST-NOT-PERSIST"
-    private_output = "TRANSIENT-OUTPUT-MUST-NOT-PERSIST"
-    data_dir = tmp_path / "runtime"
-    with open_database(data_dir) as connection:
-        store = PlatformStore(connection)
-        registry = CapabilityRegistry()
-        registry.register(adapter("compute", lambda _: {"answer": private_output}))
-        runtime = WorkRuntime(store, registry)
-        request = TransientInferenceRequest(
-            originator="module.a",
-            security=SecurityContext(objects=(actor("module.a"),)),
-            inference=requirement(),
-            material=material("ephemeral/1", {"prompt": private_input}),
-        )
-        result = asyncio.run(runtime.infer(request))
-        assert result.payload == {"answer": private_output}
-        assert connection.execute("SELECT COUNT(*) FROM runtime_work").fetchone()[0] == 0
-        assert connection.execute("SELECT COUNT(*) FROM runtime_attempt").fetchone()[0] == 0
-
-    for database_file in data_dir.glob("runtime.sqlite3*"):
-        raw = database_file.read_bytes()
-        assert private_input.encode() not in raw
-        assert private_output.encode() not in raw
+def test_sqlite_schema_stores_security_metadata_not_private_payload_columns(tmp_path: Path) -> None:
+    with open_database(tmp_path) as connection:
+        columns = {
+            row["name"] for row in connection.execute("PRAGMA table_info(runtime_work)").fetchall()
+        }
+        assert "security_history_json" in columns
+        assert "security_context_json" not in columns
+        assert "payload" not in columns
+        assert "prompt" not in columns
+        tables = {
+            row["name"]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+        assert {"security_object", "security_transition", "security_derivation"} <= tables

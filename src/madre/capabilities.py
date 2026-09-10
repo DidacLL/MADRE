@@ -17,7 +17,13 @@ from madre.contracts import (
     QualityTier,
     ReasoningEffort,
 )
-from madre.security import ExecutionBoundary, FrozenModel, Identifier, SecurityObject
+from madre.security import (
+    CapabilitySecurityValues,
+    ExecutionBoundary,
+    FrozenModel,
+    Identifier,
+    SecurityObject,
+)
 
 
 class CapabilityError(RuntimeError):
@@ -57,12 +63,18 @@ class CapabilityRegistry:
         descriptor = adapter.descriptor
         if descriptor.id in self._adapters:
             raise ValueError(f"duplicate capability id: {descriptor.id}")
-        if descriptor.security.subject_kind != "capability":
+        ref = descriptor.security.subject_ref
+        if ref.subject_kind != "capability":
             raise ValueError("Capability requires capability SecurityObject")
-        if descriptor.security.subject_id != descriptor.id:
+        if ref.local_id != descriptor.id:
             raise ValueError("Capability SecurityObject subject must equal capability id")
-        if not descriptor.security.verify_integrity():
-            raise ValueError("Capability SecurityObject integrity is invalid")
+        if not descriptor.security.verify_binding():
+            raise ValueError("Capability SecurityObject binding is invalid")
+        if not isinstance(descriptor.security.values, CapabilitySecurityValues):
+            raise ValueError("Capability requires Privacy and Integrity values")
+        values = descriptor.security.values
+        if values.privacy is None or values.integrity is None:
+            raise ValueError("Capability requires Privacy and Integrity values")
         self._adapters[descriptor.id] = adapter
 
     def candidates(self, request: InferenceRequirement) -> tuple[CapabilityAdapter, ...]:
@@ -108,9 +120,7 @@ class CapabilityRegistry:
 
     @classmethod
     def _fallback_compatible(
-        cls,
-        descriptor: CapabilityDescriptor,
-        request: InferenceRequirement,
+        cls, descriptor: CapabilityDescriptor, request: InferenceRequirement
     ) -> bool:
         if request.fallback.allow_unlisted:
             return True
@@ -134,9 +144,7 @@ class CapabilityRegistry:
 
     @classmethod
     def _sort_key(
-        cls,
-        descriptor: CapabilityDescriptor,
-        request: InferenceRequirement,
+        cls, descriptor: CapabilityDescriptor, request: InferenceRequirement
     ) -> tuple[int | str, ...]:
         return (
             *(
