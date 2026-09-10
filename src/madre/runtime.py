@@ -8,6 +8,7 @@ import json
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from datetime import datetime
+from typing import cast
 from uuid import uuid4
 
 from pydantic import JsonValue
@@ -24,7 +25,17 @@ from madre.contracts import (
     WorkSubmission,
 )
 from madre.interfaces import MaterialResolver
-from madre.security import DEFAULT_SECURITY_EVALUATOR, SecurityContext, SecurityEvaluator
+from madre.security import (
+    DEFAULT_SECURITY_EVALUATOR,
+    CapabilitySecurityValues,
+    Disclosure,
+    MaterialSecurityValues,
+    OrdinarySecurityLevel,
+    SecurityEvaluator,
+    SecurityHistory,
+    SecurityLevel,
+    SecurityTransition,
+)
 from madre.storage import PlatformStore, utc_now
 
 
@@ -95,34 +106,27 @@ class WorkRuntime:
     async def infer(self, request: TransientInferenceRequest) -> TransientInferenceResult:
         self._verify_transient_material(request.material)
         invocation_id = uuid4().hex
-        material_context = request.security.extend(request.material.security)
-        admission = self._security_evaluator.evaluate(material_context)
-        self.store.record_security_decision(
+        history = request.security.merge(request.material.history).extend(objects=(request.material.security,))
+        self._require_structural_history(
             crossing_id=invocation_id,
             crossing_kind="transient-admission",
             target_id=request.inference.hard.mechanism_id or request.inference.hard.specialization,
-            context=material_context,
-            execution_boundary=None,
-            decision=admission,
+            history=history,
         )
-        if not admission.admissible:
-            raise TransientInferenceError("security_denied")
 
-        adapter = self._select_admissible_capability(
+        candidates = self.capabilities.candidates(request.inference)
+        selection = self._select_admissible_capability(
             crossing_id=invocation_id,
             crossing_kind="transient-capability-candidate",
-            security=material_context,
-            candidates=self.capabilities.candidates(request.inference),
+            history=history,
+            material_security_id=request.material.security.security_id,
+            candidates=candidates,
         )
-        if adapter is None:
-            code = (
-                "no_capability"
-                if not self.capabilities.candidates(request.inference)
-                else "security_denied"
-            )
-            raise TransientInferenceError(code)
-
+        if selection is None:
+            raise TransientInferenceError("no_capability" if not candidates else "security_denied")
+        adapter, prospective, transition = selection
         descriptor = adapter.descriptor
+        accepted = prospective.extend(transitions=(transition,))
         try:
             async with self._capability_slot(adapter):
                 result = await adapter.execute(request.material.payload, request.constraints)
@@ -139,6 +143,10 @@ class WorkRuntime:
             execution_boundary=descriptor.execution_boundary,
             output_digest=content_digest(result),
             output_size=content_size(result),
+            output_integrity=self._generated_integrity(request.material, descriptor.security.values),
+            producer_security_ids=(descriptor.security.security_id,),
+            source_security_ids=(request.material.security.security_id,),
+            security=accepted,
         )
 
     async def submit(
@@ -148,7 +156,7 @@ class WorkRuntime:
         idempotency_key: str | None = None,
     ) -> WorkRecord:
         handle = submission.material
-        security = submission.security.extend(handle.security)
+        security = submission.security.merge(handle.history).extend(objects=(handle.security,))
         spec = WorkSpec(
             originator=submission.originator,
             security=security,
@@ -168,18 +176,12 @@ class WorkRuntime:
                 return existing
 
         work_id = uuid4().hex
-        admission = self._security_evaluator.evaluate(security)
-        self.store.record_security_decision(
+        self._require_structural_history(
             crossing_id=work_id,
             crossing_kind="work-admission",
-            target_id=submission.inference.hard.mechanism_id
-            or submission.inference.hard.specialization,
-            context=security,
-            execution_boundary=None,
-            decision=admission,
+            target_id=submission.inference.hard.mechanism_id or submission.inference.hard.specialization,
+            history=security,
         )
-        if not admission.admissible:
-            raise ValueError(f"security evaluator rejected work: {','.join(admission.deficits)}")
 
         accepted_at = self._clock()
         created = self.store.create(work_id, spec, accepted_at, idempotency_key=key)
@@ -242,15 +244,7 @@ class WorkRuntime:
             and not request.allow_unknown_outcome
         ):
             raise RetryConflict("interrupted work requires allow_unknown_outcome=true")
-        if (
-            self.store.requeue_failed(
-                work_id,
-                key,
-                request.allow_unknown_outcome,
-                self._clock(),
-            )
-            is None
-        ):
+        if self.store.requeue_failed(work_id, key, request.allow_unknown_outcome, self._clock()) is None:
             raise RetryConflict("work is no longer failed")
         self._schedule_changed.set()
         return self._require(work_id)
@@ -297,33 +291,39 @@ class WorkRuntime:
             self.store.fail(work_id, WorkFailure(code="no_capability"), self._clock())
             return self._require(work_id)
 
-        adapter = self._select_admissible_capability(
+        selection = self._select_admissible_capability(
             crossing_id=work_id,
             crossing_kind="capability-candidate",
-            security=record.spec.security,
+            history=record.spec.security,
+            material_security_id=record.spec.material.security.security_id,
             candidates=candidates,
         )
-        if adapter is None:
+        if selection is None:
             self.store.fail(work_id, WorkFailure(code="security_denied"), self._clock())
             return self._require(work_id)
-
+        adapter, prospective, transition = selection
         descriptor = adapter.descriptor
         result: JsonValue = None
         failure: WorkFailure | None = None
+        attempt: int | None = None
+        material: TransientMaterial | None = None
         async with self._capability_slot(adapter):
             material = await self._resolve_material(record)
             if material is None:
                 return self._require(work_id)
+            accepted_history = prospective.extend(transitions=(transition,))
             attempt = self.store.start_attempt(
                 work_id,
                 descriptor.id,
                 descriptor.provider_id,
                 descriptor.model_id,
                 descriptor.execution_boundary,
+                transition.transition_id,
                 self._clock(),
             )
             if attempt is None:
                 return self._require(work_id)
+            self.store.update_security_history(work_id, accepted_history)
             try:
                 result = await adapter.execute(material.payload, record.spec.constraints)
             except CapabilityError as exc:
@@ -331,14 +331,25 @@ class WorkRuntime:
             except Exception:
                 failure = WorkFailure(code="internal_error")
 
+        assert attempt is not None and material is not None
         if failure is not None:
             self.store.fail(work_id, failure, self._clock(), attempt_number=attempt)
             return self._require(work_id)
 
         digest = content_digest(result)
         size = content_size(result)
+        output_integrity = self._generated_integrity(material, descriptor.security.values)
         self._results[work_id] = result
-        self.store.succeed(work_id, attempt, digest, size, self._clock())
+        self.store.succeed(
+            work_id,
+            attempt,
+            digest,
+            size,
+            output_integrity,
+            (descriptor.security.security_id,),
+            (material.security.security_id,),
+            self._clock(),
+        )
         return self._require(work_id)
 
     async def _resolve_material(self, record: WorkRecord) -> TransientMaterial | None:
@@ -355,7 +366,8 @@ class WorkRuntime:
             or material.digest != record.spec.material.digest
             or content_digest(material.payload) != record.spec.material.digest
             or material.security != record.spec.material.security
-            or not material.security.verify_integrity()
+            or material.history != record.spec.material.history
+            or not material.security.verify_binding()
         ):
             self.store.fail(record.id, WorkFailure(code="material_integrity"), self._clock())
             return None
@@ -366,30 +378,77 @@ class WorkRuntime:
         *,
         crossing_id: str,
         crossing_kind: str,
-        security: SecurityContext,
+        history: SecurityHistory,
+        material_security_id: str,
         candidates: tuple[CapabilityAdapter, ...],
-    ) -> CapabilityAdapter | None:
+    ) -> tuple[CapabilityAdapter, SecurityHistory, SecurityTransition] | None:
         for candidate in candidates:
             descriptor = candidate.descriptor
-            context = security.extend(descriptor.security)
-            decision = self._security_evaluator.evaluate(context)
+            prospective = history.extend(objects=(descriptor.security,))
+            transition = SecurityTransition.issue(
+                disclosures=(
+                    Disclosure(
+                        material_security_id=material_security_id,
+                        path_security_ids=(descriptor.security.security_id,),
+                    ),
+                )
+            )
+            decision = self._security_evaluator.evaluate(prospective, transition)
             self.store.record_security_decision(
                 crossing_id=crossing_id,
                 crossing_kind=crossing_kind,
                 target_id=descriptor.id,
-                context=context,
+                history=prospective,
+                transition=transition,
                 execution_boundary=descriptor.execution_boundary,
                 decision=decision,
             )
             if decision.admissible:
-                return candidate
+                return candidate, prospective, transition
         return None
+
+    def _require_structural_history(
+        self,
+        *,
+        crossing_id: str,
+        crossing_kind: str,
+        target_id: str,
+        history: SecurityHistory,
+    ) -> None:
+        transition = SecurityTransition.issue()
+        decision = self._security_evaluator.evaluate(history, transition)
+        self.store.record_security_decision(
+            crossing_id=crossing_id,
+            crossing_kind=crossing_kind,
+            target_id=target_id,
+            history=history,
+            transition=transition,
+            execution_boundary=None,
+            decision=decision,
+        )
+        if not decision.admissible:
+            if crossing_kind.startswith("transient"):
+                raise TransientInferenceError("security_denied")
+            raise ValueError(f"security evaluator rejected work: {','.join(decision.failure_codes)}")
+
+    @staticmethod
+    def _generated_integrity(
+        material: TransientMaterial,
+        capability_values: object,
+    ) -> OrdinarySecurityLevel:
+        material_values = cast(MaterialSecurityValues, material.security.values)
+        if material_values.integrity is None:
+            raise TransientInferenceError("security_denied")
+        if not isinstance(capability_values, CapabilitySecurityValues) or capability_values.integrity is None:
+            raise TransientInferenceError("security_denied")
+        value = min(int(material_values.integrity), int(capability_values.integrity))
+        return cast(OrdinarySecurityLevel, SecurityLevel(value))
 
     @staticmethod
     def _verify_transient_material(material: TransientMaterial) -> None:
         if content_digest(material.payload) != material.digest:
             raise TransientInferenceError("material_integrity")
-        if not material.security.verify_integrity():
+        if not material.security.verify_binding():
             raise TransientInferenceError("material_integrity")
 
     @asynccontextmanager

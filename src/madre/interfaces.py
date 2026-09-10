@@ -15,14 +15,8 @@ from madre.contracts import (
     WorkRetryRequest,
     WorkSubmission,
 )
-from madre.registry import (
-    AgentDescriptor,
-    ModuleManifest,
-    OperationDescriptor,
-    SkillDescriptor,
-    WorkflowDescriptor,
-)
-from madre.security import ExecutionBoundary, SecurityContext, SecurityObject
+from madre.registry import AgentDescriptor, ModuleManifest, OperationDescriptor, SkillDescriptor, WorkflowDescriptor
+from madre.security import ExecutionBoundary, SecurityHistory, SecurityObject
 
 
 class ModuleRegistration(Protocol):
@@ -34,12 +28,7 @@ class TransientInference(Protocol):
 
 
 class DurableWorkSubmission(Protocol):
-    async def submit(
-        self,
-        submission: WorkSubmission,
-        *,
-        idempotency_key: str | None = None,
-    ) -> WorkRecord: ...
+    async def submit(self, submission: WorkSubmission, *, idempotency_key: str | None = None) -> WorkRecord: ...
 
 
 class WorkInspection(Protocol):
@@ -49,13 +38,7 @@ class WorkInspection(Protocol):
 class WorkResultAccess(Protocol):
     def consume_result(self, work_id: str) -> JsonValue: ...
 
-    async def retry(
-        self,
-        work_id: str,
-        request: WorkRetryRequest,
-        *,
-        idempotency_key: str,
-    ) -> WorkRecord: ...
+    async def retry(self, work_id: str, request: WorkRetryRequest, *, idempotency_key: str) -> WorkRecord: ...
 
     async def cancel(self, work_id: str) -> WorkRecord: ...
 
@@ -69,13 +52,10 @@ class MaterialResolutionRegistration(Protocol):
 
 
 class Discovery(Protocol):
-    def discover_agents(self, security: SecurityContext) -> tuple[AgentDescriptor, ...]: ...
-
-    def discover_skills(self, security: SecurityContext) -> tuple[SkillDescriptor, ...]: ...
-
-    def discover_workflows(self, security: SecurityContext) -> tuple[WorkflowDescriptor, ...]: ...
-
-    def discover_operations(self, security: SecurityContext) -> tuple[OperationDescriptor, ...]: ...
+    def discover_agents(self, security: SecurityHistory) -> tuple[AgentDescriptor, ...]: ...
+    def discover_skills(self, security: SecurityHistory) -> tuple[SkillDescriptor, ...]: ...
+    def discover_workflows(self, security: SecurityHistory) -> tuple[WorkflowDescriptor, ...]: ...
+    def discover_operations(self, security: SecurityHistory) -> tuple[OperationDescriptor, ...]: ...
 
 
 class AgentEndpoint(Protocol):
@@ -88,8 +68,8 @@ class AgentEndpoint(Protocol):
     async def invoke_agent(
         self,
         agent_id: str,
-        security: SecurityContext,
-        payload: JsonValue,
+        security: SecurityHistory,
+        material: TransientMaterial,
     ) -> TransientMaterial: ...
 
 
@@ -103,8 +83,9 @@ class OperationEndpoint(Protocol):
     async def invoke_operation(
         self,
         operation_id: str,
-        security: SecurityContext,
-        payload: JsonValue,
+        effect_profile_id: str,
+        security: SecurityHistory,
+        material: TransientMaterial,
     ) -> TransientMaterial: ...
 
 
@@ -120,19 +101,21 @@ class AgentBrokering(Protocol):
     async def invoke_agent(
         self,
         requester_module_id: str,
-        security: SecurityContext,
+        security: SecurityHistory,
         target_module_id: str,
         agent_id: str,
         material: TransientMaterial,
-    ) -> JsonValue: ...
+    ) -> TransientMaterial: ...
 
 
 class OperationBrokering(Protocol):
     async def invoke_operation(
         self,
         requester_module_id: str,
-        security: SecurityContext,
+        security: SecurityHistory,
         target_module_id: str,
         operation_id: str,
+        effect_profile_id: str,
         material: TransientMaterial,
-    ) -> JsonValue: ...
+        controller_security_ids: tuple[str, ...],
+    ) -> TransientMaterial: ...

@@ -5,14 +5,18 @@ from __future__ import annotations
 from datetime import datetime
 
 from madre.registry import ModuleManifest
-from madre.security import ExecutionBoundary, SecurityContext, SecurityDecision
+from madre.security import ExecutionBoundary, SecurityDecision, SecurityHistory, SecurityTransition
 from madre.storage_db import _json, utc_now
 from madre.storage_work import WorkStore
 
 
 class PlatformStore(WorkStore):
     def put_manifest(self, manifest: ModuleManifest) -> None:
+        objects = [manifest.security, *(agent.security for agent in manifest.agents)]
+        objects.extend(profile.security for operation in manifest.operations for profile in operation.effect_profiles)
+        history = SecurityHistory(objects=tuple(objects))
         with self.connection:
+            self._persist_security_history(history)
             self.connection.execute(
                 """
                 INSERT INTO module_manifest(module_id,manifest_json,updated_at) VALUES (?,?,?)
@@ -34,28 +38,34 @@ class PlatformStore(WorkStore):
         crossing_id: str,
         crossing_kind: str,
         target_id: str,
-        context: SecurityContext,
+        history: SecurityHistory,
+        transition: SecurityTransition,
         execution_boundary: ExecutionBoundary | None,
         decision: SecurityDecision,
     ) -> None:
         with self.connection:
+            # Rejected prospective objects are useful evidence, but the rejected transition is not
+            # persisted as accepted history. SecurityID possession remains non-authoritative.
+            self._persist_security_history(SecurityHistory(objects=history.objects))
             self.connection.execute(
                 """
                 INSERT INTO security_decision(
-                    crossing_id,crossing_kind,target_id,context_json,evaluator,evidence_json,
-                    execution_boundary,admissible,deficits_json,decided_at
-                ) VALUES (?,?,?,?,?,?,?,?,?,?)
+                    crossing_id,crossing_kind,target_id,transition_id,transition_json,
+                    algebra_version,decision_json,execution_boundary,admissible,
+                    failure_codes_json,decided_at
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 (
                     crossing_id,
                     crossing_kind,
                     target_id,
-                    _json(context),
-                    decision.evaluator,
-                    _json(decision.evidence),
+                    transition.transition_id,
+                    _json(transition),
+                    decision.algebra_version,
+                    _json(decision),
                     execution_boundary,
                     int(decision.admissible),
-                    _json(list(decision.deficits)),
+                    _json(list(decision.failure_codes)),
                     utc_now().isoformat(),
                 ),
             )

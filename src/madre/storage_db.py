@@ -17,7 +17,7 @@ _STORAGE_DDL = """
 CREATE TABLE runtime_work (
     id TEXT PRIMARY KEY,
     originator TEXT NOT NULL,
-    security_context_json TEXT NOT NULL,
+    security_history_json TEXT NOT NULL,
     inference_json TEXT NOT NULL,
     material_handle_json TEXT NOT NULL,
     eligible_at TEXT,
@@ -40,6 +40,9 @@ CREATE TABLE runtime_work (
     output_digest TEXT,
     output_size INTEGER,
     output_produced_at TEXT,
+    output_integrity INTEGER CHECK (output_integrity IS NULL OR output_integrity BETWEEN 1 AND 5),
+    result_producer_security_ids_json TEXT,
+    result_source_security_ids_json TEXT,
     delivery_status TEXT CHECK (
         delivery_status IS NULL OR delivery_status IN ('awaiting_consumption','consumed','lost')
     )
@@ -78,6 +81,7 @@ CREATE TABLE runtime_attempt (
     provider_id TEXT,
     model_id TEXT,
     execution_boundary TEXT,
+    security_transition_id TEXT,
     output_digest TEXT,
     output_size INTEGER,
     error_code TEXT,
@@ -90,17 +94,33 @@ CREATE TABLE module_manifest (
     updated_at TEXT NOT NULL
 );
 
+CREATE TABLE security_object (
+    security_id TEXT PRIMARY KEY,
+    object_json TEXT NOT NULL
+);
+
+CREATE TABLE security_transition (
+    transition_id TEXT PRIMARY KEY,
+    transition_json TEXT NOT NULL
+);
+
+CREATE TABLE security_derivation (
+    derivation_id TEXT PRIMARY KEY,
+    derivation_json TEXT NOT NULL
+);
+
 CREATE TABLE security_decision (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     crossing_id TEXT NOT NULL,
     crossing_kind TEXT NOT NULL,
     target_id TEXT NOT NULL,
-    context_json TEXT NOT NULL,
-    evaluator TEXT NOT NULL,
-    evidence_json TEXT NOT NULL,
+    transition_id TEXT NOT NULL,
+    transition_json TEXT NOT NULL,
+    algebra_version TEXT NOT NULL,
+    decision_json TEXT NOT NULL,
     execution_boundary TEXT,
     admissible INTEGER NOT NULL CHECK (admissible IN (0,1)),
-    deficits_json TEXT NOT NULL,
+    failure_codes_json TEXT NOT NULL,
     decided_at TEXT NOT NULL
 );
 

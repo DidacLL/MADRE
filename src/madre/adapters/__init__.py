@@ -1,1 +1,1 @@
-"""Provider/backend adapters for MADRE capabilities."""
+"""Concrete physical Capability adapters."""

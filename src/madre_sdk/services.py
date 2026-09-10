@@ -12,6 +12,7 @@ from madre.contracts import (
     InferenceRequirement,
     TransientInferenceRequest,
     TransientInferenceResult,
+    TransientMaterial,
     WorkRecord,
     WorkRetryRequest,
     WorkSubmission,
@@ -26,18 +27,12 @@ from madre.interfaces import (
     WorkResultAccess,
 )
 from madre.registry import AgentDescriptor, OperationDescriptor, SkillDescriptor, WorkflowDescriptor
-from madre.security import SecurityContext
+from madre.security import SecurityHistory, SecurityObject
 from madre_sdk.material import Material, MaterialRepository
 
 
 class InferenceClient:
-    def __init__(
-        self,
-        *,
-        originator: str,
-        security: SecurityContext,
-        inference: TransientInference,
-    ) -> None:
+    def __init__(self, *, originator: str, security: SecurityHistory, inference: TransientInference) -> None:
         self._originator = originator
         self._security = security
         self._inference = inference
@@ -48,7 +43,7 @@ class InferenceClient:
         requirement: InferenceRequirement,
         *,
         constraints: ExecutionConstraints | None = None,
-        security: SecurityContext | None = None,
+        security: SecurityHistory | None = None,
     ) -> TransientInferenceResult:
         return await self._inference.infer(
             TransientInferenceRequest(
@@ -62,13 +57,11 @@ class InferenceClient:
 
 
 class WorkClient:
-    """Durable submission helper; material remains in the supplied Module repository."""
-
     def __init__(
         self,
         *,
         originator: str,
-        security: SecurityContext,
+        security: SecurityHistory,
         submission: DurableWorkSubmission,
         materials: MaterialRepository,
     ) -> None:
@@ -87,7 +80,7 @@ class WorkClient:
         constraints: ExecutionConstraints | None = None,
         correlation: tuple[CorrelationEntry, ...] = (),
         idempotency_key: str | None = None,
-        security: SecurityContext | None = None,
+        security: SecurityHistory | None = None,
     ) -> WorkRecord:
         handle = self._materials.retain(material)
         return await self._submission.submit(
@@ -116,13 +109,7 @@ class WorkResults:
     def consume(self, work_id: str) -> JsonValue:
         return self._results.consume_result(work_id)
 
-    async def retry(
-        self,
-        work_id: str,
-        *,
-        idempotency_key: str,
-        allow_unknown_outcome: bool = False,
-    ) -> WorkRecord:
+    async def retry(self, work_id: str, *, idempotency_key: str, allow_unknown_outcome: bool = False) -> WorkRecord:
         return await self._results.retry(
             work_id,
             WorkRetryRequest(allow_unknown_outcome=allow_unknown_outcome),
@@ -134,7 +121,7 @@ class WorkResults:
 
 
 class DiscoveryClient:
-    def __init__(self, discovery: Discovery, security: SecurityContext) -> None:
+    def __init__(self, discovery: Discovery, security: SecurityHistory) -> None:
         self._discovery = discovery
         self._security = security
 
@@ -152,13 +139,7 @@ class DiscoveryClient:
 
 
 class AgentBrokerClient:
-    def __init__(
-        self,
-        *,
-        requester_module_id: str,
-        security: SecurityContext,
-        broker: AgentBrokering,
-    ) -> None:
+    def __init__(self, *, requester_module_id: str, security: SecurityHistory, broker: AgentBrokering) -> None:
         self._requester_module_id = requester_module_id
         self._security = security
         self._broker = broker
@@ -169,8 +150,8 @@ class AgentBrokerClient:
         agent_id: str,
         material: Material,
         *,
-        security: SecurityContext | None = None,
-    ) -> JsonValue:
+        security: SecurityHistory | None = None,
+    ) -> TransientMaterial:
         return await self._broker.invoke_agent(
             self._requester_module_id,
             security or self._security,
@@ -181,13 +162,7 @@ class AgentBrokerClient:
 
 
 class OperationBrokerClient:
-    def __init__(
-        self,
-        *,
-        requester_module_id: str,
-        security: SecurityContext,
-        broker: OperationBrokering,
-    ) -> None:
+    def __init__(self, *, requester_module_id: str, security: SecurityHistory, broker: OperationBrokering) -> None:
         self._requester_module_id = requester_module_id
         self._security = security
         self._broker = broker
@@ -196,22 +171,25 @@ class OperationBrokerClient:
         self,
         module_id: str,
         operation_id: str,
+        effect_profile_id: str,
         material: Material,
         *,
-        security: SecurityContext | None = None,
-    ) -> JsonValue:
+        controllers: tuple[SecurityObject, ...] = (),
+        security: SecurityHistory | None = None,
+    ) -> TransientMaterial:
+        carried = (security or self._security).extend(objects=controllers)
         return await self._broker.invoke_operation(
             self._requester_module_id,
-            security or self._security,
+            carried,
             module_id,
             operation_id,
+            effect_profile_id,
             material.transient(),
+            tuple(item.security_id for item in controllers),
         )
 
 
 class CoreSelection:
-    """Ordinary user/module configuration naming the selected CORE interaction surface."""
-
     def __init__(self, *, module_id: str, interaction_agent_id: str) -> None:
         if not module_id or not interaction_agent_id:
             raise ValueError("CORE selection identities must not be empty")
@@ -220,8 +198,6 @@ class CoreSelection:
 
 
 class CoreDelegate:
-    """Reusable fallback helper for UI-less/Agentless Modules."""
-
     def __init__(self, broker: AgentBrokerClient, selection: CoreSelection) -> None:
         self._broker = broker
         self._selection = selection
@@ -230,7 +206,7 @@ class CoreDelegate:
     def selection(self) -> CoreSelection:
         return self._selection
 
-    async def interact(self, material: Material) -> JsonValue:
+    async def interact(self, material: Material) -> TransientMaterial:
         return await self._broker.invoke(
             self._selection.module_id,
             self._selection.interaction_agent_id,

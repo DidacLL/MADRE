@@ -17,7 +17,7 @@ from madre.contracts import (
     QualityTier,
     ReasoningEffort,
 )
-from madre.security import ExecutionBoundary, FrozenModel, Identifier, SecurityObject
+from madre.security import CapabilitySecurityValues, ExecutionBoundary, FrozenModel, Identifier, SecurityObject
 
 
 class CapabilityError(RuntimeError):
@@ -57,12 +57,18 @@ class CapabilityRegistry:
         descriptor = adapter.descriptor
         if descriptor.id in self._adapters:
             raise ValueError(f"duplicate capability id: {descriptor.id}")
-        if descriptor.security.subject_kind != "capability":
+        ref = descriptor.security.subject_ref
+        if ref.subject_kind != "capability":
             raise ValueError("Capability requires capability SecurityObject")
-        if descriptor.security.subject_id != descriptor.id:
+        if ref.local_id != descriptor.id:
             raise ValueError("Capability SecurityObject subject must equal capability id")
-        if not descriptor.security.verify_integrity():
-            raise ValueError("Capability SecurityObject integrity is invalid")
+        if not descriptor.security.verify_binding():
+            raise ValueError("Capability SecurityObject binding is invalid")
+        if not isinstance(descriptor.security.values, CapabilitySecurityValues):
+            raise ValueError("Capability requires Privacy and Integrity values")
+        values = descriptor.security.values
+        if values.privacy is None or values.integrity is None:
+            raise ValueError("Capability requires Privacy and Integrity values")
         self._adapters[descriptor.id] = adapter
 
     def candidates(self, request: InferenceRequirement) -> tuple[CapabilityAdapter, ...]:
@@ -85,10 +91,7 @@ class CapabilityRegistry:
             return False
         if hard.latency_class is not None and descriptor.latency_class != hard.latency_class:
             return False
-        if (
-            hard.reasoning_effort is not None
-            and hard.reasoning_effort not in descriptor.supported_reasoning_efforts
-        ):
+        if hard.reasoning_effort is not None and hard.reasoning_effort not in descriptor.supported_reasoning_efforts:
             return False
         if hard.quality_tier is not None and descriptor.quality_tier != hard.quality_tier:
             return False
@@ -107,11 +110,7 @@ class CapabilityRegistry:
         return hard.mechanism_id is None or descriptor.id == hard.mechanism_id
 
     @classmethod
-    def _fallback_compatible(
-        cls,
-        descriptor: CapabilityDescriptor,
-        request: InferenceRequirement,
-    ) -> bool:
+    def _fallback_compatible(cls, descriptor: CapabilityDescriptor, request: InferenceRequirement) -> bool:
         if request.fallback.allow_unlisted:
             return True
         preferences = request.preferences
@@ -119,10 +118,7 @@ class CapabilityRegistry:
             (preferences.mechanism_ids, descriptor.id in preferences.mechanism_ids),
             (preferences.model_ids, descriptor.model_id in preferences.model_ids),
             (preferences.provider_ids, descriptor.provider_id in preferences.provider_ids),
-            (
-                preferences.execution_boundaries,
-                descriptor.execution_boundary in preferences.execution_boundaries,
-            ),
+            (preferences.execution_boundaries, descriptor.execution_boundary in preferences.execution_boundaries),
             (preferences.latency_classes, descriptor.latency_class in preferences.latency_classes),
             (
                 preferences.reasoning_efforts,
@@ -133,16 +129,9 @@ class CapabilityRegistry:
         return all(not values or matched for values, matched in checks)
 
     @classmethod
-    def _sort_key(
-        cls,
-        descriptor: CapabilityDescriptor,
-        request: InferenceRequirement,
-    ) -> tuple[int | str, ...]:
+    def _sort_key(cls, descriptor: CapabilityDescriptor, request: InferenceRequirement) -> tuple[int | str, ...]:
         return (
-            *(
-                cls._preference_rank(descriptor, request.preferences, dimension)
-                for dimension in request.fallback.preference_order
-            ),
+            *(cls._preference_rank(descriptor, request.preferences, dimension) for dimension in request.fallback.preference_order),
             descriptor.id,
         )
 
@@ -172,11 +161,7 @@ class CapabilityRegistry:
             values = preferences.reasoning_efforts
             if not values:
                 return 0
-            matching = [
-                index
-                for index, value in enumerate(values)
-                if value in descriptor.supported_reasoning_efforts
-            ]
+            matching = [index for index, value in enumerate(values) if value in descriptor.supported_reasoning_efforts]
             return min(matching, default=len(values) + 1)
         if not values:
             return 0
