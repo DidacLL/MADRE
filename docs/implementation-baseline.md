@@ -61,11 +61,15 @@ Decision evidence is deterministic and transition-local: algebra version, transi
 
 Security-relevant transformation creates a new material representation and SecurityID.
 
-SDK ordinary derivation cannot increase Integrity beyond the minimum Integrity of actual sources and declared producing participants. Explicit validation derivation may create a stronger-Integrity representation only up to the actual validator-path Integrity. Sensitivity may be lowered only on a new Module-classified representation; Kernel does not inspect content to decide semantic minimization correctness.
+SDK ordinary derivation requires an explicit `InvocationContext` and cannot increase Integrity beyond its sources, known active production path, and additional Module-declared producers. `Artifact.validated()` derives validators from that context; it no longer accepts an arbitrary list of historical validator identities. A validation derivation may create a stronger-Integrity representation only up to that actual validator-path Integrity. Sensitivity may be lowered only on a new Module-classified representation; Kernel does not inspect content to decide semantic minimization correctness.
 
 Transient and durable inference results expose output Integrity plus source/producer SecurityIDs. SDK helpers turn consumed model/work output into a new Artifact with ordinary DERIVATION evidence instead of silently relabeling generated content.
 
-Brokered endpoints returning a new representation must preserve a derivation chain back to the invoked input. A true pass-through may retain the existing immutable representation.
+Brokered endpoints returning a new representation must preserve a derivation chain back to the invoked input and include the actual producing Module/Agent/endpoint in its derivation. A true input pass-through or previously completed nested result retains its immutable production facts. Merely finding an unrelated output SecurityID in input history does not establish pass-through.
+
+New validation claims are checked against the producing invocation at broker completion. The stable derivation identities and exact completion context are recorded separately in broker evidence; ephemeral invocation IDs do not enter SecurityDerivation identity. Completed nested validation is reusable for its immutable output, including after database reopen. Borrowing its validators for another output requires another actual validation completion. Broker input and inference/work admission reject validation claims without completed participation evidence. Consequently a freshly constructed validation result must complete its brokered invocation before reuse through another Kernel boundary; this is a deliberately restricted helper, not a validation subsystem. Semantic validation correctness remains Module-owned.
+
+Each immutable output has one authoritative derivation; duplicate identical relations collapse, competing relations and indirect cycles fail. Persistence checks the union with already stored ancestry so separate completions cannot fork or cycle the same immutable graph. Unrelated ordinary Module-private ancestry is preserved without attributing its production to the current actor.
 
 ### Kernel execution and brokering
 
@@ -84,9 +88,23 @@ The Kernel preserves the existing execution behavior while using the final algeb
 
 Capability selection evaluates each candidate with a prospective DISCLOSURE transition before private material is resolved. A rejected candidate is retained only in decision evidence; it is not recorded as an accepted disclosure. The selected candidate transition is added to durable history only when the concrete attempt is ready to execute.
 
-Broker Agent input constructs the actual disclosure path through target Module, Agent, and endpoint. Operation input constructs disclosure through target Module/endpoint, CONTROL from the concrete input material plus any explicitly supplied additional controllers, and EFFECT_EXECUTION through the target Module/endpoint plus the selected EffectProfile. A material-disclosing EffectProfile also participates in the disclosure path. Return material is independently disclosed to the requester Module.
+An immutable `InvocationContext` explicitly carries the exact active Module, Agent or Operation, and endpoint binding through broker, endpoint, SDK behavior, and nested-client calls. It remains separate from SecurityHistory; replacing optional carried history cannot remove the active caller. There is no ambient execution state. The context carries identity facts, not authentication or permission.
+
+Broker Agent input constructs the actual disclosure path through target Module, Agent, and endpoint. Operation input constructs disclosure through target Module/endpoint, CONTROL from the concrete input material, the active selector, and additional declared semantic controllers, and EFFECT_EXECUTION through the target Module/endpoint plus the selected EffectProfile. The selecting Agent contributes its own Integrity; agentless or Operation-owned selection contributes its executing Module. Owning Modules and forwarding endpoints are not automatically additional selectors. A material-disclosing EffectProfile contributes to its actual disclosure path.
+
+Return disclosure uses the captured requester Module and active requesting Agent. In the implemented in-process SDK route, the forwarding endpoint does not receive the nested return payload and is not inserted as a return recipient. New endpoint/transport implementations must represent any additional actual recipients when such a route exists; this correction adds no transport.
+
+Endpoint attachment captures and validates the exact Module publication and endpoint SecurityObject. Dispatch checks both against that captured attachment, including same-version publication replacement, and retains the snapshot through completion. Endpoint SecurityObjects are not added to ModuleManifest.
 
 Registry identity supplies discovery and routing facts only. Registration, Module/Agent identity, credentials, references, prior successful execution, Work IDs, SecurityIDs, and CORE identity are not algebra operands or alternate authority sources.
+
+### Canonical relation identity and binding evidence
+
+Set-like controller, executor, source, producer, validator and disclosure-edge collections are deduplicated and sorted before identity generation and on deserialization. Deliberately ordered disclosure paths retain their order. Realized histories must satisfy all three predicates under their immutable operands; historical numeric failures are no longer tolerated. Rejected prospective transitions remain decision evidence, and persistence refuses inadmissible realized histories.
+
+BindingEvidence uses a bounded set of structural keys, at most 16 entries and at most 256 characters per value, with canonical unique keys and constrained values. Capability construction rejects URL user-info, query and fragment components. It records scheme, normalized host, effective port and a path digest, not the raw endpoint or path. Provider credentials remain outside SecurityObject identity.
+
+SecurityID cross-language encoding is deliberately deferred. The current Python encoding is `json.dumps(value, sort_keys=True, separators=(",", ":"), default=int)` with default ASCII escaping, encoded as UTF-8 and hashed with SHA-256. Identity schemas use strings, integer levels, arrays, objects and null; no floating-point identity policy is introduced. The executable `module.vector` fixture has SecurityID `security:v1:f321e83ef5f843f18903e22100a8fe397a27e5f978d509c4b021633fe92abb2f`. A language-neutral canonical encoding specification, including Unicode ordering/escaping, remains cross-language debt rather than a claimed interoperability guarantee.
 
 ### Persistence and recovery
 
@@ -121,7 +139,7 @@ It now provides typed helpers for:
 - transient inference and durable result reuse with production Integrity evidence;
 - Agent/Operation brokering with carried history continuity.
 
-`Operation` exposes immutable EffectProfiles rather than direct caller-overridable security numbers. `OperationBrokerClient` selects a profile identity; concrete Operation input is automatically represented as a controller because it determines the bounded invocation parameters/effect. Additional semantic controllers may be supplied explicitly when Module semantics require them.
+`Operation` exposes immutable EffectProfiles rather than direct caller-overridable security numbers. `OperationBrokerClient` selects a profile identity and requires the active invocation context on each call. Concrete Operation input and the known active selector are automatically represented as controllers. Additional semantic controllers may be supplied explicitly when Module semantics require them.
 
 The SDK still does not define universal Agent sessions/memory, a Planner, a Workflow engine, Skill instances, Task ontology, a security-policy DSL, generic credential framework, shell, or unrestricted Internet interface.
 
@@ -150,7 +168,9 @@ The deterministic suite covers the required final-algebra cases, including maxim
 
 Numeric tests exhaustively enumerate ordinary levels 1..5 for disclosure, all 5^3 Risk/Autonomy/controller-Integrity control combinations, and all Risk/executor-Integrity combinations, including the required monotonicity properties.
 
-Repository completion is validated by the locked CI workflow on the exact implementation PR head:
+The causal-topology correction was validated locally on Windows with **253 passing tests**: `test_causal_topology.py`, `test_security_algebra.py`, `test_registry_broker.py`, `test_sdk_core.py`, `test_architecture_boundaries.py`, and the five runtime cases covering rejected-candidate locality, denial before JIT resolution, durable metadata/private-byte exclusion, same-operand retry identity, and changed-capability retry identity. Mypy passed for all 26 source files. Ruff lint and formatting checks cover the changed Python surface. These are deterministic broker/SDK/SQLite and controlled capability tests, not live-provider or cross-platform acceptance. Final constructor/caller inspection covered all transition, role, derivation and history construction sites.
+
+Broad CI, package/reinstall validation and integration were deliberately left to follow-up work. The existing broader CI recipe remains:
 
 ```text
 uv sync --locked

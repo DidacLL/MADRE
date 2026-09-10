@@ -19,6 +19,7 @@ from madre_sdk import (
     InferenceHardRequirements,
     InferencePreferences,
     InferenceRequirement,
+    InvocationContext,
     JsonValue,
     MaterialRepository,
     Module,
@@ -90,11 +91,13 @@ class _InteractionBehavior(AgentBehavior):
         agent_id: str,
         instructions: tuple[str, ...],
         security: SecurityHistory,
+        invocation: InvocationContext,
         material: TransientMaterial,
     ) -> Artifact:
         del agent_id
         sequence = next(self._ids)
         context = ContextBundle.derive_from(
+            invocation=invocation,
             source=material,
             owner_module_id=CORE_MODULE_ID,
             bundle_id=f"{CORE_MODULE_ID}:interaction:{sequence}",
@@ -113,8 +116,10 @@ class _InteractionBehavior(AgentBehavior):
             context,
             _interactive_requirement(),
             security=context.security_history,
+            invocation=invocation,
         )
         generated = Artifact.from_inference_result(
+            invocation=invocation,
             owner_module_id=CORE_MODULE_ID,
             artifact_id=f"{CORE_MODULE_ID}:response:{sequence}",
             source=context,
@@ -135,6 +140,7 @@ class _InteractionBehavior(AgentBehavior):
             and self._delegation is not None
         ):
             delegated_context = ContextBundle.derive_from(
+                invocation=invocation,
                 source=context,
                 additional_sources=(generated,),
                 owner_module_id=CORE_MODULE_ID,
@@ -149,10 +155,12 @@ class _InteractionBehavior(AgentBehavior):
                 decision.delegate_agent_id,
                 delegated_context,
                 security=delegated_context.security_history,
+                invocation=invocation,
             )
 
         if decision.durable_follow_up and self._work is not None:
             follow_up = ContextBundle.derive_from(
+                invocation=invocation,
                 source=context,
                 additional_sources=(generated,),
                 owner_module_id=CORE_MODULE_ID,
@@ -167,6 +175,7 @@ class _InteractionBehavior(AgentBehavior):
                 _follow_up_requirement(),
                 correlation=(),
                 security=follow_up.security_history,
+                invocation=invocation,
             )
             follow_up_work_id = accepted.id
 
@@ -179,6 +188,7 @@ class _InteractionBehavior(AgentBehavior):
             output_payload["follow_up_work_id"] = follow_up_work_id
 
         return Artifact.derive_from(
+            invocation=invocation,
             source=generated,
             additional_sources=additional_sources,
             owner_module_id=CORE_MODULE_ID,
@@ -269,7 +279,6 @@ class CoreModule(Module):
         )
         delegation_client = (
             AgentBrokerClient(
-                requester_module_id=CORE_MODULE_ID,
                 security=carried,
                 broker=agent_broker,
             )

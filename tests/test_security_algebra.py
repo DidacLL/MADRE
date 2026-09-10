@@ -501,8 +501,8 @@ def test_binding_evidence_is_order_independent_and_duplicate_keys_are_rejected()
         privacy=SecurityLevel.LEVEL_5,
         integrity=SecurityLevel.LEVEL_5,
     )
-    a = BindingEvidence(key="a", value="1")
-    b = BindingEvidence(key="b", value="2")
+    a = BindingEvidence(key="model", value="1")
+    b = BindingEvidence(key="provider_id", value="2")
     left = SecurityObject.issue(
         subject_ref=subject_ref,
         values=values,
@@ -518,7 +518,7 @@ def test_binding_evidence_is_order_independent_and_duplicate_keys_are_rejected()
         SecurityObject.issue(
             subject_ref=subject_ref,
             values=values,
-            binding_evidence=(a, BindingEvidence(key="a", value="different")),
+            binding_evidence=(a, BindingEvidence(key="model", value="different")),
         )
 
 

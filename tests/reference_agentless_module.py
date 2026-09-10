@@ -3,6 +3,7 @@
 from madre_sdk import (
     Artifact,
     ContextBundle,
+    InvocationContext,
     MaterialRepository,
     Module,
     SecurityLevel,
@@ -47,6 +48,7 @@ class ReferenceAgentlessModule(Module):
             purpose="note-analysis",
             payload={"source": source.payload},
             producer_security_ids=(self.security.security_id,),
+            invocation=InvocationContext(module=self.security),
             sensitivity=SecurityLevel.LEVEL_3,
             security_history=self.agentless_history(),
         )

@@ -27,7 +27,7 @@ from madre.interfaces import (
     WorkResultAccess,
 )
 from madre.registry import AgentDescriptor, OperationDescriptor, SkillDescriptor, WorkflowDescriptor
-from madre.security import SecurityHistory, SecurityObject
+from madre.security import InvocationContext, SecurityHistory, SecurityObject
 from madre_sdk.material import Material, MaterialRepository
 
 
@@ -44,13 +44,14 @@ class InferenceClient:
         material: Material,
         requirement: InferenceRequirement,
         *,
+        invocation: InvocationContext,
         constraints: ExecutionConstraints | None = None,
         security: SecurityHistory | None = None,
     ) -> TransientInferenceResult:
         return await self._inference.infer(
             TransientInferenceRequest(
                 originator=self._originator,
-                security=security or self._security,
+                security=(security or self._security).extend(objects=invocation.objects),
                 inference=requirement,
                 material=material.transient(),
                 constraints=constraints or ExecutionConstraints(),
@@ -77,6 +78,7 @@ class WorkClient:
         material: Material,
         requirement: InferenceRequirement,
         *,
+        invocation: InvocationContext,
         eligible_at: datetime | None = None,
         priority: int = 0,
         constraints: ExecutionConstraints | None = None,
@@ -88,7 +90,7 @@ class WorkClient:
         return await self._submission.submit(
             WorkSubmission(
                 originator=self._originator,
-                security=security or self._security,
+                security=(security or self._security).extend(objects=invocation.objects),
                 inference=requirement,
                 material=handle,
                 eligible_at=eligible_at,
@@ -143,10 +145,7 @@ class DiscoveryClient:
 
 
 class AgentBrokerClient:
-    def __init__(
-        self, *, requester_module_id: str, security: SecurityHistory, broker: AgentBrokering
-    ) -> None:
-        self._requester_module_id = requester_module_id
+    def __init__(self, *, security: SecurityHistory, broker: AgentBrokering) -> None:
         self._security = security
         self._broker = broker
 
@@ -156,11 +155,12 @@ class AgentBrokerClient:
         agent_id: str,
         material: Material,
         *,
+        invocation: InvocationContext,
         security: SecurityHistory | None = None,
     ) -> TransientMaterial:
         return await self._broker.invoke_agent(
-            self._requester_module_id,
-            security or self._security,
+            invocation,
+            (security or self._security).extend(objects=invocation.objects),
             module_id,
             agent_id,
             material.transient(),
@@ -168,10 +168,7 @@ class AgentBrokerClient:
 
 
 class OperationBrokerClient:
-    def __init__(
-        self, *, requester_module_id: str, security: SecurityHistory, broker: OperationBrokering
-    ) -> None:
-        self._requester_module_id = requester_module_id
+    def __init__(self, *, security: SecurityHistory, broker: OperationBrokering) -> None:
         self._security = security
         self._broker = broker
 
@@ -182,12 +179,13 @@ class OperationBrokerClient:
         effect_profile_id: str,
         material: Material,
         *,
+        invocation: InvocationContext,
         controllers: tuple[SecurityObject, ...] = (),
         security: SecurityHistory | None = None,
     ) -> TransientMaterial:
-        carried = (security or self._security).extend(objects=controllers)
+        carried = (security or self._security).extend(objects=(*controllers, *invocation.objects))
         return await self._broker.invoke_operation(
-            self._requester_module_id,
+            invocation,
             carried,
             module_id,
             operation_id,
@@ -214,9 +212,12 @@ class CoreDelegate:
     def selection(self) -> CoreSelection:
         return self._selection
 
-    async def interact(self, material: Material) -> TransientMaterial:
+    async def interact(
+        self, material: Material, *, invocation: InvocationContext
+    ) -> TransientMaterial:
         return await self._broker.invoke(
             self._selection.module_id,
             self._selection.interaction_agent_id,
             material,
+            invocation=invocation,
         )

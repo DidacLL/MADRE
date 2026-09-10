@@ -6,7 +6,13 @@ import sqlite3
 from datetime import datetime
 
 from madre.contracts import WorkAttempt, WorkFailure, WorkRetry
-from madre.security import SecurityHistory
+from madre.security import (
+    DEFAULT_SECURITY_EVALUATOR,
+    SecurityDerivation,
+    SecurityHistory,
+    SecurityObject,
+    SecurityTransition,
+)
 from madre.storage_db import _json
 
 
@@ -15,6 +21,39 @@ class WorkStoreBase:
         self.connection = connection
 
     def _persist_security_history(self, history: SecurityHistory) -> None:
+        if history.transitions or history.derivations:
+            # Published immutable ancestry cannot fork or cycle merely by being
+            # split across separate histories/completions. These are structural
+            # checks, never extra participants in a prospective transition.
+            stored_relations = tuple(
+                SecurityDerivation.model_validate_json(row[0])
+                for row in self.connection.execute(
+                    "SELECT derivation_json FROM security_derivation"
+                ).fetchall()
+            )
+            ids = {
+                sid
+                for relation in stored_relations
+                for sid in (
+                    relation.output_security_id,
+                    *relation.source_security_ids,
+                    *relation.producer_security_ids,
+                    *relation.validator_security_ids,
+                )
+            }
+            objects = tuple(
+                SecurityObject.model_validate_json(row[0])
+                for sid in sorted(ids)
+                for row in self.connection.execute(
+                    "SELECT object_json FROM security_object WHERE security_id=?", (sid,)
+                ).fetchall()
+            )
+            combined = history.merge(SecurityHistory(objects=objects, derivations=stored_relations))
+            decision = DEFAULT_SECURITY_EVALUATOR.evaluate(combined, SecurityTransition.issue())
+            if not decision.admissible:
+                raise ValueError(
+                    "invalid realized security history: " + ",".join(decision.failure_codes)
+                )
         for obj in history.objects:
             row = self.connection.execute(
                 "SELECT object_json FROM security_object WHERE security_id=?", (obj.security_id,)

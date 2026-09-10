@@ -28,6 +28,7 @@ from madre.security import (
     ExecutionBoundary,
     FrozenModel,
     Identifier,
+    InvocationContext,
     ParticipantSecurityValues,
     SecurityHistory,
     SecurityObject,
@@ -102,6 +103,7 @@ class AgentBehavior(Protocol):
         agent_id: str,
         instructions: tuple[str, ...],
         security: SecurityHistory,
+        invocation: InvocationContext,
         material: TransientMaterial,
     ) -> Material: ...
 
@@ -112,6 +114,7 @@ class OperationBehavior(Protocol):
         *,
         operation_id: str,
         effect_profile_id: str,
+        invocation: InvocationContext,
         security: SecurityHistory,
         material: TransientMaterial,
     ) -> Material: ...
@@ -214,11 +217,18 @@ class Agent:
             provenance=self.provenance,
         )
 
-    async def execute(self, material: TransientMaterial, *, security: SecurityHistory) -> Material:
+    async def execute(
+        self,
+        material: TransientMaterial,
+        *,
+        security: SecurityHistory,
+        invocation: InvocationContext,
+    ) -> Material:
         return await self._behavior.execute(
             agent_id=self.id,
             instructions=self.instructions,
             security=security,
+            invocation=invocation,
             material=material,
         )
 
@@ -299,6 +309,7 @@ class Operation:
         material: TransientMaterial,
         *,
         effect_profile_id: str,
+        invocation: InvocationContext,
         security: SecurityHistory,
     ) -> Material:
         if effect_profile_id not in self._profiles:
@@ -307,6 +318,7 @@ class Operation:
             operation_id=self.id,
             effect_profile_id=effect_profile_id,
             security=security,
+            invocation=invocation,
             material=material,
         )
 
@@ -326,10 +338,15 @@ class _AgentEndpoint(AgentEndpoint):
     async def invoke_agent(
         self,
         agent_id: str,
+        invocation: InvocationContext,
         security: SecurityHistory,
         material: TransientMaterial,
     ) -> TransientMaterial:
-        return (await self._module.execute_agent(agent_id, material, security=security)).transient()
+        return (
+            await self._module.execute_agent(
+                agent_id, material, security=security, invocation=invocation
+            )
+        ).transient()
 
 
 class _OperationEndpoint(OperationEndpoint):
@@ -348,6 +365,7 @@ class _OperationEndpoint(OperationEndpoint):
         self,
         operation_id: str,
         effect_profile_id: str,
+        invocation: InvocationContext,
         security: SecurityHistory,
         material: TransientMaterial,
     ) -> TransientMaterial:
@@ -357,6 +375,7 @@ class _OperationEndpoint(OperationEndpoint):
                 effect_profile_id,
                 material,
                 security=security,
+                invocation=invocation,
             )
         ).transient()
 
@@ -413,6 +432,7 @@ class Module:
             integrity=participant_values.integrity,
             publication_revision=version,
         )
+        InvocationContext(module=self.security, endpoint=self.endpoint_security)
         self.materials = materials or MaterialRepository()
         self._agents = {agent.id: agent for agent in self.agents}
         self._operations = {operation.id: operation for operation in self.operations}
@@ -498,6 +518,7 @@ class Module:
         material: Material | TransientMaterial,
         *,
         security: SecurityHistory | None = None,
+        invocation: InvocationContext | None = None,
     ) -> Material:
         agent = self.agent(agent_id)
         if agent is None:
@@ -505,8 +526,17 @@ class Module:
         transient = (
             material.transient() if not isinstance(material, TransientMaterial) else material
         )
-        history = (security or self.agent_context(agent_id)).merge(transient.history)
-        return await agent.execute(transient, security=history)
+        expected = InvocationContext(
+            module=self.security, agent=agent.security, endpoint=self.endpoint_security
+        )
+        if invocation is not None and invocation != expected:
+            raise ValueError("Agent invocation does not match executing publication")
+        history = (
+            (security or self.agent_context(agent_id))
+            .merge(transient.history)
+            .extend(objects=expected.objects)
+        )
+        return await agent.execute(transient, security=history, invocation=expected)
 
     async def execute_operation(
         self,
@@ -515,6 +545,7 @@ class Module:
         material: Material | TransientMaterial,
         *,
         security: SecurityHistory | None = None,
+        invocation: InvocationContext | None = None,
     ) -> Material:
         operation = self.operation(operation_id)
         if operation is None:
@@ -525,8 +556,17 @@ class Module:
         history = (security or self.operation_context(operation_id, effect_profile_id)).merge(
             transient.history
         )
+        profile = operation.effect_profile(effect_profile_id)
+        if profile is None:
+            raise KeyError(effect_profile_id)
+        expected = InvocationContext(
+            module=self.security, endpoint=self.endpoint_security, operation=profile.operation
+        )
+        if invocation is not None and invocation != expected:
+            raise ValueError("Operation invocation does not match executing publication")
         return await operation.execute(
             transient,
             effect_profile_id=effect_profile_id,
-            security=history,
+            security=history.extend(objects=expected.objects),
+            invocation=expected,
         )

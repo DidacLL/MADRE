@@ -31,10 +31,12 @@ from madre.security import (
     Disclosure,
     MaterialSecurityValues,
     OrdinarySecurityLevel,
+    SecurityDecision,
     SecurityEvaluator,
     SecurityHistory,
     SecurityLevel,
     SecurityTransition,
+    StructuralFailure,
 )
 from madre.storage import PlatformStore, utc_now
 
@@ -425,6 +427,19 @@ class WorkRuntime:
     ) -> None:
         transition = SecurityTransition.issue()
         decision = self._security_evaluator.evaluate(history, transition)
+        completed = set(self.store.completed_derivation_ids())
+        if any(
+            relation.kind == "validation" and relation.derivation_id not in completed
+            for relation in history.derivations
+        ):
+            decision = SecurityDecision(
+                admissible=False,
+                transition_id=transition.transition_id,
+                failures=(
+                    *decision.failures,
+                    StructuralFailure(code="unverified_validation_participation"),
+                ),
+            )
         self.store.record_security_decision(
             crossing_id=crossing_id,
             crossing_kind=crossing_kind,

@@ -7,7 +7,7 @@ import json
 from enum import IntEnum
 from typing import Annotated, Literal, Protocol, cast
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 Identifier = Annotated[str, Field(min_length=1)]
 SecurityID = Identifier
@@ -101,8 +101,34 @@ class SecuritySubjectRef(FrozenModel):
 
 
 class BindingEvidence(FrozenModel):
-    key: Identifier
-    value: Identifier
+    key: Literal[
+        "content_digest",
+        "adapter_kind",
+        "endpoint_scheme",
+        "endpoint_host",
+        "endpoint_port",
+        "endpoint_path_digest",
+        "model",
+        "boundary",
+        "provider_id",
+    ]
+    value: str = Field(min_length=1, max_length=256, pattern=r"^[A-Za-z0-9._:/+\-]+$")
+
+    @model_validator(mode="after")
+    def structural_value(self) -> BindingEvidence:
+        import re
+
+        if self.key.endswith("digest") and not re.fullmatch(r"[0-9a-f]{64}", self.value):
+            raise ValueError("binding digest must be SHA-256 hexadecimal")
+        if self.key == "endpoint_scheme" and self.value not in {"http", "https"}:
+            raise ValueError("unsupported endpoint scheme")
+        if self.key == "endpoint_port" and (
+            not self.value.isdecimal() or not 1 <= int(self.value) <= 65535
+        ):
+            raise ValueError("invalid endpoint port")
+        if self.key == "endpoint_host" and not re.fullmatch(r"[A-Za-z0-9.:-]+", self.value):
+            raise ValueError("invalid endpoint host")
+        return self
 
 
 class SecurityObject(FrozenModel):
@@ -111,7 +137,7 @@ class SecurityObject(FrozenModel):
     security_id: SecurityID
     subject_ref: SecuritySubjectRef
     values: SecurityValues
-    binding_evidence: tuple[BindingEvidence, ...] = ()
+    binding_evidence: tuple[BindingEvidence, ...] = Field(default=(), max_length=16)
     binding_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
 
     @model_validator(mode="after")
@@ -194,6 +220,75 @@ class OperationReference(FrozenModel):
     operation_revision: Identifier = "1"
 
 
+class InvocationContext(FrozenModel):
+    """Exact active execution facts; explicitly carried, never an authority token.
+
+    The current in-process endpoint forwards nested calls: it does not receive their
+    return payload. Consequently recipients are the Module and active Agent only.
+    Endpoint identity still binds dispatch and the production of new endpoint output.
+    """
+
+    module: SecurityObject
+    agent: SecurityObject | None = None
+    endpoint: SecurityObject | None = None
+    operation: OperationReference | None = None
+
+    @model_validator(mode="after")
+    def validate_participants(self) -> InvocationContext:
+        module_ref = self.module.subject_ref
+        if (
+            module_ref.subject_kind != "module"
+            or module_ref.local_id != module_ref.owner_module_id
+            or self.agent is not None
+            and self.operation is not None
+        ):
+            raise ValueError("invalid invocation Module/actor")
+        for obj, kind in (
+            (self.module, "module"),
+            (self.agent, "agent"),
+            (self.endpoint, "endpoint"),
+        ):
+            if obj is None:
+                continue
+            ref = obj.subject_ref
+            if (
+                ref.subject_kind != kind
+                or ref.owner_module_id != module_ref.owner_module_id
+                or ref.publication_revision != module_ref.publication_revision
+                or not obj.verify_binding()
+                or not isinstance(obj.values, ParticipantSecurityValues)
+                or obj.values.integrity is None
+                or obj.values.privacy is None
+            ):
+                raise ValueError("invocation participants must match the exact publication")
+        if self.operation is not None and (
+            self.operation.module_id != self.module_id
+            or self.operation.publication_revision != module_ref.publication_revision
+        ):
+            raise ValueError("invocation Operation belongs to another publication")
+        return self
+
+    @property
+    def module_id(self) -> str:
+        return self.module.subject_ref.owner_module_id
+
+    @property
+    def objects(self) -> tuple[SecurityObject, ...]:
+        return tuple(obj for obj in (self.module, self.agent, self.endpoint) if obj is not None)
+
+    @property
+    def selector_security_id(self) -> SecurityID:
+        return (self.agent or self.module).security_id
+
+    @property
+    def recipient_security_ids(self) -> tuple[SecurityID, ...]:
+        return tuple(obj.security_id for obj in (self.module, self.agent) if obj is not None)
+
+    @property
+    def producer_security_ids(self) -> tuple[SecurityID, ...]:
+        return tuple(sorted(obj.security_id for obj in self.objects))
+
+
 class EffectProfile(FrozenModel):
     """Immutable Operation-owned security-relevant execution shape."""
 
@@ -234,11 +329,21 @@ class Control(FrozenModel):
     effect_profile_security_id: SecurityID
     controller_security_ids: tuple[SecurityID, ...] = ()
 
+    @field_validator("controller_security_ids")
+    @classmethod
+    def canonical_controllers(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        return tuple(sorted(set(value)))
+
 
 class EffectExecution(FrozenModel):
     operation: OperationReference
     effect_profile_security_id: SecurityID
     executor_security_ids: tuple[SecurityID, ...] = ()
+
+    @field_validator("executor_security_ids")
+    @classmethod
+    def canonical_executors(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        return tuple(sorted(set(value)))
 
 
 class SecurityTransition(FrozenModel):
@@ -248,6 +353,11 @@ class SecurityTransition(FrozenModel):
     disclosures: tuple[Disclosure, ...] = ()
     control: Control | None = None
     effect_execution: EffectExecution | None = None
+
+    @field_validator("disclosures")
+    @classmethod
+    def canonical_disclosures(cls, value: tuple[Disclosure, ...]) -> tuple[Disclosure, ...]:
+        return tuple(sorted(set(value), key=lambda item: _canonical(item.model_dump(mode="json"))))
 
     def identity_payload(self) -> dict[str, object]:
         return {
@@ -269,6 +379,7 @@ class SecurityTransition(FrozenModel):
         control: Control | None = None,
         effect_execution: EffectExecution | None = None,
     ) -> SecurityTransition:
+        disclosures = cls.canonical_disclosures(disclosures)
         payload = {
             "disclosures": [item.model_dump(mode="json") for item in disclosures],
             "control": control.model_dump(mode="json") if control else None,
@@ -297,6 +408,11 @@ class SecurityDerivation(FrozenModel):
     producer_security_ids: tuple[SecurityID, ...] = ()
     validator_security_ids: tuple[SecurityID, ...] = ()
 
+    @field_validator("source_security_ids", "producer_security_ids", "validator_security_ids")
+    @classmethod
+    def canonical_participants(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        return tuple(sorted(set(value)))
+
     def identity_payload(self) -> dict[str, object]:
         return {
             "kind": self.kind,
@@ -319,6 +435,9 @@ class SecurityDerivation(FrozenModel):
         producer_security_ids: tuple[SecurityID, ...] = (),
         validator_security_ids: tuple[SecurityID, ...] = (),
     ) -> SecurityDerivation:
+        source_security_ids = cls.canonical_participants(source_security_ids)
+        producer_security_ids = cls.canonical_participants(producer_security_ids)
+        validator_security_ids = cls.canonical_participants(validator_security_ids)
         payload = {
             "kind": kind,
             "output_security_id": output_security_id,
@@ -593,11 +712,6 @@ class SecurityAlgebra:
     ) -> list[StructuralFailure]:
         failures: list[StructuralFailure] = []
         seen_transitions: dict[str, SecurityTransition] = {}
-        numeric_failure_codes = {
-            "confidentiality_capacity_below_sensitivity",
-            "control_integrity_below_demand",
-            "effect_integrity_below_risk",
-        }
         for item in history.transitions:
             prior = seen_transitions.get(item.transition_id)
             if prior is not None and prior != item:
@@ -620,11 +734,7 @@ class SecurityAlgebra:
 
             for disclosure in item.disclosures:
                 _, relation_failures = self._evaluate_disclosure(disclosure, index)
-                failures.extend(
-                    failure
-                    for failure in relation_failures
-                    if failure.code not in numeric_failure_codes
-                )
+                failures.extend(relation_failures)
 
             if (item.control is None) != (item.effect_execution is None):
                 failures.append(
@@ -639,11 +749,7 @@ class SecurityAlgebra:
                     item.effect_execution,
                     index,
                 )
-                failures.extend(
-                    failure
-                    for failure in relation_failures
-                    if failure.code not in numeric_failure_codes
-                )
+                failures.extend(relation_failures)
         return failures
 
     def _evaluate_disclosure(
@@ -971,6 +1077,39 @@ class SecurityAlgebra:
     ) -> list[StructuralFailure]:
         failures: list[StructuralFailure] = []
         seen: dict[str, SecurityDerivation] = {}
+        by_output: dict[str, SecurityDerivation] = {}
+        for relation in history.derivations:
+            previous = by_output.get(relation.output_security_id)
+            if previous is not None and previous != relation:
+                failures.append(
+                    StructuralFailure(
+                        code="invalid_derivation", detail="multiple-output-derivations"
+                    )
+                )
+            by_output[relation.output_security_id] = relation
+        # Iterative DFS: ancestry is a DAG, independent of tuple insertion order.
+        finished: set[str] = set()
+        for root in by_output:
+            active: set[str] = set()
+            pending = [(root, False)]
+            while pending:
+                node, leaving = pending.pop()
+                if leaving:
+                    active.discard(node)
+                    finished.add(node)
+                    continue
+                if node in active:
+                    failures.append(
+                        StructuralFailure(code="invalid_derivation", detail="cyclic-ancestry")
+                    )
+                    break
+                if node in finished:
+                    continue
+                active.add(node)
+                pending.append((node, True))
+                ancestor = by_output.get(node)
+                if ancestor is not None:
+                    pending.extend((source, False) for source in ancestor.source_security_ids)
         for derivation in history.derivations:
             prior = seen.get(derivation.derivation_id)
             if prior is not None and prior != derivation:
@@ -1025,6 +1164,21 @@ class SecurityAlgebra:
                     )
                 )
                 continue
+            if any(
+                not isinstance(source.values, MaterialSecurityValues) for source in concrete_sources
+            ):
+                failures.append(
+                    StructuralFailure(code="invalid_derivation", detail="source-not-material")
+                )
+            if any(
+                item.subject_ref.subject_kind not in {"module", "agent", "endpoint", "capability"}
+                for item in (*concrete_producers, *concrete_validators)
+            ):
+                failures.append(
+                    StructuralFailure(
+                        code="invalid_derivation", detail="invalid-producing-participant"
+                    )
+                )
             if output.security_id in derivation.source_security_ids:
                 failures.append(
                     StructuralFailure(
