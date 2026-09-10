@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, Header, HTTPException, Response
 
@@ -41,6 +43,20 @@ from madre.storage import PlatformStore, open_database
 def _capabilities(settings: Settings) -> CapabilityRegistry:
     registry = CapabilityRegistry()
     for capability_id, config in settings.capabilities.items():
+        endpoint = urlsplit(config.endpoint)
+        if (
+            endpoint.scheme not in {"http", "https"}
+            or not endpoint.hostname
+            or endpoint.username is not None
+            or endpoint.password is not None
+            or endpoint.query
+            or endpoint.fragment
+            or "?" in config.endpoint
+            or "#" in config.endpoint
+        ):
+            raise ValueError("Capability endpoint must have a non-secret structural URL")
+        endpoint_host = endpoint.hostname.encode("idna").decode("ascii").lower()
+        endpoint_port = endpoint.port or (443 if endpoint.scheme == "https" else 80)
         security = SecurityObject.issue(
             subject_ref=SecuritySubjectRef(
                 owner_module_id="madre.platform",
@@ -54,7 +70,13 @@ def _capabilities(settings: Settings) -> CapabilityRegistry:
             ),
             binding_evidence=(
                 BindingEvidence(key="adapter_kind", value=config.kind),
-                BindingEvidence(key="endpoint", value=config.endpoint),
+                BindingEvidence(key="endpoint_scheme", value=endpoint.scheme),
+                BindingEvidence(key="endpoint_host", value=endpoint_host),
+                BindingEvidence(key="endpoint_port", value=str(endpoint_port)),
+                BindingEvidence(
+                    key="endpoint_path_digest",
+                    value=hashlib.sha256((endpoint.path or "/").encode()).hexdigest(),
+                ),
                 BindingEvidence(key="model", value=config.model),
                 BindingEvidence(key="boundary", value=config.boundary),
                 BindingEvidence(key="provider_id", value=config.provider_id or "none"),

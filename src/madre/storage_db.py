@@ -134,7 +134,10 @@ CREATE TABLE broker_event (
     event TEXT NOT NULL,
     observed_at TEXT NOT NULL,
     output_digest TEXT,
-    output_size INTEGER
+    output_size INTEGER,
+    completion_context_json TEXT,
+    output_security_id TEXT,
+    derivation_ids_json TEXT
 );
 """
 

@@ -22,7 +22,7 @@ from madre.registry import (
     SkillDescriptor,
     WorkflowDescriptor,
 )
-from madre.security import ExecutionBoundary, SecurityHistory, SecurityObject
+from madre.security import ExecutionBoundary, InvocationContext, SecurityHistory, SecurityObject
 
 
 class ModuleRegistration(Protocol):
@@ -78,6 +78,7 @@ class AgentEndpoint(Protocol):
     async def invoke_agent(
         self,
         agent_id: str,
+        invocation: InvocationContext,
         security: SecurityHistory,
         material: TransientMaterial,
     ) -> TransientMaterial: ...
@@ -94,6 +95,7 @@ class OperationEndpoint(Protocol):
         self,
         operation_id: str,
         effect_profile_id: str,
+        invocation: InvocationContext,
         security: SecurityHistory,
         material: TransientMaterial,
     ) -> TransientMaterial: ...
@@ -110,7 +112,7 @@ class OperationEndpointRegistration(Protocol):
 class AgentBrokering(Protocol):
     async def invoke_agent(
         self,
-        requester_module_id: str,
+        requester: InvocationContext,
         security: SecurityHistory,
         target_module_id: str,
         agent_id: str,
@@ -121,7 +123,7 @@ class AgentBrokering(Protocol):
 class OperationBrokering(Protocol):
     async def invoke_operation(
         self,
-        requester_module_id: str,
+        requester: InvocationContext,
         security: SecurityHistory,
         target_module_id: str,
         operation_id: str,

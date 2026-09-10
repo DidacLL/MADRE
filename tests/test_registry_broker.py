@@ -8,13 +8,14 @@ import pytest
 
 from madre.broker import Broker, SecurityDenied, UnknownOperationEffect
 from madre.registry import InteroperabilityRegistry
-from madre.security import SecurityHistory, SecurityLevel
+from madre.security import InvocationContext, SecurityHistory, SecurityLevel
 from madre.storage import PlatformStore, open_database
 from madre_sdk import (
     Agent,
     AgentBehavior,
     Artifact,
     EffectProfile,
+    ExecutionServices,
     Module,
     Operation,
     OperationBehavior,
@@ -64,6 +65,8 @@ class EchoAgent(AgentBehavior):
         agent_id: str,
         instructions: tuple[str, ...],
         security: SecurityHistory,
+        invocation: InvocationContext,
+        services: ExecutionServices,
         material: TransientMaterial,
     ) -> Artifact:
         del agent_id, instructions
@@ -74,6 +77,7 @@ class EchoAgent(AgentBehavior):
             artifact_id="target.agent.output",
             payload={"echo": material.payload},
             producer_security_ids=(self.producer_security_id,),
+            invocation=invocation,
             sensitivity=SecurityLevel.LEVEL_3,
             security_history=security,
         )
@@ -92,6 +96,8 @@ class EchoOperation(OperationBehavior):
         operation_id: str,
         effect_profile_id: str,
         security: SecurityHistory,
+        invocation: InvocationContext,
+        services: ExecutionServices,
         material: TransientMaterial,
     ) -> Artifact:
         del operation_id
@@ -105,6 +111,7 @@ class EchoOperation(OperationBehavior):
             artifact_id="target.operation.output",
             payload={"effect_profile": effect_profile_id},
             producer_security_ids=(self.producer_security_id,),
+            invocation=invocation,
             sensitivity=SecurityLevel.LEVEL_3,
             security_history=security,
         )
@@ -234,7 +241,7 @@ def test_agent_broker_builds_only_actual_disclosure_transition(tmp_path: Path) -
         source = input_material(requester)
         output = asyncio.run(
             broker.invoke_agent(
-                REQUESTER,
+                InvocationContext(module=requester),
                 source.security_history,
                 TARGET,
                 "target.agent",
@@ -271,7 +278,7 @@ def test_agent_disclosure_rejects_low_privacy_path_before_dispatch(tmp_path: Pat
         with pytest.raises(SecurityDenied, match="confidentiality_capacity_below_sensitivity"):
             asyncio.run(
                 broker.invoke_agent(
-                    REQUESTER,
+                    InvocationContext(module=requester),
                     source.security_history,
                     TARGET,
                     "target.agent",
@@ -297,7 +304,7 @@ def test_low_integrity_display_material_is_not_an_effect_controller(tmp_path: Pa
         )
         output = asyncio.run(
             broker.invoke_agent(
-                REQUESTER,
+                InvocationContext(module=requester),
                 source.security_history,
                 TARGET,
                 "target.agent",
@@ -331,7 +338,7 @@ def test_direct_user_effect_passes_control_but_still_requires_effect_integrity(
         )
         output = asyncio.run(
             broker.invoke_operation(
-                REQUESTER,
+                InvocationContext(module=requester),
                 source.security_history,
                 TARGET,
                 "target.operation",
@@ -366,7 +373,7 @@ def test_autonomous_high_risk_effect_rejects_low_integrity_controller(tmp_path: 
         with pytest.raises(SecurityDenied, match="control_integrity_below_demand"):
             asyncio.run(
                 broker.invoke_operation(
-                    REQUESTER,
+                    InvocationContext(module=requester),
                     source.security_history,
                     TARGET,
                     "target.operation",
@@ -401,7 +408,7 @@ def test_publishing_effect_profile_privacy_is_on_actual_disclosure_path(tmp_path
         with pytest.raises(SecurityDenied, match="confidentiality_capacity_below_sensitivity"):
             asyncio.run(
                 broker.invoke_operation(
-                    REQUESTER,
+                    InvocationContext(module=requester),
                     source.security_history,
                     TARGET,
                     "target.operation",
@@ -430,7 +437,7 @@ def test_caller_can_select_only_published_immutable_effect_profile(tmp_path: Pat
         with pytest.raises(SecurityDenied, match="invalid_effect_profile"):
             asyncio.run(
                 broker.invoke_operation(
-                    REQUESTER,
+                    InvocationContext(module=requester),
                     source.security_history,
                     TARGET,
                     "target.operation",
@@ -459,7 +466,7 @@ def test_operation_exception_is_unknown_effect_and_is_not_retried(tmp_path: Path
         with pytest.raises(UnknownOperationEffect):
             asyncio.run(
                 broker.invoke_operation(
-                    REQUESTER,
+                    InvocationContext(module=requester),
                     source.security_history,
                     TARGET,
                     "target.operation",

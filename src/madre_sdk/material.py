@@ -15,6 +15,7 @@ from madre.security import (
     BindingEvidence,
     FrozenModel,
     Identifier,
+    InvocationContext,
     MaterialSecurityValues,
     OrdinarySecurityLevel,
     SecurityDerivation,
@@ -152,6 +153,7 @@ class Artifact(FrozenModel):
     def from_inference_result(
         cls,
         *,
+        invocation: InvocationContext,
         owner_module_id: str,
         artifact_id: str,
         source: Material,
@@ -163,11 +165,15 @@ class Artifact(FrozenModel):
     ) -> Artifact:
         if result.output_digest != content_digest(result.payload):
             raise ValueError("inference result digest mismatch")
-        bound = result.output_integrity
+        production = tuple(
+            sorted(set((*result.producer_security_ids, *invocation.producer_security_ids)))
+        )
+        production_history = result.security.extend(objects=invocation.objects)
+        bound = min(result.output_integrity, _required_integrity(production_history, production))
         desired = integrity or bound
         if int(desired) > int(bound):
             raise ValueError("ordinary generated output cannot exceed inference assurance")
-        history = source.security_history.merge(result.security)
+        history = source.security_history.merge(production_history)
         security = _material_security(
             owner_module_id=owner_module_id,
             reference=artifact_id,
@@ -183,7 +189,7 @@ class Artifact(FrozenModel):
             kind="ordinary",
             output_security_id=security.security_id,
             source_security_ids=result.source_security_ids,
-            producer_security_ids=result.producer_security_ids,
+            producer_security_ids=production,
         )
         history = history.extend(derivations=(derivation,))
         _validate_history(history)
@@ -195,6 +201,7 @@ class Artifact(FrozenModel):
     def from_work_result(
         cls,
         *,
+        invocation: InvocationContext,
         owner_module_id: str,
         artifact_id: str,
         payload: JsonValue,
@@ -207,8 +214,13 @@ class Artifact(FrozenModel):
         evidence = record.result
         if evidence is None or evidence.digest != content_digest(payload):
             raise ValueError("work result evidence does not match payload")
-        desired = integrity or evidence.output_integrity
-        if int(desired) > int(evidence.output_integrity):
+        production = tuple(
+            sorted(set((*evidence.producer_security_ids, *invocation.producer_security_ids)))
+        )
+        production_history = record.spec.security.extend(objects=invocation.objects)
+        bound = min(evidence.output_integrity, _required_integrity(production_history, production))
+        desired = integrity or bound
+        if int(desired) > int(bound):
             raise ValueError("ordinary work output cannot exceed execution assurance")
         security = _material_security(
             owner_module_id=owner_module_id,
@@ -220,12 +232,12 @@ class Artifact(FrozenModel):
             publication_revision=publication_revision,
             representation_revision=representation_revision,
         )
-        history = record.spec.security.extend(objects=(security,))
+        history = production_history.extend(objects=(security,))
         derivation = SecurityDerivation.issue(
             kind="ordinary",
             output_security_id=security.security_id,
             source_security_ids=evidence.source_security_ids,
-            producer_security_ids=evidence.producer_security_ids,
+            producer_security_ids=production,
         )
         history = history.extend(derivations=(derivation,))
         _validate_history(history)
@@ -235,6 +247,7 @@ class Artifact(FrozenModel):
     def derive_from(
         cls,
         *,
+        invocation: InvocationContext,
         source: Material | TransientMaterial,
         owner_module_id: str,
         artifact_id: str,
@@ -248,6 +261,10 @@ class Artifact(FrozenModel):
         security_history: SecurityHistory | None = None,
     ) -> Artifact:
         history, source_ids = _merge_sources(source, additional_sources, security_history)
+        history = history.extend(objects=invocation.objects)
+        producer_security_ids = tuple(
+            sorted(set((*producer_security_ids, *invocation.producer_security_ids)))
+        )
         assurance = _required_integrity(history, (*source_ids, *producer_security_ids))
         desired = integrity or assurance
         if int(desired) > int(assurance):
@@ -275,6 +292,7 @@ class Artifact(FrozenModel):
     def derive(
         self,
         *,
+        invocation: InvocationContext,
         artifact_id: str,
         payload: JsonValue,
         producer_security_ids: tuple[str, ...],
@@ -284,6 +302,7 @@ class Artifact(FrozenModel):
     ) -> Artifact:
         values = cast(MaterialSecurityValues, self.security.values)
         return Artifact.derive_from(
+            invocation=invocation,
             source=self,
             owner_module_id=self.security.subject_ref.owner_module_id,
             artifact_id=artifact_id,
@@ -298,27 +317,29 @@ class Artifact(FrozenModel):
     def validated(
         self,
         *,
+        invocation: InvocationContext,
         artifact_id: str,
         payload: JsonValue,
-        validator_security_ids: tuple[str, ...],
         sensitivity: OrdinarySecurityLevel | None = None,
         integrity: OrdinarySecurityLevel | None = None,
         representation_revision: str = "1",
     ) -> Artifact:
         values = cast(MaterialSecurityValues, self.security.values)
-        assurance = _required_integrity(self.security_history, validator_security_ids)
+        history = self.security_history.extend(objects=invocation.objects)
+        validator_security_ids = invocation.producer_security_ids
+        assurance = _required_integrity(history, validator_security_ids)
         desired = integrity or assurance
         if int(desired) > int(assurance):
             raise ValueError("validated representation exceeds validator assurance")
         output = Artifact.create(
-            owner_module_id=self.security.subject_ref.owner_module_id,
+            owner_module_id=invocation.module_id,
             artifact_id=artifact_id,
             payload=payload,
             sensitivity=sensitivity or cast(OrdinarySecurityLevel, values.sensitivity),
             integrity=desired,
-            publication_revision=self.security.subject_ref.publication_revision,
+            publication_revision=invocation.module.subject_ref.publication_revision,
             representation_revision=representation_revision,
-            security_history=self.security_history,
+            security_history=history,
         )
         relation = SecurityDerivation.issue(
             kind="validation",
@@ -403,6 +424,7 @@ class ContextBundle(FrozenModel):
     def derive_from(
         cls,
         *,
+        invocation: InvocationContext,
         source: Material | TransientMaterial,
         owner_module_id: str,
         bundle_id: str,
@@ -417,6 +439,10 @@ class ContextBundle(FrozenModel):
         security_history: SecurityHistory | None = None,
     ) -> ContextBundle:
         history, source_ids = _merge_sources(source, additional_sources, security_history)
+        history = history.extend(objects=invocation.objects)
+        producer_security_ids = tuple(
+            sorted(set((*producer_security_ids, *invocation.producer_security_ids)))
+        )
         assurance = _required_integrity(history, (*source_ids, *producer_security_ids))
         desired = integrity or assurance
         if int(desired) > int(assurance):
@@ -445,6 +471,7 @@ class ContextBundle(FrozenModel):
     def derive(
         self,
         *,
+        invocation: InvocationContext,
         bundle_id: str,
         purpose: str,
         payload: JsonValue,
@@ -455,6 +482,7 @@ class ContextBundle(FrozenModel):
     ) -> ContextBundle:
         values = cast(MaterialSecurityValues, self.security.values)
         return ContextBundle.derive_from(
+            invocation=invocation,
             source=self,
             owner_module_id=self.security.subject_ref.owner_module_id,
             bundle_id=bundle_id,

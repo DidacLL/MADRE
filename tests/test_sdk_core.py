@@ -145,18 +145,18 @@ class FakeAgentBroker:
 
     async def invoke_agent(
         self,
-        requester_module_id,
+        requester,
         security,
         target_module_id,
         agent_id,
         material,
     ):
-        self.calls.append((requester_module_id, target_module_id, agent_id))
+        self.calls.append((requester.module_id, target_module_id, agent_id))
         producer = next(
             obj.security_id
             for obj in security.objects
             if obj.subject_ref.subject_kind == "module"
-            and obj.subject_ref.local_id == requester_module_id
+            and obj.subject_ref.local_id == requester.module_id
         )
         output = Artifact.derive_from(
             source=material,
@@ -164,6 +164,7 @@ class FakeAgentBroker:
             artifact_id="delegate.output",
             payload={"delegated": True},
             producer_security_ids=(producer,),
+            invocation=requester,
             sensitivity=SecurityLevel.LEVEL_5,
             security_history=security,
         )
