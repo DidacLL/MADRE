@@ -15,7 +15,7 @@ L = {1, 2, 3, 4, 5}
 1 < 2 < 3 < 4 < 5
 ```
 
-The only algebraic reductions required by the runtime are:
+The runtime algebra requires only:
 
 ```text
 join = max
@@ -70,7 +70,7 @@ LEVEL_4  strong protection
 LEVEL_5  strongest applicable controlled/private protection
 ```
 
-Why a subject receives a given Privacy valuation—locality, isolation, sandboxing, retention behavior, network exposure, contractual guarantees, platform controls, or other evidence—is valuation/audit information. Those factors are not separate runtime algebra dimensions unless a future architecture revision proves that the decision function must observe them independently.
+Why a subject receives a given Privacy valuation—locality, isolation, sandboxing, retention behavior, network exposure, contractual guarantees, platform controls or other evidence—is valuation/audit information. Those factors are not separate runtime algebra dimensions unless a future architecture revision proves that the decision function must observe them independently.
 
 Privacy is not semantic correctness and is not permission.
 
@@ -119,7 +119,7 @@ Risk is independent of material Sensitivity.
 
 Autonomy is the amount of security-significant effect control left to machine execution after the interaction/control contract represented by that profile has occurred.
 
-It includes residual machine discretion over such facts as trigger, target, parameters, scope, effect content and security-significant continuation/repetition.
+It includes residual machine discretion over trigger, target, parameters, scope, effect content and security-significant continuation/repetition.
 
 ```text
 LEVEL_1  exact/direct user-controlled effect; negligible residual machine discretion
@@ -131,7 +131,7 @@ LEVEL_5  fully or substantially machine-controlled effect
 
 A generic confirmation dialog does not automatically imply low Autonomy. Autonomy reflects the actual bound execution shape.
 
-User involvement is therefore represented by selecting a different immutable EffectProfile whose residual machine control is lower. It is not represented by an `approved=true` authorization bit.
+User involvement is represented by selecting a different immutable EffectProfile whose residual machine control is lower. It is not represented by an `approved=true` authorization bit.
 
 ## 3. Subject mapping
 
@@ -223,7 +223,7 @@ EffectProfile
 
 A concrete effect transition selects a bound EffectProfile. The caller does not supply arbitrary Risk, Autonomy, Integrity or Privacy numbers.
 
-For example:
+Example:
 
 ```text
 delete.resource / direct-control
@@ -297,13 +297,6 @@ The edge is safe exactly when:
 ```text
 DisclosureSafe(d)
     <=> Sensitivity(m) <= PathPrivacy(d)
-```
-
-Equivalently:
-
-```text
-Sensitivity(material)
-    <= minimum effective Privacy of the actual disclosure path
 ```
 
 Every relevant protection is necessary. One strong participant cannot numerically compensate for a weaker participant on the same actual disclosure path.
@@ -406,6 +399,7 @@ the selected EffectProfile belongs to the invoked Operation
 transition relationships reference actual participants
 material identity/digest/security continuity holds where required
 new derivation output identity differs from source identities
+derivation Integrity bounds hold
 ```
 
 Structural failure is deterministic inadmissibility.
@@ -419,7 +413,7 @@ Security history is conceptually:
 ```text
 SecurityHistory
     objects       # immutable SecurityObjects actually introduced
-    transitions   # accepted/rejected governed transitions + evidence
+    transitions   # governed transitions + deterministic decision evidence
     derivations   # security-relevant representation relationships
 ```
 
@@ -449,7 +443,7 @@ A minimized, anonymized, validated, summarized, generated, reclassified or other
 new material identity
 new SecurityID
 new SecurityObject
-DERIVATION relation to its sources/validators where relevant
+DERIVATION relation to sources/producers/validators where relevant
 ```
 
 ### Sensitivity reduction
@@ -468,15 +462,40 @@ A later disclosure of only the new representation evaluates level 2. The level-5
 
 Kernel never reads private content to determine whether minimization is semantically valid.
 
-### Integrity preservation and validation
+### Ordinary derivation Integrity
 
-Ordinary copying/wrapping does not silently increase Integrity.
+Ordinary transformation cannot increase Integrity by repackaging or copying material.
 
-A derivation should preserve enough structural evidence to prevent weak control material from becoming high-Integrity solely through repackaging.
+For an ordinary derivation with source materials `S` and producing participants `P`:
 
-A stronger-Integrity representation requires an explicit validation transformation whose validating path supports that assurance. The validated representation gets a new identity/SecurityObject; the low-Integrity source remains in derivation history but need not remain a direct controller if the validated representation is what later drives the effect.
+```text
+Integrity(output)
+    <= meet(
+        Integrity(s) for s in S,
+        Integrity(p) for p in P
+    )
+```
 
-Generated output follows the same rule. Once delivered it is ordinary Module-owned material. Its initial Integrity reflects its production/validation path; later explicit validation may create a new higher-Integrity representation.
+Only actual security-relevant producers belong in `P`.
+
+This means a high-Integrity actor cannot wash a low-Integrity source merely by wrapping it in a new Artifact.
+
+### Validation derivation Integrity
+
+An explicit validation transformation may create a new representation with higher Integrity than its source because the validators become the assurance basis of that new representation.
+
+For validator set `V`:
+
+```text
+Integrity(validated_output)
+    <= meet(Integrity(v) for v in V)
+```
+
+The validation relationship, sources and validators remain derivation history. The low-Integrity source need not remain a direct controller of a later effect when the validated representation—not the source—is what actually controls that effect.
+
+A validation derivation is not a generic relabeling operation. It must be an explicit Module-owned transformation whose declared validation participants actually support the assigned Integrity.
+
+Generated output follows the same rules. Once delivered it is ordinary Module-owned material. Its initial Integrity reflects its production/derivation path; later explicit validation may create a distinct higher-Integrity representation.
 
 ## 14. Unknown and third-party valuation
 
@@ -511,14 +530,14 @@ algebra version
 transition identity/kind
 structural failures
 
-for disclosure failures:
+for disclosure checks:
     material SecurityID
     Sensitivity
     path SecurityIDs
     effective path Privacy
     limiting SecurityID(s)
 
-for effect failures:
+for effect checks:
     EffectProfile SecurityID
     Risk
     Autonomy
@@ -639,7 +658,7 @@ If it is merely displayed, it is not a controller and creates no control-integri
 
 ### Validated derived control
 
-A low-Integrity source may participate in an explicit validation derivation that creates a distinct higher-Integrity representation. If the validated representation—not the original source—controls the Operation, the control predicate evaluates that new representation while retaining the source in history.
+A low-Integrity source may participate in an explicit validation derivation whose validators support a distinct higher-Integrity representation. If the validated representation—not the original source—controls the Operation, the control predicate evaluates that new representation while retaining the source and validation relationship in history.
 
 ### Publishing sensitive material
 
@@ -705,17 +724,9 @@ Each retained numeric concept distinguishes a required MADRE case that would oth
 | Risk | harmless vs destructive bounded effect |
 | Autonomy | direct-user vs autonomous realization of the same consequence |
 
-Earlier candidate dimensions such as numeric `IntendedUse`, generic `Trust`, actor `Isolation` as an independent runtime operand, and Capability `Risk` are not required by the final runtime decision function.
+The runtime algebra therefore has five normalized concepts and no additional numeric permission/purpose/trust dimension.
 
-Their useful underlying information is represented more precisely as:
-
-```text
-IntendedUse       -> explicit transition role / Module-owned purpose
-Trust/Isolation   -> resulting Privacy and/or Integrity valuation + optional audit evidence
-Capability Risk   -> Privacy/Integrity mechanism properties; bounded consequence is EffectProfile Risk
-```
-
-This is an exact runtime quotient where the earlier distinctions were observable only through a fixed meet before any decision.
+Non-numeric transition roles carry relationship meaning that cannot be represented correctly by another scalar.
 
 ## 19. Authority exclusions
 
