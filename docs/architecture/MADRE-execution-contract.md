@@ -30,7 +30,7 @@ WorkSubmission -> WorkRecord -> 0..N WorkAttempts
 
 A `WorkSubmission` is an explicit request for schedulable/recoverable physical computation. The caller has already decided semantically that the computation is useful.
 
-The durable `WorkRecord` stores execution metadata, material identity/integrity binding, carried security identities and scheduling state. It never embeds or queues prompt/context/result content.
+The durable `WorkRecord` stores execution metadata, material identity/integrity binding, carried security identities/history and scheduling state. It never embeds or queues prompt/context/result content.
 
 A `WorkAttempt` records physical truth: selected mechanism/model, relevant security/boundary identities, timing, outcome, failure classification, output digest/size and execution evidence.
 
@@ -39,7 +39,7 @@ A `WorkAttempt` records physical truth: selected mechanism/model, relevant secur
 A durable submission contains, in substance:
 
 - originator identity for routing/correlation;
-- carried SecurityIDs/SecurityObjects for the lifecycle so far;
+- carried SecurityIDs/SecurityObjects and security-relevant history required for the lifecycle so far;
 - inference requirements/preferences;
 - a verifiable `MaterialHandle`;
 - eligibility, priority and execution constraints;
@@ -66,7 +66,7 @@ For every durable work item, immediately eligible or delayed:
 
 The Module retains actual prepared material.
 
-Before requesting the payload, Kernel should establish all practical facts that do not require it, including eligibility, compatible mechanism candidates, relevant security evaluation and resource readiness.
+Before requesting the payload, Kernel should establish all practical facts that do not require it, including eligibility, compatible mechanism candidates, role-relevant security evaluation and resource readiness.
 
 Only when a concrete attempt is genuinely ready does Kernel resolve the `MaterialHandle` through the Module-facing resolver.
 
@@ -86,12 +86,13 @@ No durable prompt cache, prompt vault or queued private-material cache belongs i
 
 ## 4. Restart, retry and external effects
 
-Accepted work survives restart as execution intent and verification metadata.
+Accepted work survives restart as execution intent and verification/security-history metadata.
 
 ```text
 restore WorkRecord
     -> select when eligible/resources permit
-    -> resolve material again
+    -> construct/evaluate the prospective transition
+    -> resolve material when ready
     -> verify
     -> execute
 ```
@@ -101,6 +102,8 @@ Retries reacquire material rather than depending on stale Kernel-owned bytes.
 Interrupted inference normally recomputes unless the selected mechanism exposes a concrete checkpoint/resume capability.
 
 Externally effectful Operations require different handling: if dispatch may have happened but outcome is unknown, Kernel records that uncertainty and does not blindly repeat the effect.
+
+A retry selecting a different Capability, endpoint, EffectProfile or material representation is a new prospective security transition and is evaluated using those newly bound facts.
 
 ## 5. Inference requirements and mechanism selection
 
@@ -154,20 +157,27 @@ Mechanism-native optimization such as model residency, KV-cache/session reuse or
 
 ## 7. Security at execution boundaries
 
-Every participating security-relevant object contributes its `SecurityID`/`SecurityObject` as defined in `MADRE-security-algebra.md`.
+Every participating security-relevant object contributes its bound `SecurityID`/`SecurityObject` as defined in `MADRE-security-algebra.md`.
+
+Security evaluation is transition-local rather than a global reduction over the entire carried object history.
+
+For a candidate inference mechanism, the prospective transition identifies the concrete material disclosure edge(s) to the selected Capability and any other actual recipients on that path. The confidentiality predicate evaluates the material's Sensitivity against the minimum Privacy of that actual path.
+
+For an effectful Operation, the prospective transition additionally identifies the selected bound EffectProfile, actual causal controllers and actual effect executors. The control/effect predicates use their Integrity plus the EffectProfile's Risk and Autonomy.
 
 Conceptually:
 
 ```text
-carried SecurityObjects
-    + candidate Capability SecurityObject
-    + material SecurityObject
+immutable carried security history
+    + prospective material/participant relationships
+    + candidate Capability or EffectProfile
+    -> SecurityTransition
     -> SecurityAlgebra
 ```
 
-The exact algebra is owned by the security document.
+A candidate mechanism that is rejected before receiving material is not recorded as having received that material merely because it was considered.
 
-Kernel handles declared security facts and material integrity; it does not infer semantic truth or content safety from prompt/output bytes.
+Kernel handles bound security facts, transition structure supplied by public execution contracts, and material/binding integrity. It does not infer semantic truth, material classification or causal roles by reading prompt/output bytes.
 
 ## 8. Scheduling and resources
 
@@ -200,7 +210,7 @@ Durable-work evidence may retain output digest, size, production time, attempt r
 
 A restart turns an unconsumed transient durable result into truthful result loss; Kernel does not gain hidden content durability.
 
-Once delivered, output is Module-owned `Artifact` material and may be used according to Module semantics.
+Once delivered, output is Module-owned `Artifact` material and may be used according to Module semantics. When that result participates in a later governed transition it has its own material SecurityObject and explicit transition role.
 
 ## 10. Cancellation and failure evidence
 
@@ -210,6 +220,6 @@ Durable failure evidence should use stable runtime/adapter codes rather than per
 
 ## 11. Persistence invariant
 
-Runtime persistence may contain public registry/mechanism metadata, work/attempt state, SecurityIDs/SecurityObjects or their durable representation, opaque references/coordination values, digests, delivery state and evidence codes.
+Runtime persistence may contain public registry/mechanism metadata, work/attempt state, SecurityIDs/SecurityObjects and security-relevant transition/derivation evidence, opaque references/coordination values, digests, delivery state and evidence codes.
 
 It must not contain prompt/context/output payload columns.
