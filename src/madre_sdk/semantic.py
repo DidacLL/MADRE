@@ -35,6 +35,7 @@ from madre.security import (
 )
 from madre_sdk.material import Material, MaterialRepository
 from madre_sdk.security import participant_security
+from madre_sdk.services import ExecutionServices, ModuleServices
 
 
 class Skill(FrozenModel):
@@ -104,6 +105,7 @@ class AgentBehavior(Protocol):
         instructions: tuple[str, ...],
         security: SecurityHistory,
         invocation: InvocationContext,
+        services: ExecutionServices,
         material: TransientMaterial,
     ) -> Material: ...
 
@@ -115,6 +117,7 @@ class OperationBehavior(Protocol):
         operation_id: str,
         effect_profile_id: str,
         invocation: InvocationContext,
+        services: ExecutionServices,
         security: SecurityHistory,
         material: TransientMaterial,
     ) -> Material: ...
@@ -217,18 +220,20 @@ class Agent:
             provenance=self.provenance,
         )
 
-    async def execute(
+    async def _execute(
         self,
         material: TransientMaterial,
         *,
         security: SecurityHistory,
         invocation: InvocationContext,
+        services: ExecutionServices,
     ) -> Material:
         return await self._behavior.execute(
             agent_id=self.id,
             instructions=self.instructions,
             security=security,
             invocation=invocation,
+            services=services,
             material=material,
         )
 
@@ -304,12 +309,13 @@ class Operation:
             provenance=self.provenance,
         )
 
-    async def execute(
+    async def _execute(
         self,
         material: TransientMaterial,
         *,
         effect_profile_id: str,
         invocation: InvocationContext,
+        services: ExecutionServices,
         security: SecurityHistory,
     ) -> Material:
         if effect_profile_id not in self._profiles:
@@ -319,6 +325,7 @@ class Operation:
             effect_profile_id=effect_profile_id,
             security=security,
             invocation=invocation,
+            services=services,
             material=material,
         )
 
@@ -397,6 +404,7 @@ class Module:
         endpoint_boundary: ExecutionBoundary = "local",
         endpoint_security: SecurityObject | None = None,
         materials: MaterialRepository | None = None,
+        services: ModuleServices | None = None,
     ) -> None:
         ref = security.subject_ref
         if (
@@ -434,6 +442,7 @@ class Module:
         )
         InvocationContext(module=self.security, endpoint=self.endpoint_security)
         self.materials = materials or MaterialRepository()
+        self._services = services or ModuleServices()
         self._agents = {agent.id: agent for agent in self.agents}
         self._operations = {operation.id: operation for operation in self.operations}
         if len(self._agents) != len(self.agents):
@@ -536,7 +545,10 @@ class Module:
             .merge(transient.history)
             .extend(objects=expected.objects)
         )
-        return await agent.execute(transient, security=history, invocation=expected)
+        with self._services._execution(expected) as services:
+            return await agent._execute(
+                transient, security=history, invocation=expected, services=services
+            )
 
     async def execute_operation(
         self,
@@ -564,9 +576,11 @@ class Module:
         )
         if invocation is not None and invocation != expected:
             raise ValueError("Operation invocation does not match executing publication")
-        return await operation.execute(
-            transient,
-            effect_profile_id=effect_profile_id,
-            security=history.extend(objects=expected.objects),
-            invocation=expected,
-        )
+        with self._services._execution(expected) as services:
+            return await operation._execute(
+                transient,
+                effect_profile_id=effect_profile_id,
+                security=history.extend(objects=expected.objects),
+                invocation=expected,
+                services=services,
+            )

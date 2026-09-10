@@ -24,6 +24,7 @@ from madre_sdk import (
     AgentBrokerClient,
     Artifact,
     Module,
+    ModuleServices,
     OperationBrokerClient,
     participant_security,
 )
@@ -58,7 +59,7 @@ class Transform:
         self.borrowed = borrowed
         self.passthrough = passthrough
 
-    async def execute(self, *, agent_id, instructions, security, invocation, material):
+    async def execute(self, *, agent_id, instructions, security, invocation, material, services):
         if self.passthrough:
             return Artifact(
                 id=material.reference,
@@ -110,7 +111,7 @@ class Transform:
         return output.model_copy(update={"security": forged_security, "security_history": history})
 
 
-def agent_module(behavior, *, owner=TARGET, integrity=L5, privacy=L5):
+def agent_module(behavior, *, owner=TARGET, integrity=L5, privacy=L5, services=None):
     agent = Agent.from_instructions(
         agent_id="actor",
         purpose="test",
@@ -124,6 +125,7 @@ def agent_module(behavior, *, owner=TARGET, integrity=L5, privacy=L5):
         description="test",
         security=participant(owner, owner),
         agents=(agent,),
+        services=services,
     )
 
 
@@ -162,23 +164,27 @@ def test_active_selector_cannot_disappear_when_client_history_is_replaced(platfo
     client = OperationBrokerClient(security=SecurityHistory(), broker=broker)
 
     class SelectingAgent:
-        async def execute(self, *, agent_id, instructions, security, invocation, material):
+        async def execute(
+            self, *, agent_id, instructions, security, invocation, material, services
+        ):
             artifact = Artifact(
                 id=material.reference,
                 payload=material.payload,
                 security=material.security,
                 security_history=material.history,
             )
-            return await client.invoke(
+            assert services.operations is not None
+            return await services.operations.invoke(
                 TARGET,
                 "target.operation",
                 "auto",
                 artifact,
-                invocation=invocation,
                 security=SecurityHistory(),
             )
 
-    selector = agent_module(SelectingAgent(), owner="selector", integrity=L1)
+    selector = agent_module(
+        SelectingAgent(), owner="selector", integrity=L1, services=ModuleServices(operations=client)
+    )
     attach(registry, broker, selector)
     with pytest.raises(SecurityDenied, match="control_integrity_below_demand"):
         invoke(broker, selector)
@@ -440,7 +446,7 @@ def test_nested_validation_and_concurrent_returns_preserve_explicit_callers(plat
     client = AgentBrokerClient(security=SecurityHistory(), broker=broker)
 
     class Delegate:
-        async def execute(self, *, invocation, material, **kwargs):
+        async def execute(self, *, invocation, material, services, **kwargs):
             source = Artifact(
                 id=material.reference,
                 payload=material.payload,
@@ -448,7 +454,8 @@ def test_nested_validation_and_concurrent_returns_preserve_explicit_callers(plat
                 security_history=material.history,
             )
             await asyncio.sleep(0)
-            result = await client.invoke("inner", "actor", source, invocation=invocation)
+            assert services.agents is not None
+            result = await services.agents.invoke("inner", "actor", source)
             return Artifact(
                 id=result.reference,
                 payload=result.payload,
@@ -456,7 +463,7 @@ def test_nested_validation_and_concurrent_returns_preserve_explicit_callers(plat
                 security_history=result.history,
             )
 
-    outer = agent_module(Delegate(), owner="outer")
+    outer = agent_module(Delegate(), owner="outer", services=ModuleServices(agents=client))
     attach(registry, broker, outer)
     source = input_material(requester_security(), integrity=L1, sensitivity=L1)
     callers = [

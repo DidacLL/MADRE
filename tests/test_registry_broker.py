@@ -15,6 +15,7 @@ from madre_sdk import (
     AgentBehavior,
     Artifact,
     EffectProfile,
+    ExecutionServices,
     Module,
     Operation,
     OperationBehavior,
@@ -65,6 +66,7 @@ class EchoAgent(AgentBehavior):
         instructions: tuple[str, ...],
         security: SecurityHistory,
         invocation: InvocationContext,
+        services: ExecutionServices,
         material: TransientMaterial,
     ) -> Artifact:
         del agent_id, instructions
@@ -95,6 +97,7 @@ class EchoOperation(OperationBehavior):
         effect_profile_id: str,
         security: SecurityHistory,
         invocation: InvocationContext,
+        services: ExecutionServices,
         material: TransientMaterial,
     ) -> Artifact:
         del operation_id

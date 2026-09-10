@@ -15,6 +15,7 @@ from madre_sdk import (
     ContextBundle,
     CoreSelection,
     DurableWorkSubmission,
+    ExecutionServices,
     InferenceClient,
     InferenceHardRequirements,
     InferencePreferences,
@@ -23,6 +24,7 @@ from madre_sdk import (
     JsonValue,
     MaterialRepository,
     Module,
+    ModuleServices,
     SecurityHistory,
     SecurityLevel,
     Skill,
@@ -73,16 +75,10 @@ class _InteractionBehavior(AgentBehavior):
         self,
         *,
         producer_security_id: str,
-        inference: InferenceClient,
-        work: WorkClient | None,
         continuation: ContinuationPolicy,
-        delegation: AgentBrokerClient | None,
     ) -> None:
         self._producer_security_id = producer_security_id
-        self._inference = inference
-        self._work = work
         self._continuation = continuation
-        self._delegation = delegation
         self._ids = count(1)
 
     async def execute(
@@ -92,9 +88,12 @@ class _InteractionBehavior(AgentBehavior):
         instructions: tuple[str, ...],
         security: SecurityHistory,
         invocation: InvocationContext,
+        services: ExecutionServices,
         material: TransientMaterial,
     ) -> Artifact:
         del agent_id
+        if services.inference is None:
+            raise RuntimeError("CORE requires inference service configuration")
         sequence = next(self._ids)
         context = ContextBundle.derive_from(
             invocation=invocation,
@@ -112,11 +111,10 @@ class _InteractionBehavior(AgentBehavior):
             sensitivity=SecurityLevel.LEVEL_5,
             security_history=security,
         )
-        immediate = await self._inference.infer(
+        immediate = await services.inference.infer(
             context,
             _interactive_requirement(),
             security=context.security_history,
-            invocation=invocation,
         )
         generated = Artifact.from_inference_result(
             invocation=invocation,
@@ -137,7 +135,7 @@ class _InteractionBehavior(AgentBehavior):
         if (
             decision.delegate_module_id is not None
             and decision.delegate_agent_id is not None
-            and self._delegation is not None
+            and services.agents is not None
         ):
             delegated_context = ContextBundle.derive_from(
                 invocation=invocation,
@@ -150,15 +148,14 @@ class _InteractionBehavior(AgentBehavior):
                 producer_security_ids=(self._producer_security_id,),
                 sensitivity=SecurityLevel.LEVEL_5,
             )
-            delegated_result = await self._delegation.invoke(
+            delegated_result = await services.agents.invoke(
                 decision.delegate_module_id,
                 decision.delegate_agent_id,
                 delegated_context,
                 security=delegated_context.security_history,
-                invocation=invocation,
             )
 
-        if decision.durable_follow_up and self._work is not None:
+        if decision.durable_follow_up and services.work is not None:
             follow_up = ContextBundle.derive_from(
                 invocation=invocation,
                 source=context,
@@ -170,12 +167,11 @@ class _InteractionBehavior(AgentBehavior):
                 producer_security_ids=(self._producer_security_id,),
                 sensitivity=SecurityLevel.LEVEL_5,
             )
-            accepted = await self._work.submit(
+            accepted = await services.work.submit(
                 follow_up,
                 _follow_up_requirement(),
                 correlation=(),
                 security=follow_up.security_history,
-                invocation=invocation,
             )
             follow_up_work_id = accepted.id
 
@@ -303,10 +299,7 @@ class CoreModule(Module):
         )
         behavior = _InteractionBehavior(
             producer_security_id=module_security.security_id,
-            inference=inference_client,
-            work=work_client,
             continuation=continuation or NoContinuation(),
-            delegation=delegation_client,
         )
         interaction_agent = Agent.from_instructions(
             agent_id=CORE_INTERACTION_AGENT_ID,
@@ -338,4 +331,7 @@ class CoreModule(Module):
             skills=(skill,),
             workflows=(workflow,),
             materials=materials,
+            services=ModuleServices(
+                inference=inference_client, work=work_client, agents=delegation_client
+            ),
         )

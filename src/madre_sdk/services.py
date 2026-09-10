@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
+from copy import copy
+from dataclasses import dataclass
 from datetime import datetime
+from typing import Self
 
 from pydantic import JsonValue
 
@@ -31,7 +36,41 @@ from madre.security import InvocationContext, SecurityHistory, SecurityObject
 from madre_sdk.material import Material, MaterialRepository
 
 
-class InferenceClient:
+class _ExecutionBinding:
+    """Infrastructure-owned lifetime of one established causal identity."""
+
+    def __init__(self, invocation: InvocationContext) -> None:
+        self.__invocation = invocation
+        self.__active = True
+
+    @property
+    def invocation(self) -> InvocationContext:
+        if not self.__active:
+            raise RuntimeError("SDK execution has ended")
+        return self.__invocation
+
+    def close(self) -> None:
+        self.__active = False
+
+
+class _ExecutionClient:
+    # Configured clients are inert. Only Module entry makes per-execution copies.
+    _binding: _ExecutionBinding | None = None
+
+    def _bind(self, binding: _ExecutionBinding) -> Self:
+        if self._binding is not None:
+            raise RuntimeError("bound SDK clients cannot be rebound")
+        bound = copy(self)
+        bound._binding = binding
+        return bound
+
+    def _active_invocation(self) -> InvocationContext:
+        if self._binding is None:
+            raise RuntimeError("SDK client requires Module execution binding")
+        return self._binding.invocation
+
+
+class InferenceClient(_ExecutionClient):
     def __init__(
         self, *, originator: str, security: SecurityHistory, inference: TransientInference
     ) -> None:
@@ -44,10 +83,10 @@ class InferenceClient:
         material: Material,
         requirement: InferenceRequirement,
         *,
-        invocation: InvocationContext,
         constraints: ExecutionConstraints | None = None,
         security: SecurityHistory | None = None,
     ) -> TransientInferenceResult:
+        invocation = self._active_invocation()
         return await self._inference.infer(
             TransientInferenceRequest(
                 originator=self._originator,
@@ -59,7 +98,7 @@ class InferenceClient:
         )
 
 
-class WorkClient:
+class WorkClient(_ExecutionClient):
     def __init__(
         self,
         *,
@@ -78,7 +117,6 @@ class WorkClient:
         material: Material,
         requirement: InferenceRequirement,
         *,
-        invocation: InvocationContext,
         eligible_at: datetime | None = None,
         priority: int = 0,
         constraints: ExecutionConstraints | None = None,
@@ -86,6 +124,7 @@ class WorkClient:
         idempotency_key: str | None = None,
         security: SecurityHistory | None = None,
     ) -> WorkRecord:
+        invocation = self._active_invocation()
         handle = self._materials.retain(material)
         return await self._submission.submit(
             WorkSubmission(
@@ -144,7 +183,7 @@ class DiscoveryClient:
         return self._discovery.discover_operations(self._security)
 
 
-class AgentBrokerClient:
+class AgentBrokerClient(_ExecutionClient):
     def __init__(self, *, security: SecurityHistory, broker: AgentBrokering) -> None:
         self._security = security
         self._broker = broker
@@ -155,9 +194,9 @@ class AgentBrokerClient:
         agent_id: str,
         material: Material,
         *,
-        invocation: InvocationContext,
         security: SecurityHistory | None = None,
     ) -> TransientMaterial:
+        invocation = self._active_invocation()
         return await self._broker.invoke_agent(
             invocation,
             (security or self._security).extend(objects=invocation.objects),
@@ -167,7 +206,7 @@ class AgentBrokerClient:
         )
 
 
-class OperationBrokerClient:
+class OperationBrokerClient(_ExecutionClient):
     def __init__(self, *, security: SecurityHistory, broker: OperationBrokering) -> None:
         self._security = security
         self._broker = broker
@@ -179,10 +218,10 @@ class OperationBrokerClient:
         effect_profile_id: str,
         material: Material,
         *,
-        invocation: InvocationContext,
         controllers: tuple[SecurityObject, ...] = (),
         security: SecurityHistory | None = None,
     ) -> TransientMaterial:
+        invocation = self._active_invocation()
         carried = (security or self._security).extend(objects=(*controllers, *invocation.objects))
         return await self._broker.invoke_operation(
             invocation,
@@ -212,12 +251,42 @@ class CoreDelegate:
     def selection(self) -> CoreSelection:
         return self._selection
 
-    async def interact(
-        self, material: Material, *, invocation: InvocationContext
-    ) -> TransientMaterial:
+    async def interact(self, material: Material) -> TransientMaterial:
         return await self._broker.invoke(
             self._selection.module_id,
             self._selection.interaction_agent_id,
             material,
-            invocation=invocation,
         )
+
+
+@dataclass(frozen=True)
+class ExecutionServices:
+    """Behavior-facing clients bound by Module entry; no caller identity argument."""
+
+    inference: InferenceClient | None = None
+    work: WorkClient | None = None
+    agents: AgentBrokerClient | None = None
+    operations: OperationBrokerClient | None = None
+
+
+@dataclass(frozen=True)
+class ModuleServices:
+    """Host-side transport configuration. Do not inject this factory into behaviors."""
+
+    inference: InferenceClient | None = None
+    work: WorkClient | None = None
+    agents: AgentBrokerClient | None = None
+    operations: OperationBrokerClient | None = None
+
+    @contextmanager
+    def _execution(self, invocation: InvocationContext) -> Iterator[ExecutionServices]:
+        binding = _ExecutionBinding(invocation)
+        try:
+            yield ExecutionServices(
+                inference=self.inference._bind(binding) if self.inference is not None else None,
+                work=self.work._bind(binding) if self.work is not None else None,
+                agents=self.agents._bind(binding) if self.agents is not None else None,
+                operations=self.operations._bind(binding) if self.operations is not None else None,
+            )
+        finally:
+            binding.close()
