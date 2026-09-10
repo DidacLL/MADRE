@@ -1,0 +1,84 @@
+name: security-algebra-typefix
+
+on:
+  pull_request:
+    branches:
+      - architecture/modular-agentic-clean-slate
+
+permissions:
+  contents: write
+
+jobs:
+  typefix:
+    if: github.head_ref == 'implementation/final-security-algebra'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: implementation/final-security-algebra
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.12.10"
+      - run: uv sync --locked
+      - name: Apply exact mypy narrowings
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/madre/security.py')
+          text = path.read_text()
+          replacements = {
+              'return cast(SecurityID, f"security:v1:{_digest(self.identity_payload())}")':
+                  'return f"security:v1:{_digest(self.identity_payload())}"',
+              'security_id = cast(SecurityID, f"security:v1:{_digest(identity_payload)}")':
+                  'security_id = f"security:v1:{_digest(identity_payload)}"',
+              'controller_integrity = cast(OrdinarySecurityLevel, SecurityLevel.LEVEL_5)':
+                  'controller_integrity: OrdinarySecurityLevel = SecurityLevel.LEVEL_5',
+          }
+          for old, new in replacements.items():
+              if old not in text:
+                  raise SystemExit(f'missing expected security.py text: {old}')
+              text = text.replace(old, new, 1)
+          path.write_text(text)
+
+          path = Path('src/madre/storage_work_records.py')
+          text = path.read_text()
+          old = 'from datetime import datetime\n'
+          new = 'from datetime import datetime\nfrom typing import cast\n'
+          if old not in text:
+              raise SystemExit('missing datetime import')
+          text = text.replace(old, new, 1)
+          old = 'from madre.security import SecurityHistory, SecurityLevel'
+          new = 'from madre.security import OrdinarySecurityLevel, SecurityHistory, SecurityLevel'
+          if old not in text:
+              raise SystemExit('missing security import')
+          text = text.replace(old, new, 1)
+          old = 'output_integrity=SecurityLevel(row["output_integrity"]),'
+          new = 'output_integrity=cast(OrdinarySecurityLevel, SecurityLevel(row["output_integrity"])), '
+          if old not in text:
+              raise SystemExit('missing output_integrity restoration')
+          text = text.replace(old, new, 1)
+          path.write_text(text)
+
+          path = Path('tests/test_security_algebra.py')
+          text = path.read_text()
+          text = text.replace('product(LEVELS, LEVELS))', 'tuple(product(LEVELS, LEVELS)))')
+          text = text.replace(
+              '("risk", "autonomy", "controller_integrity"), product(LEVELS, LEVELS, LEVELS)',
+              '("risk", "autonomy", "controller_integrity"), tuple(product(LEVELS, LEVELS, LEVELS))',
+          )
+          path.write_text(text)
+          PY
+      - run: uv run --locked ruff check --fix .
+      - run: uv run --locked ruff format .
+      - run: uv run --locked mypy
+      - name: Commit exact type fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src tests
+          git commit -m "Fix final Security Algebra typing"
+          git push origin HEAD:implementation/final-security-algebra
