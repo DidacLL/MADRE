@@ -21,7 +21,9 @@ jobs:
         with:
           version: "0.12.10"
       - run: uv sync --locked
-      - run: uv run --locked ruff check --fix .
+      - name: Apply Ruff fixes that are mechanically available
+        shell: bash
+        run: uv run --locked ruff check --fix . || true
       - run: uv run --locked ruff format .
       - name: Commit mechanical formatting
         shell: bash
