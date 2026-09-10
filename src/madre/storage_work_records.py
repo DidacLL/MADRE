@@ -5,9 +5,10 @@ from __future__ import annotations
 import json
 import sqlite3
 from datetime import datetime
+from typing import cast
 
 from madre.contracts import ResultEvidence, WorkCancellation, WorkFailure, WorkRecord, WorkSpec
-from madre.security import SecurityHistory, SecurityLevel
+from madre.security import OrdinarySecurityLevel, SecurityHistory, SecurityLevel
 from madre.storage_db import _json
 from madre.storage_work_base import WorkStoreBase
 
@@ -104,7 +105,10 @@ class WorkRecordStore(WorkStoreBase):
                 size=row["output_size"],
                 produced_at=datetime.fromisoformat(row["output_produced_at"]),
                 delivery_status=row["delivery_status"],
-                output_integrity=SecurityLevel(row["output_integrity"]),
+                output_integrity=cast(
+                    OrdinarySecurityLevel,
+                    SecurityLevel(row["output_integrity"]),
+                ),
                 producer_security_ids=tuple(json.loads(row["result_producer_security_ids_json"])),
                 source_security_ids=tuple(json.loads(row["result_source_security_ids_json"])),
             )

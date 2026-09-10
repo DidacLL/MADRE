@@ -78,7 +78,7 @@ def capability(
     )
 
 
-@pytest.mark.parametrize(("sensitivity", "privacy"), product(LEVELS, LEVELS))
+@pytest.mark.parametrize(("sensitivity", "privacy"), tuple(product(LEVELS, LEVELS)))
 def test_disclosure_predicate_is_exact(
     sensitivity: SecurityLevel,
     privacy: SecurityLevel,
@@ -100,7 +100,7 @@ def test_disclosure_predicate_is_exact(
 
 
 @pytest.mark.parametrize(
-    ("risk", "autonomy", "controller_integrity"), product(LEVELS, LEVELS, LEVELS)
+    ("risk", "autonomy", "controller_integrity"), tuple(product(LEVELS, LEVELS, LEVELS))
 )
 def test_control_predicate_is_exact(
     risk: SecurityLevel,
@@ -137,7 +137,7 @@ def test_control_predicate_is_exact(
     assert decision.admissible is (min(int(risk), int(autonomy)) <= int(controller_integrity))
 
 
-@pytest.mark.parametrize(("risk", "executor_integrity"), product(LEVELS, LEVELS))
+@pytest.mark.parametrize(("risk", "executor_integrity"), tuple(product(LEVELS, LEVELS)))
 def test_effect_execution_predicate_is_exact(
     risk: SecurityLevel,
     executor_integrity: SecurityLevel,

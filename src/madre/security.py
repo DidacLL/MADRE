@@ -143,7 +143,7 @@ class SecurityObject(FrozenModel):
         }
 
     def expected_security_id(self) -> SecurityID:
-        return cast(SecurityID, f"security:v1:{_digest(self.identity_payload())}")
+        return f"security:v1:{_digest(self.identity_payload())}"
 
     def expected_binding_digest(self) -> str:
         return _digest(
@@ -176,7 +176,7 @@ class SecurityObject(FrozenModel):
             "values": values.model_dump(mode="json"),
             "binding_evidence": [item.model_dump(mode="json") for item in binding_evidence],
         }
-        security_id = cast(SecurityID, f"security:v1:{_digest(identity_payload)}")
+        security_id = f"security:v1:{_digest(identity_payload)}"
         binding_digest = _digest({"security_id": security_id, "identity": identity_payload})
         return cls(
             security_id=security_id,
@@ -845,7 +845,7 @@ class SecurityAlgebra:
             role="controller_role",
         )
         failures.extend(controller_failures)
-        controller_integrity = cast(OrdinarySecurityLevel, SecurityLevel.LEVEL_5)
+        controller_integrity: OrdinarySecurityLevel = SecurityLevel.LEVEL_5
         if controller_pairs:
             controller_integrity = cast(
                 OrdinarySecurityLevel,
