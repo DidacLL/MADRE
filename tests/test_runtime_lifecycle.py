@@ -1,5 +1,6 @@
+from __future__ import annotations
+
 import asyncio
-from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -12,425 +13,395 @@ from madre.capabilities import (
 )
 from madre.contracts import (
     InferenceHardRequirements,
+    InferencePreferences,
     InferenceRequirement,
-    MaterialHandle,
     TransientInferenceRequest,
-    TransientMaterial,
     WorkRetryRequest,
     WorkSubmission,
 )
-from madre.interfaces import MaterialResolver
-from madre.runtime import ResultLost, WorkRuntime, content_digest
+from madre.runtime import ResultLost, TransientInferenceError, WorkRuntime
 from madre.security import (
-    ActorSecurityValues,
     CapabilitySecurityValues,
-    MaterialSecurityValues,
-    SecurityContext,
+    SecurityHistory,
     SecurityLevel,
     SecurityObject,
+    SecuritySubjectRef,
 )
 from madre.storage import PlatformStore, open_database
+from madre_sdk import Artifact, MaterialRepository, participant_security
+
+ORIGINATOR = "module.runtime-test"
 
 
-def module_security(module_id: str, *, trust=SecurityLevel.LEVEL_5) -> SecurityObject:
-    return SecurityObject.issue(
-        subject_id=module_id,
+def module_security():
+    return participant_security(
+        owner_module_id=ORIGINATOR,
+        subject_id=ORIGINATOR,
         subject_kind="module",
-        values=ActorSecurityValues(trust=trust, isolation=SecurityLevel.LEVEL_5),
+        privacy=SecurityLevel.LEVEL_5,
+        integrity=SecurityLevel.LEVEL_5,
     )
 
 
-def context(originator: str, *, trust=SecurityLevel.LEVEL_5) -> SecurityContext:
-    return SecurityContext(objects=(module_security(originator, trust=trust),))
-
-
-def material(
-    reference: str,
+def artifact(
     payload,
     *,
-    sensitivity=SecurityLevel.LEVEL_2,
-) -> TransientMaterial:
-    return TransientMaterial(
-        reference=reference,
+    sensitivity: SecurityLevel = SecurityLevel.LEVEL_5,
+    integrity: SecurityLevel = SecurityLevel.LEVEL_5,
+) -> Artifact:
+    owner = module_security()
+    return Artifact.create(
+        owner_module_id=ORIGINATOR,
+        artifact_id="runtime.input",
         payload=payload,
-        digest=content_digest(payload),
-        security=SecurityObject.issue(
-            subject_id=reference,
-            subject_kind="artifact",
-            values=MaterialSecurityValues(sensitivity=sensitivity),
-        ),
+        sensitivity=sensitivity,
+        integrity=integrity,
+        security_history=SecurityHistory(objects=(owner,)),
     )
 
 
-def requirement(**overrides) -> InferenceRequirement:
-    return InferenceRequirement(
-        hard=InferenceHardRequirements(
-            specialization="structured.compute",
-            modality="json",
-            **overrides,
-        )
-    )
-
-
-def capabilities(function, *, trust=SecurityLevel.LEVEL_5) -> CapabilityRegistry:
-    descriptor = CapabilityDescriptor(
-        id="compute",
-        specialization="structured.compute",
-        modality="json",
-        execution_boundary="local",
-        heavyweight=True,
-        security=SecurityObject.issue(
-            subject_id="compute",
+def capability(
+    capability_id: str,
+    function,
+    *,
+    privacy: SecurityLevel = SecurityLevel.LEVEL_5,
+    integrity: SecurityLevel = SecurityLevel.LEVEL_5,
+    heavyweight: bool = False,
+) -> FunctionCapability:
+    security = SecurityObject.issue(
+        subject_ref=SecuritySubjectRef(
+            owner_module_id="madre.platform",
             subject_kind="capability",
-            values=CapabilitySecurityValues(
-                trust=trust,
-                privacy=SecurityLevel.LEVEL_5,
-                risk=SecurityLevel.LEVEL_1,
-            ),
+            publication_revision="1",
+            local_id=capability_id,
         ),
+        values=CapabilitySecurityValues(privacy=privacy, integrity=integrity),
     )
-    result = CapabilityRegistry()
-    result.register(FunctionCapability(descriptor, function))
-    return result
-
-
-class Resolver(MaterialResolver):
-    def __init__(self, values: dict[str, TransientMaterial]) -> None:
-        self.values = values
-        self.requests: list[MaterialHandle] = []
-
-    async def resolve(self, handle: MaterialHandle) -> TransientMaterial | None:
-        self.requests.append(handle)
-        return self.values.get(handle.reference)
-
-
-def submission(originator: str, item: TransientMaterial, **kwargs) -> WorkSubmission:
-    return WorkSubmission(
-        originator=originator,
-        security=context(originator),
-        inference=requirement(),
-        material=item.to_handle(coordination=f"coord:{item.reference}"),
-        **kwargs,
-    )
-
-
-def test_accepted_durable_work_contains_no_private_payload_in_memory_or_sqlite(
-    tmp_path: Path,
-) -> None:
-    private_input = "DURABLE-PRIVATE-INPUT-MUST-NOT-PERSIST"
-    data_dir = tmp_path / "runtime"
-    item = material("module.a/material/1", {"private": private_input})
-    with open_database(data_dir) as connection:
-        runtime = WorkRuntime(PlatformStore(connection), capabilities(lambda value: value))
-        record = asyncio.run(runtime.submit(submission("module.a", item)))
-        assert runtime.inspect(record.id) is not None
-        assert not hasattr(runtime, "_materials")
-        columns = {
-            row[1] for row in connection.execute("PRAGMA table_info(runtime_work)").fetchall()
-        }
-        assert "material_handle_json" in columns
-        assert "payload" not in columns
-        assert "input_json" not in columns
-        assert "result_json" not in columns
-
-    for database_file in data_dir.glob("runtime.sqlite3*"):
-        assert private_input.encode() not in database_file.read_bytes()
-
-
-def test_material_resolution_is_jit_after_eligibility_and_candidate_readiness(
-    tmp_path: Path,
-) -> None:
-    future = datetime.now(UTC) + timedelta(days=1)
-    item = material("module.a/material/jit", {"secret": "jit"})
-    resolver = Resolver({item.reference: item})
-    with open_database(tmp_path / "runtime") as connection:
-        runtime = WorkRuntime(PlatformStore(connection), capabilities(lambda value: value))
-        runtime.register_material_resolver("module.a", resolver)
-        asyncio.run(runtime.submit(submission("module.a", item, eligible_at=future)))
-        assert resolver.requests == []
-        assert asyncio.run(runtime.run_eligible()) == 0
-        assert resolver.requests == []
-
-    denied = material(
-        "module.a/material/denied",
-        {"secret": "denied"},
-        sensitivity=SecurityLevel.LEVEL_4,
-    )
-    denied_resolver = Resolver({denied.reference: denied})
-    with open_database(tmp_path / "denied") as connection:
-        runtime = WorkRuntime(
-            PlatformStore(connection),
-            capabilities(lambda value: value, trust=SecurityLevel.LEVEL_2),
-        )
-        runtime.register_material_resolver("module.a", denied_resolver)
-        record = asyncio.run(runtime.submit(submission("module.a", denied)))
-        asyncio.run(runtime.run_eligible())
-        inspected = runtime.inspect(record.id)
-        assert inspected is not None and inspected.failure is not None
-        assert inspected.failure.code == "security_denied"
-        assert denied_resolver.requests == []
-
-
-def test_restart_and_retry_reacquire_module_owned_material(tmp_path: Path) -> None:
-    data_dir = tmp_path / "runtime"
-    item = material("module.a/material/retry", {"private": "reacquire"})
-    resolver = Resolver({item.reference: item})
-    calls = 0
-
-    def fail_once(payload):
-        nonlocal calls
-        calls += 1
-        if calls == 1:
-            raise CapabilityError("provider_failure", "private detail")
-        return {"reused": payload}
-
-    with open_database(data_dir) as connection:
-        runtime = WorkRuntime(PlatformStore(connection), capabilities(fail_once))
-        record = asyncio.run(runtime.submit(submission("module.a", item)))
-        assert resolver.requests == []
-
-    with open_database(data_dir) as connection:
-        runtime = WorkRuntime(PlatformStore(connection), capabilities(fail_once))
-        runtime.register_material_resolver("module.a", resolver)
-        asyncio.run(runtime.run_eligible())
-        failed = runtime.inspect(record.id)
-        assert failed is not None and failed.status == "failed"
-        assert len(resolver.requests) == 1
-
-    with open_database(data_dir) as connection:
-        runtime = WorkRuntime(PlatformStore(connection), capabilities(fail_once))
-        runtime.register_material_resolver("module.a", resolver)
-        asyncio.run(runtime.retry(record.id, WorkRetryRequest(), idempotency_key="retry-1"))
-        asyncio.run(runtime.run_eligible())
-        succeeded = runtime.inspect(record.id)
-        assert succeeded is not None and succeeded.status == "succeeded"
-        assert len(resolver.requests) == 2
-        assert runtime.consume_result(record.id) == {"reused": item.payload}
-
-
-def test_material_unavailable_and_continuity_mismatches_fail_safely(tmp_path: Path) -> None:
-    original = material("module.a/material/original", {"x": 1})
-
-    cases = {
-        "unavailable": None,
-        "reference": material("module.a/material/other", {"x": 1}),
-        "digest": material("module.a/material/original", {"x": 2}),
-        "security": TransientMaterial(
-            reference=original.reference,
-            payload=original.payload,
-            digest=original.digest,
-            security=SecurityObject.issue(
-                subject_id=original.reference,
-                subject_kind="artifact",
-                values=MaterialSecurityValues(sensitivity=SecurityLevel.LEVEL_3),
-            ),
+    return FunctionCapability(
+        CapabilityDescriptor(
+            id=capability_id,
+            specialization="model.inference.chat",
+            modality="text",
+            execution_boundary="local",
+            heavyweight=heavyweight,
+            security=security,
         ),
-    }
-    for name, resolved in cases.items():
-        with open_database(tmp_path / name) as connection:
-            runtime = WorkRuntime(PlatformStore(connection), capabilities(lambda value: value))
-            values = {} if resolved is None else {original.reference: resolved}
-            runtime.register_material_resolver("module.a", Resolver(values))
-            record = asyncio.run(runtime.submit(submission("module.a", original)))
-            asyncio.run(runtime.run_eligible())
-            inspected = runtime.inspect(record.id)
-            assert inspected is not None and inspected.failure is not None
-            expected = "material_unavailable" if name == "unavailable" else "material_integrity"
-            assert inspected.failure.code == expected
+        function,
+    )
 
 
-def test_scheduler_fairness_priority_cancellation_and_interrupted_recovery(tmp_path: Path) -> None:
-    order: list[str] = []
+def requirement(*mechanism_ids: str) -> InferenceRequirement:
+    return InferenceRequirement(
+        hard=InferenceHardRequirements(specialization="model.inference.chat"),
+        preferences=InferencePreferences(mechanism_ids=mechanism_ids),
+    )
 
-    def execute(payload):
-        order.append(payload["name"])
-        return payload
 
-    data_dir = tmp_path / "runtime"
-    resolver_values: dict[str, TransientMaterial] = {}
-    with open_database(data_dir) as connection:
+class CountingResolver:
+    def __init__(self, material) -> None:
+        self.material = material
+        self.calls = 0
+
+    async def resolve(self, handle):
+        self.calls += 1
+        if handle.reference != self.material.reference:
+            return None
+        return self.material
+
+
+def test_transient_selection_rejects_weak_privacy_without_poisoning_history(tmp_path: Path) -> None:
+    registry = CapabilityRegistry()
+    low = capability(
+        "a-low",
+        lambda payload: {"wrong": payload},
+        privacy=SecurityLevel.LEVEL_2,
+    )
+    high = capability(
+        "b-high",
+        lambda payload: {"ok": payload},
+        privacy=SecurityLevel.LEVEL_5,
+        integrity=SecurityLevel.LEVEL_4,
+    )
+    registry.register(low)
+    registry.register(high)
+    source = artifact(
+        {"secret": "value"},
+        sensitivity=SecurityLevel.LEVEL_5,
+        integrity=SecurityLevel.LEVEL_5,
+    )
+    with open_database(tmp_path) as connection:
         store = PlatformStore(connection)
-        runtime = WorkRuntime(store, capabilities(execute))
-        resolver = Resolver(resolver_values)
-        for originator in ("a", "b"):
-            runtime.register_material_resolver(originator, resolver)
-        for originator, name, priority in [
-            ("a", "a-low", 0),
-            ("a", "a-high", 50),
-            ("b", "b", 0),
-        ]:
-            item = material(name, {"name": name})
-            resolver_values[name] = item
-            asyncio.run(runtime.submit(submission(originator, item, priority=priority)))
-        asyncio.run(runtime.run_eligible())
-        assert order[:3] == ["a-high", "b", "a-low"]
-
-        cancel_item = material("cancel", {"name": "cancel"})
-        resolver_values[cancel_item.reference] = cancel_item
-        cancel_record = asyncio.run(
-            runtime.submit(
-                submission(
-                    "a",
-                    cancel_item,
-                    eligible_at=datetime.now(UTC) + timedelta(days=1),
+        runtime = WorkRuntime(store, registry)
+        result = asyncio.run(
+            runtime.infer(
+                TransientInferenceRequest(
+                    originator=ORIGINATOR,
+                    security=source.security_history,
+                    inference=requirement("a-low", "b-high"),
+                    material=source.transient(),
                 )
             )
         )
-        assert asyncio.run(runtime.cancel(cancel_record.id)).status == "cancelled"
+        assert result.capability_id == "b-high"
+        assert result.output_integrity == SecurityLevel.LEVEL_4
+        assert low.descriptor.security.security_id in {
+            row["security_id"]
+            for row in connection.execute("SELECT security_id FROM security_object").fetchall()
+        }
+        assert low.descriptor.security.security_id not in result.security.security_ids
+        assert high.descriptor.security.security_id in result.security.security_ids
+        assert len(result.security.transitions) == 1
 
-        interrupted_item = material("interrupted", {"name": "interrupted"})
-        resolver_values[interrupted_item.reference] = interrupted_item
-        interrupted = asyncio.run(runtime.submit(submission("a", interrupted_item)))
-        assert (
-            store.start_attempt(
-                interrupted.id,
-                "compute",
-                None,
-                None,
-                "local",
-                datetime.now(UTC),
-            )
-            == 1
+
+def test_durable_security_denial_happens_before_jit_material_resolution(tmp_path: Path) -> None:
+    registry = CapabilityRegistry()
+    registry.register(
+        capability(
+            "remote-weak",
+            lambda payload: payload,
+            privacy=SecurityLevel.LEVEL_2,
         )
-
-    with open_database(data_dir) as connection:
-        runtime = WorkRuntime(PlatformStore(connection), capabilities(execute))
-        recovered = runtime.inspect(interrupted.id)
-        assert recovered is not None and recovered.status == "failed"
-        assert recovered.failure is not None and recovered.failure.code == "interrupted"
-
-
-def test_unconsumed_result_is_truthfully_lost_after_restart(tmp_path: Path) -> None:
-    data_dir = tmp_path / "runtime"
-    item = material("module.a/material/result", {"x": 1})
-    with open_database(data_dir) as connection:
-        runtime = WorkRuntime(
-            PlatformStore(connection), capabilities(lambda value: {"done": value})
-        )
-        runtime.register_material_resolver("module.a", Resolver({item.reference: item}))
-        record = asyncio.run(runtime.submit(submission("module.a", item)))
-        asyncio.run(runtime.run_eligible())
-        produced = runtime.inspect(record.id)
-        assert produced is not None and produced.result is not None
-        assert produced.result.delivery_status == "awaiting_consumption"
-
-    with open_database(data_dir) as connection:
-        runtime = WorkRuntime(PlatformStore(connection), capabilities(lambda value: value))
-        reopened = runtime.inspect(record.id)
-        assert reopened is not None and reopened.result is not None
-        assert reopened.result.delivery_status == "lost"
-        with pytest.raises(ResultLost):
-            runtime.consume_result(record.id)
-
-
-def test_generated_results_can_be_reused_by_module_without_kernel_semantics(tmp_path: Path) -> None:
-    values: dict[str, TransientMaterial] = {}
-    resolver = Resolver(values)
-    with open_database(tmp_path / "runtime") as connection:
-        runtime = WorkRuntime(
-            PlatformStore(connection), capabilities(lambda value: {"wrapped": value})
-        )
-        runtime.register_material_resolver("module.a", resolver)
-        first = material("input/1", {"fact": 1})
-        values[first.reference] = first
-        first_record = asyncio.run(runtime.submit(submission("module.a", first)))
-        asyncio.run(runtime.run_eligible())
-        generated = runtime.consume_result(first_record.id)
-
-        second = material("generated/1", generated)
-        values[second.reference] = second
-        second_record = asyncio.run(runtime.submit(submission("module.a", second)))
-        asyncio.run(runtime.run_eligible())
-        assert runtime.consume_result(second_record.id) == {"wrapped": generated}
-
-
-def test_jit_resolution_waits_until_heavyweight_local_slot_is_available(tmp_path: Path) -> None:
-    durable_item = material("durable/slot", {"kind": "durable"})
-    transient_item = material("transient/slot", {"kind": "transient"})
-    resolver = Resolver({durable_item.reference: durable_item})
-    entered = asyncio.Event()
-    release = asyncio.Event()
-    running = 0
-    max_running = 0
-
-    async def execute(payload):
-        nonlocal running, max_running
-        running += 1
-        max_running = max(max_running, running)
-        if payload["kind"] == "transient":
-            entered.set()
-            await release.wait()
-        running -= 1
-        return payload
-
-    async def scenario() -> None:
-        with open_database(tmp_path / "runtime") as connection:
-            runtime = WorkRuntime(PlatformStore(connection), capabilities(execute))
-            runtime.register_material_resolver("module.a", resolver)
-            durable = await runtime.submit(submission("module.a", durable_item))
-            transient_request = TransientInferenceRequest(
-                originator="module.a",
-                security=context("module.a"),
-                inference=requirement(),
-                material=transient_item,
-            )
-            transient_task = asyncio.create_task(runtime.infer(transient_request))
-            await entered.wait()
-            durable_task = asyncio.create_task(runtime.run_eligible())
-            await asyncio.sleep(0)
-            assert resolver.requests == []
-            release.set()
-            await transient_task
-            assert await durable_task == 1
-            assert resolver.requests == [durable_item.to_handle(coordination="coord:durable/slot")]
-            assert runtime.inspect(durable.id) is not None
-
-    asyncio.run(scenario())
-    assert max_running == 1
-
-
-def test_carried_security_objects_survive_restart_and_ignore_later_registry_state(
-    tmp_path: Path,
-) -> None:
-    from madre.registry import InteroperabilityRegistry, ModuleManifest
-
-    data_dir = tmp_path / "runtime"
-    item = material("module.a/material/security", {"private": "carried"})
-    initial_module_security = module_security("module.a", trust=SecurityLevel.LEVEL_5)
-    submission_context = SecurityContext(objects=(initial_module_security,))
-    work = WorkSubmission(
-        originator="module.a",
-        security=submission_context,
-        inference=requirement(),
-        material=item.to_handle(),
     )
-    with open_database(data_dir) as connection:
-        store = PlatformStore(connection)
-        registry = InteroperabilityRegistry(store)
-        registry.register(
-            ModuleManifest(
-                module_id="module.a",
-                version="1",
-                description="initial",
-                security=initial_module_security,
+    source = artifact({"secret": "do not resolve"}, sensitivity=SecurityLevel.LEVEL_5)
+    repository = MaterialRepository()
+    handle = repository.retain(source)
+    resolver = CountingResolver(source.transient())
+    with open_database(tmp_path) as connection:
+        runtime = WorkRuntime(PlatformStore(connection), registry)
+        runtime.register_material_resolver(ORIGINATOR, resolver)
+        record = asyncio.run(
+            runtime.submit(
+                WorkSubmission(
+                    originator=ORIGINATOR,
+                    security=source.security_history,
+                    inference=requirement("remote-weak"),
+                    material=handle,
+                )
             )
         )
-        runtime = WorkRuntime(store, capabilities(lambda value: value))
-        record = asyncio.run(runtime.submit(work))
-        registry.register(
-            ModuleManifest(
-                module_id="module.a",
-                version="2",
-                description="changed",
-                security=module_security("module.a", trust=SecurityLevel.LEVEL_1),
-            )
-        )
-
-    with open_database(data_dir) as connection:
-        runtime = WorkRuntime(PlatformStore(connection), capabilities(lambda value: value))
-        runtime.register_material_resolver("module.a", Resolver({item.reference: item}))
-        restored = runtime.inspect(record.id)
-        assert restored is not None
-        assert restored.spec.security.objects[0] == initial_module_security
+        assert record.status == "accepted"
         asyncio.run(runtime.run_eligible())
-        assert runtime.inspect(record.id).status == "succeeded"  # type: ignore[union-attr]
+        failed = runtime.inspect(record.id)
+        assert failed is not None
+        assert failed.status == "failed"
+        assert failed.failure is not None and failed.failure.code == "security_denied"
+        assert resolver.calls == 0
+
+
+def test_durable_success_persists_accepted_transition_and_no_private_bytes(tmp_path: Path) -> None:
+    registry = CapabilityRegistry()
+    registry.register(capability("local", lambda payload: {"private-output-marker": payload}))
+    source = artifact({"private-input-marker": "sensitive"})
+    repository = MaterialRepository()
+    handle = repository.retain(source)
+    with open_database(tmp_path) as connection:
+        store = PlatformStore(connection)
+        runtime = WorkRuntime(store, registry)
+        runtime.register_material_resolver(ORIGINATOR, repository)
+        record = asyncio.run(
+            runtime.submit(
+                WorkSubmission(
+                    originator=ORIGINATOR,
+                    security=source.security_history,
+                    inference=requirement("local"),
+                    material=handle,
+                )
+            )
+        )
+        asyncio.run(runtime.run_eligible())
+        completed = runtime.inspect(record.id)
+        assert completed is not None and completed.status == "succeeded"
+        assert completed.result is not None
+        assert completed.result.output_integrity == SecurityLevel.LEVEL_5
+        assert completed.attempts[0].security_transition_id is not None
+        assert len(completed.spec.security.transitions) == 1
+        assert connection.execute("SELECT COUNT(*) AS n FROM security_transition").fetchone()["n"] == 1
+    for path in tmp_path.glob("runtime.sqlite3*"):
+        data = path.read_bytes()
+        assert b"private-input-marker" not in data
+        assert b"private-output-marker" not in data
+
+
+def test_retry_with_same_immutable_operands_reuses_transition_identity(tmp_path: Path) -> None:
+    calls = 0
+
+    def flaky(payload):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise CapabilityError("boom")
+        return {"ok": payload}
+
+    registry = CapabilityRegistry()
+    registry.register(capability("stable", flaky))
+    source = artifact({"value": 1})
+    repository = MaterialRepository()
+    handle = repository.retain(source)
+    with open_database(tmp_path) as connection:
+        runtime = WorkRuntime(PlatformStore(connection), registry)
+        runtime.register_material_resolver(ORIGINATOR, repository)
+        record = asyncio.run(
+            runtime.submit(
+                WorkSubmission(
+                    originator=ORIGINATOR,
+                    security=source.security_history,
+                    inference=requirement("stable"),
+                    material=handle,
+                )
+            )
+        )
+        asyncio.run(runtime.run_eligible())
+        failed = runtime.inspect(record.id)
+        assert failed is not None and failed.status == "failed"
+        first_transition = failed.attempts[0].security_transition_id
+        asyncio.run(
+            runtime.retry(
+                record.id,
+                WorkRetryRequest(),
+                idempotency_key="retry-1",
+            )
+        )
+        asyncio.run(runtime.run_eligible())
+        completed = runtime.inspect(record.id)
+        assert completed is not None and completed.status == "succeeded"
+        assert len(completed.attempts) == 2
+        assert completed.attempts[1].security_transition_id == first_transition
+        assert len(completed.spec.security.transitions) == 1
+
+
+def test_retry_with_different_capability_adds_new_transition(tmp_path: Path) -> None:
+    first_registry = CapabilityRegistry()
+    first_registry.register(
+        capability("first", lambda payload: (_ for _ in ()).throw(CapabilityError("boom")))
+    )
+    source = artifact({"value": 1})
+    repository = MaterialRepository()
+    handle = repository.retain(source)
+    with open_database(tmp_path) as connection:
+        runtime = WorkRuntime(PlatformStore(connection), first_registry)
+        runtime.register_material_resolver(ORIGINATOR, repository)
+        record = asyncio.run(
+            runtime.submit(
+                WorkSubmission(
+                    originator=ORIGINATOR,
+                    security=source.security_history,
+                    inference=requirement(),
+                    material=handle,
+                )
+            )
+        )
+        asyncio.run(runtime.run_eligible())
+        failed = runtime.inspect(record.id)
+        assert failed is not None and failed.status == "failed"
+        first_transition = failed.attempts[0].security_transition_id
+
+        second_registry = CapabilityRegistry()
+        second_registry.register(capability("second", lambda payload: {"ok": payload}))
+        runtime.capabilities = second_registry
+        asyncio.run(
+            runtime.retry(
+                record.id,
+                WorkRetryRequest(),
+                idempotency_key="retry-different-capability",
+            )
+        )
+        asyncio.run(runtime.run_eligible())
+        completed = runtime.inspect(record.id)
+        assert completed is not None and completed.status == "succeeded"
+        assert completed.attempts[1].security_transition_id != first_transition
+        assert len(completed.spec.security.transitions) == 2
+
+
+def test_material_unavailable_fails_without_starting_attempt(tmp_path: Path) -> None:
+    registry = CapabilityRegistry()
+    registry.register(capability("local", lambda payload: payload))
+    source = artifact({"value": 1})
+    handle = source.handle()
+    with open_database(tmp_path) as connection:
+        runtime = WorkRuntime(PlatformStore(connection), registry)
+        record = asyncio.run(
+            runtime.submit(
+                WorkSubmission(
+                    originator=ORIGINATOR,
+                    security=source.security_history,
+                    inference=requirement("local"),
+                    material=handle,
+                )
+            )
+        )
+        asyncio.run(runtime.run_eligible())
+        failed = runtime.inspect(record.id)
+        assert failed is not None
+        assert failed.failure is not None and failed.failure.code == "material_unavailable"
+        assert failed.attempts == ()
+
+
+def test_pending_work_can_be_cancelled_before_execution(tmp_path: Path) -> None:
+    registry = CapabilityRegistry()
+    registry.register(capability("local", lambda payload: payload))
+    source = artifact({"value": 1})
+    with open_database(tmp_path) as connection:
+        runtime = WorkRuntime(PlatformStore(connection), registry)
+        record = asyncio.run(
+            runtime.submit(
+                WorkSubmission(
+                    originator=ORIGINATOR,
+                    security=source.security_history,
+                    inference=requirement("local"),
+                    material=source.handle(),
+                )
+            )
+        )
+        cancelled = asyncio.run(runtime.cancel(record.id))
+        assert cancelled.status == "cancelled"
+        assert cancelled.cancellation is not None
+        assert cancelled.cancellation.disposition == "prevented"
+
+
+def test_unconsumed_result_is_marked_lost_after_restart(tmp_path: Path) -> None:
+    registry = CapabilityRegistry()
+    registry.register(capability("local", lambda payload: {"result": payload}))
+    source = artifact({"value": 1})
+    repository = MaterialRepository()
+    handle = repository.retain(source)
+    with open_database(tmp_path) as connection:
+        store = PlatformStore(connection)
+        runtime = WorkRuntime(store, registry)
+        runtime.register_material_resolver(ORIGINATOR, repository)
+        record = asyncio.run(
+            runtime.submit(
+                WorkSubmission(
+                    originator=ORIGINATOR,
+                    security=source.security_history,
+                    inference=requirement("local"),
+                    material=handle,
+                )
+            )
+        )
+        asyncio.run(runtime.run_eligible())
+        assert runtime.inspect(record.id).result.delivery_status == "awaiting_consumption"  # type: ignore[union-attr]
+    with open_database(tmp_path) as connection:
+        restarted = WorkRuntime(PlatformStore(connection), registry)
+        recovered = restarted.inspect(record.id)
+        assert recovered is not None and recovered.result is not None
+        assert recovered.result.delivery_status == "lost"
+        with pytest.raises(ResultLost):
+            restarted.consume_result(record.id)
+
+
+def test_transient_no_compatible_capability_is_distinct_from_security_denial(tmp_path: Path) -> None:
+    source = artifact({"value": 1}, sensitivity=SecurityLevel.LEVEL_1)
+    with open_database(tmp_path) as connection:
+        runtime = WorkRuntime(PlatformStore(connection), CapabilityRegistry())
+        with pytest.raises(TransientInferenceError) as exc_info:
+            asyncio.run(
+                runtime.infer(
+                    TransientInferenceRequest(
+                        originator=ORIGINATOR,
+                        security=source.security_history,
+                        inference=requirement(),
+                        material=source.transient(),
+                    )
+                )
+            )
+        assert exc_info.value.code == "no_capability"
