@@ -41,7 +41,7 @@ def _material_security(
     kind: MaterialKind,
     payload: JsonValue,
     sensitivity: OrdinarySecurityLevel,
-    integrity: OrdinarySecurityLevel,
+    assurance: OrdinarySecurityLevel,
     publication_revision: str,
     representation_revision: str,
 ) -> SecurityObject:
@@ -53,12 +53,12 @@ def _material_security(
             local_id=reference,
             subject_revision=representation_revision,
         ),
-        values=MaterialSecurityValues(sensitivity=sensitivity, integrity=integrity),
+        values=MaterialSecurityValues(sensitivity=sensitivity, assurance=assurance),
         binding_evidence=(BindingEvidence(key="content_digest", value=content_digest(payload)),),
     )
 
 
-def _required_integrity(
+def _required_assurance(
     history: SecurityHistory, security_ids: tuple[str, ...]
 ) -> OrdinarySecurityLevel:
     if not security_ids:
@@ -68,9 +68,9 @@ def _required_integrity(
         obj = history.resolve(security_id)
         if obj is None:
             raise ValueError(f"unresolved derivation participant: {security_id}")
-        value = getattr(obj.values, "integrity", None)
+        value = getattr(obj.values, "assurance", None)
         if value is None:
-            raise ValueError(f"derivation participant lacks Integrity: {security_id}")
+            raise ValueError(f"derivation participant lacks Assurance: {security_id}")
         values.append(int(value))
     return cast(OrdinarySecurityLevel, SecurityLevel(min(values)))
 
@@ -130,7 +130,7 @@ class Artifact(FrozenModel):
         artifact_id: str,
         payload: JsonValue,
         sensitivity: OrdinarySecurityLevel,
-        integrity: OrdinarySecurityLevel,
+        assurance: OrdinarySecurityLevel,
         publication_revision: str = "1",
         representation_revision: str = "1",
         security_history: SecurityHistory | None = None,
@@ -141,7 +141,7 @@ class Artifact(FrozenModel):
             kind="artifact",
             payload=payload,
             sensitivity=sensitivity,
-            integrity=integrity,
+            assurance=assurance,
             publication_revision=publication_revision,
             representation_revision=representation_revision,
         )
@@ -159,7 +159,7 @@ class Artifact(FrozenModel):
         source: Material,
         result: TransientInferenceResult,
         sensitivity: OrdinarySecurityLevel,
-        integrity: OrdinarySecurityLevel | None = None,
+        assurance: OrdinarySecurityLevel | None = None,
         publication_revision: str = "1",
         representation_revision: str = "1",
     ) -> Artifact:
@@ -169,8 +169,8 @@ class Artifact(FrozenModel):
             sorted(set((*result.producer_security_ids, *invocation.producer_security_ids)))
         )
         production_history = result.security.extend(objects=invocation.objects)
-        bound = min(result.output_integrity, _required_integrity(production_history, production))
-        desired = integrity or bound
+        bound = min(result.output_assurance, _required_assurance(production_history, production))
+        desired = assurance or bound
         if int(desired) > int(bound):
             raise ValueError("ordinary generated output cannot exceed inference assurance")
         history = source.security_history.merge(production_history)
@@ -180,7 +180,7 @@ class Artifact(FrozenModel):
             kind="artifact",
             payload=result.payload,
             sensitivity=sensitivity,
-            integrity=desired,
+            assurance=desired,
             publication_revision=publication_revision,
             representation_revision=representation_revision,
         )
@@ -207,7 +207,7 @@ class Artifact(FrozenModel):
         payload: JsonValue,
         record: WorkRecord,
         sensitivity: OrdinarySecurityLevel,
-        integrity: OrdinarySecurityLevel | None = None,
+        assurance: OrdinarySecurityLevel | None = None,
         publication_revision: str = "1",
         representation_revision: str = "1",
     ) -> Artifact:
@@ -218,8 +218,8 @@ class Artifact(FrozenModel):
             sorted(set((*evidence.producer_security_ids, *invocation.producer_security_ids)))
         )
         production_history = record.spec.security.extend(objects=invocation.objects)
-        bound = min(evidence.output_integrity, _required_integrity(production_history, production))
-        desired = integrity or bound
+        bound = min(evidence.output_assurance, _required_assurance(production_history, production))
+        desired = assurance or bound
         if int(desired) > int(bound):
             raise ValueError("ordinary work output cannot exceed execution assurance")
         security = _material_security(
@@ -228,7 +228,7 @@ class Artifact(FrozenModel):
             kind="artifact",
             payload=payload,
             sensitivity=sensitivity,
-            integrity=desired,
+            assurance=desired,
             publication_revision=publication_revision,
             representation_revision=representation_revision,
         )
@@ -254,7 +254,7 @@ class Artifact(FrozenModel):
         payload: JsonValue,
         producer_security_ids: tuple[str, ...],
         sensitivity: OrdinarySecurityLevel,
-        integrity: OrdinarySecurityLevel | None = None,
+        assurance: OrdinarySecurityLevel | None = None,
         additional_sources: tuple[Material | TransientMaterial, ...] = (),
         publication_revision: str = "1",
         representation_revision: str = "1",
@@ -265,16 +265,16 @@ class Artifact(FrozenModel):
         producer_security_ids = tuple(
             sorted(set((*producer_security_ids, *invocation.producer_security_ids)))
         )
-        assurance = _required_integrity(history, (*source_ids, *producer_security_ids))
-        desired = integrity or assurance
+        assurance = _required_assurance(history, (*source_ids, *producer_security_ids))
+        desired = assurance or assurance
         if int(desired) > int(assurance):
-            raise ValueError("ordinary derivation cannot increase Integrity")
+            raise ValueError("ordinary derivation cannot increase Assurance")
         output = cls.create(
             owner_module_id=owner_module_id,
             artifact_id=artifact_id,
             payload=payload,
             sensitivity=sensitivity,
-            integrity=desired,
+            assurance=desired,
             publication_revision=publication_revision,
             representation_revision=representation_revision,
             security_history=history,
@@ -297,7 +297,7 @@ class Artifact(FrozenModel):
         payload: JsonValue,
         producer_security_ids: tuple[str, ...],
         sensitivity: OrdinarySecurityLevel | None = None,
-        integrity: OrdinarySecurityLevel | None = None,
+        assurance: OrdinarySecurityLevel | None = None,
         representation_revision: str = "1",
     ) -> Artifact:
         values = cast(MaterialSecurityValues, self.security.values)
@@ -309,47 +309,10 @@ class Artifact(FrozenModel):
             payload=payload,
             producer_security_ids=producer_security_ids,
             sensitivity=sensitivity or cast(OrdinarySecurityLevel, values.sensitivity),
-            integrity=integrity,
+            assurance=assurance,
             publication_revision=self.security.subject_ref.publication_revision,
             representation_revision=representation_revision,
         )
-
-    def validated(
-        self,
-        *,
-        invocation: InvocationContext,
-        artifact_id: str,
-        payload: JsonValue,
-        sensitivity: OrdinarySecurityLevel | None = None,
-        integrity: OrdinarySecurityLevel | None = None,
-        representation_revision: str = "1",
-    ) -> Artifact:
-        values = cast(MaterialSecurityValues, self.security.values)
-        history = self.security_history.extend(objects=invocation.objects)
-        validator_security_ids = invocation.producer_security_ids
-        assurance = _required_integrity(history, validator_security_ids)
-        desired = integrity or assurance
-        if int(desired) > int(assurance):
-            raise ValueError("validated representation exceeds validator assurance")
-        output = Artifact.create(
-            owner_module_id=invocation.module_id,
-            artifact_id=artifact_id,
-            payload=payload,
-            sensitivity=sensitivity or cast(OrdinarySecurityLevel, values.sensitivity),
-            integrity=desired,
-            publication_revision=invocation.module.subject_ref.publication_revision,
-            representation_revision=representation_revision,
-            security_history=history,
-        )
-        relation = SecurityDerivation.issue(
-            kind="validation",
-            output_security_id=output.security.security_id,
-            source_security_ids=(self.security.security_id,),
-            validator_security_ids=validator_security_ids,
-        )
-        history = output.security_history.extend(derivations=(relation,))
-        _validate_history(history)
-        return output.model_copy(update={"security_history": history})
 
     def transient(self) -> TransientMaterial:
         return TransientMaterial(
@@ -395,7 +358,7 @@ class ContextBundle(FrozenModel):
         purpose: str,
         payload: JsonValue,
         sensitivity: OrdinarySecurityLevel,
-        integrity: OrdinarySecurityLevel,
+        assurance: OrdinarySecurityLevel,
         publication_revision: str = "1",
         representation_revision: str = "1",
         security_history: SecurityHistory | None = None,
@@ -406,7 +369,7 @@ class ContextBundle(FrozenModel):
             kind="context_bundle",
             payload=payload,
             sensitivity=sensitivity,
-            integrity=integrity,
+            assurance=assurance,
             publication_revision=publication_revision,
             representation_revision=representation_revision,
         )
@@ -432,7 +395,7 @@ class ContextBundle(FrozenModel):
         payload: JsonValue,
         producer_security_ids: tuple[str, ...],
         sensitivity: OrdinarySecurityLevel,
-        integrity: OrdinarySecurityLevel | None = None,
+        assurance: OrdinarySecurityLevel | None = None,
         additional_sources: tuple[Material | TransientMaterial, ...] = (),
         publication_revision: str = "1",
         representation_revision: str = "1",
@@ -443,17 +406,17 @@ class ContextBundle(FrozenModel):
         producer_security_ids = tuple(
             sorted(set((*producer_security_ids, *invocation.producer_security_ids)))
         )
-        assurance = _required_integrity(history, (*source_ids, *producer_security_ids))
-        desired = integrity or assurance
+        assurance = _required_assurance(history, (*source_ids, *producer_security_ids))
+        desired = assurance or assurance
         if int(desired) > int(assurance):
-            raise ValueError("ordinary derivation cannot increase Integrity")
+            raise ValueError("ordinary derivation cannot increase Assurance")
         output = cls.create(
             owner_module_id=owner_module_id,
             bundle_id=bundle_id,
             purpose=purpose,
             payload=payload,
             sensitivity=sensitivity,
-            integrity=desired,
+            assurance=desired,
             publication_revision=publication_revision,
             representation_revision=representation_revision,
             security_history=history,
@@ -477,7 +440,7 @@ class ContextBundle(FrozenModel):
         payload: JsonValue,
         producer_security_ids: tuple[str, ...],
         sensitivity: OrdinarySecurityLevel | None = None,
-        integrity: OrdinarySecurityLevel | None = None,
+        assurance: OrdinarySecurityLevel | None = None,
         representation_revision: str = "1",
     ) -> ContextBundle:
         values = cast(MaterialSecurityValues, self.security.values)
@@ -490,7 +453,7 @@ class ContextBundle(FrozenModel):
             payload=payload,
             producer_security_ids=producer_security_ids,
             sensitivity=sensitivity or cast(OrdinarySecurityLevel, values.sensitivity),
-            integrity=integrity,
+            assurance=assurance,
             publication_revision=self.security.subject_ref.publication_revision,
             representation_revision=representation_revision,
         )

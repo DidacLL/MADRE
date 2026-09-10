@@ -15,11 +15,14 @@ from madre_sdk import (
     AgentBehavior,
     Artifact,
     EffectProfile,
+    EndpointBinding,
     ExecutionServices,
     Module,
     Operation,
     OperationBehavior,
+    SecuritySubjectRef,
     TransientMaterial,
+    disclosure_boundary,
     effect_profile,
     participant_security,
 )
@@ -28,13 +31,30 @@ REQUESTER = "module.requester"
 TARGET = "module.target"
 
 
+def boundary(owner, privacy=SecurityLevel.LEVEL_5):
+    return disclosure_boundary(
+        owner_module_id=owner, boundary_id=f"{owner}:boundary", privacy_capacity=privacy
+    )
+
+
+def attachment(owner, privacy=SecurityLevel.LEVEL_5):
+    return EndpointBinding(
+        subject_ref=SecuritySubjectRef(
+            owner_module_id=owner,
+            subject_kind="endpoint",
+            local_id=f"{owner}:endpoint",
+            publication_revision="1",
+        ),
+        disclosure_boundaries=(boundary(owner, privacy),),
+    )
+
+
 def requester_security(*, privacy: SecurityLevel = SecurityLevel.LEVEL_5):
     return participant_security(
         owner_module_id=REQUESTER,
         subject_id=REQUESTER,
         subject_kind="module",
-        privacy=privacy,
-        integrity=SecurityLevel.LEVEL_5,
+        assurance=SecurityLevel.LEVEL_5,
     )
 
 
@@ -42,14 +62,14 @@ def input_material(
     requester,
     *,
     sensitivity: SecurityLevel = SecurityLevel.LEVEL_3,
-    integrity: SecurityLevel = SecurityLevel.LEVEL_5,
+    assurance: SecurityLevel = SecurityLevel.LEVEL_5,
 ) -> Artifact:
     return Artifact.create(
         owner_module_id=REQUESTER,
         artifact_id="request.input",
         payload={"input": "value"},
         sensitivity=sensitivity,
-        integrity=integrity,
+        assurance=assurance,
         security_history=SecurityHistory(objects=(requester,)),
     )
 
@@ -76,7 +96,7 @@ class EchoAgent(AgentBehavior):
             owner_module_id=TARGET,
             artifact_id="target.agent.output",
             payload={"echo": material.payload},
-            producer_security_ids=(self.producer_security_id,),
+            producer_security_ids=(),
             invocation=invocation,
             sensitivity=SecurityLevel.LEVEL_3,
             security_history=security,
@@ -110,7 +130,7 @@ class EchoOperation(OperationBehavior):
             owner_module_id=TARGET,
             artifact_id="target.operation.output",
             payload={"effect_profile": effect_profile_id},
-            producer_security_ids=(self.producer_security_id,),
+            producer_security_ids=(),
             invocation=invocation,
             sensitivity=SecurityLevel.LEVEL_3,
             security_history=security,
@@ -122,15 +142,13 @@ def make_agent_module(*, privacy: SecurityLevel) -> tuple[Module, EchoAgent]:
         owner_module_id=TARGET,
         subject_id=TARGET,
         subject_kind="module",
-        privacy=privacy,
-        integrity=SecurityLevel.LEVEL_5,
+        assurance=SecurityLevel.LEVEL_5,
     )
     agent_security = participant_security(
         owner_module_id=TARGET,
         subject_id="target.agent",
         subject_kind="agent",
-        privacy=privacy,
-        integrity=SecurityLevel.LEVEL_5,
+        assurance=SecurityLevel.LEVEL_5,
     )
     behavior = EchoAgent(module_security.security_id)
     agent = Agent.from_instructions(
@@ -147,6 +165,7 @@ def make_agent_module(*, privacy: SecurityLevel) -> tuple[Module, EchoAgent]:
             description="Target Agent module",
             security=module_security,
             agents=(agent,),
+            disclosure_boundaries=(boundary(TARGET, privacy),),
         ),
         behavior,
     )
@@ -161,8 +180,7 @@ def make_operation_module(
         owner_module_id=TARGET,
         subject_id=TARGET,
         subject_kind="module",
-        privacy=SecurityLevel.LEVEL_5,
-        integrity=SecurityLevel.LEVEL_5,
+        assurance=SecurityLevel.LEVEL_5,
     )
     behavior = EchoOperation(module_security.security_id, fail=fail)
     operation = Operation(
@@ -182,6 +200,7 @@ def make_operation_module(
             description="Target Operation module",
             security=module_security,
             operations=(operation,),
+            disclosure_boundaries=(boundary(TARGET),),
         ),
         behavior,
     )
@@ -191,6 +210,7 @@ def profile(
     profile_id: str,
     *,
     risk: SecurityLevel,
+    control_risk: SecurityLevel | None = None,
     autonomy: SecurityLevel,
     privacy: SecurityLevel | None = None,
     discloses_material: bool = False,
@@ -199,11 +219,11 @@ def profile(
         owner_module_id=TARGET,
         operation_id="target.operation",
         profile_id=profile_id,
-        risk=risk,
+        control_risk=control_risk or risk,
+        effect_risk=risk,
         autonomy=autonomy,
-        integrity=SecurityLevel.LEVEL_5,
-        privacy=privacy,
-        discloses_material=discloses_material,
+        assurance=SecurityLevel.LEVEL_5,
+        disclosure_boundaries=(boundary(TARGET, privacy),) if discloses_material else (),
     )
 
 
@@ -241,7 +261,9 @@ def test_agent_broker_builds_only_actual_disclosure_transition(tmp_path: Path) -
         source = input_material(requester)
         output = asyncio.run(
             broker.invoke_agent(
-                InvocationContext(module=requester),
+                InvocationContext(
+                    module=requester, endpoint=attachment(requester.subject_ref.owner_module_id)
+                ),
                 source.security_history,
                 TARGET,
                 "target.agent",
@@ -278,7 +300,9 @@ def test_agent_disclosure_rejects_low_privacy_path_before_dispatch(tmp_path: Pat
         with pytest.raises(SecurityDenied, match="confidentiality_capacity_below_sensitivity"):
             asyncio.run(
                 broker.invoke_agent(
-                    InvocationContext(module=requester),
+                    InvocationContext(
+                        module=requester, endpoint=attachment(requester.subject_ref.owner_module_id)
+                    ),
                     source.security_history,
                     TARGET,
                     "target.agent",
@@ -290,7 +314,7 @@ def test_agent_disclosure_rejects_low_privacy_path_before_dispatch(tmp_path: Pat
         database.__exit__(None, None, None)
 
 
-def test_low_integrity_display_material_is_not_an_effect_controller(tmp_path: Path) -> None:
+def test_low_assurance_display_material_is_not_an_effect_controller(tmp_path: Path) -> None:
     database, _, _, registry, broker = broker_fixture(tmp_path)
     try:
         module, behavior = make_agent_module(privacy=SecurityLevel.LEVEL_5)
@@ -300,11 +324,13 @@ def test_low_integrity_display_material_is_not_an_effect_controller(tmp_path: Pa
         source = input_material(
             requester,
             sensitivity=SecurityLevel.LEVEL_1,
-            integrity=SecurityLevel.LEVEL_1,
+            assurance=SecurityLevel.LEVEL_1,
         )
         output = asyncio.run(
             broker.invoke_agent(
-                InvocationContext(module=requester),
+                InvocationContext(
+                    module=requester, endpoint=attachment(requester.subject_ref.owner_module_id)
+                ),
                 source.security_history,
                 TARGET,
                 "target.agent",
@@ -317,13 +343,14 @@ def test_low_integrity_display_material_is_not_an_effect_controller(tmp_path: Pa
         database.__exit__(None, None, None)
 
 
-def test_direct_user_effect_passes_control_but_still_requires_effect_integrity(
+def test_direct_user_effect_passes_control_but_still_requires_effect_assurance(
     tmp_path: Path,
 ) -> None:
     database, _, _, registry, broker = broker_fixture(tmp_path)
     try:
         direct = profile(
             "direct",
+            control_risk=SecurityLevel.LEVEL_1,
             risk=SecurityLevel.LEVEL_5,
             autonomy=SecurityLevel.LEVEL_1,
         )
@@ -334,11 +361,13 @@ def test_direct_user_effect_passes_control_but_still_requires_effect_integrity(
         source = input_material(
             requester,
             sensitivity=SecurityLevel.LEVEL_1,
-            integrity=SecurityLevel.LEVEL_1,
+            assurance=SecurityLevel.LEVEL_1,
         )
         output = asyncio.run(
             broker.invoke_operation(
-                InvocationContext(module=requester),
+                InvocationContext(
+                    module=requester, endpoint=attachment(requester.subject_ref.owner_module_id)
+                ),
                 source.security_history,
                 TARGET,
                 "target.operation",
@@ -353,7 +382,7 @@ def test_direct_user_effect_passes_control_but_still_requires_effect_integrity(
         database.__exit__(None, None, None)
 
 
-def test_autonomous_high_risk_effect_rejects_low_integrity_controller(tmp_path: Path) -> None:
+def test_autonomous_high_risk_effect_rejects_low_assurance_controller(tmp_path: Path) -> None:
     database, _, _, registry, broker = broker_fixture(tmp_path)
     try:
         autonomous = profile(
@@ -368,12 +397,14 @@ def test_autonomous_high_risk_effect_rejects_low_integrity_controller(tmp_path: 
         source = input_material(
             requester,
             sensitivity=SecurityLevel.LEVEL_1,
-            integrity=SecurityLevel.LEVEL_1,
+            assurance=SecurityLevel.LEVEL_1,
         )
-        with pytest.raises(SecurityDenied, match="control_integrity_below_demand"):
+        with pytest.raises(SecurityDenied, match="control_assurance_below_demand"):
             asyncio.run(
                 broker.invoke_operation(
-                    InvocationContext(module=requester),
+                    InvocationContext(
+                        module=requester, endpoint=attachment(requester.subject_ref.owner_module_id)
+                    ),
                     source.security_history,
                     TARGET,
                     "target.operation",
@@ -403,12 +434,14 @@ def test_publishing_effect_profile_privacy_is_on_actual_disclosure_path(tmp_path
         source = input_material(
             requester,
             sensitivity=SecurityLevel.LEVEL_5,
-            integrity=SecurityLevel.LEVEL_5,
+            assurance=SecurityLevel.LEVEL_5,
         )
         with pytest.raises(SecurityDenied, match="confidentiality_capacity_below_sensitivity"):
             asyncio.run(
                 broker.invoke_operation(
-                    InvocationContext(module=requester),
+                    InvocationContext(
+                        module=requester, endpoint=attachment(requester.subject_ref.owner_module_id)
+                    ),
                     source.security_history,
                     TARGET,
                     "target.operation",
@@ -437,7 +470,9 @@ def test_caller_can_select_only_published_immutable_effect_profile(tmp_path: Pat
         with pytest.raises(SecurityDenied, match="invalid_effect_profile"):
             asyncio.run(
                 broker.invoke_operation(
-                    InvocationContext(module=requester),
+                    InvocationContext(
+                        module=requester, endpoint=attachment(requester.subject_ref.owner_module_id)
+                    ),
                     source.security_history,
                     TARGET,
                     "target.operation",
@@ -466,7 +501,9 @@ def test_operation_exception_is_unknown_effect_and_is_not_retried(tmp_path: Path
         with pytest.raises(UnknownOperationEffect):
             asyncio.run(
                 broker.invoke_operation(
-                    InvocationContext(module=requester),
+                    InvocationContext(
+                        module=requester, endpoint=attachment(requester.subject_ref.owner_module_id)
+                    ),
                     source.security_history,
                     TARGET,
                     "target.operation",

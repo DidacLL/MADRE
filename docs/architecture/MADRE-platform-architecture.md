@@ -56,7 +56,7 @@ These contracts do not imply that every Module must implement every concept. Mod
 
 Module code should not depend on Kernel persistence classes, scheduler internals, HTTP/FastAPI implementation details or provider-adapter internals.
 
-The SDK may provide higher-level reusable helpers and reference implementations without turning them into Kernel semantics. Examples include interaction patterns, delegation helpers, material/context construction helpers, EffectProfile/transition builders and adapter scaffolding.
+The SDK may provide higher-level reusable helpers and reference implementations without turning them into Kernel semantics. Examples include interaction patterns, delegation helpers, material/context construction helpers, EffectProfile/transition builders and bound transformation execution and adapter scaffolding.
 
 Public contracts should remain language-neutral even while the current prototype is implemented in Python.
 
@@ -115,7 +115,7 @@ Durable work never queues private material inside Kernel.
 
 The semantic composition of these primitives belongs to Modules/Agents.
 
-At governed boundaries, the public execution structure identifies actual disclosure/control/effect participants so Kernel can construct/evaluate the corresponding SecurityTransition without inspecting payload semantics.
+At governed boundaries, the public execution structure identifies actual disclosure boundaries and residual control/effect participants so Kernel can construct/evaluate the corresponding SecurityTransition without inspecting payload semantics.
 
 ## 7. CORE placement
 
@@ -125,7 +125,7 @@ MADRE ships with a default CORE Module. The user may select another CORE-capable
 
 CORE uses the same SDK, registry, Security Algebra and execution boundaries as other Modules. It is not a second Kernel.
 
-CORE eligibility requires sufficiently strong Privacy and Integrity characteristics for the sensitive disclosure/control paths it is expected to participate in. This does not imply low material Sensitivity: CORE-owned information may itself carry the highest Sensitivity levels.
+CORE eligibility requires sufficiently strong boundary PrivacyCapacity and role-specific Assurance for the sensitive disclosure/control paths it is expected to participate in. This does not imply low material Sensitivity: CORE-owned information may itself carry the highest Sensitivity levels.
 
 The shipped CORE commonly provides:
 

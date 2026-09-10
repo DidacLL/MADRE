@@ -33,6 +33,7 @@ from madre.runtime import (
 )
 from madre.security import (
     BindingEvidence,
+    BoundarySecurityValues,
     CapabilitySecurityValues,
     SecurityObject,
     SecuritySubjectRef,
@@ -65,8 +66,7 @@ def _capabilities(settings: Settings) -> CapabilityRegistry:
                 local_id=capability_id,
             ),
             values=CapabilitySecurityValues(
-                privacy=config.privacy,
-                integrity=config.integrity,
+                assurance=config.assurance,
             ),
             binding_evidence=(
                 BindingEvidence(key="adapter_kind", value=config.kind),
@@ -96,6 +96,18 @@ def _capabilities(settings: Settings) -> CapabilityRegistry:
             resources=config.resources,
             heavyweight=config.heavyweight,
             security=security,
+            disclosure_boundaries=(
+                SecurityObject.issue(
+                    subject_ref=SecuritySubjectRef(
+                        owner_module_id="madre.platform",
+                        subject_kind="disclosure_boundary",
+                        publication_revision="1",
+                        local_id=f"{capability_id}:boundary",
+                    ),
+                    values=BoundarySecurityValues(privacy_capacity=config.privacy_capacity),
+                    binding_evidence=security.binding_evidence,
+                ),
+            ),
         )
         registry.register(OpenAICompatibleChatCapability(descriptor, config))
     return registry

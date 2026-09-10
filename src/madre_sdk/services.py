@@ -27,12 +27,13 @@ from madre.interfaces import (
     Discovery,
     DurableWorkSubmission,
     OperationBrokering,
+    TransformBrokering,
     TransientInference,
     WorkInspection,
     WorkResultAccess,
 )
 from madre.registry import AgentDescriptor, OperationDescriptor, SkillDescriptor, WorkflowDescriptor
-from madre.security import InvocationContext, SecurityHistory, SecurityObject
+from madre.security import InvocationContext, ProfileFeasibility, SecurityHistory, SecurityObject
 from madre_sdk.material import Material, MaterialRepository
 
 
@@ -211,6 +212,26 @@ class OperationBrokerClient(_ExecutionClient):
         self._security = security
         self._broker = broker
 
+    def evaluate_profiles(
+        self,
+        module_id: str,
+        operation_id: str,
+        material: Material,
+        *,
+        controllers: tuple[SecurityObject, ...] = (),
+        security: SecurityHistory | None = None,
+    ) -> ProfileFeasibility:
+        invocation = self._active_invocation()
+        carried = (security or self._security).extend(objects=(*controllers, *invocation.objects))
+        return self._broker.evaluate_operation_profiles(
+            invocation,
+            carried,
+            module_id,
+            operation_id,
+            material.transient(),
+            tuple(x.security_id for x in controllers),
+        )
+
     async def invoke(
         self,
         module_id: str,
@@ -231,6 +252,23 @@ class OperationBrokerClient(_ExecutionClient):
             effect_profile_id,
             material.transient(),
             tuple(item.security_id for item in controllers),
+        )
+
+
+class TransformBrokerClient(_ExecutionClient):
+    def __init__(self, *, broker: TransformBrokering) -> None:
+        self._broker = broker
+
+    async def invoke(
+        self, module_id: str, transform_id: str, material: Material
+    ) -> TransientMaterial:
+        invocation = self._active_invocation()
+        return await self._broker.invoke_transform(
+            invocation,
+            material.security_history.extend(objects=invocation.objects),
+            module_id,
+            transform_id,
+            material.transient(),
         )
 
 
@@ -267,6 +305,7 @@ class ExecutionServices:
     work: WorkClient | None = None
     agents: AgentBrokerClient | None = None
     operations: OperationBrokerClient | None = None
+    transforms: TransformBrokerClient | None = None
 
 
 @dataclass(frozen=True)
@@ -277,12 +316,14 @@ class ModuleServices:
     work: WorkClient | None = None
     agents: AgentBrokerClient | None = None
     operations: OperationBrokerClient | None = None
+    transforms: TransformBrokerClient | None = None
 
     @contextmanager
     def _execution(self, invocation: InvocationContext) -> Iterator[ExecutionServices]:
         binding = _ExecutionBinding(invocation)
         try:
             yield ExecutionServices(
+                transforms=self.transforms._bind(binding) if self.transforms is not None else None,
                 inference=self.inference._bind(binding) if self.inference is not None else None,
                 work=self.work._bind(binding) if self.work is not None else None,
                 agents=self.agents._bind(binding) if self.agents is not None else None,

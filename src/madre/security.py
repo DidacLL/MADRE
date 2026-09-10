@@ -1,4 +1,4 @@
-"""Frozen MADRE Security Algebra: immutable subjects, transitions, history, and decisions."""
+"""MADRE Security Algebra V2: immutable subjects, transitions, history, and decisions."""
 
 from __future__ import annotations
 
@@ -43,6 +43,8 @@ SecuritySubjectKind = Literal[
     "capability",
     "endpoint",
     "effect_profile",
+    "disclosure_boundary",
+    "transform",
 ]
 
 
@@ -57,34 +59,66 @@ def _digest(value: object) -> str:
 class MaterialSecurityValues(FrozenModel):
     kind: Literal["material"] = "material"
     sensitivity: OrdinarySecurityLevel | None = None
-    integrity: OrdinarySecurityLevel | None = None
+    assurance: OrdinarySecurityLevel | None = None
 
 
 class ParticipantSecurityValues(FrozenModel):
     kind: Literal["participant"] = "participant"
-    privacy: OrdinarySecurityLevel | None = None
-    integrity: OrdinarySecurityLevel | None = None
+    assurance: OrdinarySecurityLevel | None = None
 
 
 class CapabilitySecurityValues(FrozenModel):
     kind: Literal["capability"] = "capability"
-    privacy: OrdinarySecurityLevel | None = None
-    integrity: OrdinarySecurityLevel | None = None
+    assurance: OrdinarySecurityLevel | None = None
+
+
+class BoundarySecurityValues(FrozenModel):
+    kind: Literal["boundary"] = "boundary"
+    privacy_capacity: OrdinarySecurityLevel
+
+
+class TransformSecurityValues(FrozenModel):
+    kind: Literal["transform"] = "transform"
+    contract_id: Identifier
+    evidence_schema: Identifier
+
+
+class RiskEnvelope(FrozenModel):
+    control_risk: OrdinarySecurityLevel
+    effect_risk: OrdinarySecurityLevel
+
+    @model_validator(mode="after")
+    def ordered(self) -> RiskEnvelope:
+        if self.control_risk > self.effect_risk:
+            raise ValueError("control_risk must not exceed effect_risk")
+        return self
 
 
 class EffectProfileSecurityValues(FrozenModel):
     kind: Literal["effect_profile"] = "effect_profile"
-    risk: OrdinarySecurityLevel | None = None
-    autonomy: OrdinarySecurityLevel | None = None
-    integrity: OrdinarySecurityLevel | None = None
-    privacy: OrdinarySecurityLevel | None = None
+    risk: RiskEnvelope
+    autonomy: OrdinarySecurityLevel
+    assurance: OrdinarySecurityLevel
+    # These describe this immutable profile's public machine-control contract.
+    input_controls: bool = True
+    caller_controls: bool = True
+    controller_security_ids: tuple[SecurityID, ...] = ()
+    executor_security_ids: tuple[SecurityID, ...] = ()
+    disclosure_boundary_ids: tuple[SecurityID, ...] = ()
+
+    @field_validator("controller_security_ids", "executor_security_ids")
+    @classmethod
+    def canonical_ids(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        return tuple(sorted(set(value)))
 
 
 SecurityValues = Annotated[
     MaterialSecurityValues
     | ParticipantSecurityValues
     | CapabilitySecurityValues
-    | EffectProfileSecurityValues,
+    | EffectProfileSecurityValues
+    | BoundarySecurityValues
+    | TransformSecurityValues,
     Field(discriminator="kind"),
 ]
 
@@ -150,6 +184,8 @@ class SecurityObject(FrozenModel):
             "capability": CapabilitySecurityValues,
             "endpoint": ParticipantSecurityValues,
             "effect_profile": EffectProfileSecurityValues,
+            "disclosure_boundary": BoundarySecurityValues,
+            "transform": TransformSecurityValues,
         }
         if not isinstance(self.values, expected[self.subject_ref.subject_kind]):
             raise ValueError(f"{self.subject_ref.subject_kind} has incompatible security values")
@@ -169,7 +205,7 @@ class SecurityObject(FrozenModel):
         }
 
     def expected_security_id(self) -> SecurityID:
-        return f"security:v1:{_digest(self.identity_payload())}"
+        return f"security:v2:{_digest(self.identity_payload())}"
 
     def expected_binding_digest(self) -> str:
         return _digest(
@@ -202,7 +238,7 @@ class SecurityObject(FrozenModel):
             "values": values.model_dump(mode="json"),
             "binding_evidence": [item.model_dump(mode="json") for item in binding_evidence],
         }
-        security_id = f"security:v1:{_digest(identity_payload)}"
+        security_id = f"security:v2:{_digest(identity_payload)}"
         binding_digest = _digest({"security_id": security_id, "identity": identity_payload})
         return cls(
             security_id=security_id,
@@ -220,52 +256,65 @@ class OperationReference(FrozenModel):
     operation_revision: Identifier = "1"
 
 
-class InvocationContext(FrozenModel):
-    """Exact active execution facts; explicitly carried, never an authority token.
+class EndpointBinding(FrozenModel):
+    """Routing attachment; only explicitly declared behavior has security operands."""
 
-    The current in-process endpoint forwards nested calls: it does not receive their
-    return payload. Consequently recipients are the Module and active Agent only.
-    Endpoint identity still binds dispatch and the production of new endpoint output.
-    """
+    subject_ref: SecuritySubjectRef
+    disclosure_boundaries: tuple[SecurityObject, ...] = Field(min_length=1)
+    producers: tuple[SecurityObject, ...] = ()
+    executors: tuple[SecurityObject, ...] = ()
+
+    @model_validator(mode="after")
+    def valid(self) -> EndpointBinding:
+        if self.subject_ref.subject_kind != "endpoint":
+            raise ValueError("attachment must identify an endpoint")
+        for boundary in self.disclosure_boundaries:
+            if not boundary.verify_binding() or not isinstance(
+                boundary.values, BoundarySecurityValues
+            ):
+                raise ValueError("attachment requires bound disclosure boundaries")
+        for participant in (*self.producers, *self.executors):
+            if not participant.verify_binding() or _assurance_value(participant) is None:
+                raise ValueError("attachment behavior requires bound Assurance")
+        return self
+
+
+class InvocationContext(FrozenModel):
+    """Established execution identity and boundary, independent of carried history."""
 
     module: SecurityObject
     agent: SecurityObject | None = None
-    endpoint: SecurityObject | None = None
+    endpoint: EndpointBinding
     operation: OperationReference | None = None
+    behavior: SecurityObject | None = None
 
     @model_validator(mode="after")
     def validate_participants(self) -> InvocationContext:
-        module_ref = self.module.subject_ref
-        if (
-            module_ref.subject_kind != "module"
-            or module_ref.local_id != module_ref.owner_module_id
-            or self.agent is not None
-            and self.operation is not None
-        ):
-            raise ValueError("invalid invocation Module/actor")
-        for obj, kind in (
-            (self.module, "module"),
-            (self.agent, "agent"),
-            (self.endpoint, "endpoint"),
-        ):
-            if obj is None:
-                continue
-            ref = obj.subject_ref
-            if (
-                ref.subject_kind != kind
-                or ref.owner_module_id != module_ref.owner_module_id
-                or ref.publication_revision != module_ref.publication_revision
-                or not obj.verify_binding()
-                or not isinstance(obj.values, ParticipantSecurityValues)
-                or obj.values.integrity is None
-                or obj.values.privacy is None
+        ref = self.module.subject_ref
+        if ref.subject_kind != "module" or ref.local_id != ref.owner_module_id:
+            raise ValueError("invalid invocation Module")
+        if self.agent is not None and self.operation is not None:
+            raise ValueError("invocation cannot be both Agent and Operation")
+        for obj in (self.module, self.agent, self.behavior):
+            if obj is not None and (
+                not obj.verify_binding()
+                or obj.subject_ref.owner_module_id != ref.owner_module_id
+                or obj.subject_ref.publication_revision != ref.publication_revision
             ):
-                raise ValueError("invocation participants must match the exact publication")
-        if self.operation is not None and (
-            self.operation.module_id != self.module_id
-            or self.operation.publication_revision != module_ref.publication_revision
+                raise ValueError("invocation must match exact publication")
+        endpoint_ref = self.endpoint.subject_ref
+        if (
+            endpoint_ref.owner_module_id != ref.owner_module_id
+            or endpoint_ref.publication_revision != ref.publication_revision
         ):
-            raise ValueError("invocation Operation belongs to another publication")
+            raise ValueError("endpoint must match exact publication")
+        if self.agent is not None and self.agent.subject_ref.subject_kind != "agent":
+            raise ValueError("invalid active Agent")
+        if self.operation is not None and (
+            self.operation.module_id != ref.owner_module_id
+            or self.operation.publication_revision != ref.publication_revision
+        ):
+            raise ValueError("invalid active Operation")
         return self
 
     @property
@@ -273,20 +322,32 @@ class InvocationContext(FrozenModel):
         return self.module.subject_ref.owner_module_id
 
     @property
+    def actor(self) -> SecurityObject:
+        return self.agent or self.behavior or self.module
+
+    @property
     def objects(self) -> tuple[SecurityObject, ...]:
-        return tuple(obj for obj in (self.module, self.agent, self.endpoint) if obj is not None)
+        return (
+            self.module,
+            self.actor,
+            *self.endpoint.disclosure_boundaries,
+            *self.endpoint.producers,
+            *self.endpoint.executors,
+        )
 
     @property
     def selector_security_id(self) -> SecurityID:
-        return (self.agent or self.module).security_id
+        return self.actor.security_id
 
     @property
-    def recipient_security_ids(self) -> tuple[SecurityID, ...]:
-        return tuple(obj.security_id for obj in (self.module, self.agent) if obj is not None)
+    def boundary_security_ids(self) -> tuple[SecurityID, ...]:
+        return tuple(obj.security_id for obj in self.endpoint.disclosure_boundaries)
 
     @property
     def producer_security_ids(self) -> tuple[SecurityID, ...]:
-        return tuple(sorted(obj.security_id for obj in self.objects))
+        return tuple(
+            sorted({self.actor.security_id, *(obj.security_id for obj in self.endpoint.producers)})
+        )
 
 
 class EffectProfile(FrozenModel):
@@ -295,7 +356,7 @@ class EffectProfile(FrozenModel):
     id: Identifier
     operation: OperationReference
     security: SecurityObject
-    discloses_material: bool = False
+    participants: tuple[SecurityObject, ...] = ()
 
     @model_validator(mode="after")
     def binding_matches_operation(self) -> EffectProfile:
@@ -313,16 +374,20 @@ class EffectProfile(FrozenModel):
         if not self.security.verify_binding():
             raise ValueError("EffectProfile SecurityObject binding is invalid")
         values = cast(EffectProfileSecurityValues, self.security.values)
-        if self.discloses_material and values.privacy is None:
-            raise ValueError("material-disclosing EffectProfile requires Privacy")
-        if not self.discloses_material and values.privacy is not None:
-            raise ValueError("non-disclosing EffectProfile must not declare Privacy")
+        supplied = {item.security_id: item for item in self.participants}
+        for sid in (
+            *values.controller_security_ids,
+            *values.executor_security_ids,
+            *values.disclosure_boundary_ids,
+        ):
+            if sid not in supplied or not supplied[sid].verify_binding():
+                raise ValueError("profile topology requires bound participants")
         return self
 
 
 class Disclosure(FrozenModel):
     material_security_id: SecurityID
-    path_security_ids: tuple[SecurityID, ...] = Field(min_length=1)
+    boundary_security_ids: tuple[SecurityID, ...] = Field(min_length=1)
 
 
 class Control(FrozenModel):
@@ -369,7 +434,7 @@ class SecurityTransition(FrozenModel):
         }
 
     def verify_identity(self) -> bool:
-        return self.transition_id == f"transition:v1:{_digest(self.identity_payload())}"
+        return self.transition_id == f"transition:v2:{_digest(self.identity_payload())}"
 
     @classmethod
     def issue(
@@ -388,14 +453,14 @@ class SecurityTransition(FrozenModel):
             else None,
         }
         return cls(
-            transition_id=f"transition:v1:{_digest(payload)}",
+            transition_id=f"transition:v2:{_digest(payload)}",
             disclosures=disclosures,
             control=control,
             effect_execution=effect_execution,
         )
 
 
-DerivationKind = Literal["ordinary", "validation"]
+DerivationKind = Literal["ordinary", "transform"]
 
 
 class SecurityDerivation(FrozenModel):
@@ -406,9 +471,9 @@ class SecurityDerivation(FrozenModel):
     output_security_id: SecurityID
     source_security_ids: tuple[SecurityID, ...] = Field(min_length=1)
     producer_security_ids: tuple[SecurityID, ...] = ()
-    validator_security_ids: tuple[SecurityID, ...] = ()
+    transform_security_id: SecurityID | None = None
 
-    @field_validator("source_security_ids", "producer_security_ids", "validator_security_ids")
+    @field_validator("source_security_ids", "producer_security_ids")
     @classmethod
     def canonical_participants(cls, value: tuple[str, ...]) -> tuple[str, ...]:
         return tuple(sorted(set(value)))
@@ -419,11 +484,11 @@ class SecurityDerivation(FrozenModel):
             "output_security_id": self.output_security_id,
             "source_security_ids": self.source_security_ids,
             "producer_security_ids": self.producer_security_ids,
-            "validator_security_ids": self.validator_security_ids,
+            "transform_security_id": self.transform_security_id,
         }
 
     def verify_identity(self) -> bool:
-        return self.derivation_id == f"derivation:v1:{_digest(self.identity_payload())}"
+        return self.derivation_id == f"derivation:v2:{_digest(self.identity_payload())}"
 
     @classmethod
     def issue(
@@ -433,31 +498,31 @@ class SecurityDerivation(FrozenModel):
         output_security_id: SecurityID,
         source_security_ids: tuple[SecurityID, ...],
         producer_security_ids: tuple[SecurityID, ...] = (),
-        validator_security_ids: tuple[SecurityID, ...] = (),
+        transform_security_id: SecurityID | None = None,
     ) -> SecurityDerivation:
         source_security_ids = cls.canonical_participants(source_security_ids)
         producer_security_ids = cls.canonical_participants(producer_security_ids)
-        validator_security_ids = cls.canonical_participants(validator_security_ids)
         payload = {
             "kind": kind,
             "output_security_id": output_security_id,
             "source_security_ids": source_security_ids,
             "producer_security_ids": producer_security_ids,
-            "validator_security_ids": validator_security_ids,
+            "transform_security_id": transform_security_id,
         }
         return cls(
-            derivation_id=f"derivation:v1:{_digest(payload)}",
+            derivation_id=f"derivation:v2:{_digest(payload)}",
             kind=kind,
             output_security_id=output_security_id,
             source_security_ids=source_security_ids,
             producer_security_ids=producer_security_ids,
-            validator_security_ids=validator_security_ids,
+            transform_security_id=transform_security_id,
         )
 
 
 class SecurityHistory(FrozenModel):
     """Immutable idempotent security facts and accepted causal relationships."""
 
+    version: Literal["2"] = "2"
     objects: tuple[SecurityObject, ...] = ()
     transitions: tuple[SecurityTransition, ...] = ()
     derivations: tuple[SecurityDerivation, ...] = ()
@@ -533,25 +598,25 @@ class StructuralFailure(FrozenModel):
 class DisclosureEvidence(FrozenModel):
     material_security_id: SecurityID
     sensitivity: OrdinarySecurityLevel | None
-    path_security_ids: tuple[SecurityID, ...]
-    path_privacy: OrdinarySecurityLevel | None
+    boundary_security_ids: tuple[SecurityID, ...]
+    boundary_privacy: OrdinarySecurityLevel | None
     limiting_security_ids: tuple[SecurityID, ...] = ()
 
 
 class EffectEvidence(FrozenModel):
     effect_profile_security_id: SecurityID
-    risk: OrdinarySecurityLevel | None
+    risk: RiskEnvelope | None
     autonomy: OrdinarySecurityLevel | None
     control_demand: OrdinarySecurityLevel | None
     controller_security_ids: tuple[SecurityID, ...]
-    controller_integrity: OrdinarySecurityLevel | None
+    controller_assurance: OrdinarySecurityLevel | None
     executor_security_ids: tuple[SecurityID, ...]
-    effect_integrity: OrdinarySecurityLevel | None
+    effect_assurance: OrdinarySecurityLevel | None
 
 
 class SecurityDecision(FrozenModel):
     admissible: bool
-    algebra_version: Literal["1"] = "1"
+    algebra_version: Literal["2"] = "2"
     transition_id: Identifier
     failures: tuple[StructuralFailure, ...] = ()
     disclosures: tuple[DisclosureEvidence, ...] = ()
@@ -560,6 +625,32 @@ class SecurityDecision(FrozenModel):
     @property
     def failure_codes(self) -> tuple[str, ...]:
         return tuple(item.code for item in self.failures)
+
+
+class ProfileDecision(FrozenModel):
+    profile_id: Identifier
+    profile_security_id: SecurityID
+    autonomy: OrdinarySecurityLevel
+    decision: SecurityDecision
+
+
+class ProfileFeasibility(FrozenModel):
+    profiles: tuple[ProfileDecision, ...]
+
+    @property
+    def feasible_profile_ids(self) -> tuple[str, ...]:
+        return tuple(x.profile_id for x in self.profiles if x.decision.admissible)
+
+    @property
+    def maximum_feasible_autonomy(self) -> OrdinarySecurityLevel | None:
+        return max((x.autonomy for x in self.profiles if x.decision.admissible), default=None)
+
+    @property
+    def highest_profile_ids(self) -> tuple[str, ...]:
+        maximum = self.maximum_feasible_autonomy
+        return tuple(
+            x.profile_id for x in self.profiles if x.decision.admissible and x.autonomy == maximum
+        )
 
 
 class SecurityEvaluator(Protocol):
@@ -578,7 +669,7 @@ def _ordinary(value: object) -> OrdinarySecurityLevel | None:
     return cast(OrdinarySecurityLevel, SecurityLevel(integer))
 
 
-def _integrity_value(obj: SecurityObject) -> OrdinarySecurityLevel | None:
+def _assurance_value(obj: SecurityObject) -> OrdinarySecurityLevel | None:
     values = obj.values
     if isinstance(
         values,
@@ -589,23 +680,20 @@ def _integrity_value(obj: SecurityObject) -> OrdinarySecurityLevel | None:
             EffectProfileSecurityValues,
         ),
     ):
-        return _ordinary(values.integrity)
+        return _ordinary(values.assurance)
     return None
 
 
 def _privacy_value(obj: SecurityObject) -> OrdinarySecurityLevel | None:
-    values = obj.values
-    if isinstance(values, (ParticipantSecurityValues, CapabilitySecurityValues)):
-        return _ordinary(values.privacy)
-    if isinstance(values, EffectProfileSecurityValues):
-        return _ordinary(values.privacy)
+    if isinstance(obj.values, BoundarySecurityValues):
+        return obj.values.privacy_capacity
     return None
 
 
 class SecurityAlgebra:
     """Deterministic implementation of the frozen transition-local MADRE predicates."""
 
-    name = "madre-security-algebra-v1"
+    name = "madre-security-algebra-v2"
 
     def evaluate(
         self, history: SecurityHistory, transition: SecurityTransition
@@ -630,6 +718,7 @@ class SecurityAlgebra:
             failures.append(StructuralFailure(code="invalid_security_binding", detail="transition"))
 
         failures.extend(self._validate_derivations(history, index))
+        failures.extend(self._profile_topology(transition, index))
 
         for disclosure in transition.disclosures:
             evidence, disclosure_failures = self._evaluate_disclosure(disclosure, index)
@@ -657,6 +746,36 @@ class SecurityAlgebra:
         )
 
     @staticmethod
+    def _profile_topology(
+        transition: SecurityTransition, index: dict[SecurityID, SecurityObject]
+    ) -> list[StructuralFailure]:
+        execution = transition.effect_execution
+        if execution is None or transition.control is None:
+            return []
+        profile = index.get(execution.effect_profile_security_id)
+        if profile is None or not isinstance(profile.values, EffectProfileSecurityValues):
+            return []
+        values = profile.values
+        missing = set(values.controller_security_ids) - set(
+            transition.control.controller_security_ids
+        )
+        missing.update(set(values.executor_security_ids) - set(execution.executor_security_ids))
+        if values.disclosure_boundary_ids and not any(
+            set(values.disclosure_boundary_ids) <= set(edge.boundary_security_ids)
+            for edge in transition.disclosures
+        ):
+            missing.update(values.disclosure_boundary_ids)
+        if missing:
+            return [
+                StructuralFailure(
+                    code="invalid_effect_profile",
+                    security_ids=tuple(sorted(missing)),
+                    detail="missing-bound-profile-role",
+                )
+            ]
+        return []
+
+    @staticmethod
     def _index_objects(
         history: SecurityHistory,
     ) -> tuple[dict[SecurityID, SecurityObject], list[StructuralFailure]]:
@@ -678,18 +797,22 @@ class SecurityAlgebra:
         values = obj.values
         fields: tuple[tuple[str, object], ...]
         if isinstance(values, MaterialSecurityValues):
-            fields = (("sensitivity", values.sensitivity), ("integrity", values.integrity))
+            fields = (("sensitivity", values.sensitivity), ("assurance", values.assurance))
         elif isinstance(values, ParticipantSecurityValues):
-            fields = (("privacy", values.privacy), ("integrity", values.integrity))
+            fields = (("assurance", values.assurance),)
         elif isinstance(values, CapabilitySecurityValues):
-            fields = (("privacy", values.privacy), ("integrity", values.integrity))
+            fields = (("assurance", values.assurance),)
         elif isinstance(values, EffectProfileSecurityValues):
             fields = (
-                ("risk", values.risk),
+                ("control_risk", values.risk.control_risk),
+                ("effect_risk", values.risk.effect_risk),
                 ("autonomy", values.autonomy),
-                ("integrity", values.integrity),
-                ("privacy", values.privacy),
+                ("assurance", values.assurance),
             )
+        elif isinstance(values, BoundarySecurityValues):
+            fields = (("privacy_capacity", values.privacy_capacity),)
+        elif isinstance(values, TransformSecurityValues):
+            fields = ()
         else:
             return [
                 StructuralFailure(code="invalid_subject_values", security_ids=(obj.security_id,))
@@ -713,6 +836,7 @@ class SecurityAlgebra:
         failures: list[StructuralFailure] = []
         seen_transitions: dict[str, SecurityTransition] = {}
         for item in history.transitions:
+            failures.extend(self._profile_topology(item, index))
             prior = seen_transitions.get(item.transition_id)
             if prior is not None and prior != item:
                 failures.append(
@@ -796,7 +920,7 @@ class SecurityAlgebra:
                 )
 
         privacy_pairs: list[tuple[SecurityID, OrdinarySecurityLevel]] = []
-        for security_id in disclosure.path_security_ids:
+        for security_id in disclosure.boundary_security_ids:
             participant = index.get(security_id)
             if participant is None:
                 failures.append(
@@ -818,13 +942,7 @@ class SecurityAlgebra:
                     )
                 )
                 continue
-            if participant.subject_ref.subject_kind not in {
-                "module",
-                "agent",
-                "endpoint",
-                "capability",
-                "effect_profile",
-            }:
+            if participant.subject_ref.subject_kind != "disclosure_boundary":
                 failures.append(
                     StructuralFailure(
                         code="invalid_subject_values",
@@ -835,11 +953,11 @@ class SecurityAlgebra:
                 continue
             privacy_pairs.append((security_id, privacy))
 
-        path_privacy: OrdinarySecurityLevel | None = None
+        boundary_privacy: OrdinarySecurityLevel | None = None
         limiting: tuple[SecurityID, ...] = ()
-        if len(privacy_pairs) == len(disclosure.path_security_ids):
+        if len(privacy_pairs) == len(disclosure.boundary_security_ids):
             minimum = min(int(value) for _, value in privacy_pairs)
-            path_privacy = cast(OrdinarySecurityLevel, SecurityLevel(minimum))
+            boundary_privacy = cast(OrdinarySecurityLevel, SecurityLevel(minimum))
             limiting = tuple(
                 security_id for security_id, value in privacy_pairs if int(value) == minimum
             )
@@ -855,8 +973,8 @@ class SecurityAlgebra:
             DisclosureEvidence(
                 material_security_id=disclosure.material_security_id,
                 sensitivity=sensitivity,
-                path_security_ids=disclosure.path_security_ids,
-                path_privacy=path_privacy,
+                boundary_security_ids=disclosure.boundary_security_ids,
+                boundary_privacy=boundary_privacy,
                 limiting_security_ids=limiting,
             ),
             failures,
@@ -876,9 +994,9 @@ class SecurityAlgebra:
 
         profile_id = execution.effect_profile_security_id
         profile = index.get(profile_id)
-        risk: OrdinarySecurityLevel | None = None
+        risk: RiskEnvelope | None = None
         autonomy: OrdinarySecurityLevel | None = None
-        profile_integrity: OrdinarySecurityLevel | None = None
+        profile_assurance: OrdinarySecurityLevel | None = None
         if profile is None:
             failures.append(
                 StructuralFailure(
@@ -896,13 +1014,14 @@ class SecurityAlgebra:
                 )
             )
         else:
-            risk = _ordinary(profile.values.risk)
+            risk = profile.values.risk
             autonomy = _ordinary(profile.values.autonomy)
-            profile_integrity = _ordinary(profile.values.integrity)
+            profile_assurance = _ordinary(profile.values.assurance)
             for field, raw, normalized in (
-                ("risk", profile.values.risk, risk),
+                ("control_risk", risk.control_risk, _ordinary(risk.control_risk)),
+                ("effect_risk", risk.effect_risk, _ordinary(risk.effect_risk)),
                 ("autonomy", profile.values.autonomy, autonomy),
-                ("integrity", profile.values.integrity, profile_integrity),
+                ("assurance", profile.values.assurance, profile_assurance),
             ):
                 if raw is None:
                     failures.append(
@@ -937,7 +1056,7 @@ class SecurityAlgebra:
                     )
                 )
 
-        controller_pairs, controller_failures = self._integrities(
+        controller_pairs, controller_failures = self._assurances(
             control.controller_security_ids,
             index,
             allowed_kinds={
@@ -947,63 +1066,68 @@ class SecurityAlgebra:
                 "agent",
                 "endpoint",
                 "capability",
+                "effect_profile",
             },
             role="controller_role",
         )
         failures.extend(controller_failures)
-        controller_integrity: OrdinarySecurityLevel = SecurityLevel.LEVEL_5
+        controller_assurance: OrdinarySecurityLevel = SecurityLevel.LEVEL_5
         if controller_pairs:
-            controller_integrity = cast(
+            controller_assurance = cast(
                 OrdinarySecurityLevel,
                 SecurityLevel(min(int(value) for _, value in controller_pairs)),
             )
 
-        executor_pairs, executor_failures = self._integrities(
+        executor_pairs, executor_failures = self._assurances(
             execution.executor_security_ids,
             index,
-            allowed_kinds={"module", "agent", "endpoint", "capability"},
+            allowed_kinds={"module", "agent", "endpoint", "capability", "effect_profile"},
             role="executor_role",
         )
         failures.extend(executor_failures)
         effect_values = [value for _, value in executor_pairs]
-        if profile_integrity is not None:
-            effect_values.append(profile_integrity)
-        effect_integrity: OrdinarySecurityLevel | None = None
+        if profile_assurance is not None:
+            effect_values.append(profile_assurance)
+        effect_assurance: OrdinarySecurityLevel | None = None
         if effect_values and len(executor_pairs) == len(execution.executor_security_ids):
-            effect_integrity = cast(
+            effect_assurance = cast(
                 OrdinarySecurityLevel,
                 SecurityLevel(min(int(value) for value in effect_values)),
             )
 
         control_demand: OrdinarySecurityLevel | None = None
-        if risk is not None and autonomy is not None:
+        if risk is not None:
             control_demand = cast(
                 OrdinarySecurityLevel,
-                SecurityLevel(min(int(risk), int(autonomy))),
+                SecurityLevel(risk.control_risk),
             )
             if len(controller_pairs) == len(control.controller_security_ids) and int(
                 control_demand
-            ) > int(controller_integrity):
+            ) > int(controller_assurance):
                 limiting = tuple(
                     security_id
                     for security_id, value in controller_pairs
-                    if int(value) == int(controller_integrity)
+                    if int(value) == int(controller_assurance)
                 )
                 failures.append(
-                    StructuralFailure(code="control_integrity_below_demand", security_ids=limiting)
+                    StructuralFailure(code="control_assurance_below_demand", security_ids=limiting)
                 )
 
-        if risk is not None and effect_integrity is not None and int(risk) > int(effect_integrity):
+        if (
+            risk is not None
+            and effect_assurance is not None
+            and int(risk.effect_risk) > int(effect_assurance)
+        ):
             limiting_ids = [
                 security_id
                 for security_id, value in executor_pairs
-                if int(value) == int(effect_integrity)
+                if int(value) == int(effect_assurance)
             ]
-            if profile_integrity is not None and int(profile_integrity) == int(effect_integrity):
+            if profile_assurance is not None and int(profile_assurance) == int(effect_assurance):
                 limiting_ids.append(profile_id)
             failures.append(
                 StructuralFailure(
-                    code="effect_integrity_below_risk",
+                    code="effect_assurance_below_risk",
                     security_ids=tuple(limiting_ids),
                 )
             )
@@ -1015,19 +1139,19 @@ class SecurityAlgebra:
                 autonomy=autonomy,
                 control_demand=control_demand,
                 controller_security_ids=control.controller_security_ids,
-                controller_integrity=(
-                    controller_integrity
+                controller_assurance=(
+                    controller_assurance
                     if len(controller_pairs) == len(control.controller_security_ids)
                     else None
                 ),
                 executor_security_ids=execution.executor_security_ids,
-                effect_integrity=effect_integrity,
+                effect_assurance=effect_assurance,
             ),
             failures,
         )
 
     @staticmethod
-    def _integrities(
+    def _assurances(
         security_ids: tuple[SecurityID, ...],
         index: dict[SecurityID, SecurityObject],
         *,
@@ -1056,14 +1180,14 @@ class SecurityAlgebra:
                     )
                 )
                 continue
-            value = _integrity_value(obj)
+            value = _assurance_value(obj)
             if value is None:
-                raw = getattr(obj.values, "integrity", None)
+                raw = getattr(obj.values, "assurance", None)
                 failures.append(
                     StructuralFailure(
                         code="missing_security_value" if raw is None else "invalid_subject_values",
                         security_ids=(security_id,),
-                        detail="integrity",
+                        detail="assurance",
                     )
                 )
                 continue
@@ -1126,18 +1250,22 @@ class SecurityAlgebra:
             output = index.get(derivation.output_security_id)
             sources = [index.get(item) for item in derivation.source_security_ids]
             producers = [index.get(item) for item in derivation.producer_security_ids]
-            validators = [index.get(item) for item in derivation.validator_security_ids]
+            transforms = (
+                [index.get(derivation.transform_security_id)]
+                if derivation.transform_security_id
+                else []
+            )
             referenced = (
                 derivation.output_security_id,
                 *derivation.source_security_ids,
                 *derivation.producer_security_ids,
-                *derivation.validator_security_ids,
+                *((derivation.transform_security_id,) if derivation.transform_security_id else ()),
             )
             missing = tuple(
                 security_id
                 for security_id, item in zip(
                     referenced,
-                    (output, *sources, *producers, *validators),
+                    (output, *sources, *producers, *transforms),
                     strict=True,
                 )
                 if item is None
@@ -1154,7 +1282,7 @@ class SecurityAlgebra:
             assert output is not None
             concrete_sources = cast(list[SecurityObject], sources)
             concrete_producers = cast(list[SecurityObject], producers)
-            concrete_validators = cast(list[SecurityObject], validators)
+
             if not isinstance(output.values, MaterialSecurityValues):
                 failures.append(
                     StructuralFailure(
@@ -1171,8 +1299,9 @@ class SecurityAlgebra:
                     StructuralFailure(code="invalid_derivation", detail="source-not-material")
                 )
             if any(
-                item.subject_ref.subject_kind not in {"module", "agent", "endpoint", "capability"}
-                for item in (*concrete_producers, *concrete_validators)
+                item.subject_ref.subject_kind
+                not in {"module", "agent", "endpoint", "capability", "effect_profile", "transform"}
+                for item in concrete_producers
             ):
                 failures.append(
                     StructuralFailure(
@@ -1188,26 +1317,43 @@ class SecurityAlgebra:
                     )
                 )
                 continue
-            output_integrity = _integrity_value(output)
-            if output_integrity is None:
+            output_assurance = _assurance_value(output)
+            if output_assurance is None:
                 failures.append(
                     StructuralFailure(
                         code="missing_security_value",
                         security_ids=(output.security_id,),
-                        detail="integrity",
+                        detail="assurance",
                     )
                 )
                 continue
             if derivation.kind == "ordinary":
-                if derivation.validator_security_ids:
+                source_sensitivities = [
+                    source.values.sensitivity
+                    for source in concrete_sources
+                    if isinstance(source.values, MaterialSecurityValues)
+                ]
+                if (
+                    output.values.sensitivity is not None
+                    and all(value is not None for value in source_sensitivities)
+                    and source_sensitivities
+                    and output.values.sensitivity
+                    < max(cast(OrdinarySecurityLevel, value) for value in source_sensitivities)
+                ):
                     failures.append(
                         StructuralFailure(
-                            code="invalid_derivation", detail="ordinary-has-validators"
+                            code="invalid_derivation", detail="ordinary-sensitivity-reduction"
+                        )
+                    )
+                if derivation.transform_security_id:
+                    failures.append(
+                        StructuralFailure(
+                            code="invalid_derivation", detail="ordinary-has-transform"
                         )
                     )
                     continue
                 participants = (*concrete_sources, *concrete_producers)
-                assurance = [_integrity_value(item) for item in participants]
+                assurance = [_assurance_value(item) for item in participants]
                 if not assurance or any(value is None for value in assurance):
                     failures.append(
                         StructuralFailure(
@@ -1217,48 +1363,31 @@ class SecurityAlgebra:
                                 for item, value in zip(participants, assurance, strict=True)
                                 if value is None
                             ),
-                            detail="integrity",
+                            detail="assurance",
                         )
                     )
                     continue
                 bound = min(int(cast(OrdinarySecurityLevel, value)) for value in assurance)
-                if int(output_integrity) > bound:
+                if int(output_assurance) > bound:
                     failures.append(
                         StructuralFailure(
                             code="invalid_derivation",
                             security_ids=(output.security_id,),
-                            detail="ordinary-integrity-increase",
+                            detail="ordinary-assurance-increase",
                         )
                     )
             else:
-                if not concrete_validators:
+                transform = index.get(derivation.transform_security_id or "")
+                if transform is None or not isinstance(transform.values, TransformSecurityValues):
                     failures.append(
                         StructuralFailure(
-                            code="invalid_derivation", detail="validation-without-validator"
+                            code="invalid_derivation", detail="missing-transform-contract"
                         )
                     )
-                    continue
-                assurance = [_integrity_value(item) for item in concrete_validators]
-                if any(value is None for value in assurance):
+                elif transform.security_id not in derivation.producer_security_ids:
                     failures.append(
                         StructuralFailure(
-                            code="missing_security_value",
-                            security_ids=tuple(
-                                item.security_id
-                                for item, value in zip(concrete_validators, assurance, strict=True)
-                                if value is None
-                            ),
-                            detail="integrity",
-                        )
-                    )
-                    continue
-                bound = min(int(cast(OrdinarySecurityLevel, value)) for value in assurance)
-                if int(output_integrity) > bound:
-                    failures.append(
-                        StructuralFailure(
-                            code="invalid_derivation",
-                            security_ids=(output.security_id,),
-                            detail="validation-integrity-above-assurance",
+                            code="invalid_derivation", detail="missing-transform-producer"
                         )
                     )
         return failures

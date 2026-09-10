@@ -94,7 +94,7 @@ def test_pre_freeze_security_fields_are_removed() -> None:
     assert "isolation" not in ParticipantSecurityValues.model_fields
     assert "trust" not in OpenAIChatConfig.model_fields
     assert "risk" not in OpenAIChatConfig.model_fields
-    assert {"privacy", "integrity"} <= set(OpenAIChatConfig.model_fields)
+    assert {"privacy_capacity", "assurance"} <= set(OpenAIChatConfig.model_fields)
 
 
 def test_security_binding_tamper_is_structural_failure() -> None:
@@ -102,8 +102,7 @@ def test_security_binding_tamper_is_structural_failure() -> None:
         owner_module_id="module.example",
         subject_id="module.example",
         subject_kind="module",
-        privacy=SecurityLevel.LEVEL_5,
-        integrity=SecurityLevel.LEVEL_5,
+        assurance=SecurityLevel.LEVEL_5,
     )
     tampered = subject.model_copy(update={"binding_digest": "0" * 64})
     decision = DEFAULT_SECURITY_EVALUATOR.evaluate(
@@ -123,8 +122,7 @@ def test_subject_kind_cannot_carry_irrelevant_value_schema() -> None:
                 local_id="artifact",
             ),
             values=ParticipantSecurityValues(
-                privacy=SecurityLevel.LEVEL_5,
-                integrity=SecurityLevel.LEVEL_5,
+                assurance=SecurityLevel.LEVEL_5,
             ),
         )
 
@@ -140,9 +138,9 @@ def capability_security_id(config: OpenAIChatConfig) -> str:
 def test_physical_capability_facts_change_binding_but_credentials_do_not() -> None:
     base = OpenAIChatConfig(
         endpoint="http://127.0.0.1:11434/v1",
+        privacy_capacity=SecurityLevel.LEVEL_5,
         model="local-model",
-        privacy=SecurityLevel.LEVEL_5,
-        integrity=SecurityLevel.LEVEL_5,
+        assurance=SecurityLevel.LEVEL_5,
         api_key_env="TOKEN_A",
     )
     other_credential = base.model_copy(update={"api_key_env": "TOKEN_B"})

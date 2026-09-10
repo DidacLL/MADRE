@@ -28,7 +28,7 @@ from madre.security import (
     SecuritySubjectRef,
 )
 from madre.storage import PlatformStore, open_database
-from madre_sdk import Artifact, MaterialRepository, participant_security
+from madre_sdk import Artifact, MaterialRepository, disclosure_boundary, participant_security
 
 ORIGINATOR = "module.runtime-test"
 
@@ -38,8 +38,7 @@ def module_security():
         owner_module_id=ORIGINATOR,
         subject_id=ORIGINATOR,
         subject_kind="module",
-        privacy=SecurityLevel.LEVEL_5,
-        integrity=SecurityLevel.LEVEL_5,
+        assurance=SecurityLevel.LEVEL_5,
     )
 
 
@@ -47,7 +46,7 @@ def artifact(
     payload,
     *,
     sensitivity: SecurityLevel = SecurityLevel.LEVEL_5,
-    integrity: SecurityLevel = SecurityLevel.LEVEL_5,
+    assurance: SecurityLevel = SecurityLevel.LEVEL_5,
 ) -> Artifact:
     owner = module_security()
     return Artifact.create(
@@ -55,7 +54,7 @@ def artifact(
         artifact_id="runtime.input",
         payload=payload,
         sensitivity=sensitivity,
-        integrity=integrity,
+        assurance=assurance,
         security_history=SecurityHistory(objects=(owner,)),
     )
 
@@ -65,7 +64,7 @@ def capability(
     function,
     *,
     privacy: SecurityLevel = SecurityLevel.LEVEL_5,
-    integrity: SecurityLevel = SecurityLevel.LEVEL_5,
+    assurance: SecurityLevel = SecurityLevel.LEVEL_5,
     heavyweight: bool = False,
 ) -> FunctionCapability:
     security = SecurityObject.issue(
@@ -75,7 +74,7 @@ def capability(
             publication_revision="1",
             local_id=capability_id,
         ),
-        values=CapabilitySecurityValues(privacy=privacy, integrity=integrity),
+        values=CapabilitySecurityValues(assurance=assurance),
     )
     return FunctionCapability(
         CapabilityDescriptor(
@@ -84,6 +83,13 @@ def capability(
             modality="text",
             execution_boundary="local",
             heavyweight=heavyweight,
+            disclosure_boundaries=(
+                disclosure_boundary(
+                    owner_module_id="madre.platform",
+                    boundary_id=capability_id + ":boundary",
+                    privacy_capacity=privacy,
+                ),
+            ),
             security=security,
         ),
         function,
@@ -119,15 +125,14 @@ def test_transient_selection_rejects_weak_privacy_without_poisoning_history(tmp_
     high = capability(
         "b-high",
         lambda payload: {"ok": payload},
-        privacy=SecurityLevel.LEVEL_5,
-        integrity=SecurityLevel.LEVEL_4,
+        assurance=SecurityLevel.LEVEL_4,
     )
     registry.register(low)
     registry.register(high)
     source = artifact(
         {"secret": "value"},
         sensitivity=SecurityLevel.LEVEL_5,
-        integrity=SecurityLevel.LEVEL_5,
+        assurance=SecurityLevel.LEVEL_5,
     )
     with open_database(tmp_path) as connection:
         store = PlatformStore(connection)
@@ -143,7 +148,7 @@ def test_transient_selection_rejects_weak_privacy_without_poisoning_history(tmp_
             )
         )
         assert result.capability_id == "b-high"
-        assert result.output_integrity == SecurityLevel.LEVEL_4
+        assert result.output_assurance == SecurityLevel.LEVEL_4
         assert low.descriptor.security.security_id in {
             row["security_id"]
             for row in connection.execute("SELECT security_id FROM security_object").fetchall()
@@ -212,7 +217,7 @@ def test_durable_success_persists_accepted_transition_and_no_private_bytes(tmp_p
         completed = runtime.inspect(record.id)
         assert completed is not None and completed.status == "succeeded"
         assert completed.result is not None
-        assert completed.result.output_integrity == SecurityLevel.LEVEL_5
+        assert completed.result.output_assurance == SecurityLevel.LEVEL_5
         assert completed.attempts[0].security_transition_id is not None
         assert len(completed.spec.security.transitions) == 1
         assert (

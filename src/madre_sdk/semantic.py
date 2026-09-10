@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Protocol
 
-from pydantic import Field
+from pydantic import Field, JsonValue
 
 from madre.contracts import TransientMaterial, WorkSubmission
 from madre.interfaces import (
@@ -15,26 +15,32 @@ from madre.interfaces import (
     ModuleRegistration,
     OperationEndpoint,
     OperationEndpointRegistration,
+    TransformEndpoint,
+    TransformEndpointRegistration,
 )
 from madre.registry import (
     AgentDescriptor,
     ModuleManifest,
     OperationDescriptor,
     SkillDescriptor,
+    TransformContract,
     WorkflowDescriptor,
 )
 from madre.security import (
     EffectProfile,
+    EndpointBinding,
     ExecutionBoundary,
     FrozenModel,
     Identifier,
     InvocationContext,
+    OrdinarySecurityLevel,
     ParticipantSecurityValues,
+    SecurityDerivation,
     SecurityHistory,
     SecurityObject,
+    SecuritySubjectRef,
 )
-from madre_sdk.material import Material, MaterialRepository
-from madre_sdk.security import participant_security
+from madre_sdk.material import Artifact, Material, MaterialRepository, content_digest
 from madre_sdk.services import ExecutionServices, ModuleServices
 
 
@@ -330,6 +336,51 @@ class Operation:
         )
 
 
+class TransformOutput(FrozenModel):
+    representation_id: str
+    payload: JsonValue
+    sensitivity: OrdinarySecurityLevel
+    assurance: OrdinarySecurityLevel
+
+
+class TransformBehavior(Protocol):
+    async def execute(
+        self, *, material: TransientMaterial, services: ExecutionServices
+    ) -> TransformOutput: ...
+
+
+class Transform:
+    def __init__(self, contract: TransformContract, behavior: TransformBehavior) -> None:
+        self.contract = contract
+        self.behavior = behavior
+
+
+class _TransformEndpoint(TransformEndpoint):
+    def __init__(self, module: Module) -> None:
+        self._module = module
+
+    @property
+    def boundary(self) -> ExecutionBoundary:
+        return self._module.endpoint_boundary
+
+    @property
+    def binding(self) -> EndpointBinding:
+        return self._module.endpoint_binding
+
+    async def invoke_transform(
+        self,
+        transform_id: str,
+        invocation: InvocationContext,
+        security: SecurityHistory,
+        material: TransientMaterial,
+    ) -> TransientMaterial:
+        return (
+            await self._module.execute_transform(
+                transform_id, material, invocation=invocation, security=security
+            )
+        ).transient()
+
+
 class _AgentEndpoint(AgentEndpoint):
     def __init__(self, module: Module) -> None:
         self._module = module
@@ -339,8 +390,8 @@ class _AgentEndpoint(AgentEndpoint):
         return self._module.endpoint_boundary
 
     @property
-    def security(self) -> SecurityObject:
-        return self._module.endpoint_security
+    def binding(self) -> EndpointBinding:
+        return self._module.endpoint_binding
 
     async def invoke_agent(
         self,
@@ -365,8 +416,8 @@ class _OperationEndpoint(OperationEndpoint):
         return self._module.endpoint_boundary
 
     @property
-    def security(self) -> SecurityObject:
-        return self._module.endpoint_security
+    def binding(self) -> EndpointBinding:
+        return self._module.endpoint_binding
 
     async def invoke_operation(
         self,
@@ -400,9 +451,11 @@ class Module:
         skills: Sequence[Skill] = (),
         workflows: Sequence[Workflow] = (),
         operations: Sequence[Operation] = (),
+        transforms: Sequence[Transform] = (),
         provenance: Sequence[str] = (),
         endpoint_boundary: ExecutionBoundary = "local",
-        endpoint_security: SecurityObject | None = None,
+        disclosure_boundaries: tuple[SecurityObject, ...],
+        endpoint_binding: EndpointBinding | None = None,
         materials: MaterialRepository | None = None,
         services: ModuleServices | None = None,
     ) -> None:
@@ -425,22 +478,24 @@ class Module:
         self.skills = tuple(skills)
         self.workflows = tuple(workflows)
         self.operations = tuple(operations)
+        self.transforms = tuple(transforms)
         self.provenance = tuple(provenance)
         self.endpoint_boundary = endpoint_boundary
         participant_values = security.values
         if not isinstance(participant_values, ParticipantSecurityValues):
             raise ValueError("Module security must contain participant values")
-        if participant_values.privacy is None or participant_values.integrity is None:
-            raise ValueError("Module requires Privacy and Integrity")
-        self.endpoint_security = endpoint_security or participant_security(
-            owner_module_id=module_id,
-            subject_id=f"{module_id}:endpoint",
-            subject_kind="endpoint",
-            privacy=participant_values.privacy,
-            integrity=participant_values.integrity,
-            publication_revision=version,
+        self.endpoint_binding = endpoint_binding or EndpointBinding(
+            subject_ref=SecuritySubjectRef(
+                owner_module_id=module_id,
+                subject_kind="endpoint",
+                publication_revision=version,
+                local_id=f"{module_id}:endpoint",
+            ),
+            disclosure_boundaries=disclosure_boundaries,
         )
-        InvocationContext(module=self.security, endpoint=self.endpoint_security)
+        if self.endpoint_binding.disclosure_boundaries != disclosure_boundaries:
+            raise ValueError("Module boundaries must match attachment")
+        InvocationContext(module=self.security, endpoint=self.endpoint_binding)
         self.materials = materials or MaterialRepository()
         self._services = services or ModuleServices()
         self._agents = {agent.id: agent for agent in self.agents}
@@ -462,6 +517,7 @@ class Module:
                     or profile.operation.publication_revision != version
                 ):
                     raise ValueError("EffectProfile binding must match its Module publication")
+        self._transform_endpoint = _TransformEndpoint(self)
         self._agent_endpoint = _AgentEndpoint(self)
         self._operation_endpoint = _OperationEndpoint(self)
 
@@ -483,6 +539,7 @@ class Module:
                 workflow.descriptor(self.module_id) for workflow in workflow_map.values()
             ),
             operations=tuple(operation.descriptor(self.module_id) for operation in self.operations),
+            transforms=tuple(transform.contract for transform in self.transforms),
             provenance=self.provenance,
         )
 
@@ -491,6 +548,54 @@ class Module:
 
     def register_material_resolution(self, registration: MaterialResolutionRegistration) -> None:
         registration.register_material_resolver(self.module_id, self.materials)
+
+    def register_transform_endpoint(self, registration: TransformEndpointRegistration) -> None:
+        if self.transforms:
+            registration.attach_transform_endpoint(self.module_id, self._transform_endpoint)
+
+    async def execute_transform(
+        self,
+        transform_id: str,
+        material: TransientMaterial,
+        *,
+        invocation: InvocationContext,
+        security: SecurityHistory,
+    ) -> Material:
+        transform = next((t for t in self.transforms if t.contract.id == transform_id), None)
+        if transform is None:
+            raise KeyError(transform_id)
+        expected = InvocationContext(
+            module=self.security,
+            endpoint=self.endpoint_binding,
+            behavior=transform.contract.security,
+        )
+        if invocation != expected:
+            raise ValueError("transform invocation does not match publication")
+        with self._services._execution(expected) as services:
+            result = await transform.behavior.execute(material=material, services=services)
+        output = Artifact.create(
+            artifact_id=result.representation_id,
+            owner_module_id=self.module_id,
+            payload=result.payload,
+            sensitivity=result.sensitivity,
+            assurance=result.assurance,
+            publication_revision=self.version,
+            representation_revision=content_digest({
+                "transform": transform.contract.security.security_id,
+                "source": material.security.security_id,
+            }),
+        )
+        relation = SecurityDerivation.issue(
+            kind="transform",
+            output_security_id=output.security.security_id,
+            source_security_ids=(material.security.security_id,),
+            producer_security_ids=expected.producer_security_ids,
+            transform_security_id=transform.contract.security.security_id,
+        )
+        history = security.merge(material.history).extend(
+            objects=(*expected.objects, output.security), derivations=(relation,)
+        )
+        return output.model_copy(update={"security_history": history})
 
     def register_agent_endpoint(self, registration: AgentEndpointRegistration) -> None:
         if self.agents:
@@ -510,7 +615,9 @@ class Module:
         agent = self.agent(agent_id)
         if agent is None:
             raise KeyError(agent_id)
-        return SecurityHistory(objects=(self.security, agent.security, self.endpoint_security))
+        return SecurityHistory(
+            objects=(self.security, agent.security, *self.endpoint_binding.disclosure_boundaries)
+        )
 
     def operation_context(self, operation_id: str, effect_profile_id: str) -> SecurityHistory:
         operation = self.operation(operation_id)
@@ -519,7 +626,14 @@ class Module:
         profile = operation.effect_profile(effect_profile_id)
         if profile is None:
             raise KeyError(effect_profile_id)
-        return SecurityHistory(objects=(self.security, self.endpoint_security, profile.security))
+        return SecurityHistory(
+            objects=(
+                self.security,
+                *self.endpoint_binding.disclosure_boundaries,
+                profile.security,
+                *profile.participants,
+            )
+        )
 
     async def execute_agent(
         self,
@@ -536,7 +650,7 @@ class Module:
             material.transient() if not isinstance(material, TransientMaterial) else material
         )
         expected = InvocationContext(
-            module=self.security, agent=agent.security, endpoint=self.endpoint_security
+            module=self.security, agent=agent.security, endpoint=self.endpoint_binding
         )
         if invocation is not None and invocation != expected:
             raise ValueError("Agent invocation does not match executing publication")
@@ -572,7 +686,10 @@ class Module:
         if profile is None:
             raise KeyError(effect_profile_id)
         expected = InvocationContext(
-            module=self.security, endpoint=self.endpoint_security, operation=profile.operation
+            module=self.security,
+            endpoint=self.endpoint_binding,
+            operation=profile.operation,
+            behavior=profile.security,
         )
         if invocation is not None and invocation != expected:
             raise ValueError("Operation invocation does not match executing publication")

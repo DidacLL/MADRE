@@ -51,7 +51,7 @@ Agentless/UI-less Modules can use `CoreDelegate` with a configured `CoreSelectio
 
 ## Local HTTP runtime
 
-Copy `madre.example.toml` to `madre.toml`, configure a Capability endpoint/model plus explicit `privacy` and `integrity` levels, then run:
+Copy `madre.example.toml` to `madre.toml`, configure a Capability endpoint/model plus explicit boundary `privacy_capacity` and computation `assurance` levels, then run:
 
 ```bash
 uv run madre --config madre.toml

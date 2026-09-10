@@ -11,12 +11,13 @@ from uuid import uuid4
 from pydantic import JsonValue
 
 from madre.contracts import TransientMaterial
-from madre.interfaces import AgentEndpoint, OperationEndpoint
+from madre.interfaces import AgentEndpoint, OperationEndpoint, TransformEndpoint
 from madre.registry import (
     AgentDescriptor,
     InteroperabilityRegistry,
     ModuleManifest,
     OperationDescriptor,
+    TransformContract,
 )
 from madre.security import (
     DEFAULT_SECURITY_EVALUATOR,
@@ -24,12 +25,15 @@ from madre.security import (
     Disclosure,
     EffectExecution,
     EffectProfile,
+    EffectProfileSecurityValues,
+    EndpointBinding,
     ExecutionBoundary,
     InvocationContext,
+    ProfileDecision,
+    ProfileFeasibility,
     SecurityDecision,
     SecurityEvaluator,
     SecurityHistory,
-    SecurityObject,
     SecurityTransition,
     StructuralFailure,
 )
@@ -115,13 +119,16 @@ class Broker:
         self._registry = registry
         self._evidence = evidence
         self._security_evaluator = security_evaluator
-        self._agent_endpoints: dict[str, tuple[ModuleManifest, SecurityObject, AgentEndpoint]] = {}
+        self._transform_endpoints: dict[
+            str, tuple[ModuleManifest, EndpointBinding, TransformEndpoint]
+        ] = {}
+        self._agent_endpoints: dict[str, tuple[ModuleManifest, EndpointBinding, AgentEndpoint]] = {}
         self._operation_endpoints: dict[
-            str, tuple[ModuleManifest, SecurityObject, OperationEndpoint]
+            str, tuple[ModuleManifest, EndpointBinding, OperationEndpoint]
         ] = {}
 
     def attach_agent_endpoint(self, module_id: str, endpoint: AgentEndpoint) -> None:
-        security = endpoint.security
+        security = endpoint.binding
         self._agent_endpoints[module_id] = (
             self._attachment(module_id, security),
             security,
@@ -129,11 +136,68 @@ class Broker:
         )
 
     def attach_operation_endpoint(self, module_id: str, endpoint: OperationEndpoint) -> None:
-        security = endpoint.security
+        security = endpoint.binding
         self._operation_endpoints[module_id] = (
             self._attachment(module_id, security),
             security,
             endpoint,
+        )
+
+    def attach_transform_endpoint(self, module_id: str, endpoint: TransformEndpoint) -> None:
+        binding = endpoint.binding
+        self._transform_endpoints[module_id] = (
+            self._attachment(module_id, binding),
+            binding,
+            endpoint,
+        )
+
+    async def invoke_transform(
+        self,
+        requester: InvocationContext,
+        security: SecurityHistory,
+        target_module_id: str,
+        transform_id: str,
+        material: TransientMaterial,
+    ) -> TransientMaterial:
+        manifest = self._registry.get_module(target_module_id)
+        contract = (
+            next((x for x in manifest.transforms if x.id == transform_id), None)
+            if manifest
+            else None
+        )
+        attachment = self._transform_endpoints.get(target_module_id)
+        if contract is None or manifest is None:
+            raise PublishedTargetNotFound(transform_id)
+        if attachment is None:
+            raise ModuleEndpointUnavailable(target_module_id)
+        publication, binding, endpoint = attachment
+        if publication != manifest or endpoint.binding != binding:
+            raise ModuleEndpointUnavailable("stale transform attachment")
+        invocation = InvocationContext(
+            module=manifest.security, endpoint=binding, behavior=contract.security
+        )
+        invocation_id, history = self._prepare_agent_input(
+            requester=requester,
+            invocation=invocation,
+            security=security,
+            descriptor=contract,
+            endpoint=endpoint,
+            material=material,
+            crossing_kind="transform",
+        )
+        execution_boundary = endpoint.boundary
+        output = await endpoint.invoke_transform(transform_id, invocation, history, material)
+        return self._finish_output(
+            invocation_id=invocation_id,
+            crossing_kind="transform",
+            requester=requester,
+            invocation=invocation,
+            target_module_id=target_module_id,
+            target_id=transform_id,
+            boundary=execution_boundary,
+            input_history=history,
+            input_material_security_id=material.security.security_id,
+            output=output,
         )
 
     async def invoke_agent(
@@ -152,9 +216,9 @@ class Broker:
         )
         if descriptor is None or manifest is None:
             raise PublishedTargetNotFound(f"{target_module_id}:{agent_id}")
-        endpoint, endpoint_security = self._agent_endpoint(manifest)
+        endpoint, endpoint_binding = self._agent_endpoint(manifest)
         invocation = InvocationContext(
-            module=manifest.security, agent=descriptor.security, endpoint=endpoint_security
+            module=manifest.security, agent=descriptor.security, endpoint=endpoint_binding
         )
         return await self._invoke_agent(
             requester=requester,
@@ -164,6 +228,53 @@ class Broker:
             endpoint=endpoint,
             material=material,
         )
+
+    def evaluate_operation_profiles(
+        self,
+        requester: InvocationContext,
+        security: SecurityHistory,
+        target_module_id: str,
+        operation_id: str,
+        material: TransientMaterial,
+        controller_security_ids: tuple[str, ...] = (),
+    ) -> ProfileFeasibility:
+        manifest = self._registry.get_module(target_module_id)
+        descriptor = (
+            next((x for x in manifest.operations if x.id == operation_id), None)
+            if manifest
+            else None
+        )
+        if manifest is None or descriptor is None:
+            raise PublishedTargetNotFound(operation_id)
+        _, binding = self._operation_endpoint(manifest)
+        completed = set(self._evidence.completed_derivation_ids())
+        if any(
+            x.kind == "transform" and x.derivation_id not in completed
+            for x in security.merge(material.history).derivations
+        ):
+            raise SecurityDenied("unverified_transform_execution")
+        results = []
+        for profile in sorted(descriptor.effect_profiles, key=lambda p: p.id):
+            invocation = InvocationContext(
+                module=manifest.security,
+                endpoint=binding,
+                operation=profile.operation,
+                behavior=profile.security,
+            )
+            history, transition = self._operation_transition(
+                requester, invocation, security, profile, material, controller_security_ids
+            )
+            values = profile.security.values
+            assert isinstance(values, EffectProfileSecurityValues)
+            results.append(
+                ProfileDecision(
+                    profile_id=profile.id,
+                    profile_security_id=profile.security.security_id,
+                    autonomy=values.autonomy,
+                    decision=self._evaluate_bound_transition(history, transition, material),
+                )
+            )
+        return ProfileFeasibility(profiles=tuple(results))
 
     async def invoke_operation(
         self,
@@ -183,12 +294,15 @@ class Broker:
         )
         if descriptor is None or manifest is None:
             raise PublishedTargetNotFound(f"{target_module_id}:{operation_id}")
-        endpoint, endpoint_security = self._operation_endpoint(manifest)
+        endpoint, endpoint_binding = self._operation_endpoint(manifest)
         profile = descriptor.effect_profile(effect_profile_id)
         if profile is None:
             raise SecurityDenied("invalid_effect_profile")
         invocation = InvocationContext(
-            module=manifest.security, endpoint=endpoint_security, operation=profile.operation
+            module=manifest.security,
+            endpoint=endpoint_binding,
+            operation=profile.operation,
+            behavior=profile.security,
         )
         return await self._invoke_operation(
             requester=requester,
@@ -324,14 +438,15 @@ class Broker:
         requester: InvocationContext,
         invocation: InvocationContext,
         security: SecurityHistory,
-        descriptor: AgentDescriptor,
-        endpoint: AgentEndpoint,
+        descriptor: AgentDescriptor | TransformContract,
+        endpoint: AgentEndpoint | TransformEndpoint,
         material: TransientMaterial,
+        crossing_kind: str = "agent",
     ) -> tuple[str, SecurityHistory]:
         invocation_id = uuid4().hex
         self._event(
             invocation_id,
-            "agent",
+            crossing_kind,
             requester,
             descriptor.module_id,
             descriptor.id,
@@ -344,13 +459,13 @@ class Broker:
             disclosures=(
                 Disclosure(
                     material_security_id=material.security.security_id,
-                    path_security_ids=tuple(obj.security_id for obj in invocation.objects),
+                    boundary_security_ids=invocation.boundary_security_ids,
                 ),
             )
         )
         self._require_admissible(
             crossing_id=invocation_id,
-            crossing_kind="agent-input",
+            crossing_kind=f"{crossing_kind}-input",
             target_id=descriptor.id,
             history=prospective,
             transition=transition,
@@ -358,6 +473,52 @@ class Broker:
             material=material,
         )
         return invocation_id, prospective.extend(transitions=(transition,))
+
+    def _operation_transition(
+        self,
+        requester: InvocationContext,
+        invocation: InvocationContext,
+        security: SecurityHistory,
+        profile: EffectProfile,
+        material: TransientMaterial,
+        controller_security_ids: tuple[str, ...],
+    ) -> tuple[SecurityHistory, SecurityTransition]:
+        prospective = security.merge(material.history).extend(
+            objects=(material.security, *invocation.objects, *requester.objects, profile.security)
+        )
+        values = profile.security.values
+        assert isinstance(values, EffectProfileSecurityValues)
+        prospective = prospective.extend(objects=profile.participants)
+        path = [*invocation.boundary_security_ids, *values.disclosure_boundary_ids]
+        controllers = tuple(
+            dict.fromkeys(
+                (
+                    *((material.security.security_id,) if values.input_controls else ()),
+                    *((requester.selector_security_id,) if values.caller_controls else ()),
+                    *values.controller_security_ids,
+                    *controller_security_ids,
+                )
+            )
+        )
+        transition = SecurityTransition.issue(
+            disclosures=(
+                Disclosure(
+                    material_security_id=material.security.security_id,
+                    boundary_security_ids=tuple(path),
+                ),
+            ),
+            control=Control(
+                effect_profile_security_id=profile.security.security_id,
+                controller_security_ids=controllers,
+            ),
+            effect_execution=EffectExecution(
+                operation=profile.operation,
+                effect_profile_security_id=profile.security.security_id,
+                executor_security_ids=tuple(x.security_id for x in invocation.endpoint.executors)
+                + values.executor_security_ids,
+            ),
+        )
+        return prospective, transition
 
     def _prepare_operation_input(
         self,
@@ -380,37 +541,8 @@ class Broker:
             descriptor.id,
             "requested",
         )
-        prospective = security.merge(material.history).extend(
-            objects=(material.security, *invocation.objects, *requester.objects, profile.security)
-        )
-        path = [obj.security_id for obj in invocation.objects]
-        if profile.discloses_material:
-            path.append(profile.security.security_id)
-        controllers = tuple(
-            dict.fromkeys(
-                (
-                    material.security.security_id,
-                    requester.selector_security_id,
-                    *controller_security_ids,
-                )
-            )
-        )
-        transition = SecurityTransition.issue(
-            disclosures=(
-                Disclosure(
-                    material_security_id=material.security.security_id,
-                    path_security_ids=tuple(path),
-                ),
-            ),
-            control=Control(
-                effect_profile_security_id=profile.security.security_id,
-                controller_security_ids=controllers,
-            ),
-            effect_execution=EffectExecution(
-                operation=profile.operation,
-                effect_profile_security_id=profile.security.security_id,
-                executor_security_ids=tuple(obj.security_id for obj in invocation.objects),
-            ),
+        prospective, transition = self._operation_transition(
+            requester, invocation, security, profile, material, controller_security_ids
         )
         self._require_admissible(
             crossing_id=invocation_id,
@@ -483,9 +615,14 @@ class Broker:
             on_output_path = self._has_derivation_path(
                 prospective, output.security.security_id, relation.output_security_id
             )
-            if relation.kind == "validation":
-                if not on_output_path or set(relation.validator_security_ids) != actual:
-                    raise InvalidModuleResult("unverified_validation_participation")
+            if relation.kind == "transform":
+                if (
+                    not on_output_path
+                    or invocation.behavior is None
+                    or relation.transform_security_id != invocation.behavior.security_id
+                    or invocation.behavior.subject_ref.subject_kind != "transform"
+                ):
+                    raise InvalidModuleResult("unverified_transform_execution")
                 verified.add(relation.derivation_id)
             elif on_output_path and actual.issubset(relation.producer_security_ids):
                 verified.add(relation.derivation_id)
@@ -531,7 +668,7 @@ class Broker:
             disclosures=(
                 Disclosure(
                     material_security_id=output.security.security_id,
-                    path_security_ids=requester.recipient_security_ids,
+                    boundary_security_ids=requester.boundary_security_ids,
                 ),
             )
         )
@@ -584,24 +721,11 @@ class Broker:
     ) -> None:
         completed = set(self._evidence.completed_derivation_ids())
         if any(
-            relation.kind == "validation" and relation.derivation_id not in completed
+            relation.kind == "transform" and relation.derivation_id not in completed
             for relation in history.derivations
         ):
-            raise SecurityDenied("unverified_validation_participation")
-        if material_digest(material.payload) != material.digest:
-            decision = SecurityDecision(
-                admissible=False,
-                transition_id=transition.transition_id,
-                failures=(
-                    StructuralFailure(
-                        code="invalid_security_binding",
-                        security_ids=(material.security.security_id,),
-                        detail="material_digest",
-                    ),
-                ),
-            )
-        else:
-            decision = self._security_evaluator.evaluate(history, transition)
+            raise SecurityDenied("unverified_transform_execution")
+        decision = self._evaluate_bound_transition(history, transition, material)
         self._evidence.record_security_decision(
             crossing_id=crossing_id,
             crossing_kind=crossing_kind,
@@ -613,6 +737,27 @@ class Broker:
         )
         if not decision.admissible:
             raise SecurityDenied(",".join(decision.failure_codes))
+
+    def _evaluate_bound_transition(
+        self, history: SecurityHistory, transition: SecurityTransition, material: TransientMaterial
+    ) -> SecurityDecision:
+        if (
+            material_digest(material.payload) != material.digest
+            or material.security.evidence_value("content_digest") != material.digest
+            or material.security.subject_ref.local_id != material.reference
+        ):
+            return SecurityDecision(
+                admissible=False,
+                transition_id=transition.transition_id,
+                failures=(
+                    StructuralFailure(
+                        code="invalid_security_binding",
+                        security_ids=(material.security.security_id,),
+                        detail="material_digest",
+                    ),
+                ),
+            )
+        return self._security_evaluator.evaluate(history, transition)
 
     @staticmethod
     def _has_derivation_path(
@@ -636,30 +781,30 @@ class Broker:
             pending.extend(sources_by_output.get(current, ()))
         return False
 
-    def _attachment(self, module_id: str, security: SecurityObject) -> ModuleManifest:
+    def _attachment(self, module_id: str, security: EndpointBinding) -> ModuleManifest:
         manifest = self._registry.get_module(module_id)
         if manifest is None:
             raise PublishedTargetNotFound(module_id)
         InvocationContext(module=manifest.security, endpoint=security)
         return manifest
 
-    def _agent_endpoint(self, manifest: ModuleManifest) -> tuple[AgentEndpoint, SecurityObject]:
+    def _agent_endpoint(self, manifest: ModuleManifest) -> tuple[AgentEndpoint, EndpointBinding]:
         attached = self._agent_endpoints.get(manifest.module_id)
         if attached is None:
             raise ModuleEndpointUnavailable(manifest.module_id)
         publication, security, endpoint = attached
-        if publication != manifest or endpoint.security != security:
+        if publication != manifest or endpoint.binding != security:
             raise ModuleEndpointUnavailable("stale Agent endpoint attachment")
         return endpoint, security
 
     def _operation_endpoint(
         self, manifest: ModuleManifest
-    ) -> tuple[OperationEndpoint, SecurityObject]:
+    ) -> tuple[OperationEndpoint, EndpointBinding]:
         attached = self._operation_endpoints.get(manifest.module_id)
         if attached is None:
             raise ModuleEndpointUnavailable(manifest.module_id)
         publication, security, endpoint = attached
-        if publication != manifest or endpoint.security != security:
+        if publication != manifest or endpoint.binding != security:
             raise ModuleEndpointUnavailable("stale Operation endpoint attachment")
         return endpoint, security
 

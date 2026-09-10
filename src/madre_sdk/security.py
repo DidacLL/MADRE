@@ -1,9 +1,10 @@
-"""Typed construction helpers for the frozen MADRE Security Algebra."""
+"""Typed construction helpers for MADRE Security Algebra V2."""
 
 from __future__ import annotations
 
 from madre.security import (
     BindingEvidence,
+    BoundarySecurityValues,
     Control,
     Disclosure,
     EffectExecution,
@@ -12,6 +13,7 @@ from madre.security import (
     OperationReference,
     OrdinarySecurityLevel,
     ParticipantSecurityValues,
+    RiskEnvelope,
     SecurityHistory,
     SecurityObject,
     SecuritySubjectRef,
@@ -24,8 +26,7 @@ def participant_security(
     owner_module_id: str,
     subject_id: str,
     subject_kind: str,
-    privacy: OrdinarySecurityLevel,
-    integrity: OrdinarySecurityLevel,
+    assurance: OrdinarySecurityLevel,
     publication_revision: str = "1",
     subject_revision: str = "1",
     binding_evidence: tuple[BindingEvidence, ...] = (),
@@ -40,7 +41,7 @@ def participant_security(
             local_id=subject_id,
             subject_revision=subject_revision,
         ),
-        values=ParticipantSecurityValues(privacy=privacy, integrity=integrity),
+        values=ParticipantSecurityValues(assurance=assurance),
         binding_evidence=binding_evidence,
     )
 
@@ -50,13 +51,17 @@ def effect_profile(
     owner_module_id: str,
     operation_id: str,
     profile_id: str,
-    risk: OrdinarySecurityLevel,
+    control_risk: OrdinarySecurityLevel,
+    effect_risk: OrdinarySecurityLevel,
     autonomy: OrdinarySecurityLevel,
-    integrity: OrdinarySecurityLevel,
-    privacy: OrdinarySecurityLevel | None = None,
+    assurance: OrdinarySecurityLevel,
+    disclosure_boundaries: tuple[SecurityObject, ...] = (),
+    controllers: tuple[SecurityObject, ...] = (),
+    executors: tuple[SecurityObject, ...] = (),
+    input_controls: bool = True,
+    caller_controls: bool = True,
     publication_revision: str = "1",
     operation_revision: str = "1",
-    discloses_material: bool = False,
     binding_evidence: tuple[BindingEvidence, ...] = (),
 ) -> EffectProfile:
     operation = OperationReference(
@@ -75,10 +80,14 @@ def effect_profile(
             parent_local_id=operation_id,
         ),
         values=EffectProfileSecurityValues(
-            risk=risk,
+            risk=RiskEnvelope(control_risk=control_risk, effect_risk=effect_risk),
             autonomy=autonomy,
-            integrity=integrity,
-            privacy=privacy,
+            assurance=assurance,
+            disclosure_boundary_ids=tuple(x.security_id for x in disclosure_boundaries),
+            controller_security_ids=tuple(x.security_id for x in controllers),
+            executor_security_ids=tuple(x.security_id for x in executors),
+            input_controls=input_controls,
+            caller_controls=caller_controls,
         ),
         binding_evidence=binding_evidence,
     )
@@ -86,7 +95,7 @@ def effect_profile(
         id=profile_id,
         operation=operation,
         security=security,
-        discloses_material=discloses_material,
+        participants=(*disclosure_boundaries, *controllers, *executors),
     )
 
 
@@ -101,7 +110,7 @@ def disclosure(material: SecurityObject, *privacy_path: SecurityObject) -> Secur
         disclosures=(
             Disclosure(
                 material_security_id=material.security_id,
-                path_security_ids=tuple(item.security_id for item in privacy_path),
+                boundary_security_ids=tuple(item.security_id for item in privacy_path),
             ),
         )
     )
@@ -125,4 +134,24 @@ def effect_transition(
             effect_profile_security_id=profile.security.security_id,
             executor_security_ids=tuple(item.security_id for item in executors),
         ),
+    )
+
+
+def disclosure_boundary(
+    *,
+    owner_module_id: str,
+    boundary_id: str,
+    privacy_capacity: OrdinarySecurityLevel,
+    publication_revision: str = "1",
+    binding_evidence: tuple[BindingEvidence, ...] = (),
+) -> SecurityObject:
+    return SecurityObject.issue(
+        subject_ref=SecuritySubjectRef(
+            owner_module_id=owner_module_id,
+            subject_kind="disclosure_boundary",
+            publication_revision=publication_revision,
+            local_id=boundary_id,
+        ),
+        values=BoundarySecurityValues(privacy_capacity=privacy_capacity),
+        binding_evidence=binding_evidence,
     )

@@ -105,9 +105,9 @@ class WorkRecordStore(WorkStoreBase):
                 size=row["output_size"],
                 produced_at=datetime.fromisoformat(row["output_produced_at"]),
                 delivery_status=row["delivery_status"],
-                output_integrity=cast(
+                output_assurance=cast(
                     OrdinarySecurityLevel,
-                    SecurityLevel(row["output_integrity"]),
+                    SecurityLevel(row["output_assurance"]),
                 ),
                 producer_security_ids=tuple(json.loads(row["result_producer_security_ids_json"])),
                 source_security_ids=tuple(json.loads(row["result_source_security_ids_json"])),

@@ -32,6 +32,7 @@ from madre_sdk import (
     TransientMaterial,
     WorkClient,
     Workflow,
+    disclosure_boundary,
     participant_security,
     security_history,
 )
@@ -74,10 +75,8 @@ class _InteractionBehavior(AgentBehavior):
     def __init__(
         self,
         *,
-        producer_security_id: str,
         continuation: ContinuationPolicy,
     ) -> None:
-        self._producer_security_id = producer_security_id
         self._continuation = continuation
         self._ids = count(1)
 
@@ -107,7 +106,7 @@ class _InteractionBehavior(AgentBehavior):
                     {"role": "user", "content": _user_text(material.payload)},
                 ]
             },
-            producer_security_ids=(self._producer_security_id,),
+            producer_security_ids=(),
             sensitivity=SecurityLevel.LEVEL_5,
             security_history=security,
         )
@@ -145,7 +144,7 @@ class _InteractionBehavior(AgentBehavior):
                 bundle_id=f"{CORE_MODULE_ID}:delegation:{sequence}",
                 purpose="explicit-agent-delegation",
                 payload={"input": material.payload, "immediate": immediate.payload},
-                producer_security_ids=(self._producer_security_id,),
+                producer_security_ids=(),
                 sensitivity=SecurityLevel.LEVEL_5,
             )
             delegated_result = await services.agents.invoke(
@@ -164,7 +163,7 @@ class _InteractionBehavior(AgentBehavior):
                 bundle_id=f"{CORE_MODULE_ID}:follow-up:{sequence}",
                 purpose="continued-reasoning",
                 payload={"input": material.payload, "immediate": immediate.payload},
-                producer_security_ids=(self._producer_security_id,),
+                producer_security_ids=(),
                 sensitivity=SecurityLevel.LEVEL_5,
             )
             accepted = await services.work.submit(
@@ -190,7 +189,7 @@ class _InteractionBehavior(AgentBehavior):
             owner_module_id=CORE_MODULE_ID,
             artifact_id=f"{CORE_MODULE_ID}:interaction-output:{sequence}",
             payload=output_payload,
-            producer_security_ids=(self._producer_security_id,),
+            producer_security_ids=(),
             sensitivity=SecurityLevel.LEVEL_5,
             security_history=security,
         )
@@ -246,15 +245,13 @@ class CoreModule(Module):
             owner_module_id=CORE_MODULE_ID,
             subject_id=CORE_MODULE_ID,
             subject_kind="module",
-            privacy=SecurityLevel.LEVEL_5,
-            integrity=SecurityLevel.LEVEL_5,
+            assurance=SecurityLevel.LEVEL_5,
         )
         interaction_security = participant_security(
             owner_module_id=CORE_MODULE_ID,
             subject_id=CORE_INTERACTION_AGENT_ID,
             subject_kind="agent",
-            privacy=SecurityLevel.LEVEL_5,
-            integrity=SecurityLevel.LEVEL_5,
+            assurance=SecurityLevel.LEVEL_5,
         )
         carried = security_history(module_security, interaction_security)
         materials = MaterialRepository()
@@ -298,7 +295,6 @@ class CoreModule(Module):
             ),
         )
         behavior = _InteractionBehavior(
-            producer_security_id=module_security.security_id,
             continuation=continuation or NoContinuation(),
         )
         interaction_agent = Agent.from_instructions(
@@ -331,6 +327,13 @@ class CoreModule(Module):
             skills=(skill,),
             workflows=(workflow,),
             materials=materials,
+            disclosure_boundaries=(
+                disclosure_boundary(
+                    owner_module_id=CORE_MODULE_ID,
+                    boundary_id="core-local",
+                    privacy_capacity=SecurityLevel.LEVEL_5,
+                ),
+            ),
             services=ModuleServices(
                 inference=inference_client, work=work_client, agents=delegation_client
             ),

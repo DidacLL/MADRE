@@ -27,6 +27,7 @@ from madre_sdk import (
     TransientInferenceResult,
     WorkRecord,
     content_digest,
+    disclosure_boundary,
     participant_security,
 )
 from tests.reference_agentless_module import ReferenceAgentlessModule
@@ -41,23 +42,27 @@ def client_input() -> Artifact:
         owner_module_id="module.client",
         subject_id="module.client",
         subject_kind="module",
-        privacy=SecurityLevel.LEVEL_5,
-        integrity=SecurityLevel.LEVEL_5,
+        assurance=SecurityLevel.LEVEL_5,
     )
     return Artifact.create(
         owner_module_id="module.client",
         artifact_id="client.input",
         payload={"input": "hello"},
         sensitivity=SecurityLevel.LEVEL_5,
-        integrity=SecurityLevel.LEVEL_5,
+        assurance=SecurityLevel.LEVEL_5,
         security_history=SecurityHistory(objects=(client,)),
     )
 
 
 class FakeInference:
-    def __init__(self, *, integrity: SecurityLevel = SecurityLevel.LEVEL_3) -> None:
-        self.integrity = integrity
+    def __init__(self, *, assurance: SecurityLevel = SecurityLevel.LEVEL_3) -> None:
+        self.assurance = assurance
         self.requests = []
+        self.boundary = disclosure_boundary(
+            owner_module_id="madre.platform",
+            boundary_id="inference",
+            privacy_capacity=SecurityLevel.LEVEL_5,
+        )
         self.capability_security = SecurityObject.issue(
             subject_ref=SecuritySubjectRef(
                 owner_module_id="madre.platform",
@@ -66,8 +71,7 @@ class FakeInference:
                 local_id="test.chat",
             ),
             values=CapabilitySecurityValues(
-                privacy=SecurityLevel.LEVEL_5,
-                integrity=integrity,
+                assurance=assurance,
             ),
         )
 
@@ -78,12 +82,12 @@ class FakeInference:
             disclosures=(
                 Disclosure(
                     material_security_id=request.material.security.security_id,
-                    path_security_ids=(self.capability_security.security_id,),
+                    boundary_security_ids=(self.boundary.security_id,),
                 ),
             )
         )
         history = request.security.merge(request.material.history).extend(
-            objects=(self.capability_security,),
+            objects=(self.capability_security, self.boundary),
             transitions=(transition,),
         )
         return TransientInferenceResult(
@@ -92,7 +96,7 @@ class FakeInference:
             execution_boundary="local",
             output_digest=content_digest(result_payload),
             output_size=payload_size(result_payload),
-            output_integrity=self.integrity,
+            output_assurance=self.assurance,
             producer_security_ids=(self.capability_security.security_id,),
             source_security_ids=(request.material.security.security_id,),
             security=history,
@@ -176,22 +180,25 @@ def test_core_manifest_uses_final_participant_security_values() -> None:
     manifest = core.manifest()
     module_values = manifest.security.values
     agent_values = manifest.agents[0].security.values
-    assert module_values.privacy == SecurityLevel.LEVEL_5
-    assert module_values.integrity == SecurityLevel.LEVEL_5
-    assert agent_values.privacy == SecurityLevel.LEVEL_5
-    assert agent_values.integrity == SecurityLevel.LEVEL_5
+    assert (
+        core.endpoint_binding.disclosure_boundaries[0].values.privacy_capacity
+        == SecurityLevel.LEVEL_5
+    )
+    assert module_values.assurance == SecurityLevel.LEVEL_5
+    assert not hasattr(agent_values, "privacy")
+    assert agent_values.assurance == SecurityLevel.LEVEL_5
     assert not hasattr(module_values, "trust")
     assert not hasattr(module_values, "isolation")
 
 
 def test_core_immediate_path_preserves_capability_and_derivation_history() -> None:
-    inference = FakeInference(integrity=SecurityLevel.LEVEL_3)
+    inference = FakeInference(assurance=SecurityLevel.LEVEL_3)
     core = CoreModule(inference=inference)
     output = asyncio.run(core.execute_agent(CORE_INTERACTION_AGENT_ID, client_input()))
     assert output.payload == {"response": {"answer": "hello"}}
     values = output.security.values
     assert isinstance(values, MaterialSecurityValues)
-    assert values.integrity == SecurityLevel.LEVEL_3
+    assert values.assurance == SecurityLevel.LEVEL_3
     assert inference.capability_security.security_id in output.security_history.security_ids
     assert len(output.security_history.transitions) == 1
     assert len(output.security_history.derivations) >= 3

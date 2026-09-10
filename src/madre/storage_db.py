@@ -40,7 +40,7 @@ CREATE TABLE runtime_work (
     output_digest TEXT,
     output_size INTEGER,
     output_produced_at TEXT,
-    output_integrity INTEGER CHECK (output_integrity IS NULL OR output_integrity BETWEEN 1 AND 5),
+    output_assurance INTEGER CHECK (output_assurance IS NULL OR output_assurance BETWEEN 1 AND 5),
     result_producer_security_ids_json TEXT,
     result_source_security_ids_json TEXT,
     delivery_status TEXT CHECK (
@@ -156,7 +156,9 @@ def _json(value: object) -> str:
 
 
 def _format_id() -> int:
-    value = int.from_bytes(hashlib.sha256(_STORAGE_DDL.encode()).digest()[:4], "big")
+    value = int.from_bytes(
+        hashlib.sha256(("security-v2\n" + _STORAGE_DDL).encode()).digest()[:4], "big"
+    )
     return value & 0x7FFFFFFF or 1
 
 
@@ -167,11 +169,6 @@ def _connect(database: Path) -> sqlite3.Connection:
     connection = sqlite3.connect(database)
     connection.row_factory = sqlite3.Row
     return connection
-
-
-def _discard_development_storage(database: Path) -> None:
-    for suffix in ("", "-wal", "-shm", "-journal"):
-        Path(f"{database}{suffix}").unlink(missing_ok=True)
 
 
 @contextmanager
@@ -191,10 +188,9 @@ def open_database(data_dir: Path) -> Iterator[sqlite3.Connection]:
             format_id = connection.execute("PRAGMA user_version").fetchone()[0]
             incompatible = format_id not in (0, _STORAGE_FORMAT_ID) or (existed and format_id == 0)
             if incompatible:
-                connection.close()
-                _discard_development_storage(database)
-                connection = _connect(database)
-                format_id = 0
+                raise RuntimeError(
+                    "incompatible persisted security format; use a fresh V2 data directory"
+                )
             connection.execute("PRAGMA foreign_keys=ON")
             connection.execute("PRAGMA journal_mode=WAL")
             if format_id == 0:

@@ -38,7 +38,7 @@ class WorkStoreBase:
                     relation.output_security_id,
                     *relation.source_security_ids,
                     *relation.producer_security_ids,
-                    *relation.validator_security_ids,
+                    *((relation.transform_security_id,) if relation.transform_security_id else ()),
                 )
             }
             objects = tuple(

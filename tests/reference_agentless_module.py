@@ -7,6 +7,7 @@ from madre_sdk import (
     MaterialRepository,
     Module,
     SecurityLevel,
+    disclosure_boundary,
     participant_security,
 )
 
@@ -18,8 +19,7 @@ class ReferenceAgentlessModule(Module):
             owner_module_id="reference.notes",
             subject_id="reference.notes",
             subject_kind="module",
-            privacy=SecurityLevel.LEVEL_5,
-            integrity=SecurityLevel.LEVEL_5,
+            assurance=SecurityLevel.LEVEL_5,
         )
         super().__init__(
             module_id="reference.notes",
@@ -28,6 +28,13 @@ class ReferenceAgentlessModule(Module):
             security=security,
             discovery_terms=("notes", "analysis"),
             materials=materials,
+            disclosure_boundaries=(
+                disclosure_boundary(
+                    owner_module_id="reference.notes",
+                    boundary_id="notes",
+                    privacy_capacity=SecurityLevel.LEVEL_5,
+                ),
+            ),
         )
 
     def note(self, text: str) -> Artifact:
@@ -36,7 +43,7 @@ class ReferenceAgentlessModule(Module):
             artifact_id="reference.notes:source",
             payload={"text": text},
             sensitivity=SecurityLevel.LEVEL_3,
-            integrity=SecurityLevel.LEVEL_5,
+            assurance=SecurityLevel.LEVEL_5,
             security_history=self.agentless_history(),
         )
 
@@ -48,7 +55,7 @@ class ReferenceAgentlessModule(Module):
             purpose="note-analysis",
             payload={"source": source.payload},
             producer_security_ids=(self.security.security_id,),
-            invocation=InvocationContext(module=self.security),
+            invocation=InvocationContext(module=self.security, endpoint=self.endpoint_binding),
             sensitivity=SecurityLevel.LEVEL_3,
             security_history=self.agentless_history(),
         )
@@ -56,4 +63,6 @@ class ReferenceAgentlessModule(Module):
     def agentless_history(self):
         from madre_sdk import SecurityHistory
 
-        return SecurityHistory(objects=(self.security, self.endpoint_security))
+        return SecurityHistory(
+            objects=(self.security, *self.endpoint_binding.disclosure_boundaries)
+        )

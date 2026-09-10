@@ -22,7 +22,13 @@ from madre.registry import (
     SkillDescriptor,
     WorkflowDescriptor,
 )
-from madre.security import ExecutionBoundary, InvocationContext, SecurityHistory, SecurityObject
+from madre.security import (
+    EndpointBinding,
+    ExecutionBoundary,
+    InvocationContext,
+    ProfileFeasibility,
+    SecurityHistory,
+)
 
 
 class ModuleRegistration(Protocol):
@@ -73,7 +79,7 @@ class AgentEndpoint(Protocol):
     def boundary(self) -> ExecutionBoundary: ...
 
     @property
-    def security(self) -> SecurityObject: ...
+    def binding(self) -> EndpointBinding: ...
 
     async def invoke_agent(
         self,
@@ -89,7 +95,7 @@ class OperationEndpoint(Protocol):
     def boundary(self) -> ExecutionBoundary: ...
 
     @property
-    def security(self) -> SecurityObject: ...
+    def binding(self) -> EndpointBinding: ...
 
     async def invoke_operation(
         self,
@@ -121,6 +127,16 @@ class AgentBrokering(Protocol):
 
 
 class OperationBrokering(Protocol):
+    def evaluate_operation_profiles(
+        self,
+        requester: InvocationContext,
+        security: SecurityHistory,
+        target_module_id: str,
+        operation_id: str,
+        material: TransientMaterial,
+        controller_security_ids: tuple[str, ...] = (),
+    ) -> ProfileFeasibility: ...
+
     async def invoke_operation(
         self,
         requester: InvocationContext,
@@ -130,4 +146,33 @@ class OperationBrokering(Protocol):
         effect_profile_id: str,
         material: TransientMaterial,
         controller_security_ids: tuple[str, ...],
+    ) -> TransientMaterial: ...
+
+
+class TransformEndpoint(Protocol):
+    @property
+    def boundary(self) -> ExecutionBoundary: ...
+    @property
+    def binding(self) -> EndpointBinding: ...
+    async def invoke_transform(
+        self,
+        transform_id: str,
+        invocation: InvocationContext,
+        security: SecurityHistory,
+        material: TransientMaterial,
+    ) -> TransientMaterial: ...
+
+
+class TransformEndpointRegistration(Protocol):
+    def attach_transform_endpoint(self, module_id: str, endpoint: TransformEndpoint) -> None: ...
+
+
+class TransformBrokering(Protocol):
+    async def invoke_transform(
+        self,
+        requester: InvocationContext,
+        security: SecurityHistory,
+        target_module_id: str,
+        transform_id: str,
+        material: TransientMaterial,
     ) -> TransientMaterial: ...

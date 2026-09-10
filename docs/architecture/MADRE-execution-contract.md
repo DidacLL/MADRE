@@ -163,7 +163,7 @@ Security evaluation is transition-local rather than a global reduction over the 
 
 For a candidate inference mechanism, the prospective transition identifies the concrete material disclosure edge(s) to the selected Capability and any other actual recipients on that path. The confidentiality predicate evaluates the material's Sensitivity against the minimum Privacy of that actual path.
 
-For an effectful Operation, the prospective transition additionally identifies the selected bound EffectProfile, actual causal controllers and actual effect executors. The control/effect predicates use their Integrity plus the EffectProfile's Risk and Autonomy.
+For an effectful Operation, the prospective transition identifies the selected bound EffectProfile, actual residual controllers and effect executors. Control compares `control_risk` with controller Assurance; realization compares `effect_risk` with executor/profile Assurance. Autonomy orders feasible real profiles and does not enter either predicate.
 
 Conceptually:
 
@@ -223,3 +223,12 @@ Durable failure evidence should use stable runtime/adapter codes rather than per
 Runtime persistence may contain public registry/mechanism metadata, work/attempt state, SecurityIDs/SecurityObjects and security-relevant transition/derivation evidence, opaque references/coordination values, digests, delivery state and evidence codes.
 
 It must not contain prompt/context/output payload columns.
+
+
+## V2 security execution contracts
+
+Physical Capability descriptors bind computation Assurance separately from their explicit disclosure-boundary contracts. The route evaluates boundary PrivacyCapacity against the concrete material Sensitivity. `local`, `isolated` and `remote` are execution metadata, not implicit numeric valuations. Rejected mechanisms remain prospective evidence; only the selected path becomes realized history.
+
+Generated results carry source/producer IDs and output Assurance constrained by the actual computation basis. Material transformations may establish a different resulting contract only through their bound execution path. Kernel verifies representation and completion continuity; Module implementations own semantic classification.
+
+V2 immutable objects, transformations and accepted transitions survive restart/retry without being revalued from current registry metadata. Incompatible V1 storage is rejected; no migration or silent deletion occurs. Profile feasibility is inspection, not execution or an accepted crossing.

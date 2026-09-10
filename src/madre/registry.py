@@ -15,6 +15,7 @@ from madre.security import (
     SecurityHistory,
     SecurityObject,
     SecurityTransition,
+    TransformSecurityValues,
 )
 
 
@@ -28,6 +29,25 @@ class AgentDescriptor(FrozenModel):
     published_workflows: tuple[Identifier, ...] = ()
     security: SecurityObject
     provenance: tuple[Identifier, ...] = ()
+
+
+class TransformContract(FrozenModel):
+    id: Identifier
+    module_id: Identifier
+    security: SecurityObject
+
+    @model_validator(mode="after")
+    def bound(self) -> TransformContract:
+        ref = self.security.subject_ref
+        if (
+            not self.security.verify_binding()
+            or not isinstance(self.security.values, TransformSecurityValues)
+            or ref.subject_kind != "transform"
+            or ref.local_id != self.id
+            or ref.owner_module_id != self.module_id
+        ):
+            raise ValueError("invalid TransformContract binding")
+        return self
 
 
 class SkillDescriptor(FrozenModel):
@@ -100,6 +120,7 @@ class ModuleManifest(FrozenModel):
     skills: tuple[SkillDescriptor, ...] = ()
     workflows: tuple[WorkflowDescriptor, ...] = ()
     operations: tuple[OperationDescriptor, ...] = ()
+    transforms: tuple[TransformContract, ...] = ()
     provenance: tuple[Identifier, ...] = ()
 
     @model_validator(mode="after")
@@ -134,6 +155,15 @@ class ModuleManifest(FrozenModel):
                 or not descriptor.security.verify_binding()
             ):
                 raise ValueError(f"invalid Agent SecurityObject: {descriptor.id}")
+        transform_ids = [item.id for item in self.transforms]
+        if len(transform_ids) != len(set(transform_ids)):
+            raise ValueError("duplicate transform identity")
+        for transform in self.transforms:
+            if (
+                transform.module_id != self.module_id
+                or transform.security.subject_ref.publication_revision != self.version
+            ):
+                raise ValueError("transform must match Module publication")
         for descriptor in self.operations:
             for profile in descriptor.effect_profiles:
                 if profile.operation.publication_revision != self.version:

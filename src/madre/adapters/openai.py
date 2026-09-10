@@ -33,8 +33,8 @@ class OpenAIChatConfig(BaseModel):
     paid: bool = False
     resources: frozenset[str] = Field(default_factory=frozenset)
     heavyweight: bool = True
-    privacy: OrdinarySecurityLevel
-    integrity: OrdinarySecurityLevel
+    privacy_capacity: OrdinarySecurityLevel
+    assurance: OrdinarySecurityLevel
     api_key_env: str | None = None
 
 

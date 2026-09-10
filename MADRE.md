@@ -136,46 +136,25 @@ Local inference is the primary product focus, while admissible remote/provider m
 
 One provider may expose several distinct mechanisms: API, account-authenticated CLI/session, SDK, MCP path, gateway, local bridge or user-installed adapter. Provider-specific login, credentials, protocol schemas and software mechanics remain adapter concerns.
 
-### 6. Security is object-bound transition algebra
+### 6. Security composes bounded contracts
 
-Every security-relevant Artifact/ContextBundle, Module/Agent/endpoint, Capability and Operation EffectProfile contributes an immutable **SecurityObject** identified by a stable, globally unambiguous `SecurityID`. The SecurityObject is structurally bound to its subject and contains only the normalized values meaningful for that subject kind.
+MADRE Security Algebra V2 evaluates concrete material representations, disclosure boundaries, transformations and bounded Operation EffectProfiles. Encapsulation narrows the exposure/effect contract; it does not add abstract security points to an application or Agent.
 
-The final normalized runtime vocabulary is exactly:
-
-```text
-Sensitivity
-Privacy
-Integrity
-Risk
-Autonomy
-```
-
-These dimensions are independent. Sensitivity describes material confidentiality demand; Privacy describes confidentiality assurance of an actual participant/path; Integrity describes assurance of security-significant causal control/effect execution; Risk describes consequence of a bounded effect; Autonomy describes residual machine control in a bound EffectProfile.
-
-Security decisions are made over explicit transition roles rather than one global score over all carried history:
+Material carries Sensitivity and Assurance. Concrete disclosure boundaries carry PrivacyCapacity. Actual causal/realization participants contribute Assurance. EffectProfiles bind `control_risk`, `effect_risk`, Autonomy and realization Assurance. `1 <= control_risk <= effect_risk <= 5`.
 
 ```text
-DISCLOSURE
-CONTROL
-EFFECT_EXECUTION
-DERIVATION
+Sensitivity(material) <= minimum PrivacyCapacity of actual disclosure boundaries
+control_risk <= minimum Assurance of actual residual controllers
+effect_risk <= minimum Assurance of actual executors and profile realization
 ```
 
-The runtime evaluates three obligations:
+Autonomy orders real feasible profiles and is not an operand in these predicates. Tied profiles remain a Module decision. Kernel does not synthesize execution profiles or choose semantic Operations.
 
-```text
-Sensitivity(material) <= minimum Privacy of its actual disclosure path
-min(Risk, Autonomy) <= minimum Integrity of actual non-user controllers
-Risk <= minimum Integrity of actual effect executors
-```
+Module/Agent/endpoint identity does not automatically create a numerical role. Bound execution facts prevent substitution of the active actor or contract. Immutable representations, actual accepted crossings and transformation relationships support continuity; unrelated history never enters later numerical reductions.
 
-The last two apply only to effectful transitions.
+Transformations are Module-owned bound processes producing new representations and security contracts. Kernel verifies execution/representation continuity without interpreting private classification or transformation semantics. Ordinary derivation cannot manufacture stronger Assurance or reduced Sensitivity. There is no generic validator role or transform-strength arithmetic.
 
-A concrete request/work lifecycle retains immutable SecurityObjects plus security-relevant transition/derivation evidence. Historical objects remain evidence and continuity facts, but an unrelated historical extreme is not blindly folded into a later transition it does not participate in.
-
-Registration, installation acceptance, ordinary identity, possession of a reference/SecurityID, roles, ACLs, allowlists, provider credentials and previous successful decisions are not independent MADRE permission sources.
-
-Missing role-required security values make a transition structurally invalid; the algebra does not silently assign default numeric values. Third-party/default valuation policy remains a separate problem.
+Identity, registration, installation, credentials and previous success grant no MADRE permission. Security facts come from their appropriate declarations/valuation boundary; the evaluator does not invent missing values or equate local execution with containment.
 
 ### 7. CORE is a replaceable Module with a required capability/security contract
 
@@ -183,7 +162,7 @@ MADRE ships with a default **CORE-capable Module**. The user may configure anoth
 
 CORE is not a second Kernel and receives no security bypass, resource exemption or private semantic Kernel API. It uses the same public SDK/interoperability boundary as other Modules.
 
-A CORE-capable Module must provide the generic functionality required by the installation's default/general interaction and fallback role, and must carry sufficiently strong Privacy and Integrity characteristics for the sensitive material and control paths it is expected to handle under the same Security Algebra as every other Module.
+A CORE-capable Module must provide the generic functionality required by the installation's default/general interaction and fallback role, and must provide sufficiently strong disclosure-boundary PrivacyCapacity and role-specific Assurance for the sensitive material and control paths it is expected to handle under the same Security Algebra as every other Module.
 
 CORE-owned data may itself have the highest Sensitivity values. Participant assurance and material sensitivity are independent dimensions.
 
@@ -197,7 +176,7 @@ module-independent intelligent assistance such as configuration/install support
 system/user profile and interaction continuity owned by CORE
 ```
 
-Cross-domain material still moves through ordinary algebraic boundaries. CORE minimizes/anonymizes/transforms material when necessary before sending it toward a lower-Privacy or higher-consequence transition.
+Cross-domain material still moves through ordinary algebraic boundaries. CORE minimizes/anonymizes/transforms material when necessary before sending it toward a lower-capacity disclosure or higher-consequence transition.
 
 ### 8. Public interoperability does not make Kernel an Agent framework
 

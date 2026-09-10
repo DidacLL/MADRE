@@ -68,7 +68,7 @@ class WorkStore(WorkRecordStore):
         attempt_number: int,
         output_digest: str,
         output_size: int,
-        output_integrity: OrdinarySecurityLevel,
+        output_assurance: OrdinarySecurityLevel,
         producer_security_ids: tuple[str, ...],
         source_security_ids: tuple[str, ...],
         completed_at: datetime,
@@ -84,7 +84,7 @@ class WorkStore(WorkRecordStore):
             self.connection.execute(
                 """
                 UPDATE runtime_work SET status='succeeded', completed_at=?, error_code=NULL,
-                    output_digest=?, output_size=?, output_produced_at=?, output_integrity=?,
+                    output_digest=?, output_size=?, output_produced_at=?, output_assurance=?,
                     result_producer_security_ids_json=?, result_source_security_ids_json=?,
                     delivery_status='awaiting_consumption' WHERE id=?
                 """,
@@ -93,7 +93,7 @@ class WorkStore(WorkRecordStore):
                     output_digest,
                     output_size,
                     completed_at.isoformat(),
-                    int(output_integrity),
+                    int(output_assurance),
                     _json(list(producer_security_ids)),
                     _json(list(source_security_ids)),
                     work_id,
@@ -121,7 +121,7 @@ class WorkStore(WorkRecordStore):
             self.connection.execute(
                 """
                 UPDATE runtime_work SET status='failed',completed_at=?,error_code=?,
-                    output_digest=NULL,output_size=NULL,output_produced_at=NULL,output_integrity=NULL,
+                    output_digest=NULL,output_size=NULL,output_produced_at=NULL,output_assurance=NULL,
                     result_producer_security_ids_json=NULL,result_source_security_ids_json=NULL,
                     delivery_status=NULL WHERE id=?
                 """,
@@ -206,7 +206,7 @@ class WorkStore(WorkRecordStore):
                 """
                 UPDATE runtime_work SET status='accepted', enqueued_at=?, queue_sequence=?,
                     completed_at=NULL,error_code=NULL,output_digest=NULL,output_size=NULL,
-                    output_produced_at=NULL,output_integrity=NULL,result_producer_security_ids_json=NULL,
+                    output_produced_at=NULL,output_assurance=NULL,result_producer_security_ids_json=NULL,
                     result_source_security_ids_json=NULL,delivery_status=NULL WHERE id=?
                 """,
                 (requested_at.isoformat(), sequence, work_id),

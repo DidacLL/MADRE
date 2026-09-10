@@ -6,7 +6,7 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from typing import Protocol
 
-from pydantic import JsonValue
+from pydantic import Field, JsonValue
 
 from madre.contracts import (
     ExecutionConstraints,
@@ -18,6 +18,7 @@ from madre.contracts import (
     ReasoningEffort,
 )
 from madre.security import (
+    BoundarySecurityValues,
     CapabilitySecurityValues,
     ExecutionBoundary,
     FrozenModel,
@@ -45,6 +46,7 @@ class CapabilityDescriptor(FrozenModel):
     paid: bool = False
     resources: frozenset[Identifier] = frozenset()
     heavyweight: bool = False
+    disclosure_boundaries: tuple[SecurityObject, ...] = Field(min_length=1)
     security: SecurityObject
 
 
@@ -71,10 +73,15 @@ class CapabilityRegistry:
         if not descriptor.security.verify_binding():
             raise ValueError("Capability SecurityObject binding is invalid")
         if not isinstance(descriptor.security.values, CapabilitySecurityValues):
-            raise ValueError("Capability requires Privacy and Integrity values")
+            raise ValueError("Capability requires Privacy and Assurance values")
         values = descriptor.security.values
-        if values.privacy is None or values.integrity is None:
-            raise ValueError("Capability requires Privacy and Integrity values")
+        if values.assurance is None:
+            raise ValueError("Capability requires Privacy and Assurance values")
+        for boundary in descriptor.disclosure_boundaries:
+            if not boundary.verify_binding() or not isinstance(
+                boundary.values, BoundarySecurityValues
+            ):
+                raise ValueError("Capability requires bound disclosure boundaries")
         self._adapters[descriptor.id] = adapter
 
     def candidates(self, request: InferenceRequirement) -> tuple[CapabilityAdapter, ...]:

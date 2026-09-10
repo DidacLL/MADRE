@@ -128,35 +128,23 @@ available EffectProfiles
 
 Security-significant execution shapes of the same Operation are represented by immutable **EffectProfiles** owned by that Operation.
 
-Conceptually:
+An EffectProfile binds a `RiskEnvelope(control_risk, effect_risk)`, Autonomy, realization Assurance and its concrete public control/execution/disclosure relationships. Profiles describe actual implementations; callers cannot override these facts. User participation changes the bound execution shape, not an authorization bit.
 
-```text
-EffectProfile
-    SecurityID
-    bound Operation reference
-    Risk
-    Autonomy
-    Integrity
-    Privacy?   # only if the effect itself exposes material
-```
+The broker evaluates every real profile separately when requested. It returns decisions, feasible IDs and all highest-Autonomy ties. Kernel does not choose tied semantic alternatives, invent profiles or retry effects. Invocation revalidates the selected publication and contract.
 
-A concrete effect transition selects one bound EffectProfile. The caller does not invent or override Risk, Autonomy, Integrity or Privacy numerically.
-
-This allows one semantic Operation to expose, for example, both a direct-user-controlled effect shape and an autonomous effect shape without introducing `approved=true`, an ACL, a role, or another authority mechanism.
-
-MADRE-provided AI integrations expose external/system effects through specific Operations or bounded mechanisms. There is no generic Agent shell or unrestricted Internet capability.
-
-An Operation may internally run deterministic code, use another service, invoke a Workflow or submit MADRE inference work; those internals remain Module-owned. The EffectProfile describes the security-relevant execution contract visible at the MADRE boundary, not the Module's private implementation ontology.
+An Operation may internally use deterministic code, services, Workflows or inference. Those semantics remain Module-owned. The exported bounded effect, not the owning application's full power, is evaluated.
 
 ## 7. Artifacts and ContextBundles
 
 An `Artifact` is material owned by a Module.
 
-A `ContextBundle` is an artifact-like bounded collection of material prepared for a concrete purpose. It carries a material SecurityObject with the values required by the final Security Algebra, including Sensitivity and Integrity.
+A `ContextBundle` is an artifact-like bounded collection of material prepared for a concrete purpose. It carries a material SecurityObject with the values required by the final Security Algebra, including Sensitivity and Assurance.
 
 Generated model output becomes ordinary Artifact material once delivered. It can be fed into subsequent Agents/Workflows/Operations according to Module semantics.
 
-Security-relevant transformation produces a new representation/security binding rather than mutating the source. A Module may therefore create a minimized representation with lower Sensitivity or an explicitly validated representation with stronger Integrity when its own semantics and validation path justify doing so.
+A Module-owned TransformContract binds a concrete transformation implementation/version and evidence schema. Execution produces a new representation and MaterialContract; broker completion binds its actual sources, transform and output. This can establish different Sensitivity or Assurance according to the transform's semantics. Ordinary derivation is constrained by source/producer Assurance and cannot reduce Sensitivity. There is no generic validator role.
+
+The SDK provides `Transform`, `TransformBehavior`, `TransformOutput` and a bound transform client. Transform behavior receives material and execution services; consumers cannot supply a result classification in place of executing it. No particular transform is part of the initial production SDK catalogue.
 
 ## 8. Discovery and brokering
 
@@ -190,13 +178,13 @@ The shipped default CORE may add richer personal-assistant behavior, profiles, m
 
 ### Required security capability
 
-CORE may legitimately handle extremely sensitive user/system material. A CORE-capable Module must therefore provide sufficiently strong Privacy and Integrity characteristics for the disclosure/control paths it is expected to participate in under MADRE's Security Algebra.
+CORE may legitimately handle extremely sensitive user/system material. A CORE-capable Module must therefore provide sufficiently strong boundary PrivacyCapacity and role-specific Assurance for the disclosure/control paths it is expected to participate in under MADRE's Security Algebra.
 
 This is not a privilege grant. CORE receives no bypass and every transition is evaluated by the same predicates.
 
-CORE-owned Artifacts/ContextBundles may simultaneously have the highest Sensitivity levels. Participant Privacy/Integrity and material Sensitivity are independent dimensions.
+CORE-owned Artifacts/ContextBundles may simultaneously have the highest Sensitivity levels. Boundary PrivacyCapacity, participant Assurance and material Sensitivity are independent dimensions.
 
-CORE must be able to minimize, anonymize, omit, validate or otherwise transform material that belongs to CORE's own semantic domain, including representations it has deliberately accepted into that domain, before sending or using them through another transition when its semantics permit such a transformation. A source Module remains responsible for domain-specific classification/transformation that only it can perform before exporting its representation to CORE.
+CORE must be able to minimize, anonymize, omit, validate or otherwise transform material that belongs to CORE's own semantic domain, including representations it has deliberately accepted into that domain, through concrete bound transformation execution before sending or using the resulting representation through another transition. A source Module remains responsible for domain-specific classification/transformation that only it can perform before exporting its representation to CORE.
 
 ### Default selection
 
@@ -257,3 +245,10 @@ Examples include:
 - Module/adapter security valuation and validation tooling that emits complete bound SecurityObjects before runtime algebra evaluation.
 
 These are valuable product/research directions but are not required for Kernel foundation.
+
+
+## Execution-bound SDK services
+
+Module entry binds `ExecutionServices` to the actual executing Agent or Operation and the attached disclosure route. Agent/Operation/Transform nested calls cannot override that context through their arguments or supplied history. Unbound configurations cannot execute; handles expire on return, failure or cancellation. Independent invocations do not share ambient state.
+
+An `EndpointBinding` names the forwarding attachment and its actual disclosure boundaries. It is not automatically a security participant. Additional producing/realizing components are declared only where the endpoint performs those roles. The active behavior contributes to production when creating a new representation; unchanged delivery adds no producer.

@@ -147,7 +147,7 @@ class WorkRuntime:
             execution_boundary=descriptor.execution_boundary,
             output_digest=content_digest(result),
             output_size=content_size(result),
-            output_integrity=self._generated_integrity(
+            output_assurance=self._generated_assurance(
                 request.material, descriptor.security.values
             ),
             producer_security_ids=(descriptor.security.security_id,),
@@ -348,14 +348,14 @@ class WorkRuntime:
 
         digest = content_digest(result)
         size = content_size(result)
-        output_integrity = self._generated_integrity(material, descriptor.security.values)
+        output_assurance = self._generated_assurance(material, descriptor.security.values)
         self._results[work_id] = result
         self.store.succeed(
             work_id,
             attempt,
             digest,
             size,
-            output_integrity,
+            output_assurance,
             (descriptor.security.security_id,),
             (material.security.security_id,),
             self._clock(),
@@ -379,7 +379,7 @@ class WorkRuntime:
             or material.history != record.spec.material.history
             or not material.security.verify_binding()
         ):
-            self.store.fail(record.id, WorkFailure(code="material_integrity"), self._clock())
+            self.store.fail(record.id, WorkFailure(code="material_assurance"), self._clock())
             return None
         return material
 
@@ -394,12 +394,16 @@ class WorkRuntime:
     ) -> tuple[CapabilityAdapter, SecurityHistory, SecurityTransition] | None:
         for candidate in candidates:
             descriptor = candidate.descriptor
-            prospective = history.extend(objects=(descriptor.security,))
+            prospective = history.extend(
+                objects=(descriptor.security, *descriptor.disclosure_boundaries)
+            )
             transition = SecurityTransition.issue(
                 disclosures=(
                     Disclosure(
                         material_security_id=material_security_id,
-                        path_security_ids=(descriptor.security.security_id,),
+                        boundary_security_ids=tuple(
+                            x.security_id for x in descriptor.disclosure_boundaries
+                        ),
                     ),
                 )
             )
@@ -429,7 +433,7 @@ class WorkRuntime:
         decision = self._security_evaluator.evaluate(history, transition)
         completed = set(self.store.completed_derivation_ids())
         if any(
-            relation.kind == "validation" and relation.derivation_id not in completed
+            relation.kind == "transform" and relation.derivation_id not in completed
             for relation in history.derivations
         ):
             decision = SecurityDecision(
@@ -437,7 +441,7 @@ class WorkRuntime:
                 transition_id=transition.transition_id,
                 failures=(
                     *decision.failures,
-                    StructuralFailure(code="unverified_validation_participation"),
+                    StructuralFailure(code="unverified_transform_execution"),
                 ),
             )
         self.store.record_security_decision(
@@ -457,27 +461,27 @@ class WorkRuntime:
             )
 
     @staticmethod
-    def _generated_integrity(
+    def _generated_assurance(
         material: TransientMaterial,
         capability_values: object,
     ) -> OrdinarySecurityLevel:
         material_values = cast(MaterialSecurityValues, material.security.values)
-        if material_values.integrity is None:
+        if material_values.assurance is None:
             raise TransientInferenceError("security_denied")
         if (
             not isinstance(capability_values, CapabilitySecurityValues)
-            or capability_values.integrity is None
+            or capability_values.assurance is None
         ):
             raise TransientInferenceError("security_denied")
-        value = min(int(material_values.integrity), int(capability_values.integrity))
+        value = min(int(material_values.assurance), int(capability_values.assurance))
         return cast(OrdinarySecurityLevel, SecurityLevel(value))
 
     @staticmethod
     def _verify_transient_material(material: TransientMaterial) -> None:
         if content_digest(material.payload) != material.digest:
-            raise TransientInferenceError("material_integrity")
+            raise TransientInferenceError("material_assurance")
         if not material.security.verify_binding():
-            raise TransientInferenceError("material_integrity")
+            raise TransientInferenceError("material_assurance")
 
     @asynccontextmanager
     async def _capability_slot(self, adapter: CapabilityAdapter) -> AsyncIterator[None]:
