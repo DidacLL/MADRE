@@ -26,9 +26,10 @@ from madre.security import (
     SecurityObject,
     SecuritySubjectRef,
     SecurityValues,
+    UserRelease,
 )
 from madre.storage import PlatformStore, open_database
-from madre_sdk import Artifact, MaterialRepository, participant_security
+from madre_sdk import Artifact, MaterialRepository, disclosure, feasibility, participant_security
 
 ORIGINATOR = "module.runtime-test"
 
@@ -222,6 +223,61 @@ def test_durable_success_persists_accepted_transition_and_no_private_bytes(tmp_p
         data = path.read_bytes()
         assert b"private-input-marker" not in data
         assert b"private-output-marker" not in data
+
+
+def test_durable_release_survives_reopen_and_attempt_metadata_is_not_an_operand(
+    tmp_path: Path,
+) -> None:
+    registry = CapabilityRegistry()
+    released_capability = capability(
+        "released-unknown", lambda payload: {"released": payload}, privacy=SecurityLevel.LEVEL_2
+    )
+    registry.register(released_capability)
+    source = artifact({"private": "value"})
+    crossing = disclosure(source.security, released_capability.descriptor.security)
+    release = UserRelease(
+        interaction=source.security.subject_ref, disclosure=crossing.disclosures[0]
+    )
+    source = source.model_copy(
+        update={
+            "security_history": source.security_history.extend(
+                objects=(released_capability.descriptor.security,), releases=(release,)
+            )
+        }
+    )
+    repository = MaterialRepository()
+    handle = repository.retain(source)
+    with open_database(tmp_path) as connection:
+        runtime = WorkRuntime(PlatformStore(connection), registry)
+        runtime.register_material_resolver(ORIGINATOR, repository)
+        record = asyncio.run(
+            runtime.submit(
+                WorkSubmission(
+                    originator=ORIGINATOR,
+                    security=source.security_history,
+                    inference=requirement("released-unknown"),
+                    material=handle,
+                )
+            )
+        )
+        asyncio.run(runtime.run_eligible())
+        completed = runtime.inspect(record.id)
+        assert completed is not None and completed.status == "succeeded"
+        before_restart = feasibility(completed.spec.security, crossing)
+        assert before_restart.admissible
+
+    with open_database(tmp_path) as connection:
+        restored = WorkRuntime(PlatformStore(connection), registry).inspect(record.id)
+        assert restored is not None
+        assert feasibility(restored.spec.security, crossing) == before_restart
+        changed_attempt_only = restored.model_copy(
+            update={
+                "attempts": (
+                    restored.attempts[0].model_copy(update={"number": 2, "retry_number": 1}),
+                )
+            }
+        )
+        assert feasibility(changed_attempt_only.spec.security, crossing) == before_restart
 
 
 def test_retry_with_same_immutable_operands_reuses_transition_identity(tmp_path: Path) -> None:

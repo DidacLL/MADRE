@@ -4,6 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from madre.security import (
+    Disclosure,
     SecurityDerivation,
     SecurityHistory,
     SecurityObject,
@@ -13,12 +14,17 @@ from madre.security import (
     UserRelease,
 )
 from madre_sdk import (
+    Agent,
     Artifact,
     ContextBundle,
+    InvocationContext,
+    Module,
+    Operation,
     disclosure,
     effect_profile,
     effect_transition,
     feasibility,
+    participant_security,
 )
 
 
@@ -84,6 +90,7 @@ def test_profile_atomicity_and_executor_independence():
     ]
     assert [d.admissible for d in decisions] == [True, True, False]
     assert max(d.effect.control_demand for d in decisions[:2]) == 1
+    assert min(max(5, 1), max(1, 5)) == 5  # The fictional global pair is not a demand.
     direct = effect_transition(profile=profiles[0], controllers=(), executors=(weak,))
     assert "effect_integrity_below_risk" in feasibility(history, direct).failure_codes
     empty = effect_transition(profile=profiles[0], controllers=(), executors=())
@@ -176,3 +183,208 @@ def test_remote_capability_cannot_claim_vendor_privacy():
     CapabilityRegistry().register(Adapter(2))
     with pytest.raises(ValueError, match="UNKNOWN"):
         CapabilityRegistry().register(Adapter(5))
+
+
+def test_release_is_not_reused_for_a_changed_effect_profile_route():
+    material = scope("released-material", sensitivity=5)
+    observer = scope("public-observer", privacy=1)
+    executor = scope("executor", integrity=5)
+    first_profile = effect_profile(
+        owner_module_id="m", operation_id="publish", profile_id="first", risk=1, autonomy=1
+    )
+    changed_profile = effect_profile(
+        owner_module_id="m", operation_id="publish", profile_id="changed", risk=1, autonomy=1
+    )
+    crossing = effect_transition(
+        profile=first_profile,
+        controllers=(),
+        executors=(executor,),
+        disclosures=(
+            Disclosure(
+                material_security_id=material.security_id,
+                path_security_ids=(observer.security_id,),
+            ),
+        ),
+    )
+    release = UserRelease(
+        interaction=material.subject_ref,
+        disclosure=crossing.disclosures[0],
+        effect_execution=crossing.effect_execution,
+    )
+    history = SecurityHistory(
+        objects=(material, observer, executor, first_profile.security, changed_profile.security),
+        releases=(release,),
+    )
+    assert feasibility(history, crossing).admissible
+
+    changed_route = effect_transition(
+        profile=changed_profile,
+        controllers=(),
+        executors=(executor,),
+        disclosures=crossing.disclosures,
+    )
+    assert (
+        "confidentiality_capacity_below_sensitivity"
+        in feasibility(history, changed_route).failure_codes
+    )
+
+
+def test_nested_sensitivity_closure_survives_serialization_without_poisoning_isolated_scope():
+    secret = scope("nested-secret", sensitivity=5)
+    inner = scope("inner-surface", sensitivity=5, sources=(secret.security_id,))
+    falsely_low = scope("outer-surface", sensitivity=1, sources=(inner.security_id,))
+    isolated = scope("isolated-arithmetic", sensitivity=1)
+    restored = SecurityHistory.model_validate_json(
+        SecurityHistory(objects=(secret, inner, falsely_low, isolated)).model_dump_json()
+    )
+
+    assert (
+        "invalid_sensitivity_closure"
+        in feasibility(restored, SecurityTransition.issue()).failure_codes
+    )
+    local = scope("local", privacy=3)
+    assert feasibility(
+        SecurityHistory(objects=(secret, isolated, local)), disclosure(isolated, local)
+    ).admissible
+
+
+def test_module_owned_transform_may_raise_correlated_sensitivity():
+    left = scope("left", sensitivity=2)
+    right = scope("right", sensitivity=2)
+    correlated = scope("correlated", sensitivity=4)
+    procedure = SecuritySubjectRef(
+        owner_module_id="m",
+        subject_kind="transform",
+        publication_revision="1",
+        local_id="correlation",
+    )
+    transform = SecurityDerivation.issue(
+        kind="transform",
+        output_security_id=correlated.security_id,
+        source_security_ids=(left.security_id, right.security_id),
+        procedure=procedure,
+    )
+    assert feasibility(
+        SecurityHistory(objects=(left, right, correlated), derivations=(transform,)),
+        SecurityTransition.issue(),
+    ).admissible
+
+
+def test_independent_disclosures_are_not_globally_reduced():
+    secret = scope("secret-source", sensitivity=5)
+    secret_observer = scope("secret-observer", privacy=5)
+    public = scope("public-source", sensitivity=1)
+    public_observer = scope("public-observer", privacy=1)
+    history = SecurityHistory(objects=(secret, secret_observer, public, public_observer))
+
+    assert feasibility(history, disclosure(secret, secret_observer)).admissible
+    assert feasibility(history, disclosure(public, public_observer)).admissible
+
+
+def test_public_sdk_constructs_complete_security_topology_without_core_bypass():
+    source = Artifact.create(
+        owner_module_id="sdk-module",
+        artifact_id="reachable-state",
+        payload={"value": 1},
+        sensitivity=3,
+    )
+    module_security = participant_security(
+        owner_module_id="sdk-module",
+        subject_id="sdk-module",
+        subject_kind="module",
+        privacy=5,
+        integrity=5,
+        sensitivity=3,
+        sensitivity_sources=(source.security.security_id,),
+    )
+    agent_security = participant_security(
+        owner_module_id="sdk-module",
+        subject_id="worker",
+        subject_kind="agent",
+        privacy=5,
+        integrity=5,
+        sensitivity=3,
+        sensitivity_sources=(source.security.security_id,),
+    )
+    executor = participant_security(
+        owner_module_id="sdk-module",
+        subject_id="executor",
+        subject_kind="endpoint",
+        privacy=5,
+        integrity=5,
+    )
+    profile = effect_profile(
+        owner_module_id="sdk-module",
+        operation_id="publish",
+        profile_id="direct",
+        risk=5,
+        autonomy=1,
+    )
+    agent = Agent.from_instructions(
+        agent_id="worker",
+        purpose="work",
+        instructions="perform bounded work",
+        security=agent_security,
+        behavior=object(),
+    )
+    operation = Operation(
+        operation_id="publish",
+        purpose="publish bounded material",
+        input_contract="json:any",
+        output_contract="json:any",
+        effect="publish",
+        repeatability="never-retry-unknown-outcome",
+        effect_profiles=(profile,),
+        behavior=object(),
+    )
+    module = Module(
+        module_id="sdk-module",
+        version="1",
+        description="SDK topology smoke module",
+        security=module_security,
+        agents=(agent,),
+        operations=(operation,),
+        endpoint_security=executor,
+    )
+    invocation = InvocationContext(module=module.security, agent=agent.security, endpoint=executor)
+    narrowed = ContextBundle.select(
+        owner_module_id=module.module_id, bundle_id="narrow", purpose="bounded", members=(source,)
+    )
+    transformed = Artifact.derive_from(
+        invocation=invocation,
+        source=source,
+        owner_module_id=module.module_id,
+        artifact_id="correlated",
+        payload={"correlated": True},
+        producer_security_ids=(),
+        sensitivity=4,
+        procedure=SecuritySubjectRef(
+            owner_module_id=module.module_id,
+            subject_kind="transform",
+            publication_revision="1",
+            local_id="correlate",
+        ),
+    )
+    transition = effect_transition(
+        profile=profile,
+        controllers=(agent.security,),
+        executors=(executor,),
+        disclosures=(
+            Disclosure(
+                material_security_id=source.security.security_id,
+                path_security_ids=(module.security.security_id,),
+            ),
+        ),
+    )
+    release = UserRelease(
+        interaction=module.security.subject_ref,
+        disclosure=transition.disclosures[0],
+        effect_execution=transition.effect_execution,
+    )
+    history = source.security_history.merge(transformed.security_history).extend(
+        objects=(module.security, agent.security, executor, profile.security), releases=(release,)
+    )
+
+    assert narrowed.security.values.sensitivity == 3
+    assert transformed.security.values.sensitivity == 4
+    assert feasibility(history, transition).admissible

@@ -24,9 +24,12 @@ Typical shipped CORE behavior includes:
 
 CORE may handle some of the installation's most sensitive and personally identifying/profilable material: prompts, secrets, preferences, schedules, inferred profiles, system metadata and cross-domain context.
 
-CORE-capable Modules therefore need the strongest applicable isolation/privacy/trust characteristics defined by the final security algebra.
+CORE-capable Modules therefore need the strongest applicable Privacy and Integrity
+characteristics under the current scoped Security Algebra.
 
-This is independent from the Sensitivity of CORE-owned data. CORE can be a strongly isolated/trusted actor while its Artifacts/ContextBundles carry maximum Sensitivity.
+This is independent from the Sensitivity of CORE-owned data. CORE can carry strong
+Privacy and Integrity characteristics while its Artifacts/ContextBundles carry
+maximum Sensitivity.
 
 Cross-domain material still follows the normal algebra. CORE can receive material when the carried security objects permit it and should minimize/anonymize/omit information before sending it through less-private or higher-risk boundaries when its semantics allow.
 
