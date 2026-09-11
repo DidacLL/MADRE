@@ -8,11 +8,11 @@ from typing import Literal
 from pydantic import AwareDatetime, Field, JsonValue, field_validator, model_validator
 
 from madre.security import (
+    DirectUserInteraction,
     ExecutionBoundary,
     FrozenModel,
     Identifier,
-    OrdinarySecurityLevel,
-    SecurityHistory,
+    SecurityEvidence,
     SecurityObject,
 )
 
@@ -98,20 +98,20 @@ class TransientMaterial(FrozenModel):
     payload: JsonValue
     digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     security: SecurityObject
-    history: SecurityHistory = Field(default_factory=SecurityHistory)
+    evidence: SecurityEvidence = Field(default_factory=SecurityEvidence)
 
     @model_validator(mode="after")
     def security_matches_reference(self) -> TransientMaterial:
-        if self.security.subject_ref.subject_kind not in {"artifact", "context_bundle"}:
-            raise ValueError("transient material requires artifact/context_bundle security")
-        if self.security.subject_ref.local_id != self.reference:
-            raise ValueError("material SecurityObject subject must equal material reference")
+        if self.security.scope.scope_id != self.reference:
+            raise ValueError("material SecurityObject scope must equal material reference")
+        if self.security.sensitivity is None:
+            raise ValueError("material SecurityObject requires Sensitivity")
         if not self.security.verify_binding():
             raise ValueError("material SecurityObject binding is invalid")
-        if self.security.evidence_value("content_digest") != self.digest:
+        if self.security.binding.content_digest != self.digest:
             raise ValueError("material SecurityObject must bind the material digest")
-        if self.history.resolve(self.security.security_id) is None:
-            raise ValueError("material history must contain its SecurityObject")
+        if self.evidence.resolve(self.security.security_id) is None:
+            raise ValueError("material evidence must contain its SecurityObject")
         return self
 
     def to_handle(self, *, coordination: str | None = None) -> MaterialHandle:
@@ -119,7 +119,7 @@ class TransientMaterial(FrozenModel):
             reference=self.reference,
             digest=self.digest,
             security=self.security,
-            history=self.history,
+            evidence=self.evidence,
             coordination=coordination,
         )
 
@@ -128,27 +128,27 @@ class MaterialHandle(FrozenModel):
     reference: Identifier
     digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     security: SecurityObject
-    history: SecurityHistory = Field(default_factory=SecurityHistory)
+    evidence: SecurityEvidence = Field(default_factory=SecurityEvidence)
     coordination: Identifier | None = None
 
     @model_validator(mode="after")
     def security_matches_reference(self) -> MaterialHandle:
-        if self.security.subject_ref.subject_kind not in {"artifact", "context_bundle"}:
-            raise ValueError("MaterialHandle requires artifact/context_bundle security")
-        if self.security.subject_ref.local_id != self.reference:
-            raise ValueError("MaterialHandle SecurityObject subject must equal material reference")
+        if self.security.scope.scope_id != self.reference:
+            raise ValueError("MaterialHandle SecurityObject scope must equal material reference")
+        if self.security.sensitivity is None:
+            raise ValueError("MaterialHandle SecurityObject requires Sensitivity")
         if not self.security.verify_binding():
             raise ValueError("MaterialHandle SecurityObject binding is invalid")
-        if self.security.evidence_value("content_digest") != self.digest:
+        if self.security.binding.content_digest != self.digest:
             raise ValueError("MaterialHandle SecurityObject must bind the material digest")
-        if self.history.resolve(self.security.security_id) is None:
-            raise ValueError("material history must contain its SecurityObject")
+        if self.evidence.resolve(self.security.security_id) is None:
+            raise ValueError("material evidence must contain its SecurityObject")
         return self
 
 
 class WorkSubmission(FrozenModel):
     originator: Identifier
-    security: SecurityHistory
+    evidence: SecurityEvidence
     inference: InferenceRequirement
     material: MaterialHandle
     eligible_at: AwareDatetime | None = None
@@ -171,7 +171,7 @@ class WorkSubmission(FrozenModel):
 
 class WorkSpec(FrozenModel):
     originator: Identifier
-    security: SecurityHistory
+    evidence: SecurityEvidence
     inference: InferenceRequirement
     material: MaterialHandle
     eligible_at: AwareDatetime | None = None
@@ -182,10 +182,11 @@ class WorkSpec(FrozenModel):
 
 class TransientInferenceRequest(FrozenModel):
     originator: Identifier
-    security: SecurityHistory
+    evidence: SecurityEvidence
     inference: InferenceRequirement
     material: TransientMaterial
     constraints: ExecutionConstraints = Field(default_factory=ExecutionConstraints)
+    direct_interaction: DirectUserInteraction | None = None
 
 
 class TransientInferenceResult(FrozenModel):
@@ -196,10 +197,9 @@ class TransientInferenceResult(FrozenModel):
     execution_boundary: ExecutionBoundary
     output_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     output_size: int = Field(ge=0)
-    output_integrity: OrdinarySecurityLevel | None
     producer_security_ids: tuple[Identifier, ...]
     source_security_ids: tuple[Identifier, ...]
-    security: SecurityHistory
+    evidence: SecurityEvidence
 
 
 class WorkFailure(FrozenModel):
@@ -229,7 +229,7 @@ class WorkAttempt(FrozenModel):
     provider_id: Identifier | None = None
     model_id: Identifier | None = None
     execution_boundary: ExecutionBoundary | None = None
-    security_transition_id: Identifier | None = None
+    disclosure_relation_id: Identifier | None = None
     output_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     output_size: int | None = Field(default=None, ge=0)
     failure: WorkFailure | None = None
@@ -240,7 +240,6 @@ class ResultEvidence(FrozenModel):
     size: int = Field(ge=0)
     produced_at: AwareDatetime
     delivery_status: Literal["awaiting_consumption", "consumed", "lost"]
-    output_integrity: OrdinarySecurityLevel | None
     producer_security_ids: tuple[Identifier, ...]
     source_security_ids: tuple[Identifier, ...]
 

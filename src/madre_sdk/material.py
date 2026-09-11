@@ -1,29 +1,26 @@
-"""Module-owned material helpers with explicit derivation security history."""
+"""Module-owned material with exact scope facts and separate derivation evidence."""
 
 from __future__ import annotations
 
 import hashlib
 import json
-from typing import Literal, cast
+from typing import Literal
 
 from pydantic import Field, JsonValue, model_validator
 
 from madre.contracts import MaterialHandle, TransientInferenceResult, TransientMaterial, WorkRecord
 from madre.interfaces import MaterialResolver
 from madre.security import (
-    DEFAULT_SECURITY_EVALUATOR,
-    BindingEvidence,
+    DerivationEvidence,
     FrozenModel,
     Identifier,
+    Integrity,
     InvocationContext,
-    OrdinarySecurityLevel,
-    SecurityDerivation,
-    SecurityHistory,
-    SecurityLevel,
+    ScopeBinding,
+    SecurityEvidence,
     SecurityObject,
-    SecuritySubjectRef,
-    SecurityTransition,
-    SecurityValues,
+    SecurityScopeRef,
+    Sensitivity,
 )
 
 MaterialKind = Literal["artifact", "context_bundle"]
@@ -38,88 +35,67 @@ def _material_security(
     *,
     owner_module_id: str,
     reference: str,
-    kind: MaterialKind,
     payload: JsonValue,
-    sensitivity: OrdinarySecurityLevel,
-    integrity: OrdinarySecurityLevel | None = None,
+    sensitivity: Sensitivity,
     publication_revision: str,
     representation_revision: str,
+    sources: tuple[SecurityObject, ...] = (),
+    integrity: Integrity | None = None,
 ) -> SecurityObject:
     return SecurityObject.issue(
-        subject_ref=SecuritySubjectRef(
+        scope=SecurityScopeRef(
             owner_module_id=owner_module_id,
-            subject_kind=kind,
+            scope_id=reference,
             publication_revision=publication_revision,
-            local_id=reference,
-            subject_revision=representation_revision,
+            scope_revision=representation_revision,
         ),
-        values=SecurityValues(sensitivity=sensitivity, integrity=integrity),
-        binding_evidence=(BindingEvidence(key="content_digest", value=content_digest(payload)),),
+        sensitivity=sensitivity,
+        integrity=integrity,
+        sensitivity_sources=sources,
+        binding=ScopeBinding(content_digest=content_digest(payload)),
     )
 
 
-def _required_integrity(
-    history: SecurityHistory, security_ids: tuple[str, ...]
-) -> OrdinarySecurityLevel:
-    if not security_ids:
-        raise ValueError("derivation assurance path must not be empty")
-    values: list[int] = []
-    for security_id in security_ids:
-        obj = history.resolve(security_id)
-        if obj is None:
-            raise ValueError(f"unresolved derivation participant: {security_id}")
-        value = getattr(obj.values, "integrity", None)
-        if value is None:
-            raise ValueError(f"derivation participant lacks Integrity: {security_id}")
-        values.append(int(value))
-    return SecurityLevel(min(values))
+def _evidence_of(source: Material | TransientMaterial) -> SecurityEvidence:
+    return source.evidence
 
 
-def _validate_history(history: SecurityHistory) -> None:
-    decision = DEFAULT_SECURITY_EVALUATOR.evaluate(history, SecurityTransition.issue())
-    if not decision.admissible:
-        raise ValueError(f"invalid security history: {','.join(decision.failure_codes)}")
-
-
-def _history_of(source: Material | TransientMaterial) -> SecurityHistory:
-    if isinstance(source, TransientMaterial):
-        return source.history
-    return source.security_history
-
-
-def _merge_sources(
+def _sources(
     source: Material | TransientMaterial,
-    additional_sources: tuple[Material | TransientMaterial, ...],
-    security_history: SecurityHistory | None = None,
-) -> tuple[SecurityHistory, tuple[str, ...]]:
-    sources = (source, *additional_sources)
-    history = SecurityHistory()
-    for item in sources:
-        history = history.merge(_history_of(item)).extend(objects=(item.security,))
-    if security_history is not None:
-        history = history.merge(security_history)
-    return history, tuple(item.security.security_id for item in sources)
+    additional: tuple[Material | TransientMaterial, ...],
+    evidence: SecurityEvidence | None,
+) -> tuple[SecurityEvidence, tuple[SecurityObject, ...]]:
+    values = (source, *additional)
+    merged = SecurityEvidence()
+    for item in values:
+        merged = merged.merge(_evidence_of(item)).extend(objects=(item.security,))
+    if evidence is not None:
+        merged = merged.merge(evidence)
+    return merged, tuple(item.security for item in values)
+
+
+def _validate_material(
+    *, security: SecurityObject, reference: str, payload: JsonValue, evidence: SecurityEvidence
+) -> None:
+    if security.scope.scope_id != reference or security.sensitivity is None:
+        raise ValueError("material security must bind the material identity and Sensitivity")
+    if not security.verify_binding() or security.binding.content_digest != content_digest(payload):
+        raise ValueError("material SecurityObject does not bind its representation")
+    if evidence.resolve(security.security_id) != security:
+        raise ValueError("material evidence must contain its exact SecurityObject")
 
 
 class Artifact(FrozenModel):
     id: Identifier
     payload: JsonValue
     security: SecurityObject
-    security_history: SecurityHistory
+    evidence: SecurityEvidence
 
     @model_validator(mode="after")
     def validate_security(self) -> Artifact:
-        if (
-            self.security.subject_ref.subject_kind != "artifact"
-            or self.security.subject_ref.local_id != self.id
-        ):
-            raise ValueError("Artifact security must be bound to the Artifact identity")
-        if not self.security.verify_binding():
-            raise ValueError("Artifact SecurityObject binding is invalid")
-        if self.security.evidence_value("content_digest") != content_digest(self.payload):
-            raise ValueError("Artifact SecurityObject does not bind its representation")
-        if self.security_history.resolve(self.security.security_id) is None:
-            raise ValueError("Artifact history must contain the Artifact SecurityObject")
+        _validate_material(
+            security=self.security, reference=self.id, payload=self.payload, evidence=self.evidence
+        )
         return self
 
     @classmethod
@@ -129,117 +105,21 @@ class Artifact(FrozenModel):
         owner_module_id: str,
         artifact_id: str,
         payload: JsonValue,
-        sensitivity: OrdinarySecurityLevel,
-        integrity: OrdinarySecurityLevel | None = None,
+        sensitivity: Sensitivity,
         publication_revision: str = "1",
         representation_revision: str = "1",
-        security_history: SecurityHistory | None = None,
+        evidence: SecurityEvidence | None = None,
     ) -> Artifact:
         security = _material_security(
             owner_module_id=owner_module_id,
             reference=artifact_id,
-            kind="artifact",
             payload=payload,
             sensitivity=sensitivity,
-            integrity=integrity,
             publication_revision=publication_revision,
             representation_revision=representation_revision,
         )
-        history = (security_history or SecurityHistory()).extend(objects=(security,))
-        _validate_history(history)
-        return cls(id=artifact_id, payload=payload, security=security, security_history=history)
-
-    @classmethod
-    def from_inference_result(
-        cls,
-        *,
-        invocation: InvocationContext,
-        owner_module_id: str,
-        artifact_id: str,
-        source: Material,
-        result: TransientInferenceResult,
-        sensitivity: OrdinarySecurityLevel,
-        integrity: OrdinarySecurityLevel | None = None,
-        publication_revision: str = "1",
-        representation_revision: str = "1",
-    ) -> Artifact:
-        if result.output_digest != content_digest(result.payload):
-            raise ValueError("inference result digest mismatch")
-        production = tuple(
-            sorted(set((*result.producer_security_ids, *invocation.producer_security_ids)))
-        )
-        production_history = result.security.extend(objects=invocation.objects)
-        if integrity is not None:
-            raise ValueError("Use an explicit control-material derivation or validation procedure")
-        desired = None
-        history = source.security_history.merge(production_history)
-        security = _material_security(
-            owner_module_id=owner_module_id,
-            reference=artifact_id,
-            kind="artifact",
-            payload=result.payload,
-            sensitivity=sensitivity,
-            integrity=desired,
-            publication_revision=publication_revision,
-            representation_revision=representation_revision,
-        )
-        history = history.extend(objects=(security,))
-        derivation = SecurityDerivation.issue(
-            kind="ordinary",
-            output_security_id=security.security_id,
-            source_security_ids=result.source_security_ids,
-            producer_security_ids=production,
-        )
-        history = history.extend(derivations=(derivation,))
-        _validate_history(history)
-        return cls(
-            id=artifact_id, payload=result.payload, security=security, security_history=history
-        )
-
-    @classmethod
-    def from_work_result(
-        cls,
-        *,
-        invocation: InvocationContext,
-        owner_module_id: str,
-        artifact_id: str,
-        payload: JsonValue,
-        record: WorkRecord,
-        sensitivity: OrdinarySecurityLevel,
-        integrity: OrdinarySecurityLevel | None = None,
-        publication_revision: str = "1",
-        representation_revision: str = "1",
-    ) -> Artifact:
-        evidence = record.result
-        if evidence is None or evidence.digest != content_digest(payload):
-            raise ValueError("work result evidence does not match payload")
-        production = tuple(
-            sorted(set((*evidence.producer_security_ids, *invocation.producer_security_ids)))
-        )
-        production_history = record.spec.security.extend(objects=invocation.objects)
-        if integrity is not None:
-            raise ValueError("Use an explicit control-material derivation or validation procedure")
-        desired = None
-        security = _material_security(
-            owner_module_id=owner_module_id,
-            reference=artifact_id,
-            kind="artifact",
-            payload=payload,
-            sensitivity=sensitivity,
-            integrity=desired,
-            publication_revision=publication_revision,
-            representation_revision=representation_revision,
-        )
-        history = production_history.extend(objects=(security,))
-        derivation = SecurityDerivation.issue(
-            kind="ordinary",
-            output_security_id=security.security_id,
-            source_security_ids=evidence.source_security_ids,
-            producer_security_ids=production,
-        )
-        history = history.extend(derivations=(derivation,))
-        _validate_history(history)
-        return cls(id=artifact_id, payload=payload, security=security, security_history=history)
+        carried = (evidence or SecurityEvidence()).extend(objects=(security,))
+        return cls(id=artifact_id, payload=payload, security=security, evidence=carried)
 
     @classmethod
     def derive_from(
@@ -250,53 +130,140 @@ class Artifact(FrozenModel):
         owner_module_id: str,
         artifact_id: str,
         payload: JsonValue,
-        producer_security_ids: tuple[str, ...],
-        sensitivity: OrdinarySecurityLevel,
-        integrity: OrdinarySecurityLevel | None = None,
+        sensitivity: Sensitivity,
         additional_sources: tuple[Material | TransientMaterial, ...] = (),
         publication_revision: str = "1",
         representation_revision: str = "1",
-        security_history: SecurityHistory | None = None,
-        procedure: SecuritySubjectRef | None = None,
+        evidence: SecurityEvidence | None = None,
+        transform: SecurityScopeRef | None = None,
     ) -> Artifact:
-        history, source_ids = _merge_sources(source, additional_sources, security_history)
-        history = history.extend(objects=invocation.objects)
-        producer_security_ids = tuple(
-            sorted(set((*producer_security_ids, *invocation.producer_security_ids)))
-        )
-        desired = integrity
-        if desired is not None:
-            assurance = _required_integrity(
-                history,
-                tuple(
-                    item
-                    for item in (*source_ids, *producer_security_ids)
-                    if (obj := history.resolve(item)) is not None
-                    and obj.values.integrity is not None
-                ),
-            )
-            if desired > assurance:
-                raise ValueError("ordinary derivation cannot increase Integrity")
-        output = cls.create(
+        carried, source_objects = _sources(source, additional_sources, evidence)
+        ordinary_sources = () if transform is not None else source_objects
+        security = _material_security(
             owner_module_id=owner_module_id,
-            artifact_id=artifact_id,
+            reference=artifact_id,
             payload=payload,
             sensitivity=sensitivity,
-            integrity=desired,
             publication_revision=publication_revision,
             representation_revision=representation_revision,
-            security_history=history,
+            sources=ordinary_sources,
         )
-        relation = SecurityDerivation.issue(
-            kind="transform" if procedure else "ordinary",
-            procedure=procedure,
-            output_security_id=output.security.security_id,
-            source_security_ids=source_ids,
-            producer_security_ids=producer_security_ids,
+        derivation = DerivationEvidence.issue(
+            kind="transform" if transform is not None else "ordinary",
+            procedure=transform,
+            output_security_id=security.security_id,
+            source_security_ids=tuple(item.security_id for item in source_objects),
+            producer_security_ids=tuple(item.security_id for item in invocation.producers),
         )
-        final_history = output.security_history.extend(derivations=(relation,))
-        _validate_history(final_history)
-        return output.model_copy(update={"security_history": final_history})
+        carried = carried.extend(objects=(*invocation.objects, security), derivations=(derivation,))
+        return cls(id=artifact_id, payload=payload, security=security, evidence=carried)
+
+    @classmethod
+    def from_inference_result(
+        cls,
+        *,
+        invocation: InvocationContext,
+        owner_module_id: str,
+        artifact_id: str,
+        source: Material,
+        result: TransientInferenceResult,
+        sensitivity: Sensitivity,
+        publication_revision: str = "1",
+        representation_revision: str = "1",
+    ) -> Artifact:
+        if result.output_digest != content_digest(result.payload):
+            raise ValueError("inference result digest mismatch")
+        source_objects = tuple(result.evidence.resolve(item) for item in result.source_security_ids)
+        producer_objects = tuple(
+            result.evidence.resolve(item) for item in result.producer_security_ids
+        )
+        if (
+            any(item is None for item in (*source_objects, *producer_objects))
+            or source.security.security_id not in result.source_security_ids
+        ):
+            raise ValueError("inference result has unresolved production evidence")
+        typed_sources = tuple(item for item in source_objects if item is not None)
+        security = _material_security(
+            owner_module_id=owner_module_id,
+            reference=artifact_id,
+            payload=result.payload,
+            sensitivity=sensitivity,
+            publication_revision=publication_revision,
+            representation_revision=representation_revision,
+            sources=typed_sources,
+        )
+        derivation = DerivationEvidence.issue(
+            kind="ordinary",
+            output_security_id=security.security_id,
+            source_security_ids=result.source_security_ids,
+            producer_security_ids=tuple(
+                sorted(
+                    {
+                        *result.producer_security_ids,
+                        *(item.security_id for item in invocation.producers),
+                    }
+                )
+            ),
+        )
+        evidence = source.evidence.merge(result.evidence).extend(
+            objects=(*invocation.objects, security), derivations=(derivation,)
+        )
+        return cls(id=artifact_id, payload=result.payload, security=security, evidence=evidence)
+
+    @classmethod
+    def from_work_result(
+        cls,
+        *,
+        invocation: InvocationContext,
+        owner_module_id: str,
+        artifact_id: str,
+        payload: JsonValue,
+        source: Material,
+        record: WorkRecord,
+        sensitivity: Sensitivity,
+        publication_revision: str = "1",
+        representation_revision: str = "1",
+    ) -> Artifact:
+        result = record.result
+        if result is None or result.digest != content_digest(payload):
+            raise ValueError("work result evidence does not match payload")
+        source_objects = tuple(
+            record.spec.evidence.resolve(item) for item in result.source_security_ids
+        )
+        producer_objects = tuple(
+            record.spec.evidence.resolve(item) for item in result.producer_security_ids
+        )
+        if (
+            any(item is None for item in (*source_objects, *producer_objects))
+            or source.security.security_id not in result.source_security_ids
+        ):
+            raise ValueError("work result has unresolved production evidence")
+        security = _material_security(
+            owner_module_id=owner_module_id,
+            reference=artifact_id,
+            payload=payload,
+            sensitivity=sensitivity,
+            publication_revision=publication_revision,
+            representation_revision=representation_revision,
+            sources=tuple(item for item in source_objects if item is not None),
+        )
+        derivation = DerivationEvidence.issue(
+            kind="ordinary",
+            output_security_id=security.security_id,
+            source_security_ids=result.source_security_ids,
+            producer_security_ids=tuple(
+                sorted(
+                    {
+                        *result.producer_security_ids,
+                        *(item.security_id for item in invocation.producers),
+                    }
+                )
+            ),
+        )
+        evidence = source.evidence.merge(record.spec.evidence).extend(
+            objects=(*invocation.objects, security), derivations=(derivation,)
+        )
+        return cls(id=artifact_id, payload=payload, security=security, evidence=evidence)
 
     def derive(
         self,
@@ -304,63 +271,63 @@ class Artifact(FrozenModel):
         invocation: InvocationContext,
         artifact_id: str,
         payload: JsonValue,
-        producer_security_ids: tuple[str, ...],
-        sensitivity: OrdinarySecurityLevel | None = None,
-        integrity: OrdinarySecurityLevel | None = None,
+        sensitivity: Sensitivity | None = None,
         representation_revision: str = "1",
+        transform: SecurityScopeRef | None = None,
     ) -> Artifact:
-        values = self.security.values
+        assert self.security.sensitivity is not None
         return Artifact.derive_from(
             invocation=invocation,
             source=self,
-            owner_module_id=self.security.subject_ref.owner_module_id,
+            owner_module_id=self.security.scope.owner_module_id,
             artifact_id=artifact_id,
             payload=payload,
-            producer_security_ids=producer_security_ids,
-            sensitivity=sensitivity or cast(OrdinarySecurityLevel, values.sensitivity),
-            integrity=integrity,
-            publication_revision=self.security.subject_ref.publication_revision,
+            sensitivity=sensitivity or self.security.sensitivity,
+            publication_revision=self.security.scope.publication_revision,
             representation_revision=representation_revision,
+            transform=transform,
         )
 
     def validated(
         self,
         *,
-        invocation: InvocationContext,
-        procedure: SecuritySubjectRef,
+        procedure: SecurityScopeRef,
+        validators: tuple[SecurityObject, ...],
         artifact_id: str,
         payload: JsonValue,
-        sensitivity: OrdinarySecurityLevel | None = None,
-        integrity: OrdinarySecurityLevel | None = None,
+        integrity: Integrity,
+        sensitivity: Sensitivity | None = None,
         representation_revision: str = "1",
     ) -> Artifact:
-        values = self.security.values
-        history = self.security_history.extend(objects=invocation.objects)
-        validator_security_ids = invocation.producer_security_ids
-        assurance = _required_integrity(history, validator_security_ids)
-        desired = integrity or assurance
-        if int(desired) > int(assurance):
-            raise ValueError("validated representation exceeds validator assurance")
-        output = Artifact.create(
-            owner_module_id=invocation.module_id,
-            artifact_id=artifact_id,
+        if not validators or any(item.integrity is None for item in validators):
+            raise ValueError("validation requires actual Integrity-bearing validators")
+        bound = min(item.integrity.value for item in validators if item.integrity is not None)
+        if integrity.value > bound:
+            raise ValueError("validated projection exceeds validator Integrity")
+        assert self.security.sensitivity is not None
+        output_security = _material_security(
+            owner_module_id=procedure.owner_module_id,
+            reference=artifact_id,
             payload=payload,
-            sensitivity=sensitivity or cast(OrdinarySecurityLevel, values.sensitivity),
-            integrity=desired,
-            publication_revision=invocation.module.subject_ref.publication_revision,
+            sensitivity=sensitivity or self.security.sensitivity,
+            integrity=integrity,
+            publication_revision=procedure.publication_revision,
             representation_revision=representation_revision,
-            security_history=history,
+            sources=(self.security,),
         )
-        relation = SecurityDerivation.issue(
+        derivation = DerivationEvidence.issue(
             kind="validation",
             procedure=procedure,
-            output_security_id=output.security.security_id,
+            output_security_id=output_security.security_id,
             source_security_ids=(self.security.security_id,),
-            validator_security_ids=validator_security_ids,
+            validator_security_ids=tuple(item.security_id for item in validators),
         )
-        history = output.security_history.extend(derivations=(relation,))
-        _validate_history(history)
-        return output.model_copy(update={"security_history": history})
+        evidence = self.evidence.extend(
+            objects=(*validators, output_security), derivations=(derivation,)
+        )
+        return Artifact(
+            id=artifact_id, payload=payload, security=output_security, evidence=evidence
+        )
 
     def transient(self) -> TransientMaterial:
         return TransientMaterial(
@@ -368,7 +335,7 @@ class Artifact(FrozenModel):
             payload=self.payload,
             digest=content_digest(self.payload),
             security=self.security,
-            history=self.security_history,
+            evidence=self.evidence,
         )
 
     def handle(self, *, coordination: str | None = None) -> MaterialHandle:
@@ -380,21 +347,13 @@ class ContextBundle(FrozenModel):
     purpose: str = Field(min_length=1)
     payload: JsonValue
     security: SecurityObject
-    security_history: SecurityHistory
+    evidence: SecurityEvidence
 
     @model_validator(mode="after")
     def validate_security(self) -> ContextBundle:
-        if (
-            self.security.subject_ref.subject_kind != "context_bundle"
-            or self.security.subject_ref.local_id != self.id
-        ):
-            raise ValueError("ContextBundle security must be bound to the ContextBundle identity")
-        if not self.security.verify_binding():
-            raise ValueError("ContextBundle SecurityObject binding is invalid")
-        if self.security.evidence_value("content_digest") != content_digest(self.payload):
-            raise ValueError("ContextBundle SecurityObject does not bind its representation")
-        if self.security_history.resolve(self.security.security_id) is None:
-            raise ValueError("ContextBundle history must contain its SecurityObject")
+        _validate_material(
+            security=self.security, reference=self.id, payload=self.payload, evidence=self.evidence
+        )
         return self
 
     @classmethod
@@ -405,64 +364,27 @@ class ContextBundle(FrozenModel):
         bundle_id: str,
         purpose: str,
         payload: JsonValue,
-        sensitivity: OrdinarySecurityLevel,
-        integrity: OrdinarySecurityLevel | None = None,
+        sensitivity: Sensitivity,
         publication_revision: str = "1",
         representation_revision: str = "1",
-        security_history: SecurityHistory | None = None,
+        evidence: SecurityEvidence | None = None,
     ) -> ContextBundle:
         security = _material_security(
             owner_module_id=owner_module_id,
             reference=bundle_id,
-            kind="context_bundle",
             payload=payload,
             sensitivity=sensitivity,
-            integrity=integrity,
             publication_revision=publication_revision,
             representation_revision=representation_revision,
         )
-        history = (security_history or SecurityHistory()).extend(objects=(security,))
-        _validate_history(history)
+        carried = (evidence or SecurityEvidence()).extend(objects=(security,))
         return cls(
             id=bundle_id,
             purpose=purpose,
             payload=payload,
             security=security,
-            security_history=history,
+            evidence=carried,
         )
-
-    @classmethod
-    def select(
-        cls,
-        *,
-        owner_module_id: str,
-        bundle_id: str,
-        purpose: str,
-        members: tuple[Artifact, ...],
-    ) -> ContextBundle:
-        """Build a new bundle containing exactly the retained member representations."""
-        if not members or len({item.id for item in members}) != len(members):
-            raise ValueError("Selection requires nonempty uniquely named members")
-        history = SecurityHistory().merge(*(item.security_history for item in members))
-        levels = [item.security.values.sensitivity for item in members]
-        if any(value is None for value in levels):
-            raise ValueError("Selected members require Sensitivity")
-        result = cls.create(
-            owner_module_id=owner_module_id,
-            bundle_id=bundle_id,
-            purpose=purpose,
-            payload={item.id: item.payload for item in members},
-            sensitivity=max(value for value in levels if value is not None),
-            security_history=history,
-        )
-        relation = SecurityDerivation.issue(
-            kind="selection",
-            output_security_id=result.security.security_id,
-            source_security_ids=tuple(item.security.security_id for item in members),
-        )
-        history = result.security_history.extend(derivations=(relation,))
-        _validate_history(history)
-        return result.model_copy(update={"security_history": history})
 
     @classmethod
     def derive_from(
@@ -474,44 +396,80 @@ class ContextBundle(FrozenModel):
         bundle_id: str,
         purpose: str,
         payload: JsonValue,
-        producer_security_ids: tuple[str, ...],
-        sensitivity: OrdinarySecurityLevel,
-        integrity: OrdinarySecurityLevel | None = None,
+        sensitivity: Sensitivity,
         additional_sources: tuple[Material | TransientMaterial, ...] = (),
         publication_revision: str = "1",
         representation_revision: str = "1",
-        security_history: SecurityHistory | None = None,
+        evidence: SecurityEvidence | None = None,
+        transform: SecurityScopeRef | None = None,
     ) -> ContextBundle:
-        history, source_ids = _merge_sources(source, additional_sources, security_history)
-        history = history.extend(objects=invocation.objects)
-        producer_security_ids = tuple(
-            sorted(set((*producer_security_ids, *invocation.producer_security_ids)))
-        )
-        desired = integrity
-        if desired is not None:
-            assurance = _required_integrity(history, (*source_ids, *producer_security_ids))
-            if desired > assurance:
-                raise ValueError("ordinary derivation cannot increase Integrity")
-        output = cls.create(
+        carried, source_objects = _sources(source, additional_sources, evidence)
+        ordinary_sources = () if transform is not None else source_objects
+        security = _material_security(
             owner_module_id=owner_module_id,
-            bundle_id=bundle_id,
-            purpose=purpose,
+            reference=bundle_id,
             payload=payload,
             sensitivity=sensitivity,
-            integrity=desired,
             publication_revision=publication_revision,
             representation_revision=representation_revision,
-            security_history=history,
+            sources=ordinary_sources,
         )
-        relation = SecurityDerivation.issue(
-            kind="ordinary",
-            output_security_id=output.security.security_id,
-            source_security_ids=source_ids,
-            producer_security_ids=producer_security_ids,
+        derivation = DerivationEvidence.issue(
+            kind="transform" if transform is not None else "ordinary",
+            procedure=transform,
+            output_security_id=security.security_id,
+            source_security_ids=tuple(item.security_id for item in source_objects),
+            producer_security_ids=tuple(item.security_id for item in invocation.producers),
         )
-        final_history = output.security_history.extend(derivations=(relation,))
-        _validate_history(final_history)
-        return output.model_copy(update={"security_history": final_history})
+        carried = carried.extend(objects=(*invocation.objects, security), derivations=(derivation,))
+        return cls(
+            id=bundle_id,
+            purpose=purpose,
+            payload=payload,
+            security=security,
+            evidence=carried,
+        )
+
+    @classmethod
+    def select(
+        cls,
+        *,
+        owner_module_id: str,
+        bundle_id: str,
+        purpose: str,
+        members: tuple[Artifact, ...],
+        publication_revision: str = "1",
+        representation_revision: str = "1",
+    ) -> ContextBundle:
+        if not members or len({item.id for item in members}) != len(members):
+            raise ValueError("selection requires nonempty uniquely named members")
+        if any(item.security.sensitivity is None for item in members):
+            raise ValueError("selected members require Sensitivity")
+        evidence = SecurityEvidence().merge(*(item.evidence for item in members))
+        sensitivity = Sensitivity(
+            max(item.security.sensitivity.value for item in members if item.security.sensitivity)
+        )
+        security = _material_security(
+            owner_module_id=owner_module_id,
+            reference=bundle_id,
+            payload={item.id: item.payload for item in members},
+            sensitivity=sensitivity,
+            publication_revision=publication_revision,
+            representation_revision=representation_revision,
+            sources=tuple(item.security for item in members),
+        )
+        derivation = DerivationEvidence.issue(
+            kind="selection",
+            output_security_id=security.security_id,
+            source_security_ids=tuple(item.security.security_id for item in members),
+        )
+        return cls(
+            id=bundle_id,
+            purpose=purpose,
+            payload={item.id: item.payload for item in members},
+            security=security,
+            evidence=evidence.extend(objects=(security,), derivations=(derivation,)),
+        )
 
     def derive(
         self,
@@ -520,24 +478,22 @@ class ContextBundle(FrozenModel):
         bundle_id: str,
         purpose: str,
         payload: JsonValue,
-        producer_security_ids: tuple[str, ...],
-        sensitivity: OrdinarySecurityLevel | None = None,
-        integrity: OrdinarySecurityLevel | None = None,
+        sensitivity: Sensitivity | None = None,
         representation_revision: str = "1",
+        transform: SecurityScopeRef | None = None,
     ) -> ContextBundle:
-        values = self.security.values
+        assert self.security.sensitivity is not None
         return ContextBundle.derive_from(
             invocation=invocation,
             source=self,
-            owner_module_id=self.security.subject_ref.owner_module_id,
+            owner_module_id=self.security.scope.owner_module_id,
             bundle_id=bundle_id,
             purpose=purpose,
             payload=payload,
-            producer_security_ids=producer_security_ids,
-            sensitivity=sensitivity or cast(OrdinarySecurityLevel, values.sensitivity),
-            integrity=integrity,
-            publication_revision=self.security.subject_ref.publication_revision,
+            sensitivity=sensitivity or self.security.sensitivity,
+            publication_revision=self.security.scope.publication_revision,
             representation_revision=representation_revision,
+            transform=transform,
         )
 
     def transient(self) -> TransientMaterial:
@@ -546,7 +502,7 @@ class ContextBundle(FrozenModel):
             payload=self.payload,
             digest=content_digest(self.payload),
             security=self.security,
-            history=self.security_history,
+            evidence=self.evidence,
         )
 
     def handle(self, *, coordination: str | None = None) -> MaterialHandle:
@@ -575,7 +531,7 @@ class MaterialRepository(MaterialResolver):
         if (
             material.digest != handle.digest
             or material.security != handle.security
-            or material.history != handle.history
+            or material.evidence != handle.evidence
         ):
             return None
         return material

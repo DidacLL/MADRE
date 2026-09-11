@@ -32,7 +32,7 @@ from madre.interfaces import (
     WorkResultAccess,
 )
 from madre.registry import AgentDescriptor, OperationDescriptor, SkillDescriptor, WorkflowDescriptor
-from madre.security import InvocationContext, SecurityHistory, SecurityObject
+from madre.security import InvocationContext, OperationUse, SecurityEvidence, SecurityObject
 from madre_sdk.material import Material, MaterialRepository
 
 
@@ -72,10 +72,10 @@ class _ExecutionClient:
 
 class InferenceClient(_ExecutionClient):
     def __init__(
-        self, *, originator: str, security: SecurityHistory, inference: TransientInference
+        self, *, originator: str, evidence: SecurityEvidence, inference: TransientInference
     ) -> None:
         self._originator = originator
-        self._security = security
+        self._evidence = evidence
         self._inference = inference
 
     async def infer(
@@ -84,16 +84,17 @@ class InferenceClient(_ExecutionClient):
         requirement: InferenceRequirement,
         *,
         constraints: ExecutionConstraints | None = None,
-        security: SecurityHistory | None = None,
+        evidence: SecurityEvidence | None = None,
     ) -> TransientInferenceResult:
         invocation = self._active_invocation()
         return await self._inference.infer(
             TransientInferenceRequest(
                 originator=self._originator,
-                security=(security or self._security).extend(objects=invocation.objects),
+                evidence=(evidence or self._evidence).extend(objects=invocation.objects),
                 inference=requirement,
                 material=material.transient(),
                 constraints=constraints or ExecutionConstraints(),
+                direct_interaction=invocation.direct_interaction,
             )
         )
 
@@ -103,12 +104,12 @@ class WorkClient(_ExecutionClient):
         self,
         *,
         originator: str,
-        security: SecurityHistory,
+        evidence: SecurityEvidence,
         submission: DurableWorkSubmission,
         materials: MaterialRepository,
     ) -> None:
         self._originator = originator
-        self._security = security
+        self._evidence = evidence
         self._submission = submission
         self._materials = materials
 
@@ -122,14 +123,14 @@ class WorkClient(_ExecutionClient):
         constraints: ExecutionConstraints | None = None,
         correlation: tuple[CorrelationEntry, ...] = (),
         idempotency_key: str | None = None,
-        security: SecurityHistory | None = None,
+        evidence: SecurityEvidence | None = None,
     ) -> WorkRecord:
         invocation = self._active_invocation()
         handle = self._materials.retain(material)
         return await self._submission.submit(
             WorkSubmission(
                 originator=self._originator,
-                security=(security or self._security).extend(objects=invocation.objects),
+                evidence=(evidence or self._evidence).extend(objects=invocation.objects),
                 inference=requirement,
                 material=handle,
                 eligible_at=eligible_at,
@@ -166,26 +167,25 @@ class WorkResults:
 
 
 class DiscoveryClient:
-    def __init__(self, discovery: Discovery, security: SecurityHistory) -> None:
+    def __init__(self, discovery: Discovery) -> None:
         self._discovery = discovery
-        self._security = security
 
     def agents(self) -> tuple[AgentDescriptor, ...]:
-        return self._discovery.discover_agents(self._security)
+        return self._discovery.list_agents()
 
     def skills(self) -> tuple[SkillDescriptor, ...]:
-        return self._discovery.discover_skills(self._security)
+        return self._discovery.list_skills()
 
     def workflows(self) -> tuple[WorkflowDescriptor, ...]:
-        return self._discovery.discover_workflows(self._security)
+        return self._discovery.list_workflows()
 
     def operations(self) -> tuple[OperationDescriptor, ...]:
-        return self._discovery.discover_operations(self._security)
+        return self._discovery.list_operations()
 
 
 class AgentBrokerClient(_ExecutionClient):
-    def __init__(self, *, security: SecurityHistory, broker: AgentBrokering) -> None:
-        self._security = security
+    def __init__(self, *, evidence: SecurityEvidence, broker: AgentBrokering) -> None:
+        self._evidence = evidence
         self._broker = broker
 
     async def invoke(
@@ -194,12 +194,12 @@ class AgentBrokerClient(_ExecutionClient):
         agent_id: str,
         material: Material,
         *,
-        security: SecurityHistory | None = None,
+        evidence: SecurityEvidence | None = None,
     ) -> TransientMaterial:
         invocation = self._active_invocation()
         return await self._broker.invoke_agent(
             invocation,
-            (security or self._security).extend(objects=invocation.objects),
+            (evidence or self._evidence).extend(objects=invocation.objects),
             module_id,
             agent_id,
             material.transient(),
@@ -207,30 +207,37 @@ class AgentBrokerClient(_ExecutionClient):
 
 
 class OperationBrokerClient(_ExecutionClient):
-    def __init__(self, *, security: SecurityHistory, broker: OperationBrokering) -> None:
-        self._security = security
+    def __init__(self, *, evidence: SecurityEvidence, broker: OperationBrokering) -> None:
+        self._evidence = evidence
         self._broker = broker
 
     async def invoke(
         self,
         module_id: str,
         operation_id: str,
-        effect_profile_id: str,
+        profile_id: str,
         material: Material,
         *,
         controllers: tuple[SecurityObject, ...] = (),
-        security: SecurityHistory | None = None,
+        observers: tuple[SecurityObject, ...] = (),
+        evidence: SecurityEvidence | None = None,
     ) -> TransientMaterial:
         invocation = self._active_invocation()
-        carried = (security or self._security).extend(objects=(*controllers, *invocation.objects))
+        carried = (evidence or self._evidence).extend(
+            objects=(*controllers, *observers, *invocation.objects)
+        )
         return await self._broker.invoke_operation(
             invocation,
             carried,
             module_id,
             operation_id,
-            effect_profile_id,
+            OperationUse(
+                profile_id=profile_id,
+                disclosure_observers=observers,
+                controllers=controllers,
+                direct_interaction=invocation.direct_interaction,
+            ),
             material.transient(),
-            tuple(item.security_id for item in controllers),
         )
 
 

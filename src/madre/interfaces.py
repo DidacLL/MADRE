@@ -22,7 +22,13 @@ from madre.registry import (
     SkillDescriptor,
     WorkflowDescriptor,
 )
-from madre.security import ExecutionBoundary, InvocationContext, SecurityHistory, SecurityObject
+from madre.security import (
+    ExecutionBoundary,
+    InvocationContext,
+    OperationUse,
+    SecurityEvidence,
+    SecurityObject,
+)
 
 
 class ModuleRegistration(Protocol):
@@ -62,10 +68,10 @@ class MaterialResolutionRegistration(Protocol):
 
 
 class Discovery(Protocol):
-    def discover_agents(self, security: SecurityHistory) -> tuple[AgentDescriptor, ...]: ...
-    def discover_skills(self, security: SecurityHistory) -> tuple[SkillDescriptor, ...]: ...
-    def discover_workflows(self, security: SecurityHistory) -> tuple[WorkflowDescriptor, ...]: ...
-    def discover_operations(self, security: SecurityHistory) -> tuple[OperationDescriptor, ...]: ...
+    def list_agents(self) -> tuple[AgentDescriptor, ...]: ...
+    def list_skills(self) -> tuple[SkillDescriptor, ...]: ...
+    def list_workflows(self) -> tuple[WorkflowDescriptor, ...]: ...
+    def list_operations(self) -> tuple[OperationDescriptor, ...]: ...
 
 
 class AgentEndpoint(Protocol):
@@ -79,7 +85,7 @@ class AgentEndpoint(Protocol):
         self,
         agent_id: str,
         invocation: InvocationContext,
-        security: SecurityHistory,
+        evidence: SecurityEvidence,
         material: TransientMaterial,
     ) -> TransientMaterial: ...
 
@@ -96,7 +102,7 @@ class OperationEndpoint(Protocol):
         operation_id: str,
         effect_profile_id: str,
         invocation: InvocationContext,
-        security: SecurityHistory,
+        evidence: SecurityEvidence,
         material: TransientMaterial,
     ) -> TransientMaterial: ...
 
@@ -113,7 +119,7 @@ class AgentBrokering(Protocol):
     async def invoke_agent(
         self,
         requester: InvocationContext,
-        security: SecurityHistory,
+        evidence: SecurityEvidence,
         target_module_id: str,
         agent_id: str,
         material: TransientMaterial,
@@ -124,10 +130,9 @@ class OperationBrokering(Protocol):
     async def invoke_operation(
         self,
         requester: InvocationContext,
-        security: SecurityHistory,
+        evidence: SecurityEvidence,
         target_module_id: str,
         operation_id: str,
-        effect_profile_id: str,
+        use: OperationUse,
         material: TransientMaterial,
-        controller_security_ids: tuple[str, ...],
     ) -> TransientMaterial: ...

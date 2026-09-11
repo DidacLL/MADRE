@@ -17,7 +17,7 @@ _STORAGE_DDL = """
 CREATE TABLE runtime_work (
     id TEXT PRIMARY KEY,
     originator TEXT NOT NULL,
-    security_history_json TEXT NOT NULL,
+    security_evidence_json TEXT NOT NULL,
     inference_json TEXT NOT NULL,
     material_handle_json TEXT NOT NULL,
     eligible_at TEXT,
@@ -40,7 +40,6 @@ CREATE TABLE runtime_work (
     output_digest TEXT,
     output_size INTEGER,
     output_produced_at TEXT,
-    output_integrity INTEGER CHECK (output_integrity IS NULL OR output_integrity BETWEEN 1 AND 5),
     result_producer_security_ids_json TEXT,
     result_source_security_ids_json TEXT,
     delivery_status TEXT CHECK (
@@ -81,7 +80,7 @@ CREATE TABLE runtime_attempt (
     provider_id TEXT,
     model_id TEXT,
     execution_boundary TEXT,
-    security_transition_id TEXT,
+    disclosure_relation_id TEXT,
     output_digest TEXT,
     output_size INTEGER,
     error_code TEXT,
@@ -99,9 +98,12 @@ CREATE TABLE security_object (
     object_json TEXT NOT NULL
 );
 
-CREATE TABLE security_transition (
-    transition_id TEXT PRIMARY KEY,
-    transition_json TEXT NOT NULL
+CREATE TABLE security_relation (
+    relation_id TEXT PRIMARY KEY,
+    relation_kind TEXT NOT NULL CHECK (
+        relation_kind IN ('disclosure','control','effect_execution')
+    ),
+    relation_json TEXT NOT NULL
 );
 
 CREATE TABLE security_derivation (
@@ -114,8 +116,10 @@ CREATE TABLE security_decision (
     crossing_id TEXT NOT NULL,
     crossing_kind TEXT NOT NULL,
     target_id TEXT NOT NULL,
-    transition_id TEXT NOT NULL,
-    transition_json TEXT NOT NULL,
+    relation_id TEXT NOT NULL,
+    relation_kind TEXT NOT NULL CHECK (
+        relation_kind IN ('disclosure','control','effect_execution')
+    ),
     algebra_version TEXT NOT NULL,
     decision_json TEXT NOT NULL,
     execution_boundary TEXT,
@@ -136,6 +140,7 @@ CREATE TABLE broker_event (
     output_digest TEXT,
     output_size INTEGER,
     completion_context_json TEXT,
+    completion_evidence_json TEXT,
     output_security_id TEXT,
     derivation_ids_json TEXT
 );

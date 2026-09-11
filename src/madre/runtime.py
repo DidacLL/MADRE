@@ -1,4 +1,4 @@
-"""Deterministic transient inference and durable work over opaque transient material."""
+"""Deterministic inference and durable work using prospective disclosure forms."""
 
 from __future__ import annotations
 
@@ -25,20 +25,19 @@ from madre.contracts import (
 )
 from madre.interfaces import MaterialResolver
 from madre.security import (
-    DEFAULT_SECURITY_EVALUATOR,
-    Disclosure,
-    SecurityDecision,
-    SecurityEvaluator,
-    SecurityHistory,
-    SecurityTransition,
-    StructuralFailure,
+    DirectUserAction,
+    DirectUserInteraction,
+    DisclosureNormalForm,
+    SecurityEvidence,
+    SecurityObject,
 )
 from madre.storage import PlatformStore, utc_now
 
 
 def content_digest(payload: JsonValue) -> str:
-    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
-    return hashlib.sha256(encoded).hexdigest()
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
 
 
 def content_size(payload: JsonValue) -> int:
@@ -82,12 +81,10 @@ class WorkRuntime:
         capabilities: CapabilityRegistry,
         *,
         clock: Callable[[], datetime] | None = None,
-        security_evaluator: SecurityEvaluator = DEFAULT_SECURITY_EVALUATOR,
     ) -> None:
         self.store = store
         self.capabilities = capabilities
         self._clock = clock or utc_now
-        self._security_evaluator = security_evaluator
         self._schedule_changed = asyncio.Event()
         self._heavyweight_local = asyncio.Lock()
         self._results: dict[str, JsonValue] = {}
@@ -102,30 +99,24 @@ class WorkRuntime:
 
     async def infer(self, request: TransientInferenceRequest) -> TransientInferenceResult:
         self._verify_transient_material(request.material)
-        invocation_id = uuid4().hex
-        history = request.security.merge(request.material.history).extend(
+        crossing_id = uuid4().hex
+        evidence = request.evidence.merge(request.material.evidence).extend(
             objects=(request.material.security,)
         )
-        self._require_structural_history(
-            crossing_id=invocation_id,
-            crossing_kind="transient-admission",
-            target_id=request.inference.hard.mechanism_id or request.inference.hard.specialization,
-            history=history,
-        )
-
         candidates = self.capabilities.candidates(request.inference)
         selection = self._select_admissible_capability(
-            crossing_id=invocation_id,
+            crossing_id=crossing_id,
             crossing_kind="transient-capability-candidate",
-            history=history,
-            material_security_id=request.material.security.security_id,
+            evidence=evidence,
+            source=request.material.security,
             candidates=candidates,
+            direct_interaction=request.direct_interaction,
+            originator=request.originator,
         )
         if selection is None:
             raise TransientInferenceError("no_capability" if not candidates else "security_denied")
-        adapter, prospective, transition = selection
+        adapter, accepted = selection
         descriptor = adapter.descriptor
-        accepted = prospective.extend(transitions=(transition,))
         try:
             async with self._capability_slot(adapter):
                 result = await adapter.execute(request.material.payload, request.constraints)
@@ -142,23 +133,19 @@ class WorkRuntime:
             execution_boundary=descriptor.execution_boundary,
             output_digest=content_digest(result),
             output_size=content_size(result),
-            output_integrity=None,
             producer_security_ids=(descriptor.security.security_id,),
             source_security_ids=(request.material.security.security_id,),
-            security=accepted,
+            evidence=accepted,
         )
 
     async def submit(
-        self,
-        submission: WorkSubmission,
-        *,
-        idempotency_key: str | None = None,
+        self, submission: WorkSubmission, *, idempotency_key: str | None = None
     ) -> WorkRecord:
         handle = submission.material
-        security = submission.security.merge(handle.history).extend(objects=(handle.security,))
+        evidence = submission.evidence.merge(handle.evidence).extend(objects=(handle.security,))
         spec = WorkSpec(
             originator=submission.originator,
-            security=security,
+            evidence=evidence,
             inference=submission.inference,
             material=handle,
             eligible_at=submission.eligible_at,
@@ -175,14 +162,6 @@ class WorkRuntime:
                 return existing
 
         work_id = uuid4().hex
-        self._require_structural_history(
-            crossing_id=work_id,
-            crossing_kind="work-admission",
-            target_id=submission.inference.hard.mechanism_id
-            or submission.inference.hard.specialization,
-            history=security,
-        )
-
         accepted_at = self._clock()
         created = self.store.create(work_id, spec, accepted_at, idempotency_key=key)
         if not created:
@@ -288,7 +267,6 @@ class WorkRuntime:
             return record
         if record.spec.eligible_at is not None and record.spec.eligible_at > self._clock():
             return record
-
         candidates = self.capabilities.candidates(record.spec.inference)
         if not candidates:
             self.store.fail(work_id, WorkFailure(code="no_capability"), self._clock())
@@ -297,14 +275,17 @@ class WorkRuntime:
         selection = self._select_admissible_capability(
             crossing_id=work_id,
             crossing_kind="capability-candidate",
-            history=record.spec.security,
-            material_security_id=record.spec.material.security.security_id,
+            evidence=record.spec.evidence,
+            source=record.spec.material.security,
             candidates=candidates,
+            direct_interaction=None,
+            originator=record.spec.originator,
         )
         if selection is None:
             self.store.fail(work_id, WorkFailure(code="security_denied"), self._clock())
             return self._require(work_id)
-        adapter, prospective, transition = selection
+        adapter, accepted = selection
+        relation = accepted.relations[-1]
         descriptor = adapter.descriptor
         result: JsonValue = None
         failure: WorkFailure | None = None
@@ -314,19 +295,18 @@ class WorkRuntime:
             material = await self._resolve_material(record)
             if material is None:
                 return self._require(work_id)
-            accepted_history = prospective.extend(transitions=(transition,))
             attempt = self.store.start_attempt(
                 work_id,
                 descriptor.id,
                 descriptor.provider_id,
                 descriptor.model_id,
                 descriptor.execution_boundary,
-                transition.transition_id,
+                relation.relation_id,
                 self._clock(),
             )
             if attempt is None:
                 return self._require(work_id)
-            self.store.update_security_history(work_id, accepted_history)
+            self.store.update_security_evidence(work_id, accepted)
             try:
                 result = await adapter.execute(material.payload, record.spec.constraints)
             except CapabilityError as exc:
@@ -338,17 +318,13 @@ class WorkRuntime:
         if failure is not None:
             self.store.fail(work_id, failure, self._clock(), attempt_number=attempt)
             return self._require(work_id)
-
         digest = content_digest(result)
-        size = content_size(result)
-        output_integrity = None
         self._results[work_id] = result
         self.store.succeed(
             work_id,
             attempt,
             digest,
-            size,
-            output_integrity,
+            content_size(result),
             (descriptor.security.security_id,),
             (material.security.security_id,),
             self._clock(),
@@ -369,7 +345,7 @@ class WorkRuntime:
             or material.digest != record.spec.material.digest
             or content_digest(material.payload) != record.spec.material.digest
             or material.security != record.spec.material.security
-            or material.history != record.spec.material.history
+            or material.evidence != record.spec.material.evidence
             or not material.security.verify_binding()
         ):
             self.store.fail(record.id, WorkFailure(code="material_integrity"), self._clock())
@@ -381,73 +357,54 @@ class WorkRuntime:
         *,
         crossing_id: str,
         crossing_kind: str,
-        history: SecurityHistory,
-        material_security_id: str,
+        evidence: SecurityEvidence,
+        source: SecurityObject,
         candidates: tuple[CapabilityAdapter, ...],
-    ) -> tuple[CapabilityAdapter, SecurityHistory, SecurityTransition] | None:
+        direct_interaction: DirectUserInteraction | None,
+        originator: str,
+    ) -> tuple[CapabilityAdapter, SecurityEvidence] | None:
+        active_interaction = direct_interaction
+        if active_interaction is not None and (
+            active_interaction.interaction_scope.owner_module_id != originator
+        ):
+            active_interaction = None
         for candidate in candidates:
             descriptor = candidate.descriptor
-            prospective = history.extend(objects=(descriptor.security,))
-            transition = SecurityTransition.issue(
-                disclosures=(
-                    Disclosure(
-                        material_security_id=material_security_id,
-                        path_security_ids=(descriptor.security.security_id,),
-                    ),
+            action = None
+            if active_interaction is not None and source.binding.content_digest is not None:
+                action = DirectUserAction(
+                    crossing_id=crossing_id,
+                    interaction=active_interaction,
+                    source_security_id=source.security_id,
+                    source_scope_revision=source.scope.scope_revision,
+                    source_digest=source.binding.content_digest,
+                    observer_security_ids=(descriptor.security.security_id,),
                 )
+            result = DisclosureNormalForm.compose(
+                sources=(source,),
+                observers=(descriptor.security,),
+                crossing_id=crossing_id,
+                direct_user_action=action,
+                active_interaction=active_interaction,
             )
-            decision = self._security_evaluator.evaluate(prospective, transition)
             self.store.record_security_decision(
                 crossing_id=crossing_id,
                 crossing_kind=crossing_kind,
                 target_id=descriptor.id,
-                history=prospective,
-                transition=transition,
+                evidence=evidence.extend(objects=(descriptor.security,)),
                 execution_boundary=descriptor.execution_boundary,
-                decision=decision,
+                decision=result.decision(),
             )
-            if decision.admissible:
-                return candidate, prospective, transition
+            if result.accepted is not None:
+                return (
+                    candidate,
+                    evidence.extend(
+                        objects=(descriptor.security,),
+                        relations=(result.accepted,),
+                        decisions=(result.decision(),),
+                    ),
+                )
         return None
-
-    def _require_structural_history(
-        self,
-        *,
-        crossing_id: str,
-        crossing_kind: str,
-        target_id: str,
-        history: SecurityHistory,
-    ) -> None:
-        transition = SecurityTransition.issue()
-        decision = self._security_evaluator.evaluate(history, transition)
-        completed = set(self.store.completed_derivation_ids())
-        if any(
-            relation.kind == "validation" and relation.derivation_id not in completed
-            for relation in history.derivations
-        ):
-            decision = SecurityDecision(
-                admissible=False,
-                transition_id=transition.transition_id,
-                failures=(
-                    *decision.failures,
-                    StructuralFailure(code="unverified_validation_participation"),
-                ),
-            )
-        self.store.record_security_decision(
-            crossing_id=crossing_id,
-            crossing_kind=crossing_kind,
-            target_id=target_id,
-            history=history,
-            transition=transition,
-            execution_boundary=None,
-            decision=decision,
-        )
-        if not decision.admissible:
-            if crossing_kind.startswith("transient"):
-                raise TransientInferenceError("security_denied")
-            raise ValueError(
-                f"security evaluator rejected work: {','.join(decision.failure_codes)}"
-            )
 
     @staticmethod
     def _verify_transient_material(material: TransientMaterial) -> None:

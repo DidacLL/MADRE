@@ -1,50 +1,114 @@
-"""Typed construction helpers for the scoped MADRE Security Algebra."""
+"""Segregated construction helpers for MADRE security scopes and relations."""
 
 from __future__ import annotations
 
 from madre.security import (
-    BindingEvidence,
-    Control,
-    Disclosure,
-    EffectExecution,
+    Autonomy,
+    CompositionResult,
+    ControlNormalForm,
+    DisclosureNormalForm,
+    EffectExecutionNormalForm,
     EffectProfile,
+    Integrity,
     OperationReference,
-    OrdinarySecurityLevel,
-    SecurityDecision,
-    SecurityHistory,
+    Privacy,
+    Risk,
+    ScopeBinding,
     SecurityObject,
-    SecuritySubjectRef,
-    SecurityTransition,
-    SecurityValues,
+    SecurityScopeRef,
+    Sensitivity,
 )
+
+
+def material_security(
+    *,
+    owner_module_id: str,
+    scope_id: str,
+    sensitivity: Sensitivity,
+    publication_revision: str = "1",
+    scope_revision: str = "1",
+    content_digest: str | None = None,
+    sources: tuple[SecurityObject, ...] = (),
+) -> SecurityObject:
+    """Issue an exact material scope. Ordinary construction cannot claim Integrity."""
+    return SecurityObject.issue(
+        scope=SecurityScopeRef(
+            owner_module_id=owner_module_id,
+            scope_id=scope_id,
+            publication_revision=publication_revision,
+            scope_revision=scope_revision,
+        ),
+        sensitivity=sensitivity,
+        sensitivity_sources=sources,
+        binding=ScopeBinding(content_digest=content_digest),
+    )
+
+
+def observer_security(
+    *,
+    owner_module_id: str,
+    scope_id: str,
+    privacy: Privacy,
+    publication_revision: str = "1",
+    scope_revision: str = "1",
+    contract_digest: str | None = None,
+) -> SecurityObject:
+    """Issue an exact privacy-bearing participant or observation boundary."""
+    return SecurityObject.issue(
+        scope=SecurityScopeRef(
+            owner_module_id=owner_module_id,
+            scope_id=scope_id,
+            publication_revision=publication_revision,
+            scope_revision=scope_revision,
+        ),
+        privacy=privacy,
+        binding=ScopeBinding(contract_digest=contract_digest),
+    )
 
 
 def participant_security(
     *,
     owner_module_id: str,
-    subject_id: str,
-    subject_kind: str,
-    privacy: OrdinarySecurityLevel,
-    integrity: OrdinarySecurityLevel | None = None,
+    scope_id: str,
+    privacy: Privacy,
+    integrity: Integrity | None = None,
     publication_revision: str = "1",
-    subject_revision: str = "1",
-    sensitivity: OrdinarySecurityLevel | None = None,
-    sensitivity_sources: tuple[str, ...] = (),
-    binding_evidence: tuple[BindingEvidence, ...] = (),
+    scope_revision: str = "1",
+    contract_digest: str | None = None,
 ) -> SecurityObject:
-    if subject_kind not in {"module", "agent", "endpoint"}:
-        raise ValueError("participant security applies only to Module, Agent, or endpoint subjects")
+    """Issue a published participant scope; Integrity applies only if it executes/controls."""
     return SecurityObject.issue(
-        subject_ref=SecuritySubjectRef(
+        scope=SecurityScopeRef(
             owner_module_id=owner_module_id,
-            subject_kind=subject_kind,  # type: ignore[arg-type]
+            scope_id=scope_id,
             publication_revision=publication_revision,
-            local_id=subject_id,
-            subject_revision=subject_revision,
+            scope_revision=scope_revision,
         ),
-        values=SecurityValues(sensitivity=sensitivity, privacy=privacy, integrity=integrity),
-        sensitivity_sources=sensitivity_sources,
-        binding_evidence=binding_evidence,
+        privacy=privacy,
+        integrity=integrity,
+        binding=ScopeBinding(contract_digest=contract_digest),
+    )
+
+
+def executor_security(
+    *,
+    owner_module_id: str,
+    scope_id: str,
+    integrity: Integrity,
+    publication_revision: str = "1",
+    scope_revision: str = "1",
+    contract_digest: str | None = None,
+) -> SecurityObject:
+    """Issue an exact integrity-bearing controller or executor scope."""
+    return SecurityObject.issue(
+        scope=SecurityScopeRef(
+            owner_module_id=owner_module_id,
+            scope_id=scope_id,
+            publication_revision=publication_revision,
+            scope_revision=scope_revision,
+        ),
+        integrity=integrity,
+        binding=ScopeBinding(contract_digest=contract_digest),
     )
 
 
@@ -53,86 +117,41 @@ def effect_profile(
     owner_module_id: str,
     operation_id: str,
     profile_id: str,
-    risk: OrdinarySecurityLevel,
-    autonomy: OrdinarySecurityLevel,
-    integrity: OrdinarySecurityLevel | None = None,
-    privacy: OrdinarySecurityLevel | None = None,
+    risk: Risk,
+    autonomy: Autonomy,
     publication_revision: str = "1",
     operation_revision: str = "1",
-    discloses_material: bool = False,
-    binding_evidence: tuple[BindingEvidence, ...] = (),
 ) -> EffectProfile:
-    operation = OperationReference(
-        module_id=owner_module_id,
-        operation_id=operation_id,
-        publication_revision=publication_revision,
-        operation_revision=operation_revision,
-    )
-    security = SecurityObject.issue(
-        subject_ref=SecuritySubjectRef(
-            owner_module_id=owner_module_id,
-            subject_kind="effect_profile",
-            publication_revision=publication_revision,
-            local_id=f"{operation_id}/{profile_id}",
-            subject_revision=operation_revision,
-            parent_local_id=operation_id,
-        ),
-        values=SecurityValues(
-            risk=risk,
-            autonomy=autonomy,
-            integrity=integrity,
-            privacy=privacy,
-        ),
-        binding_evidence=binding_evidence,
-    )
-    return EffectProfile(
+    return EffectProfile.issue(
         id=profile_id,
-        operation=operation,
-        security=security,
-        discloses_material=discloses_material,
-    )
-
-
-def security_history(*objects: SecurityObject) -> SecurityHistory:
-    return SecurityHistory(objects=objects)
-
-
-def disclosure(material: SecurityObject, *privacy_path: SecurityObject) -> SecurityTransition:
-    if not privacy_path:
-        raise ValueError("Disclosure requires an actual privacy path")
-    return SecurityTransition.issue(
-        disclosures=(
-            Disclosure(
-                material_security_id=material.security_id,
-                path_security_ids=tuple(item.security_id for item in privacy_path),
-            ),
-        )
-    )
-
-
-def effect_transition(
-    *,
-    profile: EffectProfile,
-    controllers: tuple[SecurityObject, ...],
-    executors: tuple[SecurityObject, ...],
-    disclosures: tuple[Disclosure, ...] = (),
-) -> SecurityTransition:
-    return SecurityTransition.issue(
-        disclosures=disclosures,
-        control=Control(
-            effect_profile_security_id=profile.security.security_id,
-            controller_security_ids=tuple(item.security_id for item in controllers),
+        operation=OperationReference(
+            module_id=owner_module_id,
+            operation_id=operation_id,
+            publication_revision=publication_revision,
+            operation_revision=operation_revision,
         ),
-        effect_execution=EffectExecution(
-            operation=profile.operation,
-            effect_profile_security_id=profile.security.security_id,
-            executor_security_ids=tuple(item.security_id for item in executors),
-        ),
+        risk=risk,
+        autonomy=autonomy,
     )
 
 
-def feasibility(history: SecurityHistory, transition: SecurityTransition) -> SecurityDecision:
-    """Prospective disclosure/profile evaluation; no dispatch or permission token."""
-    from madre.security import DEFAULT_SECURITY_EVALUATOR
+def compose_disclosure(
+    *sources: SecurityObject,
+    observers: tuple[SecurityObject, ...],
+    crossing_id: str,
+) -> CompositionResult[DisclosureNormalForm]:
+    return DisclosureNormalForm.compose(
+        crossing_id=crossing_id, sources=sources, observers=observers
+    )
 
-    return DEFAULT_SECURITY_EVALUATOR.evaluate(history, transition)
+
+def compose_control(
+    profile: EffectProfile, *controllers: SecurityObject
+) -> CompositionResult[ControlNormalForm]:
+    return ControlNormalForm.compose(profile=profile, controllers=controllers)
+
+
+def compose_effect_execution(
+    profile: EffectProfile, *executors: SecurityObject
+) -> CompositionResult[EffectExecutionNormalForm]:
+    return EffectExecutionNormalForm.compose(profile=profile, executors=executors)

@@ -7,11 +7,8 @@ from datetime import datetime
 
 from madre.contracts import WorkAttempt, WorkFailure, WorkRetry
 from madre.security import (
-    DEFAULT_SECURITY_EVALUATOR,
-    SecurityDerivation,
-    SecurityHistory,
-    SecurityObject,
-    SecurityTransition,
+    SecurityEvidence,
+    audit_security_evidence,
 )
 from madre.storage_db import _json
 
@@ -20,41 +17,13 @@ class WorkStoreBase:
     def __init__(self, connection: sqlite3.Connection) -> None:
         self.connection = connection
 
-    def _persist_security_history(self, history: SecurityHistory) -> None:
-        if history.transitions or history.derivations:
-            # Published immutable ancestry cannot fork or cycle merely by being
-            # split across separate histories/completions. These are structural
-            # checks, never extra participants in a prospective transition.
-            stored_relations = tuple(
-                SecurityDerivation.model_validate_json(row[0])
-                for row in self.connection.execute(
-                    "SELECT derivation_json FROM security_derivation"
-                ).fetchall()
+    def _persist_security_evidence(self, evidence: SecurityEvidence) -> None:
+        failures = audit_security_evidence(evidence)
+        if failures:
+            raise ValueError(
+                "invalid security evidence: " + ",".join(item.code for item in failures)
             )
-            ids = {
-                sid
-                for relation in stored_relations
-                for sid in (
-                    relation.output_security_id,
-                    *relation.source_security_ids,
-                    *relation.producer_security_ids,
-                    *relation.validator_security_ids,
-                )
-            }
-            objects = tuple(
-                SecurityObject.model_validate_json(row[0])
-                for sid in sorted(ids)
-                for row in self.connection.execute(
-                    "SELECT object_json FROM security_object WHERE security_id=?", (sid,)
-                ).fetchall()
-            )
-            combined = history.merge(SecurityHistory(objects=objects, derivations=stored_relations))
-            decision = DEFAULT_SECURITY_EVALUATOR.evaluate(combined, SecurityTransition.issue())
-            if not decision.admissible:
-                raise ValueError(
-                    "invalid realized security history: " + ",".join(decision.failure_codes)
-                )
-        for obj in history.objects:
+        for obj in evidence.objects:
             row = self.connection.execute(
                 "SELECT object_json FROM security_object WHERE security_id=?", (obj.security_id,)
             ).fetchone()
@@ -66,22 +35,22 @@ class WorkStoreBase:
                     "INSERT INTO security_object(security_id,object_json) VALUES (?,?)",
                     (obj.security_id, payload),
                 )
-        for transition in history.transitions:
+        for relation in evidence.relations:
             row = self.connection.execute(
-                "SELECT transition_json FROM security_transition WHERE transition_id=?",
-                (transition.transition_id,),
+                "SELECT relation_json FROM security_relation WHERE relation_id=?",
+                (relation.relation_id,),
             ).fetchone()
-            payload = _json(transition)
-            if row is not None and str(row["transition_json"]) != payload:
-                raise ValueError(
-                    f"conflicting persisted transition identity: {transition.transition_id}"
-                )
+            payload = _json(relation)
+            if row is not None and str(row["relation_json"]) != payload:
+                raise ValueError(f"conflicting persisted relation identity: {relation.relation_id}")
             if row is None:
                 self.connection.execute(
-                    "INSERT INTO security_transition(transition_id,transition_json) VALUES (?,?)",
-                    (transition.transition_id, payload),
+                    """INSERT INTO security_relation(
+                           relation_id,relation_kind,relation_json
+                       ) VALUES (?,?,?)""",
+                    (relation.relation_id, relation.relation_kind, payload),
                 )
-        for derivation in history.derivations:
+        for derivation in evidence.derivations:
             row = self.connection.execute(
                 "SELECT derivation_json FROM security_derivation WHERE derivation_id=?",
                 (derivation.derivation_id,),
@@ -150,7 +119,7 @@ class WorkStoreBase:
                     provider_id=row["provider_id"],
                     model_id=row["model_id"],
                     execution_boundary=row["execution_boundary"],
-                    security_transition_id=row["security_transition_id"],
+                    disclosure_relation_id=row["disclosure_relation_id"],
                     output_digest=row["output_digest"],
                     output_size=row["output_size"],
                     failure=failure,

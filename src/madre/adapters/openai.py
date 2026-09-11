@@ -16,7 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, TypeAdapter
 
 from madre.capabilities import CapabilityDescriptor, CapabilityError
 from madre.contracts import ExecutionConstraints, LatencyClass, QualityTier, ReasoningEffort
-from madre.security import ExecutionBoundary, OrdinarySecurityLevel
+from madre.security import ExecutionBoundary, Privacy
 
 
 class OpenAIChatConfig(BaseModel):
@@ -33,8 +33,7 @@ class OpenAIChatConfig(BaseModel):
     paid: bool = False
     resources: frozenset[str] = Field(default_factory=frozenset)
     heavyweight: bool = True
-    privacy: OrdinarySecurityLevel
-    integrity: OrdinarySecurityLevel | None = None
+    privacy: Privacy = Privacy.UNKNOWN
     api_key_env: str | None = None
 
 

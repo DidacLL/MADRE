@@ -20,20 +20,21 @@ from madre_sdk import (
     InferenceHardRequirements,
     InferencePreferences,
     InferenceRequirement,
+    Integrity,
     InvocationContext,
     JsonValue,
     MaterialRepository,
     Module,
     ModuleServices,
-    SecurityHistory,
-    SecurityLevel,
+    Privacy,
+    SecurityEvidence,
+    Sensitivity,
     Skill,
     TransientInference,
     TransientMaterial,
     WorkClient,
     Workflow,
     participant_security,
-    security_history,
 )
 
 CORE_MODULE_ID = "madre.core.default"
@@ -74,10 +75,8 @@ class _InteractionBehavior(AgentBehavior):
     def __init__(
         self,
         *,
-        producer_security_id: str,
         continuation: ContinuationPolicy,
     ) -> None:
-        self._producer_security_id = producer_security_id
         self._continuation = continuation
         self._ids = count(1)
 
@@ -86,7 +85,7 @@ class _InteractionBehavior(AgentBehavior):
         *,
         agent_id: str,
         instructions: tuple[str, ...],
-        security: SecurityHistory,
+        evidence: SecurityEvidence,
         invocation: InvocationContext,
         services: ExecutionServices,
         material: TransientMaterial,
@@ -107,14 +106,13 @@ class _InteractionBehavior(AgentBehavior):
                     {"role": "user", "content": _user_text(material.payload)},
                 ]
             },
-            producer_security_ids=(self._producer_security_id,),
-            sensitivity=SecurityLevel.LEVEL_5,
-            security_history=security,
+            sensitivity=Sensitivity.S5,
+            evidence=evidence,
         )
         immediate = await services.inference.infer(
             context,
             _interactive_requirement(),
-            security=context.security_history,
+            evidence=context.evidence,
         )
         generated = Artifact.from_inference_result(
             invocation=invocation,
@@ -122,7 +120,7 @@ class _InteractionBehavior(AgentBehavior):
             artifact_id=f"{CORE_MODULE_ID}:response:{sequence}",
             source=context,
             result=immediate,
-            sensitivity=SecurityLevel.LEVEL_5,
+            sensitivity=Sensitivity.S5,
         )
 
         decision = self._continuation.decide(
@@ -145,14 +143,13 @@ class _InteractionBehavior(AgentBehavior):
                 bundle_id=f"{CORE_MODULE_ID}:delegation:{sequence}",
                 purpose="explicit-agent-delegation",
                 payload={"input": material.payload, "immediate": immediate.payload},
-                producer_security_ids=(self._producer_security_id,),
-                sensitivity=SecurityLevel.LEVEL_5,
+                sensitivity=Sensitivity.S5,
             )
             delegated_result = await services.agents.invoke(
                 decision.delegate_module_id,
                 decision.delegate_agent_id,
                 delegated_context,
-                security=delegated_context.security_history,
+                evidence=delegated_context.evidence,
             )
 
         if decision.durable_follow_up and services.work is not None:
@@ -164,14 +161,13 @@ class _InteractionBehavior(AgentBehavior):
                 bundle_id=f"{CORE_MODULE_ID}:follow-up:{sequence}",
                 purpose="continued-reasoning",
                 payload={"input": material.payload, "immediate": immediate.payload},
-                producer_security_ids=(self._producer_security_id,),
-                sensitivity=SecurityLevel.LEVEL_5,
+                sensitivity=Sensitivity.S5,
             )
             accepted = await services.work.submit(
                 follow_up,
                 _follow_up_requirement(),
                 correlation=(),
-                security=follow_up.security_history,
+                evidence=follow_up.evidence,
             )
             follow_up_work_id = accepted.id
 
@@ -190,9 +186,8 @@ class _InteractionBehavior(AgentBehavior):
             owner_module_id=CORE_MODULE_ID,
             artifact_id=f"{CORE_MODULE_ID}:interaction-output:{sequence}",
             payload=output_payload,
-            producer_security_ids=(self._producer_security_id,),
-            sensitivity=SecurityLevel.LEVEL_5,
-            security_history=security,
+            sensitivity=Sensitivity.S5,
+            evidence=evidence,
         )
 
 
@@ -244,29 +239,27 @@ class CoreModule(Module):
     ) -> None:
         module_security = participant_security(
             owner_module_id=CORE_MODULE_ID,
-            subject_id=CORE_MODULE_ID,
-            subject_kind="module",
-            privacy=SecurityLevel.LEVEL_5,
-            integrity=SecurityLevel.LEVEL_5,
+            scope_id=CORE_MODULE_ID,
+            privacy=Privacy.SECRET,
+            integrity=Integrity.I5,
         )
         interaction_security = participant_security(
             owner_module_id=CORE_MODULE_ID,
-            subject_id=CORE_INTERACTION_AGENT_ID,
-            subject_kind="agent",
-            privacy=SecurityLevel.LEVEL_5,
-            integrity=SecurityLevel.LEVEL_5,
+            scope_id=CORE_INTERACTION_AGENT_ID,
+            privacy=Privacy.SECRET,
+            integrity=Integrity.I5,
         )
-        carried = security_history(module_security, interaction_security)
+        carried = SecurityEvidence(objects=(module_security, interaction_security))
         materials = MaterialRepository()
         inference_client = InferenceClient(
             originator=CORE_MODULE_ID,
-            security=carried,
+            evidence=carried,
             inference=inference,
         )
         work_client = (
             WorkClient(
                 originator=CORE_MODULE_ID,
-                security=carried,
+                evidence=carried,
                 submission=durable_work,
                 materials=materials,
             )
@@ -275,7 +268,7 @@ class CoreModule(Module):
         )
         delegation_client = (
             AgentBrokerClient(
-                security=carried,
+                evidence=carried,
                 broker=agent_broker,
             )
             if agent_broker is not None
@@ -298,7 +291,6 @@ class CoreModule(Module):
             ),
         )
         behavior = _InteractionBehavior(
-            producer_security_id=module_security.security_id,
             continuation=continuation or NoContinuation(),
         )
         interaction_agent = Agent.from_instructions(

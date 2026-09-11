@@ -29,9 +29,8 @@ from madre.security import (
     FrozenModel,
     Identifier,
     InvocationContext,
-    SecurityHistory,
+    SecurityEvidence,
     SecurityObject,
-    SecurityValues,
 )
 from madre_sdk.material import Material, MaterialRepository
 from madre_sdk.security import participant_security
@@ -103,7 +102,7 @@ class AgentBehavior(Protocol):
         *,
         agent_id: str,
         instructions: tuple[str, ...],
-        security: SecurityHistory,
+        evidence: SecurityEvidence,
         invocation: InvocationContext,
         services: ExecutionServices,
         material: TransientMaterial,
@@ -118,7 +117,7 @@ class OperationBehavior(Protocol):
         effect_profile_id: str,
         invocation: InvocationContext,
         services: ExecutionServices,
-        security: SecurityHistory,
+        evidence: SecurityEvidence,
         material: TransientMaterial,
     ) -> Material: ...
 
@@ -155,10 +154,7 @@ class Agent:
     ) -> None:
         if not agent_id or not purpose:
             raise ValueError("Agent identity and purpose must not be empty")
-        if (
-            security.subject_ref.subject_kind != "agent"
-            or security.subject_ref.local_id != agent_id
-        ):
+        if security.scope.scope_id != agent_id or security.privacy is None:
             raise ValueError("Agent security must be bound to the Agent identity")
         if not security.verify_binding():
             raise ValueError("Agent SecurityObject binding is invalid")
@@ -206,7 +202,7 @@ class Agent:
         )
 
     def descriptor(self, module_id: str) -> AgentDescriptor:
-        if self.security.subject_ref.owner_module_id != module_id:
+        if self.security.scope.owner_module_id != module_id:
             raise ValueError("Agent SecurityObject is bound to another Module")
         return AgentDescriptor(
             id=self.id,
@@ -224,14 +220,14 @@ class Agent:
         self,
         material: TransientMaterial,
         *,
-        security: SecurityHistory,
+        evidence: SecurityEvidence,
         invocation: InvocationContext,
         services: ExecutionServices,
     ) -> Material:
         return await self._behavior.execute(
             agent_id=self.id,
             instructions=self.instructions,
-            security=security,
+            evidence=evidence,
             invocation=invocation,
             services=services,
             material=material,
@@ -316,14 +312,14 @@ class Operation:
         effect_profile_id: str,
         invocation: InvocationContext,
         services: ExecutionServices,
-        security: SecurityHistory,
+        evidence: SecurityEvidence,
     ) -> Material:
         if effect_profile_id not in self._profiles:
             raise KeyError(effect_profile_id)
         return await self._behavior.execute(
             operation_id=self.id,
             effect_profile_id=effect_profile_id,
-            security=security,
+            evidence=evidence,
             invocation=invocation,
             services=services,
             material=material,
@@ -346,12 +342,12 @@ class _AgentEndpoint(AgentEndpoint):
         self,
         agent_id: str,
         invocation: InvocationContext,
-        security: SecurityHistory,
+        evidence: SecurityEvidence,
         material: TransientMaterial,
     ) -> TransientMaterial:
         return (
             await self._module.execute_agent(
-                agent_id, material, security=security, invocation=invocation
+                agent_id, material, evidence=evidence, invocation=invocation
             )
         ).transient()
 
@@ -373,7 +369,7 @@ class _OperationEndpoint(OperationEndpoint):
         operation_id: str,
         effect_profile_id: str,
         invocation: InvocationContext,
-        security: SecurityHistory,
+        evidence: SecurityEvidence,
         material: TransientMaterial,
     ) -> TransientMaterial:
         return (
@@ -381,7 +377,7 @@ class _OperationEndpoint(OperationEndpoint):
                 operation_id,
                 effect_profile_id,
                 material,
-                security=security,
+                evidence=evidence,
                 invocation=invocation,
             )
         ).transient()
@@ -406,12 +402,12 @@ class Module:
         materials: MaterialRepository | None = None,
         services: ModuleServices | None = None,
     ) -> None:
-        ref = security.subject_ref
+        ref = security.scope
         if (
-            ref.subject_kind != "module"
-            or ref.owner_module_id != module_id
-            or ref.local_id != module_id
+            ref.owner_module_id != module_id
+            or ref.scope_id != module_id
             or ref.publication_revision != version
+            or security.privacy is None
         ):
             raise ValueError("Module security must be bound to the Module identity/revision")
         if not security.verify_binding():
@@ -427,17 +423,13 @@ class Module:
         self.operations = tuple(operations)
         self.provenance = tuple(provenance)
         self.endpoint_boundary = endpoint_boundary
-        participant_values = security.values
-        if not isinstance(participant_values, SecurityValues):
-            raise ValueError("Module security must contain participant values")
-        if participant_values.privacy is None:
-            raise ValueError("Module requires Privacy and Integrity")
+        if security.privacy is None:
+            raise ValueError("Module requires Privacy")
         self.endpoint_security = endpoint_security or participant_security(
             owner_module_id=module_id,
-            subject_id=f"{module_id}:endpoint",
-            subject_kind="endpoint",
-            privacy=participant_values.privacy,
-            integrity=participant_values.integrity,
+            scope_id=f"{module_id}:endpoint",
+            privacy=security.privacy,
+            integrity=security.integrity,
             publication_revision=version,
         )
         InvocationContext(module=self.security, endpoint=self.endpoint_security)
@@ -451,8 +443,8 @@ class Module:
             raise ValueError("Operation identities must be unique within a Module")
         for agent in self.agents:
             if (
-                agent.security.subject_ref.owner_module_id != module_id
-                or agent.security.subject_ref.publication_revision != version
+                agent.security.scope.owner_module_id != module_id
+                or agent.security.scope.publication_revision != version
             ):
                 raise ValueError("Agent security binding must match its Module publication")
         for operation in self.operations:
@@ -506,27 +498,27 @@ class Module:
     def operation(self, operation_id: str) -> Operation | None:
         return self._operations.get(operation_id)
 
-    def agent_context(self, agent_id: str) -> SecurityHistory:
+    def agent_context(self, agent_id: str) -> SecurityEvidence:
         agent = self.agent(agent_id)
         if agent is None:
             raise KeyError(agent_id)
-        return SecurityHistory(objects=(self.security, agent.security, self.endpoint_security))
+        return SecurityEvidence(objects=(self.security, agent.security, self.endpoint_security))
 
-    def operation_context(self, operation_id: str, effect_profile_id: str) -> SecurityHistory:
+    def operation_context(self, operation_id: str, effect_profile_id: str) -> SecurityEvidence:
         operation = self.operation(operation_id)
         if operation is None:
             raise KeyError(operation_id)
         profile = operation.effect_profile(effect_profile_id)
         if profile is None:
             raise KeyError(effect_profile_id)
-        return SecurityHistory(objects=(self.security, self.endpoint_security, profile.security))
+        return SecurityEvidence(objects=(self.security, self.endpoint_security))
 
     async def execute_agent(
         self,
         agent_id: str,
         material: Material | TransientMaterial,
         *,
-        security: SecurityHistory | None = None,
+        evidence: SecurityEvidence | None = None,
         invocation: InvocationContext | None = None,
     ) -> Material:
         agent = self.agent(agent_id)
@@ -536,18 +528,21 @@ class Module:
             material.transient() if not isinstance(material, TransientMaterial) else material
         )
         expected = InvocationContext(
-            module=self.security, agent=agent.security, endpoint=self.endpoint_security
+            module=self.security,
+            agent=agent.security,
+            endpoint=self.endpoint_security,
+            direct_interaction=invocation.direct_interaction if invocation is not None else None,
         )
         if invocation is not None and invocation != expected:
             raise ValueError("Agent invocation does not match executing publication")
-        history = (
-            (security or self.agent_context(agent_id))
-            .merge(transient.history)
+        carried = (
+            (evidence or self.agent_context(agent_id))
+            .merge(transient.evidence)
             .extend(objects=expected.objects)
         )
         with self._services._execution(expected) as services:
             return await agent._execute(
-                transient, security=history, invocation=expected, services=services
+                transient, evidence=carried, invocation=expected, services=services
             )
 
     async def execute_operation(
@@ -556,7 +551,7 @@ class Module:
         effect_profile_id: str,
         material: Material | TransientMaterial,
         *,
-        security: SecurityHistory | None = None,
+        evidence: SecurityEvidence | None = None,
         invocation: InvocationContext | None = None,
     ) -> Material:
         operation = self.operation(operation_id)
@@ -565,14 +560,17 @@ class Module:
         transient = (
             material.transient() if not isinstance(material, TransientMaterial) else material
         )
-        history = (security or self.operation_context(operation_id, effect_profile_id)).merge(
-            transient.history
+        carried = (evidence or self.operation_context(operation_id, effect_profile_id)).merge(
+            transient.evidence
         )
         profile = operation.effect_profile(effect_profile_id)
         if profile is None:
             raise KeyError(effect_profile_id)
         expected = InvocationContext(
-            module=self.security, endpoint=self.endpoint_security, operation=profile.operation
+            module=self.security,
+            endpoint=self.endpoint_security,
+            operation=profile.operation,
+            direct_interaction=invocation.direct_interaction if invocation is not None else None,
         )
         if invocation is not None and invocation != expected:
             raise ValueError("Operation invocation does not match executing publication")
@@ -580,7 +578,7 @@ class Module:
             return await operation._execute(
                 transient,
                 effect_profile_id=effect_profile_id,
-                security=history.extend(objects=expected.objects),
+                evidence=carried.extend(objects=expected.objects),
                 invocation=expected,
                 services=services,
             )

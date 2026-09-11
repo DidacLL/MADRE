@@ -12,13 +12,13 @@ The reference Python distribution exposes three deliberate namespaces:
 - `madre_sdk` — the Module-facing typed SDK boundary;
 - `madre_core` — the shipped default CORE-capable Module, implemented only against `madre_sdk`.
 
-The Kernel provides reference-only durable `WorkSubmission -> WorkRecord -> WorkAttempt` execution, JIT Module-owned material resolution, generic transient inference, deterministic Capability selection, discovery, explicit Agent/Operation brokering, restart/retry/cancellation, transition-local Security Algebra evaluation, and execution/security evidence.
+The Kernel provides reference-only durable `WorkSubmission -> WorkRecord -> WorkAttempt` execution, JIT Module-owned material resolution, generic transient inference, deterministic Capability selection, catalog enumeration, explicit Agent/Operation brokering, restart/retry/cancellation, relation-local Security Algebra composition, and execution/security evidence.
 
 The SDK provides typed helpers for Modules, minimal Agents, portable Skills/Workflows, WorkPlan projection, immutable Operation-owned EffectProfiles, Artifact/ContextBundle construction and derivation, Module-owned durable material resolution, transient inference, durable submission/result access, discovery/brokering and CORE fallback selection/delegation. It imports only public MADRE contracts/protocols and does not expose runtime, storage, scheduler, FastAPI or provider-adapter internals.
 
 The shipped `madre_core.CoreModule` is an ordinary SDK Module. Its interaction Agent uses transient inference for the immediate path and can independently delegate to an explicit Agent or project continuation into ordinary durable work. CORE receives no Kernel bypass.
 
-The executable Security Algebra is the scoped model in `docs/architecture/MADRE-security-algebra.md`: `Sensitivity`, `Privacy`, `Integrity`, `Risk`, and `Autonomy` over explicit disclosure/control/effect topology. The previous Trust/Isolation/IntendedUse compatibility evaluator is no longer part of the runtime.
+The executable Security Algebra is the scoped model in `docs/architecture/MADRE-security-algebra.md`: five nominal facet types and three feasible normal forms over explicit disclosure/control/effect topology. There is no injectable security policy evaluator.
 
 The SDK intentionally does **not** provide a universal Agent session/memory framework, Planner, Workflow executor, security-policy DSL, generic shell/Internet surface or provider credential framework.
 
@@ -41,17 +41,17 @@ CI reinstalls the built wheel and verifies isolated imports of `madre`, `madre_s
 
 Module code should normally import from `madre_sdk`. The SDK `Module` helper can publish a manifest, optional Agent/Operation endpoints and a Module-owned `MaterialRepository` through interface-segregated public protocols.
 
-Facets follow exact scopes and roles through `SecurityValues`. Sensitivity can apply to Module/Agent surfaces; ordinary material has no mandatory Integrity. `Artifact` and `ContextBundle` derivation creates new immutable representation/SecurityID bindings; ordinary derivation cannot increase Integrity, while explicit validation derivation is bounded by its validator path.
+Facets follow exact immutable `SecurityObject` scopes. Sensitivity can apply to any reachable/exposable scope; ordinary material cannot claim Integrity. `Artifact` and `ContextBundle` derivation creates new immutable representation/SecurityID bindings. Ordinary derivation cannot lower Sensitivity, Module-owned transforms can create a new classification, and explicit validation creates a distinct Integrity-bearing projection bounded by actual validators.
 
-An SDK `Operation` owns one or more immutable `EffectProfile`s. Each profile pairs `Risk` and `Autonomy`, with optional material-exposure `Privacy`. Actual executors separately declare Integrity. Invocation selects a profile identity rather than supplying these values ad hoc.
+An SDK `Operation` owns one or more immutable `EffectProfile`s. Each profile contains only exact Operation/profile identity, `Risk`, and `Autonomy`. `OperationUse` selects that identity and carries actual additional observers/controllers; Broker adds protocol-known observers and Integrity-bearing executors. Callers never supply the numeric profile facets.
 
-`MaterialRepository.retain(...)` produces a `MaterialHandle`; Kernel resolves that handle only when a durable attempt is ready and after candidate mechanism security evaluation. The supplied repository is in-memory. Recovery across a complete host restart requires the owning Module to retain/reconstruct its material and reattach its resolver; Kernel queue durability alone does not provide that.
+`MaterialRepository.retain(...)` produces a `MaterialHandle`; Kernel resolves that handle only when a durable attempt is ready and after prospective candidate disclosure composition. The supplied repository is in-memory. Recovery across a complete host restart requires the owning Module to retain/reconstruct its material and reattach its resolver; Kernel queue durability alone does not provide that.
 
 Agentless/UI-less Modules can use `CoreDelegate` with a configured `CoreSelection`. Selecting another CORE-capable Module changes ordinary Module configuration only; Kernel contains no special meaning for the shipped CORE module name.
 
 ## Local HTTP runtime
 
-Copy `madre.example.toml` to `madre.toml`, configure a Capability endpoint/model and its actual participation `privacy` (declare `integrity` only when its role requires it), then run:
+Copy `madre.example.toml` to `madre.toml`, configure a Capability endpoint/model and its actual observer `privacy`, then run:
 
 ```bash
 uv run madre --config madre.toml
@@ -63,7 +63,7 @@ Native in-process Module integrations can additionally bind material resolvers a
 
 ## Privacy behavior
 
-Durable runtime storage contains execution intent, `MaterialHandle` metadata, digests, immutable SecurityObjects, accepted SecurityTransitions/derivations, scheduling/lifecycle metadata and compact execution/security evidence. It contains no prompt/context/model-output payload columns and no arbitrary provider-error message text.
+Durable runtime storage contains execution intent, `MaterialHandle` metadata, digests, immutable SecurityObjects, accepted relation normal forms/derivations, scheduling/lifecycle metadata and compact decision evidence. It contains no prompt/context/model-output payload columns, output Integrity, or arbitrary provider-error message text.
 
 Transient inference input/result bytes are not persisted. Durable produced result bytes live only in process memory until consumed; restart before consumption marks delivery evidence as `lost`.
 

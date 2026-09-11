@@ -22,7 +22,6 @@ from madre.security import (
     FrozenModel,
     Identifier,
     SecurityObject,
-    SecurityValues,
 )
 
 
@@ -63,20 +62,12 @@ class CapabilityRegistry:
         descriptor = adapter.descriptor
         if descriptor.id in self._adapters:
             raise ValueError(f"duplicate capability id: {descriptor.id}")
-        ref = descriptor.security.subject_ref
-        if ref.subject_kind != "capability":
-            raise ValueError("Capability requires capability SecurityObject")
-        if ref.local_id != descriptor.id:
-            raise ValueError("Capability SecurityObject subject must equal capability id")
+        if descriptor.security.scope.scope_id != descriptor.id:
+            raise ValueError("Capability SecurityObject scope must equal capability id")
         if not descriptor.security.verify_binding():
             raise ValueError("Capability SecurityObject binding is invalid")
-        if not isinstance(descriptor.security.values, SecurityValues):
+        if descriptor.security.privacy is None:
             raise ValueError("Capability requires Privacy")
-        values = descriptor.security.values
-        if values.privacy is None:
-            raise ValueError("Capability requires Privacy")
-        if descriptor.execution_boundary == "remote" and values.privacy != 2:
-            raise ValueError("Independently controlled remote inference has UNKNOWN Privacy")
         self._adapters[descriptor.id] = adapter
 
     def candidates(self, request: InferenceRequirement) -> tuple[CapabilityAdapter, ...]:

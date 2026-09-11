@@ -9,7 +9,7 @@ Authority: `MADRE.md` defines product meaning. This document owns topology and r
 
 Module A              SDK / interoperability              Kernel
 --------              ----------------------              ------
-domain state   --->   public typed contracts     --->     security evaluation
+domain state   --->   public typed contracts     --->     security composition
 UI                     descriptors/endpoints              durable work
 Agents                 material resolution                scheduling/resources
 Skills                  discovery/brokering                mechanism selection
@@ -49,14 +49,14 @@ Work submission/inspection/result access
 MaterialHandle + durable material resolver
 InferenceRequirement
 CapabilityDescriptor
-SecurityID / SecurityObject / SecurityTransition propagation
+SecurityID / SecurityObject / relation-normal-form propagation
 ```
 
 These contracts do not imply that every Module must implement every concept. Module-facing responsibilities should be interface-segregated.
 
 Module code should not depend on Kernel persistence classes, scheduler internals, HTTP/FastAPI implementation details or provider-adapter internals.
 
-The SDK may provide higher-level reusable helpers and reference implementations without turning them into Kernel semantics. Examples include interaction patterns, delegation helpers, material/context construction helpers, EffectProfile/transition builders and adapter scaffolding.
+The SDK may provide higher-level reusable helpers and reference implementations without turning them into Kernel semantics. Examples include interaction patterns, delegation helpers, material/context construction helpers, EffectProfile/relation builders and adapter scaffolding.
 
 Public contracts should remain language-neutral even while the current prototype is implemented in Python.
 
@@ -64,7 +64,7 @@ Public contracts should remain language-neutral even while the current prototype
 
 Kernel responsibility is deterministic shared execution:
 
-- validate/evaluate SecurityObjects and prospective SecurityTransitions at governed boundaries;
+- validate SecurityObjects and compose prospective relation normal forms at governed boundaries;
 - execute transient inference requests;
 - admit and schedule durable work;
 - allocate scarce GPU/CPU/RAM and execution resources;
@@ -115,7 +115,9 @@ Durable work never queues private material inside Kernel.
 
 The semantic composition of these primitives belongs to Modules/Agents.
 
-At governed boundaries, the public execution structure identifies actual disclosure/control/effect participants so Kernel can construct/evaluate the corresponding SecurityTransition without inspecting payload semantics.
+At governed boundaries, the public execution structure identifies actual disclosure,
+control, and effect participants so Kernel can compose the corresponding feasible
+normal forms without inspecting payload semantics.
 
 ## 7. CORE placement
 
@@ -143,6 +145,6 @@ HTTP, IPC, in-process APIs, MCP, vendor CLIs and other adapters can realize the 
 ## 9. Responsibility test
 
 - semantic meaning, interaction, planning, memory, learning, Skills/Workflows, material classification/validation and domain mutation → Module;
-- reusable public typed integration, security-object/transition construction and helpers → SDK/interoperability;
+- reusable public typed integration, security-scope/relation construction and helpers → SDK/interoperability;
 - deterministic security validation/evaluation, durable lifecycle, resources, mechanism selection, recovery, explicit routing and evidence → Kernel;
 - provider/model/backend/software-specific computation and optimization → Capability adapter/external mechanism.

@@ -7,14 +7,10 @@ from typing import Protocol
 from pydantic import Field, model_validator
 
 from madre.security import (
-    DEFAULT_SECURITY_EVALUATOR,
     EffectProfile,
     FrozenModel,
     Identifier,
-    SecurityEvaluator,
-    SecurityHistory,
     SecurityObject,
-    SecurityTransition,
 )
 
 
@@ -74,6 +70,8 @@ class OperationDescriptor(FrozenModel):
         if len(profile_ids) != len(set(profile_ids)):
             raise ValueError("EffectProfile identities must be unique within an Operation")
         for profile in self.effect_profiles:
+            if not profile.verify_identity():
+                raise ValueError("EffectProfile identity is invalid")
             operation = profile.operation
             if (
                 operation.module_id != self.module_id
@@ -104,12 +102,12 @@ class ModuleManifest(FrozenModel):
 
     @model_validator(mode="after")
     def exports_belong_to_module(self) -> ModuleManifest:
-        ref = self.security.subject_ref
+        ref = self.security.scope
         if (
-            ref.subject_kind != "module"
-            or ref.owner_module_id != self.module_id
-            or ref.local_id != self.module_id
+            ref.owner_module_id != self.module_id
+            or ref.scope_id != self.module_id
             or ref.publication_revision != self.version
+            or self.security.privacy is None
         ):
             raise ValueError("Module security must be bound to the Module identity/revision")
         if not self.security.verify_binding():
@@ -125,12 +123,12 @@ class ModuleManifest(FrozenModel):
             if descriptor.module_id != self.module_id:
                 raise ValueError("every exported descriptor must identify its owning Module")
         for descriptor in self.agents:
-            agent_ref = descriptor.security.subject_ref
+            agent_ref = descriptor.security.scope
             if (
-                agent_ref.subject_kind != "agent"
-                or agent_ref.owner_module_id != self.module_id
-                or agent_ref.local_id != descriptor.id
+                agent_ref.owner_module_id != self.module_id
+                or agent_ref.scope_id != descriptor.id
                 or agent_ref.publication_revision != self.version
+                or descriptor.security.privacy is None
                 or not descriptor.security.verify_binding()
             ):
                 raise ValueError(f"invalid Agent SecurityObject: {descriptor.id}")
@@ -149,14 +147,8 @@ class RegistryStoreProtocol(Protocol):
 
 
 class InteroperabilityRegistry:
-    def __init__(
-        self,
-        store: RegistryStoreProtocol,
-        *,
-        security_evaluator: SecurityEvaluator = DEFAULT_SECURITY_EVALUATOR,
-    ) -> None:
+    def __init__(self, store: RegistryStoreProtocol) -> None:
         self._store = store
-        self._security_evaluator = security_evaluator
 
     def register(self, manifest: ModuleManifest) -> None:
         self._store.put_manifest(manifest)
@@ -176,36 +168,25 @@ class InteroperabilityRegistry:
             return None
         return next((item for item in manifest.operations if item.id == operation_id), None)
 
-    def _history_is_structurally_valid(self, security: SecurityHistory) -> bool:
-        return self._security_evaluator.evaluate(security, SecurityTransition.issue()).admissible
-
-    def discover_agents(self, security: SecurityHistory) -> tuple[AgentDescriptor, ...]:
-        if not self._history_is_structurally_valid(security):
-            return ()
+    def list_agents(self) -> tuple[AgentDescriptor, ...]:
         visible = [
             descriptor for manifest in self._store.manifests() for descriptor in manifest.agents
         ]
         return tuple(sorted(visible, key=lambda descriptor: (descriptor.module_id, descriptor.id)))
 
-    def discover_skills(self, security: SecurityHistory) -> tuple[SkillDescriptor, ...]:
-        if not self._history_is_structurally_valid(security):
-            return ()
+    def list_skills(self) -> tuple[SkillDescriptor, ...]:
         visible = [
             descriptor for manifest in self._store.manifests() for descriptor in manifest.skills
         ]
         return tuple(sorted(visible, key=lambda descriptor: (descriptor.module_id, descriptor.id)))
 
-    def discover_workflows(self, security: SecurityHistory) -> tuple[WorkflowDescriptor, ...]:
-        if not self._history_is_structurally_valid(security):
-            return ()
+    def list_workflows(self) -> tuple[WorkflowDescriptor, ...]:
         visible = [
             descriptor for manifest in self._store.manifests() for descriptor in manifest.workflows
         ]
         return tuple(sorted(visible, key=lambda descriptor: (descriptor.module_id, descriptor.id)))
 
-    def discover_operations(self, security: SecurityHistory) -> tuple[OperationDescriptor, ...]:
-        if not self._history_is_structurally_valid(security):
-            return ()
+    def list_operations(self) -> tuple[OperationDescriptor, ...]:
         visible = [
             descriptor for manifest in self._store.manifests() for descriptor in manifest.operations
         ]

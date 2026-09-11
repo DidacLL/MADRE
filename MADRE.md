@@ -2,7 +2,7 @@
 
 **MADRE — Model-Agnostic Delayed Reasoning Effort Agentic System** is a local-first platform that lets independent applications share heterogeneous intelligence resources while keeping semantic ownership in those applications.
 
-Modules decide what intelligence work is useful, what information it means, and what consequences should follow. MADRE provides deterministic infrastructure for interoperability, security evaluation, durable execution, resource coordination, inference-mechanism selection, recovery, brokering, result delivery and execution evidence.
+Modules decide what intelligence work is useful, what information it means, and what consequences should follow. MADRE provides deterministic infrastructure for interoperability, security composition, durable execution, resource coordination, inference-mechanism selection, recovery, brokering, result delivery and execution evidence.
 
 ## Authority map
 
@@ -13,7 +13,7 @@ Detailed architecture is owned by:
 - `docs/architecture/MADRE-platform-architecture.md` — topology and responsibility placement;
 - `docs/architecture/MADRE-execution-contract.md` — transient and durable execution, material lifecycle, mechanism selection, scheduling-facing semantics, results and recovery;
 - `docs/architecture/MADRE-agent-interoperability.md` — Module/Agent/Skill/Workflow/Operation contracts, CORE contract, discovery, brokering and SDK;
-- `docs/architecture/MADRE-security-algebra.md` — object-bound security identities, transition topology and deterministic admissibility.
+- `docs/architecture/MADRE-security-algebra.md` — exact security scopes, relation-local normal forms, direct-user crossings, derivation and evidence.
 
 `docs/implementation-baseline.md` describes current repository state only. `docs/design-memory/` preserves non-normative product rationale, examples, constraints, ecosystem observations and open research directions.
 
@@ -30,7 +30,7 @@ MADRE SDK + interoperability
         |
         v
 Kernel
-    deterministic shared execution, resources, security evaluation,
+    deterministic shared execution, resources, security composition,
     durable lifecycle, mechanism selection, routing and evidence
         |
         v
@@ -138,33 +138,35 @@ Local inference is the primary product focus, while admissible remote/provider m
 
 One provider may expose several distinct mechanisms: API, account-authenticated CLI/session, SDK, MCP path, gateway, local bridge or user-installed adapter. Provider-specific login, credentials, protocol schemas and software mechanics remain adapter concerns.
 
-### 6. Security is scoped and role-local transition algebra
+### 6. Security is typed, scoped and relation-local algebra
 
 SecurityObjects bind exact immutable scopes/projections and revisions, rather than
-one global tuple per software object. The five independent ordinal facets are
-Sensitivity, Privacy, Integrity, Risk and Autonomy on levels 1..5. There is no score.
+one global tuple per software object. Sensitivity, Privacy, Integrity, Risk and
+Autonomy are five nominal ordered facet types with integer wire ranks 1..5. They are
+not interchangeable and there is no global score or injected policy meaning.
 
 Sensitivity covers all sensitive state reachable/exposable through a scope, including
 Module/Agent surfaces. Privacy is PUBLIC=1, UNKNOWN=2, LOCAL_PRIVATE=3,
-MODULE_PRIVATE=4, SECRET=5. Ordinary independently controlled cloud inference is
-UNKNOWN regardless of vendor promises. Integrity is warranted security-significant
+MODULE_PRIVATE=4, SECRET=5. Privacy is an explicit observer-boundary fact: remote does
+not imply UNKNOWN and local does not imply private. Integrity is warranted security-significant
 causal/effect-realization responsibility under the exact bounded contract, not truth,
 intelligence, reliability or general trust. Ordinary generated material needs no
 Integrity claim. Risk and residual machine-control Autonomy stay paired on the same
 immutable Operation EffectProfile.
 
-Explicit DISCLOSURE, CONTROL, EFFECT_EXECUTION, DERIVATION and USER_RELEASE topology
-is evaluated under the focused Security Algebra owner:
+The focused Security Algebra composes three feasible immutable normal forms:
 
-- disclosure: max source Sensitivity <= min actual observer Privacy, or exact carried UserRelease;
+- disclosure: max source Sensitivity <= min actual observer Privacy, or one exact live DirectUserAction;
 - control: min(profile Risk, profile Autonomy) <= min actual non-user controller Integrity (5 if none);
 - execution: profile Risk <= min actual executor Integrity, with nonempty executors;
 - derivation: immutable source/procedure/result bindings and scope-local propagation.
 
-Release changes neither Sensitivity nor Privacy. Ordinary derivation preserves the
+Direct action changes neither Sensitivity nor Privacy and is unavailable to scheduled
+or background work. Ordinary derivation preserves the
 Sensitivity lower bound; selection uses retained members; semantic transforms have
-an explicit Module-owned procedure. History is immutable evidence, never a global
-numeric reduction. Work retry/scheduler/idempotency state is not a security operand.
+an explicit Module-owned procedure; validation binds actual validators. SecurityEvidence
+is immutable audit/provenance state, never active numeric state. Work
+retry/scheduler/idempotency state is not a security operand.
 Kernel checks mechanical bindings and declared closure under the honest-contract
 model without inferring private semantics. ACLs, roles, tokens, provider reputation,
 LLM truthfulness and hostile native-code sandboxing are outside this algebra.
@@ -189,7 +191,7 @@ module-independent intelligent assistance such as configuration/install support
 system/user profile and interaction continuity owned by CORE
 ```
 
-Cross-domain material still moves through ordinary algebraic boundaries. CORE minimizes/anonymizes/transforms material when necessary before sending it toward a lower-Privacy or higher-consequence transition.
+Cross-domain material still moves through ordinary algebraic boundaries. CORE minimizes/anonymizes/transforms material when necessary before sending it toward a lower-Privacy or higher-consequence crossing.
 
 ### 8. Public interoperability does not make Kernel an Agent framework
 
@@ -225,5 +227,5 @@ Place a concept by asking what decision requires it:
 
 - understand meaning, plan, remember, present, learn, choose semantic behavior or mutate a domain → **Module**;
 - provide reusable typed public integration → **SDK/interoperability**;
-- evaluate security objects/transitions, execute transient inference, admit/schedule durable work, allocate scarce resources, select a physical mechanism, recover execution, route an explicit target, deliver results or record evidence → **Kernel**;
+- compose exact security relations, execute transient inference, admit/schedule durable work, allocate scarce resources, select a physical mechanism, recover execution, route an explicit target, deliver results or record evidence → **Kernel**;
 - load/talk to a model/provider or expose mechanism-native optimization → **Capability adapter/external mechanism software**.

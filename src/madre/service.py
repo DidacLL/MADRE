@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from urllib.parse import urlsplit
@@ -32,10 +33,9 @@ from madre.runtime import (
     WorkRuntime,
 )
 from madre.security import (
-    BindingEvidence,
+    ScopeBinding,
     SecurityObject,
-    SecuritySubjectRef,
-    SecurityValues,
+    SecurityScopeRef,
 )
 from madre.storage import PlatformStore, open_database
 
@@ -57,29 +57,27 @@ def _capabilities(settings: Settings) -> CapabilityRegistry:
             raise ValueError("Capability endpoint must have a non-secret structural URL")
         endpoint_host = endpoint.hostname.encode("idna").decode("ascii").lower()
         endpoint_port = endpoint.port or (443 if endpoint.scheme == "https" else 80)
+        contract = {
+            "adapter_kind": config.kind,
+            "endpoint_scheme": endpoint.scheme,
+            "endpoint_host": endpoint_host,
+            "endpoint_port": endpoint_port,
+            "endpoint_path_digest": hashlib.sha256((endpoint.path or "/").encode()).hexdigest(),
+            "model": config.model,
+            "boundary": config.boundary,
+            "provider_id": config.provider_id,
+        }
         security = SecurityObject.issue(
-            subject_ref=SecuritySubjectRef(
+            scope=SecurityScopeRef(
                 owner_module_id="madre.platform",
-                subject_kind="capability",
                 publication_revision="1",
-                local_id=capability_id,
+                scope_id=capability_id,
             ),
-            values=SecurityValues(
-                privacy=config.privacy,
-                integrity=config.integrity,
-            ),
-            binding_evidence=(
-                BindingEvidence(key="adapter_kind", value=config.kind),
-                BindingEvidence(key="endpoint_scheme", value=endpoint.scheme),
-                BindingEvidence(key="endpoint_host", value=endpoint_host),
-                BindingEvidence(key="endpoint_port", value=str(endpoint_port)),
-                BindingEvidence(
-                    key="endpoint_path_digest",
-                    value=hashlib.sha256((endpoint.path or "/").encode()).hexdigest(),
-                ),
-                BindingEvidence(key="model", value=config.model),
-                BindingEvidence(key="boundary", value=config.boundary),
-                BindingEvidence(key="provider_id", value=config.provider_id or "none"),
+            privacy=config.privacy,
+            binding=ScopeBinding(
+                contract_digest=hashlib.sha256(
+                    json.dumps(contract, sort_keys=True, separators=(",", ":")).encode()
+                ).hexdigest()
             ),
         )
         descriptor = CapabilityDescriptor(

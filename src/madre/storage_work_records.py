@@ -5,10 +5,9 @@ from __future__ import annotations
 import json
 import sqlite3
 from datetime import datetime
-from typing import cast
 
 from madre.contracts import ResultEvidence, WorkCancellation, WorkFailure, WorkRecord, WorkSpec
-from madre.security import OrdinarySecurityLevel, SecurityHistory, SecurityLevel
+from madre.security import SecurityEvidence
 from madre.storage_db import _json
 from madre.storage_work_base import WorkStoreBase
 
@@ -25,11 +24,11 @@ class WorkRecordStore(WorkStoreBase):
         try:
             with self.connection:
                 sequence = self._take_queue_sequence()
-                self._persist_security_history(spec.security)
+                self._persist_security_evidence(spec.evidence)
                 self.connection.execute(
                     """
                     INSERT INTO runtime_work(
-                        id,originator,security_history_json,inference_json,material_handle_json,
+                        id,originator,security_evidence_json,inference_json,material_handle_json,
                         eligible_at,priority,constraints_json,correlation_json,idempotency_key,
                         status,submitted_at,enqueued_at,queue_sequence
                     ) VALUES (?,?,?,?,?,?,?,?,?,?, 'accepted',?,?,?)
@@ -37,7 +36,7 @@ class WorkRecordStore(WorkStoreBase):
                     (
                         work_id,
                         spec.originator,
-                        _json(spec.security),
+                        _json(spec.evidence),
                         _json(spec.inference),
                         _json(spec.material),
                         spec.eligible_at.isoformat() if spec.eligible_at else None,
@@ -59,12 +58,12 @@ class WorkRecordStore(WorkStoreBase):
             return False
         return True
 
-    def update_security_history(self, work_id: str, history: SecurityHistory) -> None:
+    def update_security_evidence(self, work_id: str, evidence: SecurityEvidence) -> None:
         with self.connection:
-            self._persist_security_history(history)
+            self._persist_security_evidence(evidence)
             self.connection.execute(
-                "UPDATE runtime_work SET security_history_json=? WHERE id=?",
-                (_json(history), work_id),
+                "UPDATE runtime_work SET security_evidence_json=? WHERE id=?",
+                (_json(evidence), work_id),
             )
 
     def get_by_idempotency_key(self, originator: str, key: str) -> WorkRecord | None:
@@ -82,7 +81,7 @@ class WorkRecordStore(WorkStoreBase):
         spec = WorkSpec.model_validate(
             {
                 "originator": row["originator"],
-                "security": json.loads(row["security_history_json"]),
+                "evidence": json.loads(row["security_evidence_json"]),
                 "inference": json.loads(row["inference_json"]),
                 "material": json.loads(row["material_handle_json"]),
                 "eligible_at": row["eligible_at"],
@@ -105,12 +104,6 @@ class WorkRecordStore(WorkStoreBase):
                 size=row["output_size"],
                 produced_at=datetime.fromisoformat(row["output_produced_at"]),
                 delivery_status=row["delivery_status"],
-                output_integrity=cast(
-                    OrdinarySecurityLevel,
-                    SecurityLevel(row["output_integrity"])
-                    if row["output_integrity"] is not None
-                    else None,
-                ),
                 producer_security_ids=tuple(json.loads(row["result_producer_security_ids_json"])),
                 source_security_ids=tuple(json.loads(row["result_source_security_ids_json"])),
             )

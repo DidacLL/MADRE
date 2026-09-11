@@ -9,9 +9,8 @@ from madre.registry import ModuleManifest
 from madre.security import (
     ExecutionBoundary,
     InvocationContext,
-    SecurityDecision,
-    SecurityHistory,
-    SecurityTransition,
+    RelationDecision,
+    SecurityEvidence,
 )
 from madre.storage_db import _json, utc_now
 from madre.storage_work import WorkStore
@@ -20,14 +19,9 @@ from madre.storage_work import WorkStore
 class PlatformStore(WorkStore):
     def put_manifest(self, manifest: ModuleManifest) -> None:
         objects = [manifest.security, *(agent.security for agent in manifest.agents)]
-        objects.extend(
-            profile.security
-            for operation in manifest.operations
-            for profile in operation.effect_profiles
-        )
-        history = SecurityHistory(objects=tuple(objects))
+        evidence = SecurityEvidence(objects=tuple(objects))
         with self.connection:
-            self._persist_security_history(history)
+            self._persist_security_evidence(evidence)
             self.connection.execute(
                 """
                 INSERT INTO module_manifest(module_id,manifest_json,updated_at) VALUES (?,?,?)
@@ -49,19 +43,18 @@ class PlatformStore(WorkStore):
         crossing_id: str,
         crossing_kind: str,
         target_id: str,
-        history: SecurityHistory,
-        transition: SecurityTransition,
+        evidence: SecurityEvidence,
         execution_boundary: ExecutionBoundary | None,
-        decision: SecurityDecision,
+        decision: RelationDecision,
     ) -> None:
         with self.connection:
-            # Rejected prospective objects are useful evidence, but the rejected transition is not
-            # persisted as accepted history. SecurityID possession remains non-authoritative.
-            self._persist_security_history(SecurityHistory(objects=history.objects))
+            # Prospective scope facts and the decision are evidence. A denied relation is not
+            # inserted into accepted SecurityEvidence or the canonical relation table.
+            self._persist_security_evidence(SecurityEvidence(objects=evidence.objects))
             self.connection.execute(
                 """
                 INSERT INTO security_decision(
-                    crossing_id,crossing_kind,target_id,transition_id,transition_json,
+                    crossing_id,crossing_kind,target_id,relation_id,relation_kind,
                     algebra_version,decision_json,execution_boundary,admissible,
                     failure_codes_json,decided_at
                 ) VALUES (?,?,?,?,?,?,?,?,?,?,?)
@@ -70,8 +63,8 @@ class PlatformStore(WorkStore):
                     crossing_id,
                     crossing_kind,
                     target_id,
-                    transition.transition_id,
-                    _json(transition),
+                    decision.relation_id,
+                    decision.relation_kind,
                     decision.algebra_version,
                     _json(decision),
                     execution_boundary,
@@ -94,20 +87,21 @@ class PlatformStore(WorkStore):
         output_digest: str | None = None,
         output_size: int | None = None,
         completion_context: InvocationContext | None = None,
-        completion_history: SecurityHistory | None = None,
+        completion_evidence: SecurityEvidence | None = None,
         output_security_id: str | None = None,
         derivation_ids: tuple[str, ...] = (),
     ) -> None:
         with self.connection:
-            if completion_history is not None:
-                self._persist_security_history(completion_history)
+            if completion_evidence is not None:
+                self._persist_security_evidence(completion_evidence)
             self.connection.execute(
                 """
                 INSERT INTO broker_event(
                     invocation_id,crossing_kind,requester_module_id,target_module_id,
                     target_id,event,observed_at,output_digest,output_size,
-                    completion_context_json,output_security_id,derivation_ids_json
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                    completion_context_json,completion_evidence_json,output_security_id,
+                    derivation_ids_json
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 (
                     invocation_id,
@@ -120,6 +114,7 @@ class PlatformStore(WorkStore):
                     output_digest,
                     output_size,
                     _json(completion_context) if completion_context else None,
+                    _json(completion_evidence) if completion_evidence else None,
                     output_security_id,
                     _json(derivation_ids),
                 ),
