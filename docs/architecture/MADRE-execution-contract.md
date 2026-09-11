@@ -232,3 +232,12 @@ Physical Capability descriptors bind computation Assurance separately from their
 Generated results carry source/producer IDs and output Assurance constrained by the actual computation basis. Material transformations may establish a different resulting contract only through their bound execution path. Kernel verifies representation and completion continuity; Module implementations own semantic classification.
 
 V2 immutable objects, transformations and accepted transitions survive restart/retry without being revalued from current registry metadata. Incompatible V1 storage is rejected; no migration or silent deletion occurs. Profile feasibility is inspection, not execution or an accepted crossing.
+
+
+### Bound transformation and role interpretation
+
+The current transform behavior contract is bounded material-to-material execution. It receives the concrete source, not general nested SDK services. Agents and Operations compose transformations through execution-bound clients, then pass completed representations as sources. A transform cannot advertise nested execution whose resulting dependencies its output contract cannot carry.
+
+EffectProfile Assurance describes preservation of the immutable profile implementation's bound security-significant behavior. It participates as realization Assurance for that profile's own effect, and as controller Assurance only when that executing profile actually selects a downstream effect. Ownership does not supply either role or a replacement value.
+
+Attachment disclosure boundaries denote the destination containment/exposure domain entered by delivery. Input enters the target domain; return enters the requester domain. They are not inferred bidirectional physical links. Any additional actual serial exposure requires its explicit boundary contract; handling bytes inside a domain does not create another operand.

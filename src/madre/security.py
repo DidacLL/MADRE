@@ -95,6 +95,8 @@ class RiskEnvelope(FrozenModel):
 
 
 class EffectProfileSecurityValues(FrozenModel):
+    """Assurance of bound behavior, used only in its actual causal/realization roles."""
+
     kind: Literal["effect_profile"] = "effect_profile"
     risk: RiskEnvelope
     autonomy: OrdinarySecurityLevel

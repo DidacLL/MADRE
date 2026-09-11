@@ -265,9 +265,9 @@ class Artifact(FrozenModel):
         producer_security_ids = tuple(
             sorted(set((*producer_security_ids, *invocation.producer_security_ids)))
         )
-        assurance = _required_assurance(history, (*source_ids, *producer_security_ids))
-        desired = assurance or assurance
-        if int(desired) > int(assurance):
+        bound = _required_assurance(history, (*source_ids, *producer_security_ids))
+        desired = assurance if assurance is not None else bound
+        if int(desired) > int(bound):
             raise ValueError("ordinary derivation cannot increase Assurance")
         output = cls.create(
             owner_module_id=owner_module_id,
@@ -406,9 +406,9 @@ class ContextBundle(FrozenModel):
         producer_security_ids = tuple(
             sorted(set((*producer_security_ids, *invocation.producer_security_ids)))
         )
-        assurance = _required_assurance(history, (*source_ids, *producer_security_ids))
-        desired = assurance or assurance
-        if int(desired) > int(assurance):
+        bound = _required_assurance(history, (*source_ids, *producer_security_ids))
+        desired = assurance if assurance is not None else bound
+        if int(desired) > int(bound):
             raise ValueError("ordinary derivation cannot increase Assurance")
         output = cls.create(
             owner_module_id=owner_module_id,

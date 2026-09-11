@@ -146,7 +146,7 @@ def transform_module(behavior, *, name="rewrite", owner="transformer", revision=
 
 
 class ClassifiedOutput:
-    async def execute(self, *, material, services):
+    async def execute(self, *, material):
         # Contract-specific test fixture: only an exact synthetic record is reduced.
         applicable = material.payload == {"credential": "test-secret"}
         return TransformOutput(

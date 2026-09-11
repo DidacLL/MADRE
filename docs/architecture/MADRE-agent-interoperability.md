@@ -252,3 +252,12 @@ These are valuable product/research directions but are not required for Kernel f
 Module entry binds `ExecutionServices` to the actual executing Agent or Operation and the attached disclosure route. Agent/Operation/Transform nested calls cannot override that context through their arguments or supplied history. Unbound configurations cannot execute; handles expire on return, failure or cancellation. Independent invocations do not share ambient state.
 
 An `EndpointBinding` names the forwarding attachment and its actual disclosure boundaries. It is not automatically a security participant. Additional producing/realizing components are declared only where the endpoint performs those roles. The active behavior contributes to production when creating a new representation; unchanged delivery adds no producer.
+
+
+### Bound transformation and role interpretation
+
+The current transform behavior contract is bounded material-to-material execution. It receives the concrete source, not general nested SDK services. Agents and Operations compose transformations through execution-bound clients, then pass completed representations as sources. A transform cannot advertise nested execution whose resulting dependencies its output contract cannot carry.
+
+EffectProfile Assurance describes preservation of the immutable profile implementation's bound security-significant behavior. It participates as realization Assurance for that profile's own effect, and as controller Assurance only when that executing profile actually selects a downstream effect. Ownership does not supply either role or a replacement value.
+
+Attachment disclosure boundaries denote the destination containment/exposure domain entered by delivery. Input enters the target domain; return enters the requester domain. They are not inferred bidirectional physical links. Any additional actual serial exposure requires its explicit boundary contract; handling bytes inside a domain does not create another operand.

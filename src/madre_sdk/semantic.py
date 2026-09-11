@@ -344,9 +344,9 @@ class TransformOutput(FrozenModel):
 
 
 class TransformBehavior(Protocol):
-    async def execute(
-        self, *, material: TransientMaterial, services: ExecutionServices
-    ) -> TransformOutput: ...
+    """Bound material-to-material behavior; composition belongs to its caller."""
+
+    async def execute(self, *, material: TransientMaterial) -> TransformOutput: ...
 
 
 class Transform:
@@ -571,8 +571,7 @@ class Module:
         )
         if invocation != expected:
             raise ValueError("transform invocation does not match publication")
-        with self._services._execution(expected) as services:
-            result = await transform.behavior.execute(material=material, services=services)
+        result = await transform.behavior.execute(material=material)
         output = Artifact.create(
             artifact_id=result.representation_id,
             owner_module_id=self.module_id,
@@ -580,10 +579,12 @@ class Module:
             sensitivity=result.sensitivity,
             assurance=result.assurance,
             publication_revision=self.version,
-            representation_revision=content_digest({
-                "transform": transform.contract.security.security_id,
-                "source": material.security.security_id,
-            }),
+            representation_revision=content_digest(
+                {
+                    "transform": transform.contract.security.security_id,
+                    "source": material.security.security_id,
+                }
+            ),
         )
         relation = SecurityDerivation.issue(
             kind="transform",

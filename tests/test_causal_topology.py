@@ -351,7 +351,7 @@ def test_real_transform_can_leave_both_security_projections_unchanged(platform):
     registry, broker, _ = platform
 
     class Normalize:
-        async def execute(self, *, material, services):
+        async def execute(self, *, material):
             return TransformOutput(
                 representation_id="normalized",
                 payload={"normalized": material.payload},
@@ -440,3 +440,134 @@ def test_sdk_nested_transform_completes_before_reuse(platform):
     attach(registry, broker, caller)
     result = invoke(broker, caller, input_material(requester_security(), assurance=L1))
     assert result.security.values.assurance == L5
+
+
+@pytest.mark.parametrize("bundle", [False, True])
+def test_ordinary_derivation_preserves_explicit_lower_assurance(bundle):
+    from madre.security import SecurityLevel
+    from madre_sdk import ContextBundle
+
+    source = input_material(requester_security())
+    arguments = dict(
+        invocation=requester(),
+        source=source,
+        owner_module_id=REQUESTER,
+        payload={"derived": True},
+        producer_security_ids=(),
+        sensitivity=L5,
+        assurance=SecurityLevel.LEVEL_2,
+    )
+    if bundle:
+        output = ContextBundle.derive_from(bundle_id="lower", purpose="test", **arguments)
+    else:
+        output = Artifact.derive_from(artifact_id="lower", **arguments)
+    assert output.security.values.assurance == SecurityLevel.LEVEL_2
+
+
+def test_equal_transformed_bytes_preserve_distinct_sources_and_retry_identity(platform):
+    registry, broker, _ = platform
+    module = transform_module(ClassifiedOutput())
+    attach(registry, broker, module)
+    sources = [
+        Artifact.create(
+            owner_module_id=REQUESTER,
+            artifact_id=name,
+            payload={"credential": "test-secret"},
+            sensitivity=L5,
+            assurance=L5,
+        )
+        for name in ("first", "second")
+    ]
+    first, second = [run_transform(broker, module, source) for source in sources]
+    repeated = run_transform(broker, module, sources[0])
+    assert first.payload == second.payload == {}
+    assert first.security.security_id != second.security.security_id
+    assert repeated.security == first.security
+    combined = first.history.merge(second.history)
+    relations = {r.output_security_id: r for r in combined.derivations}
+    for source, output in zip(sources, (first, second), strict=True):
+        assert relations[output.security.security_id].source_security_ids == (
+            source.security.security_id,
+        )
+
+
+def test_transform_behavior_receives_only_bound_material(platform):
+    from madre_sdk import TransformOutput
+
+    registry, broker, _ = platform
+
+    class Bounded:
+        async def execute(self, *, material):
+            return TransformOutput(
+                representation_id="bounded", payload=material.payload, sensitivity=L5, assurance=L5
+            )
+
+    module = transform_module(Bounded())
+    attach(registry, broker, module)
+    assert run_transform(broker, module, input_material(requester_security())).payload
+
+
+@pytest.mark.parametrize("destination_capacity,allowed", [(L1, False), (L5, True)])
+def test_return_crosses_requester_destination_domain(platform, destination_capacity, allowed):
+    registry, broker, _ = platform
+    target = agent_module(Repackage(passthrough=True))
+    attach(registry, broker, target)
+    source = input_material(requester_security(), sensitivity=L5)
+    caller = InvocationContext(
+        module=requester_security(), endpoint=attachment(REQUESTER, destination_capacity)
+    )
+    call = broker.invoke_agent(caller, source.security_history, TARGET, "actor", source.transient())
+    if not allowed:
+        with pytest.raises(SecurityDenied):
+            asyncio.run(call)
+        return
+    result = asyncio.run(call)
+    assert result.security == source.security
+    assert (
+        result.history.transitions[-1].disclosures[0].boundary_security_ids
+        == caller.boundary_security_ids
+    )
+
+
+def test_transform_completion_cannot_endorse_uninvoked_source(platform):
+    registry, broker, _ = platform
+    module = transform_module(ClassifiedOutput())
+    attach(registry, broker, module)
+
+    class SubstitutingEndpoint:
+        boundary = "local"
+        binding = module.endpoint_binding
+
+        async def invoke_transform(self, transform_id, invocation, security, material):
+            extra = Artifact.create(
+                owner_module_id=module.module_id,
+                artifact_id="uninvoked",
+                payload={},
+                sensitivity=L1,
+                assurance=L5,
+            )
+            output = Artifact.create(
+                owner_module_id=module.module_id,
+                artifact_id="substituted",
+                payload={},
+                sensitivity=L1,
+                assurance=L5,
+            )
+            relation = SecurityDerivation.issue(
+                kind="transform",
+                output_security_id=output.security.security_id,
+                source_security_ids=(material.security.security_id, extra.security.security_id),
+                producer_security_ids=invocation.producer_security_ids,
+                transform_security_id=invocation.behavior.security_id,
+            )
+            return output.model_copy(
+                update={
+                    "security_history": security.extend(
+                        objects=(extra.security, output.security), derivations=(relation,)
+                    )
+                }
+            ).transient()
+
+    broker.attach_transform_endpoint(module.module_id, SubstitutingEndpoint())
+    with pytest.raises(InvalidModuleResult, match="unverified_transform_execution"):
+        run_transform(broker, module, input_material(requester_security()))

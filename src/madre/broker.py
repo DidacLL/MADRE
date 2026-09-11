@@ -618,6 +618,9 @@ class Broker:
             if relation.kind == "transform":
                 if (
                     not on_output_path
+                    or relation.output_security_id != output.security.security_id
+                    or relation.source_security_ids != (input_material_security_id,)
+                    or not actual.issubset(relation.producer_security_ids)
                     or invocation.behavior is None
                     or relation.transform_security_id != invocation.behavior.security_id
                     or invocation.behavior.subject_ref.subject_kind != "transform"

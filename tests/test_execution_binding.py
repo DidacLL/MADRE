@@ -265,7 +265,10 @@ def test_shared_configuration_binds_concurrent_agents_independently(platform):
     assert isinstance(denied, SecurityDenied)
 
 
-def test_agentless_operation_uses_module_binding_for_nested_calls(platform):
+@pytest.mark.parametrize("profile_assurance", [L1, L5])
+def test_agentless_operation_uses_profile_assurance_for_nested_selection(
+    platform, profile_assurance
+):
     from madre_sdk import Module, Operation, effect_profile
     from tests.test_registry_broker import input_material, requester_security
     from tests.v2_helpers import participant
@@ -299,7 +302,7 @@ def test_agentless_operation_uses_module_binding_for_nested_calls(platform):
                 control_risk=L1,
                 effect_risk=L1,
                 autonomy=L1,
-                assurance=L5,
+                assurance=profile_assurance,
             ),
         ),
     )
@@ -314,6 +317,13 @@ def test_agentless_operation_uses_module_binding_for_nested_calls(platform):
             operations=OperationBrokerClient(security=SecurityHistory(), broker=broker)
         ),
     )
+    if profile_assurance == L1:
+        with pytest.raises(SecurityDenied):
+            asyncio.run(
+                module.execute_operation("start", "local", input_material(requester_security()))
+            )
+        assert not effect.called
+        return
     result = asyncio.run(
         module.execute_operation("start", "local", input_material(requester_security()))
     )

@@ -73,10 +73,10 @@ class CapabilityRegistry:
         if not descriptor.security.verify_binding():
             raise ValueError("Capability SecurityObject binding is invalid")
         if not isinstance(descriptor.security.values, CapabilitySecurityValues):
-            raise ValueError("Capability requires Privacy and Assurance values")
+            raise ValueError("Capability requires Assurance values")
         values = descriptor.security.values
         if values.assurance is None:
-            raise ValueError("Capability requires Privacy and Assurance values")
+            raise ValueError("Capability requires Assurance values")
         for boundary in descriptor.disclosure_boundaries:
             if not boundary.verify_binding() or not isinstance(
                 boundary.values, BoundarySecurityValues

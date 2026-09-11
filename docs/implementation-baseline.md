@@ -34,6 +34,8 @@ Modules can publish `TransformContract`s and implement `TransformBehavior`. The 
 
 Transform-derived output must complete before reuse across another Kernel boundary. A completed nested output can be forwarded unchanged. Completion for one output cannot endorse another output or contract. Unique acyclic ancestry and immutable hashes survive persistence/reopen.
 
+Transform behavior receives only the bound material, without general nested SDK services. Agents and Operations compose completed transformations. Custom endpoint completion must bind the exact invoked source, resulting representation and known production path.
+
 The prototype currently accepts one material representation per transform invocation; multi-source ContextBundles carry explicit ancestry. Scalar projections are not semantic equivalence proofs. The SDK execution binding is not isolation from arbitrary Python/private infrastructure access.
 
 ## Persistence format
@@ -44,6 +46,6 @@ Security identities, transitions and derivations use V2 prefixes; decisions/hist
 
 The V2 suite covers all valid 1..5 combinations of control risk, effect risk, controller Assurance, realization Assurance and Autonomy, plus every disclosure Sensitivity/capacity pair. Integration regressions cover containment/egress, per-profile topology and ties, exact execution binding, concrete transformation classifications, unchanged projections, rejected relabeling, substitution, stale publication, nested completion and restart.
 
-Focused algebra/topology, broker, execution-binding, SDK/CORE, architecture-boundary and runtime-lifecycle tests are the local acceptance set. Changed Python files receive Ruff lint/format checks and source mypy checking. Test outcomes are reported with the implementation handoff.
+Focused algebra/topology, broker, execution-binding, SDK/CORE, architecture-boundary and runtime-lifecycle tests are the local acceptance set. Changed Python files receive Ruff lint/format checks and source mypy checking. The audit continuation passed 79 focused tests across those seven test files, with source mypy and changed-file Ruff lint/format checks. Regressions reproduce and correct explicit lower-Assurance loss in both ordinary material helpers, and reject custom transform completion with an uninvoked source. Equal transformed bytes retain distinct source bindings and stable retry identities; return-domain and profile-role separation are tested.
 
-Broader repository validation, packaging and CI have not been claimed by this run. They are required before integration. GitHub/PR/integration work is deliberately excluded from this implementation run.
+The continuation also ran the entire repository test suite (79 passed), repository-wide Ruff lint and formatting (50 files), and built both source distribution and wheel with uv. The wheel was installed without dependencies into a temporary site-packages directory and all three packages imported from that installation outside the checkout under Python isolated mode. Source mypy passed all 26 files. External locked-environment CI remains required before integration; no GitHub/PR/integration action was performed.

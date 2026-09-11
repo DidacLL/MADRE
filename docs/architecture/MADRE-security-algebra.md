@@ -106,3 +106,12 @@ Declarations, adapter/platform facts or a separate valuation mechanism establish
 The acceptance suite must distinguish containment from actor Assurance; control risk from both Autonomy and effect risk; independent realization failure; concrete transform outcomes from generic relabeling; ancestry from residual control; and real feasible profiles from synthetic or arbitrarily tie-broken alternatives. Exact publication, representation and transformation substitution must fail, including across restart.
 
 Add a new projection only for a concrete MADRE pair that existing observable facts cannot distinguish but that needs different decisions. Removing a projection likewise requires preserving the distinctions MADRE actually uses, not merely preserving results of an already narrowed evaluator.
+
+
+### Bound transformation and role interpretation
+
+The current transform behavior contract is bounded material-to-material execution. It receives the concrete source, not general nested SDK services. Agents and Operations compose transformations through execution-bound clients, then pass completed representations as sources. A transform cannot advertise nested execution whose resulting dependencies its output contract cannot carry.
+
+EffectProfile Assurance describes preservation of the immutable profile implementation's bound security-significant behavior. It participates as realization Assurance for that profile's own effect, and as controller Assurance only when that executing profile actually selects a downstream effect. Ownership does not supply either role or a replacement value.
+
+Attachment disclosure boundaries denote the destination containment/exposure domain entered by delivery. Input enters the target domain; return enters the requester domain. They are not inferred bidirectional physical links. Any additional actual serial exposure requires its explicit boundary contract; handling bytes inside a domain does not create another operand.
