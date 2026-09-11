@@ -8,7 +8,13 @@ import pytest
 
 from madre.broker import Broker, SecurityDenied, UnknownOperationEffect
 from madre.registry import InteroperabilityRegistry
-from madre.security import InvocationContext, SecurityHistory, SecurityLevel
+from madre.security import (
+    InvocationContext,
+    SecurityHistory,
+    SecurityLevel,
+    SecurityTransition,
+    UserRelease,
+)
 from madre.storage import PlatformStore, open_database
 from madre_sdk import (
     Agent,
@@ -78,7 +84,7 @@ class EchoAgent(AgentBehavior):
             payload={"echo": material.payload},
             producer_security_ids=(self.producer_security_id,),
             invocation=invocation,
-            sensitivity=SecurityLevel.LEVEL_3,
+            sensitivity=material.security.values.sensitivity,
             security_history=security,
         )
 
@@ -112,7 +118,7 @@ class EchoOperation(OperationBehavior):
             payload={"effect_profile": effect_profile_id},
             producer_security_ids=(self.producer_security_id,),
             invocation=invocation,
-            sensitivity=SecurityLevel.LEVEL_3,
+            sensitivity=material.security.values.sensitivity,
             security_history=security,
         )
 
@@ -379,6 +385,7 @@ def test_autonomous_high_risk_effect_rejects_low_integrity_controller(tmp_path: 
                     "target.operation",
                     "autonomous",
                     source.transient(),
+                    controller_security_ids=(source.security.security_id,),
                 )
             )
         assert not behavior.called
@@ -387,7 +394,7 @@ def test_autonomous_high_risk_effect_rejects_low_integrity_controller(tmp_path: 
 
 
 def test_publishing_effect_profile_privacy_is_on_actual_disclosure_path(tmp_path: Path) -> None:
-    database, _, _, registry, broker = broker_fixture(tmp_path)
+    database, connection, _, registry, broker = broker_fixture(tmp_path)
     try:
         publishing = profile(
             "public",
@@ -417,6 +424,29 @@ def test_publishing_effect_profile_privacy_is_on_actual_disclosure_path(tmp_path
                 )
             )
         assert not behavior.called
+        row = connection.execute(
+            "SELECT transition_json FROM security_decision WHERE crossing_kind='operation-input'"
+        ).fetchone()
+        crossing = SecurityTransition.model_validate_json(row[0])
+        release = UserRelease(
+            interaction=requester.subject_ref,
+            disclosure=crossing.disclosures[0],
+            effect_execution=crossing.effect_execution,
+        )
+        carried = source.security_history.extend(releases=(release,))
+        result = asyncio.run(
+            broker.invoke_operation(
+                InvocationContext(module=requester),
+                carried,
+                TARGET,
+                "target.operation",
+                "public",
+                source.transient(),
+            )
+        )
+        assert behavior.called
+        assert release in result.history.releases
+        assert result.security.values.sensitivity == SecurityLevel.LEVEL_5
     finally:
         database.__exit__(None, None, None)
 

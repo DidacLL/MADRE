@@ -29,9 +29,9 @@ from madre.security import (
     FrozenModel,
     Identifier,
     InvocationContext,
-    ParticipantSecurityValues,
     SecurityHistory,
     SecurityObject,
+    SecurityValues,
 )
 from madre_sdk.material import Material, MaterialRepository
 from madre_sdk.security import participant_security
@@ -428,9 +428,9 @@ class Module:
         self.provenance = tuple(provenance)
         self.endpoint_boundary = endpoint_boundary
         participant_values = security.values
-        if not isinstance(participant_values, ParticipantSecurityValues):
+        if not isinstance(participant_values, SecurityValues):
             raise ValueError("Module security must contain participant values")
-        if participant_values.privacy is None or participant_values.integrity is None:
+        if participant_values.privacy is None:
             raise ValueError("Module requires Privacy and Integrity")
         self.endpoint_security = endpoint_security or participant_security(
             owner_module_id=module_id,

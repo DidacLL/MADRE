@@ -18,7 +18,7 @@ The SDK provides typed helpers for Modules, minimal Agents, portable Skills/Work
 
 The shipped `madre_core.CoreModule` is an ordinary SDK Module. Its interaction Agent uses transient inference for the immediate path and can independently delegate to an explicit Agent or project continuation into ordinary durable work. CORE receives no Kernel bypass.
 
-The executable Security Algebra is the frozen model in `docs/architecture/MADRE-security-algebra.md`: `Sensitivity`, `Privacy`, `Integrity`, `Risk`, and `Autonomy` over explicit disclosure/control/effect topology. The previous Trust/Isolation/IntendedUse compatibility evaluator is no longer part of the runtime.
+The executable Security Algebra is the scoped model in `docs/architecture/MADRE-security-algebra.md`: `Sensitivity`, `Privacy`, `Integrity`, `Risk`, and `Autonomy` over explicit disclosure/control/effect topology. The previous Trust/Isolation/IntendedUse compatibility evaluator is no longer part of the runtime.
 
 The SDK intentionally does **not** provide a universal Agent session/memory framework, Planner, Workflow executor, security-policy DSL, generic shell/Internet surface or provider credential framework.
 
@@ -41,9 +41,9 @@ CI reinstalls the built wheel and verifies isolated imports of `madre`, `madre_s
 
 Module code should normally import from `madre_sdk`. The SDK `Module` helper can publish a manifest, optional Agent/Operation endpoints and a Module-owned `MaterialRepository` through interface-segregated public protocols.
 
-Security-relevant participants use bound `Privacy`/`Integrity` objects. Material uses bound `Sensitivity`/`Integrity` objects. `Artifact` and `ContextBundle` derivation creates new immutable representation/SecurityID bindings; ordinary derivation cannot increase Integrity, while explicit validation derivation is bounded by its validator path.
+Facets follow exact scopes and roles through `SecurityValues`. Sensitivity can apply to Module/Agent surfaces; ordinary material has no mandatory Integrity. `Artifact` and `ContextBundle` derivation creates new immutable representation/SecurityID bindings; ordinary derivation cannot increase Integrity, while explicit validation derivation is bounded by its validator path.
 
-An SDK `Operation` owns one or more immutable `EffectProfile`s. Each profile fixes its `Risk`, `Autonomy`, `Integrity`, and optional material-exposure `Privacy`. Invocation selects a profile identity rather than supplying these values ad hoc.
+An SDK `Operation` owns one or more immutable `EffectProfile`s. Each profile pairs `Risk` and `Autonomy`, with optional material-exposure `Privacy`. Actual executors separately declare Integrity. Invocation selects a profile identity rather than supplying these values ad hoc.
 
 `MaterialRepository.retain(...)` produces a `MaterialHandle`; Kernel resolves that handle only when a durable attempt is ready and after candidate mechanism security evaluation.
 

@@ -161,7 +161,7 @@ Every participating security-relevant object contributes its bound `SecurityID`/
 
 Security evaluation is transition-local rather than a global reduction over the entire carried object history.
 
-For a candidate inference mechanism, the prospective transition identifies the concrete material disclosure edge(s) to the selected Capability and any other actual recipients on that path. The confidentiality predicate evaluates the material's Sensitivity against the minimum Privacy of that actual path.
+For a candidate inference mechanism, the prospective transition identifies the concrete material disclosure edge(s) to the selected Capability and any other actual recipients on that path. The disclosure predicate compares source Sensitivity with actual observer Privacy, or matches carried UserRelease against that exact crossing.
 
 For an effectful Operation, the prospective transition additionally identifies the selected bound EffectProfile, actual causal controllers and actual effect executors. The control/effect predicates use their Integrity plus the EffectProfile's Risk and Autonomy.
 

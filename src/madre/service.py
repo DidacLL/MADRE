@@ -33,9 +33,9 @@ from madre.runtime import (
 )
 from madre.security import (
     BindingEvidence,
-    CapabilitySecurityValues,
     SecurityObject,
     SecuritySubjectRef,
+    SecurityValues,
 )
 from madre.storage import PlatformStore, open_database
 
@@ -64,7 +64,7 @@ def _capabilities(settings: Settings) -> CapabilityRegistry:
                 publication_revision="1",
                 local_id=capability_id,
             ),
-            values=CapabilitySecurityValues(
+            values=SecurityValues(
                 privacy=config.privacy,
                 integrity=config.integrity,
             ),

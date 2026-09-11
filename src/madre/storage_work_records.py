@@ -107,7 +107,9 @@ class WorkRecordStore(WorkStoreBase):
                 delivery_status=row["delivery_status"],
                 output_integrity=cast(
                     OrdinarySecurityLevel,
-                    SecurityLevel(row["output_integrity"]),
+                    SecurityLevel(row["output_integrity"])
+                    if row["output_integrity"] is not None
+                    else None,
                 ),
                 producer_security_ids=tuple(json.loads(row["result_producer_security_ids_json"])),
                 source_security_ids=tuple(json.loads(row["result_source_security_ids_json"])),

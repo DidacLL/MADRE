@@ -196,7 +196,7 @@ class TransientInferenceResult(FrozenModel):
     execution_boundary: ExecutionBoundary
     output_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     output_size: int = Field(ge=0)
-    output_integrity: OrdinarySecurityLevel
+    output_integrity: OrdinarySecurityLevel | None
     producer_security_ids: tuple[Identifier, ...]
     source_security_ids: tuple[Identifier, ...]
     security: SecurityHistory
@@ -240,7 +240,7 @@ class ResultEvidence(FrozenModel):
     size: int = Field(ge=0)
     produced_at: AwareDatetime
     delivery_status: Literal["awaiting_consumption", "consumed", "lost"]
-    output_integrity: OrdinarySecurityLevel
+    output_integrity: OrdinarySecurityLevel | None
     producer_security_ids: tuple[Identifier, ...]
     source_security_ids: tuple[Identifier, ...]
 

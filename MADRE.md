@@ -136,46 +136,36 @@ Local inference is the primary product focus, while admissible remote/provider m
 
 One provider may expose several distinct mechanisms: API, account-authenticated CLI/session, SDK, MCP path, gateway, local bridge or user-installed adapter. Provider-specific login, credentials, protocol schemas and software mechanics remain adapter concerns.
 
-### 6. Security is object-bound transition algebra
+### 6. Security is scoped and role-local transition algebra
 
-Every security-relevant Artifact/ContextBundle, Module/Agent/endpoint, Capability and Operation EffectProfile contributes an immutable **SecurityObject** identified by a stable, globally unambiguous `SecurityID`. The SecurityObject is structurally bound to its subject and contains only the normalized values meaningful for that subject kind.
+SecurityObjects bind exact immutable scopes/projections and revisions, rather than
+one global tuple per software object. The five independent ordinal facets are
+Sensitivity, Privacy, Integrity, Risk and Autonomy on levels 1..5. There is no score.
 
-The final normalized runtime vocabulary is exactly:
+Sensitivity covers all sensitive state reachable/exposable through a scope, including
+Module/Agent surfaces. Privacy is PUBLIC=1, UNKNOWN=2, LOCAL_PRIVATE=3,
+MODULE_PRIVATE=4, SECRET=5. Ordinary independently controlled cloud inference is
+UNKNOWN regardless of vendor promises. Integrity is warranted security-significant
+causal/effect-realization responsibility under the exact bounded contract, not truth,
+intelligence, reliability or general trust. Ordinary generated material needs no
+Integrity claim. Risk and residual machine-control Autonomy stay paired on the same
+immutable Operation EffectProfile.
 
-```text
-Sensitivity
-Privacy
-Integrity
-Risk
-Autonomy
-```
+Explicit DISCLOSURE, CONTROL, EFFECT_EXECUTION, DERIVATION and USER_RELEASE topology
+is evaluated under the focused Security Algebra owner:
 
-These dimensions are independent. Sensitivity describes material confidentiality demand; Privacy describes confidentiality assurance of an actual participant/path; Integrity describes assurance of security-significant causal control/effect execution; Risk describes consequence of a bounded effect; Autonomy describes residual machine control in a bound EffectProfile.
+- disclosure: max source Sensitivity <= min actual observer Privacy, or exact carried UserRelease;
+- control: min(profile Risk, profile Autonomy) <= min actual non-user controller Integrity (5 if none);
+- execution: profile Risk <= min actual executor Integrity, with nonempty executors;
+- derivation: immutable source/procedure/result bindings and scope-local propagation.
 
-Security decisions are made over explicit transition roles rather than one global score over all carried history:
-
-```text
-DISCLOSURE
-CONTROL
-EFFECT_EXECUTION
-DERIVATION
-```
-
-The runtime evaluates three obligations:
-
-```text
-Sensitivity(material) <= minimum Privacy of its actual disclosure path
-min(Risk, Autonomy) <= minimum Integrity of actual non-user controllers
-Risk <= minimum Integrity of actual effect executors
-```
-
-The last two apply only to effectful transitions.
-
-A concrete request/work lifecycle retains immutable SecurityObjects plus security-relevant transition/derivation evidence. Historical objects remain evidence and continuity facts, but an unrelated historical extreme is not blindly folded into a later transition it does not participate in.
-
-Registration, installation acceptance, ordinary identity, possession of a reference/SecurityID, roles, ACLs, allowlists, provider credentials and previous successful decisions are not independent MADRE permission sources.
-
-Missing role-required security values make a transition structurally invalid; the algebra does not silently assign default numeric values. Third-party/default valuation policy remains a separate problem.
+Release changes neither Sensitivity nor Privacy. Ordinary derivation preserves the
+Sensitivity lower bound; selection uses retained members; semantic transforms have
+an explicit Module-owned procedure. History is immutable evidence, never a global
+numeric reduction. Work retry/scheduler/idempotency state is not a security operand.
+Kernel checks mechanical bindings and declared closure under the honest-contract
+model without inferring private semantics. ACLs, roles, tokens, provider reputation,
+LLM truthfulness and hostile native-code sandboxing are outside this algebra.
 
 ### 7. CORE is a replaceable Module with a required capability/security contract
 

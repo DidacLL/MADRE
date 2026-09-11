@@ -5,7 +5,6 @@ import json
 from datetime import UTC, datetime
 
 from madre.contracts import WorkSpec
-from madre.security import MaterialSecurityValues
 from madre_core import (
     CORE_INTERACTION_AGENT_ID,
     CORE_MODULE_ID,
@@ -14,7 +13,6 @@ from madre_core import (
 )
 from madre_sdk import (
     Artifact,
-    CapabilitySecurityValues,
     CoreSelection,
     Disclosure,
     InferenceHardRequirements,
@@ -24,6 +22,7 @@ from madre_sdk import (
     SecurityObject,
     SecuritySubjectRef,
     SecurityTransition,
+    SecurityValues,
     TransientInferenceResult,
     WorkRecord,
     content_digest,
@@ -65,7 +64,7 @@ class FakeInference:
                 publication_revision="1",
                 local_id="test.chat",
             ),
-            values=CapabilitySecurityValues(
+            values=SecurityValues(
                 privacy=SecurityLevel.LEVEL_5,
                 integrity=integrity,
             ),
@@ -190,8 +189,8 @@ def test_core_immediate_path_preserves_capability_and_derivation_history() -> No
     output = asyncio.run(core.execute_agent(CORE_INTERACTION_AGENT_ID, client_input()))
     assert output.payload == {"response": {"answer": "hello"}}
     values = output.security.values
-    assert isinstance(values, MaterialSecurityValues)
-    assert values.integrity == SecurityLevel.LEVEL_3
+    assert isinstance(values, SecurityValues)
+    assert values.integrity is None
     assert inference.capability_security.security_id in output.security_history.security_ids
     assert len(output.security_history.transitions) == 1
     assert len(output.security_history.derivations) >= 3

@@ -16,7 +16,6 @@ from madre.security import (
     FrozenModel,
     Identifier,
     InvocationContext,
-    MaterialSecurityValues,
     OrdinarySecurityLevel,
     SecurityDerivation,
     SecurityHistory,
@@ -24,6 +23,7 @@ from madre.security import (
     SecurityObject,
     SecuritySubjectRef,
     SecurityTransition,
+    SecurityValues,
 )
 
 MaterialKind = Literal["artifact", "context_bundle"]
@@ -41,7 +41,7 @@ def _material_security(
     kind: MaterialKind,
     payload: JsonValue,
     sensitivity: OrdinarySecurityLevel,
-    integrity: OrdinarySecurityLevel,
+    integrity: OrdinarySecurityLevel | None = None,
     publication_revision: str,
     representation_revision: str,
 ) -> SecurityObject:
@@ -53,7 +53,7 @@ def _material_security(
             local_id=reference,
             subject_revision=representation_revision,
         ),
-        values=MaterialSecurityValues(sensitivity=sensitivity, integrity=integrity),
+        values=SecurityValues(sensitivity=sensitivity, integrity=integrity),
         binding_evidence=(BindingEvidence(key="content_digest", value=content_digest(payload)),),
     )
 
@@ -72,7 +72,7 @@ def _required_integrity(
         if value is None:
             raise ValueError(f"derivation participant lacks Integrity: {security_id}")
         values.append(int(value))
-    return cast(OrdinarySecurityLevel, SecurityLevel(min(values)))
+    return SecurityLevel(min(values))
 
 
 def _validate_history(history: SecurityHistory) -> None:
@@ -130,7 +130,7 @@ class Artifact(FrozenModel):
         artifact_id: str,
         payload: JsonValue,
         sensitivity: OrdinarySecurityLevel,
-        integrity: OrdinarySecurityLevel,
+        integrity: OrdinarySecurityLevel | None = None,
         publication_revision: str = "1",
         representation_revision: str = "1",
         security_history: SecurityHistory | None = None,
@@ -169,10 +169,9 @@ class Artifact(FrozenModel):
             sorted(set((*result.producer_security_ids, *invocation.producer_security_ids)))
         )
         production_history = result.security.extend(objects=invocation.objects)
-        bound = min(result.output_integrity, _required_integrity(production_history, production))
-        desired = integrity or bound
-        if int(desired) > int(bound):
-            raise ValueError("ordinary generated output cannot exceed inference assurance")
+        if integrity is not None:
+            raise ValueError("Use an explicit control-material derivation or validation procedure")
+        desired = None
         history = source.security_history.merge(production_history)
         security = _material_security(
             owner_module_id=owner_module_id,
@@ -218,10 +217,9 @@ class Artifact(FrozenModel):
             sorted(set((*evidence.producer_security_ids, *invocation.producer_security_ids)))
         )
         production_history = record.spec.security.extend(objects=invocation.objects)
-        bound = min(evidence.output_integrity, _required_integrity(production_history, production))
-        desired = integrity or bound
-        if int(desired) > int(bound):
-            raise ValueError("ordinary work output cannot exceed execution assurance")
+        if integrity is not None:
+            raise ValueError("Use an explicit control-material derivation or validation procedure")
+        desired = None
         security = _material_security(
             owner_module_id=owner_module_id,
             reference=artifact_id,
@@ -259,16 +257,26 @@ class Artifact(FrozenModel):
         publication_revision: str = "1",
         representation_revision: str = "1",
         security_history: SecurityHistory | None = None,
+        procedure: SecuritySubjectRef | None = None,
     ) -> Artifact:
         history, source_ids = _merge_sources(source, additional_sources, security_history)
         history = history.extend(objects=invocation.objects)
         producer_security_ids = tuple(
             sorted(set((*producer_security_ids, *invocation.producer_security_ids)))
         )
-        assurance = _required_integrity(history, (*source_ids, *producer_security_ids))
-        desired = integrity or assurance
-        if int(desired) > int(assurance):
-            raise ValueError("ordinary derivation cannot increase Integrity")
+        desired = integrity
+        if desired is not None:
+            assurance = _required_integrity(
+                history,
+                tuple(
+                    item
+                    for item in (*source_ids, *producer_security_ids)
+                    if (obj := history.resolve(item)) is not None
+                    and obj.values.integrity is not None
+                ),
+            )
+            if desired > assurance:
+                raise ValueError("ordinary derivation cannot increase Integrity")
         output = cls.create(
             owner_module_id=owner_module_id,
             artifact_id=artifact_id,
@@ -280,7 +288,8 @@ class Artifact(FrozenModel):
             security_history=history,
         )
         relation = SecurityDerivation.issue(
-            kind="ordinary",
+            kind="transform" if procedure else "ordinary",
+            procedure=procedure,
             output_security_id=output.security.security_id,
             source_security_ids=source_ids,
             producer_security_ids=producer_security_ids,
@@ -300,7 +309,7 @@ class Artifact(FrozenModel):
         integrity: OrdinarySecurityLevel | None = None,
         representation_revision: str = "1",
     ) -> Artifact:
-        values = cast(MaterialSecurityValues, self.security.values)
+        values = self.security.values
         return Artifact.derive_from(
             invocation=invocation,
             source=self,
@@ -318,13 +327,14 @@ class Artifact(FrozenModel):
         self,
         *,
         invocation: InvocationContext,
+        procedure: SecuritySubjectRef,
         artifact_id: str,
         payload: JsonValue,
         sensitivity: OrdinarySecurityLevel | None = None,
         integrity: OrdinarySecurityLevel | None = None,
         representation_revision: str = "1",
     ) -> Artifact:
-        values = cast(MaterialSecurityValues, self.security.values)
+        values = self.security.values
         history = self.security_history.extend(objects=invocation.objects)
         validator_security_ids = invocation.producer_security_ids
         assurance = _required_integrity(history, validator_security_ids)
@@ -343,6 +353,7 @@ class Artifact(FrozenModel):
         )
         relation = SecurityDerivation.issue(
             kind="validation",
+            procedure=procedure,
             output_security_id=output.security.security_id,
             source_security_ids=(self.security.security_id,),
             validator_security_ids=validator_security_ids,
@@ -395,7 +406,7 @@ class ContextBundle(FrozenModel):
         purpose: str,
         payload: JsonValue,
         sensitivity: OrdinarySecurityLevel,
-        integrity: OrdinarySecurityLevel,
+        integrity: OrdinarySecurityLevel | None = None,
         publication_revision: str = "1",
         representation_revision: str = "1",
         security_history: SecurityHistory | None = None,
@@ -421,6 +432,39 @@ class ContextBundle(FrozenModel):
         )
 
     @classmethod
+    def select(
+        cls,
+        *,
+        owner_module_id: str,
+        bundle_id: str,
+        purpose: str,
+        members: tuple[Artifact, ...],
+    ) -> ContextBundle:
+        """Build a new bundle containing exactly the retained member representations."""
+        if not members or len({item.id for item in members}) != len(members):
+            raise ValueError("Selection requires nonempty uniquely named members")
+        history = SecurityHistory().merge(*(item.security_history for item in members))
+        levels = [item.security.values.sensitivity for item in members]
+        if any(value is None for value in levels):
+            raise ValueError("Selected members require Sensitivity")
+        result = cls.create(
+            owner_module_id=owner_module_id,
+            bundle_id=bundle_id,
+            purpose=purpose,
+            payload={item.id: item.payload for item in members},
+            sensitivity=max(value for value in levels if value is not None),
+            security_history=history,
+        )
+        relation = SecurityDerivation.issue(
+            kind="selection",
+            output_security_id=result.security.security_id,
+            source_security_ids=tuple(item.security.security_id for item in members),
+        )
+        history = result.security_history.extend(derivations=(relation,))
+        _validate_history(history)
+        return result.model_copy(update={"security_history": history})
+
+    @classmethod
     def derive_from(
         cls,
         *,
@@ -443,10 +487,11 @@ class ContextBundle(FrozenModel):
         producer_security_ids = tuple(
             sorted(set((*producer_security_ids, *invocation.producer_security_ids)))
         )
-        assurance = _required_integrity(history, (*source_ids, *producer_security_ids))
-        desired = integrity or assurance
-        if int(desired) > int(assurance):
-            raise ValueError("ordinary derivation cannot increase Integrity")
+        desired = integrity
+        if desired is not None:
+            assurance = _required_integrity(history, (*source_ids, *producer_security_ids))
+            if desired > assurance:
+                raise ValueError("ordinary derivation cannot increase Integrity")
         output = cls.create(
             owner_module_id=owner_module_id,
             bundle_id=bundle_id,
@@ -480,7 +525,7 @@ class ContextBundle(FrozenModel):
         integrity: OrdinarySecurityLevel | None = None,
         representation_revision: str = "1",
     ) -> ContextBundle:
-        values = cast(MaterialSecurityValues, self.security.values)
+        values = self.security.values
         return ContextBundle.derive_from(
             invocation=invocation,
             source=self,

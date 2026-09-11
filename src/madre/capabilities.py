@@ -18,11 +18,11 @@ from madre.contracts import (
     ReasoningEffort,
 )
 from madre.security import (
-    CapabilitySecurityValues,
     ExecutionBoundary,
     FrozenModel,
     Identifier,
     SecurityObject,
+    SecurityValues,
 )
 
 
@@ -70,11 +70,13 @@ class CapabilityRegistry:
             raise ValueError("Capability SecurityObject subject must equal capability id")
         if not descriptor.security.verify_binding():
             raise ValueError("Capability SecurityObject binding is invalid")
-        if not isinstance(descriptor.security.values, CapabilitySecurityValues):
-            raise ValueError("Capability requires Privacy and Integrity values")
+        if not isinstance(descriptor.security.values, SecurityValues):
+            raise ValueError("Capability requires Privacy")
         values = descriptor.security.values
-        if values.privacy is None or values.integrity is None:
-            raise ValueError("Capability requires Privacy and Integrity values")
+        if values.privacy is None:
+            raise ValueError("Capability requires Privacy")
+        if descriptor.execution_boundary == "remote" and values.privacy != 2:
+            raise ValueError("Independently controlled remote inference has UNKNOWN Privacy")
         self._adapters[descriptor.id] = adapter
 
     def candidates(self, request: InferenceRequirement) -> tuple[CapabilityAdapter, ...]:

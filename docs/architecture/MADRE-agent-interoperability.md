@@ -136,7 +136,6 @@ EffectProfile
     bound Operation reference
     Risk
     Autonomy
-    Integrity
     Privacy?   # only if the effect itself exposes material
 ```
 
@@ -152,7 +151,7 @@ An Operation may internally run deterministic code, use another service, invoke 
 
 An `Artifact` is material owned by a Module.
 
-A `ContextBundle` is an artifact-like bounded collection of material prepared for a concrete purpose. It carries a material SecurityObject with the values required by the final Security Algebra, including Sensitivity and Integrity.
+A `ContextBundle` is an artifact-like bounded collection of material prepared for a concrete purpose. It carries a material SecurityObject with the values required by the final Security Algebra, including Sensitivity, and Integrity only when the scope is control-relevant.
 
 Generated model output becomes ordinary Artifact material once delivered. It can be fed into subsequent Agents/Workflows/Operations according to Module semantics.
 

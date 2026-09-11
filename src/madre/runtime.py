@@ -8,7 +8,6 @@ import json
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import cast
 from uuid import uuid4
 
 from pydantic import JsonValue
@@ -27,14 +26,10 @@ from madre.contracts import (
 from madre.interfaces import MaterialResolver
 from madre.security import (
     DEFAULT_SECURITY_EVALUATOR,
-    CapabilitySecurityValues,
     Disclosure,
-    MaterialSecurityValues,
-    OrdinarySecurityLevel,
     SecurityDecision,
     SecurityEvaluator,
     SecurityHistory,
-    SecurityLevel,
     SecurityTransition,
     StructuralFailure,
 )
@@ -147,9 +142,7 @@ class WorkRuntime:
             execution_boundary=descriptor.execution_boundary,
             output_digest=content_digest(result),
             output_size=content_size(result),
-            output_integrity=self._generated_integrity(
-                request.material, descriptor.security.values
-            ),
+            output_integrity=None,
             producer_security_ids=(descriptor.security.security_id,),
             source_security_ids=(request.material.security.security_id,),
             security=accepted,
@@ -348,7 +341,7 @@ class WorkRuntime:
 
         digest = content_digest(result)
         size = content_size(result)
-        output_integrity = self._generated_integrity(material, descriptor.security.values)
+        output_integrity = None
         self._results[work_id] = result
         self.store.succeed(
             work_id,
@@ -455,22 +448,6 @@ class WorkRuntime:
             raise ValueError(
                 f"security evaluator rejected work: {','.join(decision.failure_codes)}"
             )
-
-    @staticmethod
-    def _generated_integrity(
-        material: TransientMaterial,
-        capability_values: object,
-    ) -> OrdinarySecurityLevel:
-        material_values = cast(MaterialSecurityValues, material.security.values)
-        if material_values.integrity is None:
-            raise TransientInferenceError("security_denied")
-        if (
-            not isinstance(capability_values, CapabilitySecurityValues)
-            or capability_values.integrity is None
-        ):
-            raise TransientInferenceError("security_denied")
-        value = min(int(material_values.integrity), int(capability_values.integrity))
-        return cast(OrdinarySecurityLevel, SecurityLevel(value))
 
     @staticmethod
     def _verify_transient_material(material: TransientMaterial) -> None:

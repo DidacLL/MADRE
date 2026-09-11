@@ -389,7 +389,6 @@ class Broker:
         controllers = tuple(
             dict.fromkeys(
                 (
-                    material.security.security_id,
                     requester.selector_security_id,
                     *controller_security_ids,
                 )

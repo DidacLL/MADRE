@@ -3,9 +3,6 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-import pytest
-from pydantic import ValidationError
-
 import madre.security as kernel_security
 import madre_sdk
 from madre.adapters.openai import OpenAIChatConfig
@@ -13,13 +10,10 @@ from madre.config import Settings
 from madre.contracts import InferenceHardRequirements, InferenceRequirement
 from madre.security import (
     DEFAULT_SECURITY_EVALUATOR,
-    MaterialSecurityValues,
-    ParticipantSecurityValues,
     SecurityHistory,
     SecurityLevel,
-    SecurityObject,
-    SecuritySubjectRef,
     SecurityTransition,
+    SecurityValues,
 )
 from madre.service import _capabilities
 from madre.storage import open_database
@@ -78,6 +72,10 @@ def test_kernel_does_not_import_sdk_or_core() -> None:
 def test_pre_freeze_security_symbols_are_removed() -> None:
     obsolete = {
         "ActorSecurityValues",
+        "MaterialSecurityValues",
+        "ParticipantSecurityValues",
+        "CapabilitySecurityValues",
+        "EffectProfileSecurityValues",
         "OperationSecurityValues",
         "SecurityContext",
         "CompatibilitySecurityEvaluator",
@@ -89,9 +87,9 @@ def test_pre_freeze_security_symbols_are_removed() -> None:
 
 
 def test_pre_freeze_security_fields_are_removed() -> None:
-    assert "intended_use" not in MaterialSecurityValues.model_fields
-    assert "trust" not in ParticipantSecurityValues.model_fields
-    assert "isolation" not in ParticipantSecurityValues.model_fields
+    assert "intended_use" not in SecurityValues.model_fields
+    assert "trust" not in SecurityValues.model_fields
+    assert "isolation" not in SecurityValues.model_fields
     assert "trust" not in OpenAIChatConfig.model_fields
     assert "risk" not in OpenAIChatConfig.model_fields
     assert {"privacy", "integrity"} <= set(OpenAIChatConfig.model_fields)
@@ -113,20 +111,16 @@ def test_security_binding_tamper_is_structural_failure() -> None:
     assert "invalid_security_binding" in decision.failure_codes
 
 
-def test_subject_kind_cannot_carry_irrelevant_value_schema() -> None:
-    with pytest.raises(ValidationError):
-        SecurityObject.issue(
-            subject_ref=SecuritySubjectRef(
-                owner_module_id="module.example",
-                subject_kind="artifact",
-                publication_revision="1",
-                local_id="artifact",
-            ),
-            values=ParticipantSecurityValues(
-                privacy=SecurityLevel.LEVEL_5,
-                integrity=SecurityLevel.LEVEL_5,
-            ),
-        )
+def test_module_scope_can_carry_sensitivity_without_integrity() -> None:
+    subject = participant_security(
+        owner_module_id="module.example",
+        subject_id="arithmetic",
+        subject_kind="module",
+        privacy=SecurityLevel.LEVEL_3,
+        sensitivity=SecurityLevel.LEVEL_1,
+    )
+    assert subject.values.sensitivity == SecurityLevel.LEVEL_1
+    assert subject.values.integrity is None
 
 
 def capability_security_id(config: OpenAIChatConfig) -> str:

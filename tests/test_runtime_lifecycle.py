@@ -21,11 +21,11 @@ from madre.contracts import (
 )
 from madre.runtime import ResultLost, TransientInferenceError, WorkRuntime
 from madre.security import (
-    CapabilitySecurityValues,
     SecurityHistory,
     SecurityLevel,
     SecurityObject,
     SecuritySubjectRef,
+    SecurityValues,
 )
 from madre.storage import PlatformStore, open_database
 from madre_sdk import Artifact, MaterialRepository, participant_security
@@ -75,7 +75,7 @@ def capability(
             publication_revision="1",
             local_id=capability_id,
         ),
-        values=CapabilitySecurityValues(privacy=privacy, integrity=integrity),
+        values=SecurityValues(privacy=privacy, integrity=integrity),
     )
     return FunctionCapability(
         CapabilityDescriptor(
@@ -143,7 +143,7 @@ def test_transient_selection_rejects_weak_privacy_without_poisoning_history(tmp_
             )
         )
         assert result.capability_id == "b-high"
-        assert result.output_integrity == SecurityLevel.LEVEL_4
+        assert result.output_integrity is None
         assert low.descriptor.security.security_id in {
             row["security_id"]
             for row in connection.execute("SELECT security_id FROM security_object").fetchall()
@@ -212,7 +212,7 @@ def test_durable_success_persists_accepted_transition_and_no_private_bytes(tmp_p
         completed = runtime.inspect(record.id)
         assert completed is not None and completed.status == "succeeded"
         assert completed.result is not None
-        assert completed.result.output_integrity == SecurityLevel.LEVEL_5
+        assert completed.result.output_integrity is None
         assert completed.attempts[0].security_transition_id is not None
         assert len(completed.spec.security.transitions) == 1
         assert (

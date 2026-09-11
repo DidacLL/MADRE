@@ -1,4 +1,4 @@
-"""Typed construction helpers for the frozen MADRE Security Algebra."""
+"""Typed construction helpers for the scoped MADRE Security Algebra."""
 
 from __future__ import annotations
 
@@ -8,14 +8,14 @@ from madre.security import (
     Disclosure,
     EffectExecution,
     EffectProfile,
-    EffectProfileSecurityValues,
     OperationReference,
     OrdinarySecurityLevel,
-    ParticipantSecurityValues,
+    SecurityDecision,
     SecurityHistory,
     SecurityObject,
     SecuritySubjectRef,
     SecurityTransition,
+    SecurityValues,
 )
 
 
@@ -25,9 +25,11 @@ def participant_security(
     subject_id: str,
     subject_kind: str,
     privacy: OrdinarySecurityLevel,
-    integrity: OrdinarySecurityLevel,
+    integrity: OrdinarySecurityLevel | None = None,
     publication_revision: str = "1",
     subject_revision: str = "1",
+    sensitivity: OrdinarySecurityLevel | None = None,
+    sensitivity_sources: tuple[str, ...] = (),
     binding_evidence: tuple[BindingEvidence, ...] = (),
 ) -> SecurityObject:
     if subject_kind not in {"module", "agent", "endpoint"}:
@@ -40,7 +42,8 @@ def participant_security(
             local_id=subject_id,
             subject_revision=subject_revision,
         ),
-        values=ParticipantSecurityValues(privacy=privacy, integrity=integrity),
+        values=SecurityValues(sensitivity=sensitivity, privacy=privacy, integrity=integrity),
+        sensitivity_sources=sensitivity_sources,
         binding_evidence=binding_evidence,
     )
 
@@ -52,7 +55,7 @@ def effect_profile(
     profile_id: str,
     risk: OrdinarySecurityLevel,
     autonomy: OrdinarySecurityLevel,
-    integrity: OrdinarySecurityLevel,
+    integrity: OrdinarySecurityLevel | None = None,
     privacy: OrdinarySecurityLevel | None = None,
     publication_revision: str = "1",
     operation_revision: str = "1",
@@ -74,7 +77,7 @@ def effect_profile(
             subject_revision=operation_revision,
             parent_local_id=operation_id,
         ),
-        values=EffectProfileSecurityValues(
+        values=SecurityValues(
             risk=risk,
             autonomy=autonomy,
             integrity=integrity,
@@ -126,3 +129,10 @@ def effect_transition(
             executor_security_ids=tuple(item.security_id for item in executors),
         ),
     )
+
+
+def feasibility(history: SecurityHistory, transition: SecurityTransition) -> SecurityDecision:
+    """Prospective disclosure/profile evaluation; no dispatch or permission token."""
+    from madre.security import DEFAULT_SECURITY_EVALUATOR
+
+    return DEFAULT_SECURITY_EVALUATOR.evaluate(history, transition)

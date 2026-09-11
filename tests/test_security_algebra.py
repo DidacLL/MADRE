@@ -1,548 +1,178 @@
-from __future__ import annotations
-
-from itertools import product
+"""Small discriminating cases for the scoped MADRE algebra."""
 
 import pytest
 from pydantic import ValidationError
 
 from madre.security import (
-    DEFAULT_SECURITY_EVALUATOR,
-    BindingEvidence,
-    CapabilitySecurityValues,
-    Disclosure,
-    MaterialSecurityValues,
-    ParticipantSecurityValues,
     SecurityDerivation,
     SecurityHistory,
-    SecurityLevel,
     SecurityObject,
     SecuritySubjectRef,
     SecurityTransition,
+    SecurityValues,
+    UserRelease,
 )
-from madre_sdk.security import effect_profile, effect_transition
-
-LEVELS = tuple(SecurityLevel(value) for value in range(1, 6))
-
-
-def material(
-    local_id: str,
-    *,
-    sensitivity: SecurityLevel,
-    integrity: SecurityLevel,
-    owner: str = "module.source",
-) -> SecurityObject:
-    return SecurityObject.issue(
-        subject_ref=SecuritySubjectRef(
-            owner_module_id=owner,
-            subject_kind="artifact",
-            publication_revision="1",
-            local_id=local_id,
-        ),
-        values=MaterialSecurityValues(sensitivity=sensitivity, integrity=integrity),
-    )
-
-
-def participant(
-    local_id: str,
-    *,
-    privacy: SecurityLevel,
-    integrity: SecurityLevel,
-    owner: str = "module.target",
-    kind: str = "module",
-) -> SecurityObject:
-    return SecurityObject.issue(
-        subject_ref=SecuritySubjectRef(
-            owner_module_id=owner,
-            subject_kind=kind,  # type: ignore[arg-type]
-            publication_revision="1",
-            local_id=local_id,
-        ),
-        values=ParticipantSecurityValues(privacy=privacy, integrity=integrity),
-    )
-
-
-def capability(
-    local_id: str,
-    *,
-    privacy: SecurityLevel,
-    integrity: SecurityLevel,
-) -> SecurityObject:
-    return SecurityObject.issue(
-        subject_ref=SecuritySubjectRef(
-            owner_module_id="madre.platform",
-            subject_kind="capability",
-            publication_revision="1",
-            local_id=local_id,
-        ),
-        values=CapabilitySecurityValues(privacy=privacy, integrity=integrity),
-    )
-
-
-@pytest.mark.parametrize(("sensitivity", "privacy"), tuple(product(LEVELS, LEVELS)))
-def test_disclosure_predicate_is_exact(
-    sensitivity: SecurityLevel,
-    privacy: SecurityLevel,
-) -> None:
-    secret = material("input", sensitivity=sensitivity, integrity=SecurityLevel.LEVEL_5)
-    path = participant("receiver", privacy=privacy, integrity=SecurityLevel.LEVEL_5)
-    transition = SecurityTransition.issue(
-        disclosures=(
-            Disclosure(
-                material_security_id=secret.security_id,
-                path_security_ids=(path.security_id,),
-            ),
-        )
-    )
-    decision = DEFAULT_SECURITY_EVALUATOR.evaluate(
-        SecurityHistory(objects=(secret, path)), transition
-    )
-    assert decision.admissible is (int(sensitivity) <= int(privacy))
-
-
-@pytest.mark.parametrize(
-    ("risk", "autonomy", "controller_integrity"), tuple(product(LEVELS, LEVELS, LEVELS))
+from madre_sdk import (
+    Artifact,
+    ContextBundle,
+    disclosure,
+    effect_profile,
+    effect_transition,
+    feasibility,
 )
-def test_control_predicate_is_exact(
-    risk: SecurityLevel,
-    autonomy: SecurityLevel,
-    controller_integrity: SecurityLevel,
-) -> None:
-    profile = effect_profile(
-        owner_module_id="module.effect",
-        operation_id="delete.resource",
-        profile_id="autonomous",
-        risk=risk,
-        autonomy=autonomy,
-        integrity=SecurityLevel.LEVEL_5,
-    )
-    controller = material(
-        "control",
-        sensitivity=SecurityLevel.LEVEL_1,
-        integrity=controller_integrity,
-    )
-    executor = participant(
-        "module.effect",
-        privacy=SecurityLevel.LEVEL_5,
-        integrity=SecurityLevel.LEVEL_5,
-        owner="module.effect",
-    )
-    transition = effect_transition(
-        profile=profile,
-        controllers=(controller,),
-        executors=(executor,),
-    )
-    decision = DEFAULT_SECURITY_EVALUATOR.evaluate(
-        SecurityHistory(objects=(profile.security, controller, executor)), transition
-    )
-    assert decision.admissible is (min(int(risk), int(autonomy)) <= int(controller_integrity))
 
 
-@pytest.mark.parametrize(("risk", "executor_integrity"), tuple(product(LEVELS, LEVELS)))
-def test_effect_execution_predicate_is_exact(
-    risk: SecurityLevel,
-    executor_integrity: SecurityLevel,
-) -> None:
-    profile = effect_profile(
-        owner_module_id="module.effect",
-        operation_id="write.resource",
-        profile_id="direct",
-        risk=risk,
-        autonomy=SecurityLevel.LEVEL_1,
-        integrity=SecurityLevel.LEVEL_5,
-    )
-    executor = participant(
-        "module.effect",
-        privacy=SecurityLevel.LEVEL_5,
-        integrity=executor_integrity,
-        owner="module.effect",
-    )
-    transition = effect_transition(profile=profile, controllers=(), executors=(executor,))
-    decision = DEFAULT_SECURITY_EVALUATOR.evaluate(
-        SecurityHistory(objects=(profile.security, executor)), transition
-    )
-    assert decision.admissible is (int(risk) <= int(executor_integrity))
-
-
-def test_direct_user_control_does_not_compensate_weak_executor() -> None:
-    profile = effect_profile(
-        owner_module_id="module.effect",
-        operation_id="delete.resource",
-        profile_id="direct",
-        risk=SecurityLevel.LEVEL_5,
-        autonomy=SecurityLevel.LEVEL_1,
-        integrity=SecurityLevel.LEVEL_5,
-    )
-    controller = material(
-        "exact-user-command",
-        sensitivity=SecurityLevel.LEVEL_1,
-        integrity=SecurityLevel.LEVEL_1,
-    )
-    executor = participant(
-        "module.effect",
-        privacy=SecurityLevel.LEVEL_5,
-        integrity=SecurityLevel.LEVEL_2,
-        owner="module.effect",
-    )
-    decision = DEFAULT_SECURITY_EVALUATOR.evaluate(
-        SecurityHistory(objects=(profile.security, controller, executor)),
-        effect_transition(
-            profile=profile,
-            controllers=(controller,),
-            executors=(executor,),
+def scope(name, *, sources=(), **values):
+    return SecurityObject.issue(
+        subject_ref=SecuritySubjectRef(
+            owner_module_id="m", subject_kind="module", publication_revision="1", local_id=name
         ),
+        values=SecurityValues(**values),
+        sensitivity_sources=sources,
     )
-    assert "control_integrity_below_demand" not in decision.failure_codes
-    assert "effect_integrity_below_risk" in decision.failure_codes
 
 
-def test_low_risk_autonomous_effect_can_use_low_integrity_control_and_executor() -> None:
-    profile = effect_profile(
-        owner_module_id="module.effect",
-        operation_id="harmless.effect",
-        profile_id="autonomous",
-        risk=SecurityLevel.LEVEL_1,
-        autonomy=SecurityLevel.LEVEL_5,
-        integrity=SecurityLevel.LEVEL_1,
-    )
-    controller = material(
-        "generated-control",
-        sensitivity=SecurityLevel.LEVEL_1,
-        integrity=SecurityLevel.LEVEL_1,
-    )
-    executor = participant(
-        "module.effect",
-        privacy=SecurityLevel.LEVEL_5,
-        integrity=SecurityLevel.LEVEL_1,
-        owner="module.effect",
-    )
-    decision = DEFAULT_SECURITY_EVALUATOR.evaluate(
-        SecurityHistory(objects=(profile.security, controller, executor)),
-        effect_transition(
-            profile=profile,
-            controllers=(controller,),
-            executors=(executor,),
-        ),
-    )
-    assert decision.admissible
+def test_narrow_module_surface_and_reachable_secret():
+    secret = scope("private", sensitivity=5)
+    arithmetic = scope("arithmetic", sensitivity=1)
+    observer = scope("local", privacy=3)
+    history = SecurityHistory(objects=(secret, arithmetic, observer))
+    assert feasibility(history, disclosure(arithmetic, observer)).admissible
+    false = scope("false-arithmetic", sensitivity=1, sources=(secret.security_id,))
+    decision = feasibility(history.extend(objects=(false,)), disclosure(false, observer))
+    assert "invalid_sensitivity_closure" in decision.failure_codes
 
 
-def test_publishing_profile_adds_independent_confidentiality_obligation() -> None:
-    secret = material(
-        "secret",
-        sensitivity=SecurityLevel.LEVEL_5,
-        integrity=SecurityLevel.LEVEL_5,
-    )
-    profile = effect_profile(
-        owner_module_id="module.publisher",
-        operation_id="publish",
-        profile_id="direct-public",
-        risk=SecurityLevel.LEVEL_5,
-        autonomy=SecurityLevel.LEVEL_1,
-        integrity=SecurityLevel.LEVEL_5,
-        privacy=SecurityLevel.LEVEL_1,
-        discloses_material=True,
-    )
-    executor = participant(
-        "module.publisher",
-        privacy=SecurityLevel.LEVEL_5,
-        integrity=SecurityLevel.LEVEL_5,
-        owner="module.publisher",
-    )
-    transition = effect_transition(
-        profile=profile,
-        controllers=(secret,),
-        executors=(executor,),
-        disclosures=(
-            Disclosure(
-                material_security_id=secret.security_id,
-                path_security_ids=(profile.security.security_id,),
-            ),
-        ),
-    )
-    decision = DEFAULT_SECURITY_EVALUATOR.evaluate(
-        SecurityHistory(objects=(secret, profile.security, executor)), transition
-    )
-    assert "confidentiality_capacity_below_sensitivity" in decision.failure_codes
-    assert "control_integrity_below_demand" not in decision.failure_codes
-    assert "effect_integrity_below_risk" not in decision.failure_codes
+def test_public_and_unknown_are_distinct_and_release_is_exact():
+    material = scope("state", sensitivity=2)
+    public = scope("public", privacy=1)
+    unknown = scope("cloud", privacy=2)
+    history = SecurityHistory(objects=(material, public, unknown))
+    public_t = disclosure(material, public)
+    assert not feasibility(history, public_t).admissible
+    assert feasibility(history, disclosure(material, unknown)).admissible
+    release = UserRelease(interaction=material.subject_ref, disclosure=public_t.disclosures[0])
+    carried = history.extend(releases=(release,))
+    assert feasibility(carried, public_t).admissible
+    changed = scope("state-revision", sensitivity=3)
+    assert not feasibility(
+        carried.extend(objects=(changed,)), disclosure(changed, public)
+    ).admissible
+    telemetry = scope("telemetry", privacy=1)
+    assert not feasibility(
+        carried.extend(objects=(telemetry,)), disclosure(material, public, telemetry)
+    ).admissible
+    assert SecurityHistory.model_validate_json(carried.model_dump_json()) == carried
 
 
-def test_unrelated_low_privacy_history_does_not_poison_transition() -> None:
-    secret = material(
-        "secret",
-        sensitivity=SecurityLevel.LEVEL_5,
-        integrity=SecurityLevel.LEVEL_5,
-    )
-    actual = participant(
-        "actual",
-        privacy=SecurityLevel.LEVEL_5,
-        integrity=SecurityLevel.LEVEL_5,
-    )
-    unrelated = participant(
-        "unrelated",
-        privacy=SecurityLevel.LEVEL_1,
-        integrity=SecurityLevel.LEVEL_1,
-    )
-    transition = SecurityTransition.issue(
-        disclosures=(
-            Disclosure(
-                material_security_id=secret.security_id,
-                path_security_ids=(actual.security_id,),
-            ),
+def test_profile_atomicity_and_executor_independence():
+    controller = scope("controller", integrity=1)
+    strong = scope("executor", integrity=5)
+    weak = scope("weak", integrity=1)
+    profiles = [
+        effect_profile(
+            owner_module_id="m", operation_id="op", profile_id=str(a), risk=r, autonomy=a
         )
-    )
-    decision = DEFAULT_SECURITY_EVALUATOR.evaluate(
-        SecurityHistory(objects=(secret, actual, unrelated)), transition
-    )
-    assert decision.admissible
+        for r, a in ((5, 1), (1, 5), (5, 5))
+    ]
+    history = SecurityHistory(objects=(controller, strong, weak, *(e.security for e in profiles)))
+    decisions = [
+        feasibility(
+            history, effect_transition(profile=e, controllers=(controller,), executors=(strong,))
+        )
+        for e in profiles
+    ]
+    assert [d.admissible for d in decisions] == [True, True, False]
+    assert max(d.effect.control_demand for d in decisions[:2]) == 1
+    direct = effect_transition(profile=profiles[0], controllers=(), executors=(weak,))
+    assert "effect_integrity_below_risk" in feasibility(history, direct).failure_codes
+    empty = effect_transition(profile=profiles[0], controllers=(), executors=())
+    assert not feasibility(history, empty).admissible
 
 
-def test_ordinary_derivation_cannot_raise_integrity() -> None:
-    source = material(
-        "source",
-        sensitivity=SecurityLevel.LEVEL_3,
-        integrity=SecurityLevel.LEVEL_1,
-    )
-    producer = participant(
-        "producer",
-        privacy=SecurityLevel.LEVEL_5,
-        integrity=SecurityLevel.LEVEL_5,
-    )
-    output = material(
-        "output",
-        sensitivity=SecurityLevel.LEVEL_2,
-        integrity=SecurityLevel.LEVEL_2,
-    )
-    relation = SecurityDerivation.issue(
+def test_history_does_not_replay_unrelated_numeric_branches():
+    secret = scope("secret", sensitivity=5)
+    public = scope("public", privacy=1)
+    arithmetic = scope("math", sensitivity=1)
+    old = disclosure(secret, public)
+    history = SecurityHistory(objects=(secret, public, arithmetic), transitions=(old,))
+    assert feasibility(history, disclosure(arithmetic, public)).admissible
+
+
+def test_ordinary_closure_and_explicit_transform_binding():
+    source = scope("source", sensitivity=5)
+    output = scope("output", sensitivity=2)
+    history = SecurityHistory(objects=(source, output))
+    ordinary = SecurityDerivation.issue(
         kind="ordinary",
         output_security_id=output.security_id,
         source_security_ids=(source.security_id,),
-        producer_security_ids=(producer.security_id,),
     )
-    decision = DEFAULT_SECURITY_EVALUATOR.evaluate(
-        SecurityHistory(objects=(source, producer, output), derivations=(relation,)),
-        SecurityTransition.issue(),
-    )
-    assert "invalid_derivation" in decision.failure_codes
-
-
-def test_validation_derivation_can_raise_integrity_on_validator_assurance() -> None:
-    source = material(
-        "source",
-        sensitivity=SecurityLevel.LEVEL_3,
-        integrity=SecurityLevel.LEVEL_1,
-    )
-    validator = participant(
-        "validator",
-        privacy=SecurityLevel.LEVEL_5,
-        integrity=SecurityLevel.LEVEL_5,
-    )
-    output = material(
-        "validated",
-        sensitivity=SecurityLevel.LEVEL_3,
-        integrity=SecurityLevel.LEVEL_5,
-    )
-    relation = SecurityDerivation.issue(
-        kind="validation",
+    assert not feasibility(
+        history.extend(derivations=(ordinary,)), SecurityTransition.issue()
+    ).admissible
+    transform = SecurityDerivation.issue(
+        kind="transform",
         output_security_id=output.security_id,
         source_security_ids=(source.security_id,),
-        validator_security_ids=(validator.security_id,),
+        procedure=source.subject_ref,
     )
-    decision = DEFAULT_SECURITY_EVALUATOR.evaluate(
-        SecurityHistory(objects=(source, validator, output), derivations=(relation,)),
-        SecurityTransition.issue(),
-    )
-    assert decision.admissible
+    assert feasibility(
+        history.extend(derivations=(transform,)), SecurityTransition.issue()
+    ).admissible
+    altered = transform.model_copy(update={"output_security_id": source.security_id})
+    assert not feasibility(
+        history.extend(derivations=(altered,)), SecurityTransition.issue()
+    ).admissible
 
 
-def test_minimized_representation_uses_its_own_sensitivity() -> None:
-    source = material(
-        "source-secret",
-        sensitivity=SecurityLevel.LEVEL_5,
-        integrity=SecurityLevel.LEVEL_5,
+def test_structured_selection_has_no_generic_integrity():
+    public = Artifact.create(
+        owner_module_id="m", artifact_id="public", payload="hello", sensitivity=1
     )
-    producer = participant(
-        "minimizer",
-        privacy=SecurityLevel.LEVEL_5,
-        integrity=SecurityLevel.LEVEL_5,
+    secret = Artifact.create(
+        owner_module_id="m", artifact_id="secret", payload="private", sensitivity=5
     )
-    minimized = material(
-        "minimized",
-        sensitivity=SecurityLevel.LEVEL_2,
-        integrity=SecurityLevel.LEVEL_5,
+    public = public.model_copy(
+        update={"security_history": public.security_history.merge(secret.security_history)}
     )
-    receiver = participant(
-        "receiver",
-        privacy=SecurityLevel.LEVEL_3,
-        integrity=SecurityLevel.LEVEL_5,
+    bundle = ContextBundle.select(
+        owner_module_id="m", bundle_id="selected", purpose="display", members=(public,)
     )
-    relation = SecurityDerivation.issue(
-        kind="ordinary",
-        output_security_id=minimized.security_id,
-        source_security_ids=(source.security_id,),
-        producer_security_ids=(producer.security_id,),
-    )
-    transition = SecurityTransition.issue(
-        disclosures=(
-            Disclosure(
-                material_security_id=minimized.security_id,
-                path_security_ids=(receiver.security_id,),
-            ),
-        )
-    )
-    decision = DEFAULT_SECURITY_EVALUATOR.evaluate(
-        SecurityHistory(
-            objects=(source, producer, minimized, receiver),
-            derivations=(relation,),
-        ),
-        transition,
-    )
-    assert decision.admissible
+    assert bundle.payload == {"public": "hello"}
+    assert bundle.security.values.sensitivity == 1
+    assert bundle.security.values.integrity is None
 
 
-def test_security_history_is_idempotent_for_identical_evidence() -> None:
-    subject = participant(
-        "module.target",
-        privacy=SecurityLevel.LEVEL_5,
-        integrity=SecurityLevel.LEVEL_5,
-    )
-    transition = SecurityTransition.issue()
-    history = SecurityHistory(
-        objects=(subject, subject),
-        transitions=(transition, transition),
-    )
-    assert history.objects == (subject,)
-    assert history.transitions == (transition,)
-
-
-def test_conflicting_same_security_id_is_structural_failure() -> None:
-    subject = participant(
-        "module.target",
-        privacy=SecurityLevel.LEVEL_5,
-        integrity=SecurityLevel.LEVEL_5,
-    )
-    conflicting = subject.model_copy(
-        update={
-            "values": ParticipantSecurityValues(
-                privacy=SecurityLevel.LEVEL_1, integrity=SecurityLevel.LEVEL_1
-            )
-        }
-    )
-    decision = DEFAULT_SECURITY_EVALUATOR.evaluate(
-        SecurityHistory(objects=(subject, conflicting)), SecurityTransition.issue()
-    )
-    assert "security_id_conflict" in decision.failure_codes
-    assert "invalid_security_binding" in decision.failure_codes
-
-
-def test_same_local_identity_in_different_modules_has_distinct_security_ids() -> None:
-    left = participant(
-        "shared.agent",
-        privacy=SecurityLevel.LEVEL_5,
-        integrity=SecurityLevel.LEVEL_5,
-        owner="module.left",
-        kind="agent",
-    )
-    right = participant(
-        "shared.agent",
-        privacy=SecurityLevel.LEVEL_5,
-        integrity=SecurityLevel.LEVEL_5,
-        owner="module.right",
-        kind="agent",
-    )
-    assert left.security_id != right.security_id
-
-
-def test_missing_role_value_is_structural_failure_not_numeric_default() -> None:
-    secret = material(
-        "secret",
-        sensitivity=SecurityLevel.LEVEL_3,
-        integrity=SecurityLevel.LEVEL_5,
-    )
-    incomplete = SecurityObject.issue(
-        subject_ref=SecuritySubjectRef(
-            owner_module_id="module.target",
-            subject_kind="module",
-            publication_revision="1",
-            local_id="module.target",
-        ),
-        values=ParticipantSecurityValues(privacy=None, integrity=SecurityLevel.LEVEL_5),
-    )
-    transition = SecurityTransition.issue(
-        disclosures=(
-            Disclosure(
-                material_security_id=secret.security_id,
-                path_security_ids=(incomplete.security_id,),
-            ),
-        )
-    )
-    decision = DEFAULT_SECURITY_EVALUATOR.evaluate(
-        SecurityHistory(objects=(secret, incomplete)), transition
-    )
-    assert "missing_security_value" in decision.failure_codes
-
-
-def test_system_reserved_cannot_be_used_as_ordinary_value() -> None:
+def test_levels_and_paired_profile_values():
     with pytest.raises(ValidationError):
-        MaterialSecurityValues(
-            sensitivity=SecurityLevel.SYSTEM_RESERVED,
-            integrity=SecurityLevel.LEVEL_1,
-        )
+        SecurityValues(sensitivity=0)
+    with pytest.raises(ValidationError):
+        scope("not-a-profile", risk=5, autonomy=1)
 
 
-def test_binding_evidence_is_order_independent_and_duplicate_keys_are_rejected() -> None:
-    subject_ref = SecuritySubjectRef(
-        owner_module_id="module.target",
-        subject_kind="module",
-        publication_revision="1",
-        local_id="module.target",
-    )
-    values = ParticipantSecurityValues(
-        privacy=SecurityLevel.LEVEL_5,
-        integrity=SecurityLevel.LEVEL_5,
-    )
-    a = BindingEvidence(key="model", value="1")
-    b = BindingEvidence(key="provider_id", value="2")
-    left = SecurityObject.issue(
-        subject_ref=subject_ref,
-        values=values,
-        binding_evidence=(a, b),
-    )
-    right = SecurityObject.issue(
-        subject_ref=subject_ref,
-        values=values,
-        binding_evidence=(b, a),
-    )
-    assert left.security_id == right.security_id
-    with pytest.raises(ValueError):
-        SecurityObject.issue(
-            subject_ref=subject_ref,
-            values=values,
-            binding_evidence=(a, BindingEvidence(key="model", value="different")),
-        )
+def test_remote_capability_cannot_claim_vendor_privacy():
+    from madre.capabilities import CapabilityDescriptor, CapabilityRegistry
 
+    class Adapter:
+        def __init__(self, privacy):
+            security = SecurityObject.issue(
+                subject_ref=SecuritySubjectRef(
+                    owner_module_id="provider",
+                    subject_kind="capability",
+                    publication_revision="1",
+                    local_id="cloud",
+                ),
+                values=SecurityValues(privacy=privacy),
+            )
+            self.descriptor = CapabilityDescriptor(
+                id="cloud",
+                specialization="chat",
+                modality="text",
+                execution_boundary="remote",
+                security=security,
+            )
 
-def test_security_id_possession_does_not_grant_authority() -> None:
-    subject = participant(
-        "module.target",
-        privacy=SecurityLevel.LEVEL_1,
-        integrity=SecurityLevel.LEVEL_1,
-    )
-    assert subject.security_id
-    secret = material(
-        "secret",
-        sensitivity=SecurityLevel.LEVEL_5,
-        integrity=SecurityLevel.LEVEL_5,
-    )
-    transition = SecurityTransition.issue(
-        disclosures=(
-            Disclosure(
-                material_security_id=secret.security_id,
-                path_security_ids=(subject.security_id,),
-            ),
-        )
-    )
-    decision = DEFAULT_SECURITY_EVALUATOR.evaluate(
-        SecurityHistory(objects=(secret, subject)), transition
-    )
-    assert not decision.admissible
+    CapabilityRegistry().register(Adapter(2))
+    with pytest.raises(ValueError, match="UNKNOWN"):
+        CapabilityRegistry().register(Adapter(5))
