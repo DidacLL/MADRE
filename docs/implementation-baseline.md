@@ -14,7 +14,70 @@ Sensitivity sources. EffectProfiles pair Risk/Autonomy; explicit executors suppl
 execution Integrity. UserRelease carries an exact disclosure/effect route and user
 interaction revision. SDK selection retains exact members; semantic transforms and
 validation bind a procedure revision. Generated inference output establishes no
-Integrity warrant. Broad validation of this replacement remains outstanding. Narrow local verification passed 67 focused algebra, SDK, broker, execution-binding and selected durable/retry cases, plus type checks on the five changed algebra/material/runtime source owners. This is controlled execution evidence, not live-provider acceptance.
+Integrity warrant.
+
+The next active stage is **an assembled, installable local MADRE usage path**.
+Complete that stage before expanding the algebra, Agent ontology or provider set.
+The product contract remains `MADRE.md`; the criteria below apply existing product
+responsibilities to the first local deployment, rather than defining new features.
+
+### Confirmed assembly gaps
+
+- `madre.cli` launches `service.create_app`, which constructs storage, registry,
+  Capability registry and WorkRuntime. It does not assemble Broker, attach Module
+  endpoints/resolvers, instantiate CORE or provide CORE interaction.
+- HTTP manifest registration publishes descriptors; it does not make a Module's
+  private execution or material resolver available. Durable submission without a
+  resolver can end in `material_unavailable`.
+- SDK `MaterialRepository` is in-memory. Work metadata survives restart, but a
+  usable restart journey also needs Module-owned material retention/reconstruction
+  and resolver reattachment. Never solve this by persisting private payloads in Kernel.
+- CORE currently assigns S5 to every interaction context/result. The generic local
+  example now declares P3, so this is not an immediately usable CORE route. Establish
+  exact bounded source sensitivity and real participation containment in the next
+  slice; do not fabricate stronger Privacy or silently lower sensitive material.
+- A built wheel and deterministic tests establish foundation consistency, not
+  installed real-inference or Owner-machine acceptance.
+
+### Next coherent behavior
+
+Provide a supported local composition/launch path that wires the existing Kernel,
+Broker, shipped CORE and a small independent SDK Module into a real user operation.
+Prefer the simplest composition supported by the existing interfaces. Separate
+process transport is not a prerequisite unless the concrete integration requires it.
+Keep composition in the host/application layer; Kernel must not import CORE/SDK or
+special-case CORE identity. A small CLI is sufficient to exercise initial interaction;
+no dashboard, hosted service, universal Agent engine or installer framework is implied.
+
+Use an actual configured local inference mechanism and correctly scoped material.
+Expose enough configuration and failure reporting for an owner to reproduce the run.
+A missing model, unavailable resolver or denied disclosure must remain an accurate
+failure, never a canned answer or inflated security declaration.
+
+### First local deployment completion criteria
+
+1. A clean environment installs the built distribution and starts the supported
+   local entrypoint using documented configuration, without checkout-private imports.
+2. An ordinary user interaction reaches shipped CORE through the public SDK/broker
+   path, performs real local inference and returns a result or accurate failure.
+3. An independent SDK Module can use the same shared runtime directly and exercise
+   one real bounded Module-owned Operation through its immutable EffectProfile.
+4. Delayed work survives process restart with Module-owned material reacquisition,
+   reattached resolver and inspectable execution/result-delivery evidence. Results
+   the Module needs to retain are persisted by that Module. Kernel result loss keeps
+   its documented semantics.
+5. The actual route demonstrates admissible execution plus a meaningful denial,
+   with exact release/derivation handling when required by that route. CORE has no bypass.
+6. Setup, start, stop, restart and one complete usage journey are reproducible from
+   README on the Owner's local target. Run relevant regression and package checks;
+   record real-machine evidence separately from fixtures and GitHub checks.
+
+Implement successive coherent behaviors toward those criteria. Do not call a wheel,
+mock-only demonstration or green CI a deployed first version. Remote providers,
+elaborate UI, planner/memory frameworks and broader developer tooling are subsequent
+work unless a concrete acceptance path requires them. Public release publication,
+default-branch integration and changes to the Owner's installed environment follow
+explicit Owner authority; preparing reviewable artifacts does not require a new ceremony.
 
 ### Kernel execution and brokering
 
@@ -101,9 +164,19 @@ Tests enforce that:
 - brokered security history propagates through nested CORE inference/delegation/durable work;
 - legacy Trust/Isolation/IntendedUse/CompatibilitySecurityEvaluator symbols are absent from the shipped security implementation.
 
-## Validation handoff
+## Validation evidence and commands
 
-Run from this checkout with its `src` on PYTHONPATH:
+The Owner supplied the follow-up validation report for `a7cf5b7`:
+88 tests passed; mypy passed for 26 source files; Ruff lint and formatting passed;
+sdist and wheel built after locked environment synchronization. Regression additions
+cover release/profile binding, durable release evidence, retry-projection invariance,
+nested Sensitivity closure, correlation transforms, paired profiles, independent
+disclosures and public SDK construction. No production-code correction was needed
+in that follow-up. This report establishes deterministic/build validation, not live
+provider or installed local product acceptance. The development-readiness cleanup
+verified the published head and entrypoint gaps without rerunning that full suite.
+
+Use these commands from the current checkout when implementation changes justify them:
 
 ```text
 uv sync --locked
@@ -114,11 +187,14 @@ uv run --locked mypy
 uv build --python .venv --no-build-isolation
 ```
 
-Old validation counts predate the algebra replacement and do not establish current
-acceptance. Narrow replacement evidence is reported by the implementing task.
+Keep validation proportional to each slice; run full regression/package checks at
+integration/release boundaries. Do not repeatedly spend local execution time on
+unchanged evidence. GitHub agents can handle repository edits and deterministic
+checks; actual local inference, process recovery and installed usability require
+execution on an appropriate machine.
 
 ## Structurally outside Kernel
 
 Kernel still does not own Agent private reasoning/state/memory, semantic WorkPlans, Workflow/Skill execution, conversation state, interaction strategy, semantic fallback routing, prompt construction, user profiles, generated-result meaning, material classification/validation, domain mutations, third-party valuation, identity/authentication architecture, ACLs, policy DSLs, generic shell, or unrestricted Internet authority.
 
-The next product stage is intentionally not selected by this migration. Further CORE, provider, valuation, developer-tooling, or agent-ontology work remains separate Owner-directed work.
+The active next stage is the local assembly and deployment path above. Preserve Module/Kernel ownership while choosing concrete implementation mechanics from working evidence.

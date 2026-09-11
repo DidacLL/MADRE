@@ -13,6 +13,9 @@ quality_tier = "standard"
 reasoning_efforts = ["low", "medium", "high"]
 paid = false
 heavyweight = true
-privacy = 5
-integrity = 5
+# This example assumes inference stays in the user's local MADRE environment.
+# Local transport alone does not establish MODULE_PRIVATE or SECRET containment.
+privacy = 3
+# Ordinary inference does not require a generic Integrity warrant.
+# Declare Integrity only for an actual control/execution responsibility.
 # api_key_env = "OPENAI_API_KEY"  # optional for providers that require it

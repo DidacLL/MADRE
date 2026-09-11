@@ -45,13 +45,13 @@ Facets follow exact scopes and roles through `SecurityValues`. Sensitivity can a
 
 An SDK `Operation` owns one or more immutable `EffectProfile`s. Each profile pairs `Risk` and `Autonomy`, with optional material-exposure `Privacy`. Actual executors separately declare Integrity. Invocation selects a profile identity rather than supplying these values ad hoc.
 
-`MaterialRepository.retain(...)` produces a `MaterialHandle`; Kernel resolves that handle only when a durable attempt is ready and after candidate mechanism security evaluation.
+`MaterialRepository.retain(...)` produces a `MaterialHandle`; Kernel resolves that handle only when a durable attempt is ready and after candidate mechanism security evaluation. The supplied repository is in-memory. Recovery across a complete host restart requires the owning Module to retain/reconstruct its material and reattach its resolver; Kernel queue durability alone does not provide that.
 
 Agentless/UI-less Modules can use `CoreDelegate` with a configured `CoreSelection`. Selecting another CORE-capable Module changes ordinary Module configuration only; Kernel contains no special meaning for the shipped CORE module name.
 
 ## Local HTTP runtime
 
-Copy `madre.example.toml` to `madre.toml`, configure a Capability endpoint/model plus explicit `privacy` and `integrity` levels, then run:
+Copy `madre.example.toml` to `madre.toml`, configure a Capability endpoint/model and its actual participation `privacy` (declare `integrity` only when its role requires it), then run:
 
 ```bash
 uv run madre --config madre.toml
@@ -59,7 +59,7 @@ uv run madre --config madre.toml
 
 The current HTTP transport exposes Module-manifest registration, generic transient inference, durable work submission/inspection/cancellation/retry and one-shot durable result consumption. It remains a transport for the local owner-controlled installation, not an independent authorization layer or the architecture of the SDK.
 
-Native in-process Module integrations can additionally bind material resolvers and Agent/Operation endpoints through the public protocols used by the SDK. The HTTP transport is not expanded into private content storage merely to make durable execution convenient.
+Native in-process Module integrations can additionally bind material resolvers and Agent/Operation endpoints through the public protocols used by the SDK. The current launcher does not assemble those integrations or start a CORE interaction surface. Module-manifest registration alone does not attach executable endpoints or a material resolver. The HTTP transport is not expanded into private content storage merely to make durable execution convenient.
 
 ## Privacy behavior
 
@@ -68,3 +68,15 @@ Durable runtime storage contains execution intent, `MaterialHandle` metadata, di
 Transient inference input/result bytes are not persisted. Durable produced result bytes live only in process memory until consumed; restart before consumption marks delivery evidence as `lost`.
 
 See `docs/architecture/MADRE-execution-contract.md` for canonical execution semantics, `docs/architecture/MADRE-security-algebra.md` for the security model and `docs/implementation-baseline.md` for current executable truth.
+
+## First local release work
+
+The current distribution is a validated runtime/SDK foundation, not yet an assembled
+end-user installation. The active stage and concrete completion criteria are in
+[`docs/implementation-baseline.md`](docs/implementation-baseline.md).
+
+The example local inference participation is P3. The current CORE interaction code
+classifies its contexts as S5, so it cannot use that route without appropriate
+bounded material construction/explicit disclosure evidence. Do not raise the
+Capability declaration to P5 merely to get a demonstration working. A local URL
+alone establishes neither SECRET containment nor an Integrity warrant.

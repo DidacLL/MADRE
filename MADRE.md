@@ -107,11 +107,13 @@ Restart and retry recover execution intent and reacquire material from the Modul
 
 ### 4. Kernel treats payload bytes as transient opaque material
 
-MADRE may persist public descriptors, execution/mechanism metadata, work/attempt lifecycle state, scheduling/resource evidence, material/output digests, security facts/decisions, failure/delivery evidence and opaque coordination/correlation values.
+Kernel may persist public descriptors, execution/mechanism metadata, work/attempt lifecycle state, scheduling/resource evidence, material/output digests, security facts/decisions, failure/delivery evidence and opaque coordination/correlation values.
 
-MADRE does not durably persist prompts, conversation/private/retrieved context, private documents, Agent state, semantic WorkPlans, model answers/generated content, application history or domain records.
+Kernel does not durably persist prompts, conversation/private/retrieved context, private documents, Agent state, semantic WorkPlans, model answers/generated content, application history or domain records.
 
 Kernel does not derive semantic policy, intent, truth or routing meaning from prompt/output bytes.
+
+Modules, including the shipped CORE Module, may persist their own private material and results according to their semantics. Shipping those Modules with MADRE does not transfer that persistence responsibility into Kernel.
 
 ### 5. Modules request execution properties; Kernel selects physical mechanisms
 
