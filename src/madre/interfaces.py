@@ -1,4 +1,4 @@
-"""Interface-segregated Module-facing contracts for the MADRE SDK."""
+"""Runtime ports kept separate from declarative SDK definitions."""
 
 from __future__ import annotations
 
@@ -6,37 +6,18 @@ from typing import Protocol
 
 from pydantic import JsonValue
 
-from madre.contracts import (
-    MaterialHandle,
-    TransientInferenceRequest,
-    TransientInferenceResult,
-    TransientMaterial,
-    WorkRecord,
-    WorkRetryRequest,
-    WorkSubmission,
-)
-from madre.registry import (
-    AgentDescriptor,
-    ModuleManifest,
-    OperationDescriptor,
-    SkillDescriptor,
-    WorkflowDescriptor,
-)
-from madre.security import (
-    ExecutionBoundary,
-    InvocationContext,
-    OperationUse,
-    SecurityEvidence,
-    SecurityObject,
-)
+from madre.contracts import WorkRecord, WorkRetryRequest, WorkSubmission
+from madre_sdk.execution import ExecutionRequest
+from madre_sdk.material import Material, MaterialHandle
+from madre_sdk.semantic import ModuleDefinition
 
 
 class ModuleRegistration(Protocol):
-    def register(self, manifest: ModuleManifest) -> None: ...
+    def register(self, definition: ModuleDefinition) -> None: ...
 
 
-class TransientInference(Protocol):
-    async def infer(self, request: TransientInferenceRequest) -> TransientInferenceResult: ...
+class TransientExecution(Protocol):
+    async def execute(self, request: ExecutionRequest) -> Material[JsonValue]: ...
 
 
 class DurableWorkSubmission(Protocol):
@@ -50,7 +31,7 @@ class WorkInspection(Protocol):
 
 
 class WorkResultAccess(Protocol):
-    def consume_result(self, work_id: str) -> JsonValue: ...
+    def consume_result(self, work_id: str) -> Material[JsonValue]: ...
 
     async def retry(
         self, work_id: str, request: WorkRetryRequest, *, idempotency_key: str
@@ -59,80 +40,5 @@ class WorkResultAccess(Protocol):
     async def cancel(self, work_id: str) -> WorkRecord: ...
 
 
-class MaterialResolver(Protocol):
-    async def resolve(self, handle: MaterialHandle) -> TransientMaterial | None: ...
-
-
-class MaterialResolutionRegistration(Protocol):
-    def register_material_resolver(self, originator: str, resolver: MaterialResolver) -> None: ...
-
-
-class Discovery(Protocol):
-    def list_agents(self) -> tuple[AgentDescriptor, ...]: ...
-    def list_skills(self) -> tuple[SkillDescriptor, ...]: ...
-    def list_workflows(self) -> tuple[WorkflowDescriptor, ...]: ...
-    def list_operations(self) -> tuple[OperationDescriptor, ...]: ...
-
-
-class AgentEndpoint(Protocol):
-    @property
-    def boundary(self) -> ExecutionBoundary: ...
-
-    @property
-    def security(self) -> SecurityObject: ...
-
-    async def invoke_agent(
-        self,
-        agent_id: str,
-        invocation: InvocationContext,
-        evidence: SecurityEvidence,
-        material: TransientMaterial,
-    ) -> TransientMaterial: ...
-
-
-class OperationEndpoint(Protocol):
-    @property
-    def boundary(self) -> ExecutionBoundary: ...
-
-    @property
-    def security(self) -> SecurityObject: ...
-
-    async def invoke_operation(
-        self,
-        operation_id: str,
-        effect_profile_id: str,
-        invocation: InvocationContext,
-        evidence: SecurityEvidence,
-        material: TransientMaterial,
-    ) -> TransientMaterial: ...
-
-
-class AgentEndpointRegistration(Protocol):
-    def attach_agent_endpoint(self, module_id: str, endpoint: AgentEndpoint) -> None: ...
-
-
-class OperationEndpointRegistration(Protocol):
-    def attach_operation_endpoint(self, module_id: str, endpoint: OperationEndpoint) -> None: ...
-
-
-class AgentBrokering(Protocol):
-    async def invoke_agent(
-        self,
-        requester: InvocationContext,
-        evidence: SecurityEvidence,
-        target_module_id: str,
-        agent_id: str,
-        material: TransientMaterial,
-    ) -> TransientMaterial: ...
-
-
-class OperationBrokering(Protocol):
-    async def invoke_operation(
-        self,
-        requester: InvocationContext,
-        evidence: SecurityEvidence,
-        target_module_id: str,
-        operation_id: str,
-        use: OperationUse,
-        material: TransientMaterial,
-    ) -> TransientMaterial: ...
+class MaterialResolution(Protocol):
+    async def resolve(self, handle: MaterialHandle) -> Material[JsonValue] | None: ...

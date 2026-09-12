@@ -1,10 +1,8 @@
-"""Deterministic inference and durable work using relation-local security composition."""
+"""Kernel execution: physical mechanism selection, lifecycle, and delivery."""
 
 from __future__ import annotations
 
 import asyncio
-import hashlib
-import json
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -13,29 +11,12 @@ from uuid import uuid4
 from pydantic import JsonValue
 
 from madre.capabilities import CapabilityAdapter, CapabilityError, CapabilityRegistry
-from madre.contracts import (
-    TransientInferenceRequest,
-    TransientInferenceResult,
-    TransientMaterial,
-    WorkFailure,
-    WorkRecord,
-    WorkRetryRequest,
-    WorkSpec,
-    WorkSubmission,
-)
-from madre.interfaces import MaterialResolver
-from madre.security import DisclosureNormalForm, SecurityEvidence, SecurityObject
+from madre.contracts import WorkFailure, WorkRecord, WorkRetryRequest, WorkSpec, WorkSubmission
+from madre.interfaces import MaterialResolution
 from madre.storage import PlatformStore, utc_now
-
-
-def content_digest(payload: JsonValue) -> str:
-    return hashlib.sha256(
-        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
-    ).hexdigest()
-
-
-def content_size(payload: JsonValue) -> int:
-    return len(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode())
+from madre_sdk.execution import ExecutionRequest
+from madre_sdk.material import Material
+from madre_sdk.security import Disclosure, SecurityMismatch
 
 
 class IdempotencyConflict(RuntimeError):
@@ -62,100 +43,79 @@ class ResultLost(ResultUnavailable):
     pass
 
 
-class TransientInferenceError(RuntimeError):
-    def __init__(self, code: str) -> None:
-        self.code = code
-        super().__init__(code)
+class ExecutionUnavailable(RuntimeError):
+    pass
 
 
-class WorkRuntime:
+class Kernel:
     def __init__(
         self,
-        store: PlatformStore,
         capabilities: CapabilityRegistry,
+        store: PlatformStore | None = None,
         *,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
-        self.store = store
         self.capabilities = capabilities
+        self.store = store
         self._clock = clock or utc_now
         self._schedule_changed = asyncio.Event()
         self._heavyweight_local = asyncio.Lock()
-        self._results: dict[str, JsonValue] = {}
-        self._resolvers: dict[str, MaterialResolver] = {}
-        self.store.fail_interrupted_attempts(self._clock())
-        self.store.mark_unconsumed_results_lost()
+        self._results: dict[str, Material[JsonValue]] = {}
+        self._resolvers: dict[str, MaterialResolution] = {}
+        if store is not None:
+            store.fail_interrupted_attempts(self._clock())
+            store.mark_unconsumed_results_lost()
 
-    def register_material_resolver(self, originator: str, resolver: MaterialResolver) -> None:
-        if not originator:
-            raise ValueError("originator must not be empty")
-        self._resolvers[originator] = resolver
+    def register_material_resolver(self, module_id: str, resolver: MaterialResolution) -> None:
+        if not module_id:
+            raise ValueError("Module identity must not be empty")
+        self._resolvers[module_id] = resolver
 
-    async def infer(self, request: TransientInferenceRequest) -> TransientInferenceResult:
-        self._verify_transient_material(request.material)
-        crossing_id = uuid4().hex
-        candidates = self.capabilities.candidates(request.inference)
-        selection = self._select_admissible_capability(
-            crossing_id=crossing_id,
-            crossing_kind="transient-capability-candidate",
-            source=request.material.security,
-            candidates=candidates,
-            originator=request.originator,
+    async def execute(self, request: ExecutionRequest) -> Material[JsonValue]:
+        adapter = self.capabilities.select(request.capability)
+        if adapter is None:
+            raise ExecutionUnavailable("no physical Capability matches the request")
+
+        # This is ordinary algebraic construction. There is no evaluator, candidate
+        # decision, persisted relation, exception, or historical operand.
+        Disclosure(
+            sources=request.material.surface,
+            observers=adapter.definition.security,
         )
-        if selection is None:
-            raise TransientInferenceError("no_capability" if not candidates else "security_denied")
-        adapter, current_facts, _ = selection
-        descriptor = adapter.descriptor
+
         try:
             async with self._capability_slot(adapter):
-                result = await adapter.execute(request.material.payload, request.constraints)
-        except CapabilityError as exc:
-            raise TransientInferenceError(exc.code or "capability_error") from exc
+                payload = await adapter.execute(request.material.payload, request.constraints)
+        except CapabilityError:
+            raise
         except Exception as exc:
-            raise TransientInferenceError("internal_error") from exc
+            raise CapabilityError("internal_error") from exc
 
-        return TransientInferenceResult(
-            payload=result,
-            capability_id=descriptor.id,
-            provider_id=descriptor.provider_id,
-            model_id=descriptor.model_id,
-            execution_boundary=descriptor.execution_boundary,
-            output_digest=content_digest(result),
-            output_size=content_size(result),
-            producer_security_ids=(descriptor.security.security_id,),
-            source_security_ids=(request.material.security.security_id,),
-            evidence=current_facts,
+        return Material[JsonValue](
+            identity=request.output.identity,
+            contract=request.output.contract,
+            payload=payload,
+            security=request.output.security,
         )
 
     async def submit(
         self, submission: WorkSubmission, *, idempotency_key: str | None = None
     ) -> WorkRecord:
-        handle = submission.material
-        current_facts = SecurityEvidence(objects=(*submission.evidence.objects, handle.security))
-        spec = WorkSpec(
-            originator=submission.originator,
-            evidence=current_facts,
-            inference=submission.inference,
-            material=handle,
-            eligible_at=submission.eligible_at,
-            priority=submission.priority,
-            constraints=submission.constraints,
-            correlation=submission.correlation,
-        )
+        store = self._require_store()
+        spec = WorkSpec(**submission.model_dump())
         key = self._idempotency_key(idempotency_key)
         if key is not None:
-            existing = self.store.get_by_idempotency_key(spec.originator, key)
+            existing = store.get_by_idempotency_key(spec.originator.owner, key)
             if existing is not None:
                 if existing.spec != spec:
                     raise IdempotencyConflict("idempotency key refers to different work")
                 return existing
 
         work_id = uuid4().hex
-        accepted_at = self._clock()
-        created = self.store.create(work_id, spec, accepted_at, idempotency_key=key)
+        created = store.create(work_id, spec, self._clock(), idempotency_key=key)
         if not created:
             assert key is not None
-            existing = self.store.get_by_idempotency_key(spec.originator, key)
+            existing = store.get_by_idempotency_key(spec.originator.owner, key)
             if existing is None:
                 raise RuntimeError("idempotent work disappeared")
             if existing.spec != spec:
@@ -165,17 +125,19 @@ class WorkRuntime:
         return self._require(work_id)
 
     async def run_eligible(self) -> int:
+        store = self._require_store()
         executed = 0
-        while work_id := self.store.next_eligible(self._clock()):
-            await self._execute(work_id)
+        while work_id := store.next_eligible(self._clock()):
+            await self._execute_durable(work_id)
             executed += 1
         return executed
 
     async def run_scheduler(self) -> None:
+        store = self._require_store()
         while True:
             self._schedule_changed.clear()
             await self.run_eligible()
-            next_eligibility = self.store.next_eligibility()
+            next_eligibility = store.next_eligibility()
             if next_eligibility is None:
                 await self._schedule_changed.wait()
                 continue
@@ -194,9 +156,10 @@ class WorkRuntime:
         *,
         idempotency_key: str,
     ) -> WorkRecord:
+        store = self._require_store()
         key = self._idempotency_key(idempotency_key)
         assert key is not None
-        prior = self.store.retry_policy_by_key(work_id, key)
+        prior = store.retry_policy_by_key(work_id, key)
         if prior is not None:
             if prior != request.allow_unknown_outcome:
                 raise RetryConflict("retry idempotency key has different policy")
@@ -212,19 +175,17 @@ class WorkRuntime:
             and not request.allow_unknown_outcome
         ):
             raise RetryConflict("interrupted work requires allow_unknown_outcome=true")
-        if (
-            self.store.requeue_failed(work_id, key, request.allow_unknown_outcome, self._clock())
-            is None
-        ):
+        if store.requeue_failed(work_id, key, request.allow_unknown_outcome, self._clock()) is None:
             raise RetryConflict("work is no longer failed")
         self._schedule_changed.set()
         return self._require(work_id)
 
     async def cancel(self, work_id: str) -> WorkRecord:
+        store = self._require_store()
         record = self._require(work_id)
         if record.cancellation is not None:
             return record
-        disposition = self.store.request_cancellation(work_id, self._clock())
+        disposition = store.request_cancellation(work_id, self._clock())
         if disposition == "terminal":
             raise CancellationConflict("terminal work cannot be cancelled")
         if disposition is None:
@@ -233,9 +194,10 @@ class WorkRuntime:
         return self._require(work_id)
 
     def inspect(self, work_id: str) -> WorkRecord | None:
-        return self.store.get(work_id)
+        return self._require_store().get(work_id)
 
-    def consume_result(self, work_id: str) -> JsonValue:
+    def consume_result(self, work_id: str) -> Material[JsonValue]:
+        store = self._require_store()
         record = self._require(work_id)
         if record.result is None:
             raise ResultUnavailable("work has no produced result")
@@ -244,142 +206,86 @@ class WorkRuntime:
         if record.result.delivery_status == "consumed":
             raise ResultUnavailable("result content was already consumed")
         if work_id not in self._results:
-            self.store.mark_result_lost(work_id)
+            store.mark_result_lost(work_id)
             raise ResultLost("transient result content is unavailable")
         result = self._results.pop(work_id)
-        self.store.mark_result_consumed(work_id)
+        store.mark_result_consumed(work_id)
         return result
 
-    async def _execute(self, work_id: str) -> WorkRecord:
+    async def _execute_durable(self, work_id: str) -> WorkRecord:
+        store = self._require_store()
         record = self._require(work_id)
         if record.status != "accepted":
             return record
-        if record.spec.eligible_at is not None and record.spec.eligible_at > self._clock():
-            return record
-        candidates = self.capabilities.candidates(record.spec.inference)
-        if not candidates:
-            self.store.fail(work_id, WorkFailure(code="no_capability"), self._clock())
+        material = await self._resolve_material(record)
+        if material is None:
+            return self._require(work_id)
+        adapter = self.capabilities.select(record.spec.capability)
+        if adapter is None:
+            store.fail(work_id, WorkFailure(code="no_capability"), self._clock())
             return self._require(work_id)
 
-        selection = self._select_admissible_capability(
-            crossing_id=work_id,
-            crossing_kind="capability-candidate",
-            source=record.spec.material.security,
-            candidates=candidates,
-            originator=record.spec.originator,
+        attempt = store.start_attempt(
+            work_id,
+            adapter.definition.identity,
+            adapter.definition.properties.boundary,
+            self._clock(),
         )
-        if selection is None:
-            self.store.fail(work_id, WorkFailure(code="security_denied"), self._clock())
+        if attempt is None:
             return self._require(work_id)
-        adapter, current_facts, relation = selection
-        descriptor = adapter.descriptor
-        result: JsonValue = None
-        failure: WorkFailure | None = None
-        attempt: int | None = None
-        material: TransientMaterial | None = None
-        async with self._capability_slot(adapter):
-            material = await self._resolve_material(record)
-            if material is None:
-                return self._require(work_id)
-            attempt = self.store.start_attempt(
-                work_id,
-                descriptor.id,
-                descriptor.provider_id,
-                descriptor.model_id,
-                descriptor.execution_boundary,
-                relation.relation_id,
-                self._clock(),
-            )
-            if attempt is None:
-                return self._require(work_id)
-            self.store.update_security_evidence(work_id, current_facts)
-            try:
-                result = await adapter.execute(material.payload, record.spec.constraints)
-            except CapabilityError as exc:
-                failure = WorkFailure(code=exc.code or "capability_error")
-            except Exception:
-                failure = WorkFailure(code="internal_error")
 
-        assert attempt is not None and material is not None
-        if failure is not None:
-            self.store.fail(work_id, failure, self._clock(), attempt_number=attempt)
+        request = ExecutionRequest(
+            requester=record.spec.originator,
+            material=material,
+            capability=record.spec.capability,
+            output=record.spec.output,
+            constraints=record.spec.constraints,
+        )
+        try:
+            result = await self.execute(request)
+        except SecurityMismatch:
+            store.fail(
+                work_id,
+                WorkFailure(code="security_mismatch"),
+                self._clock(),
+                attempt_number=attempt,
+            )
             return self._require(work_id)
-        digest = content_digest(result)
+        except CapabilityError as exc:
+            store.fail(
+                work_id,
+                WorkFailure(code=exc.code),
+                self._clock(),
+                attempt_number=attempt,
+            )
+            return self._require(work_id)
+
         self._results[work_id] = result
-        self.store.succeed(
+        store.succeed(
             work_id,
             attempt,
-            digest,
-            content_size(result),
-            (descriptor.security.security_id,),
-            (material.security.security_id,),
+            result.digest,
+            len(str(result.payload).encode()),
             self._clock(),
         )
         return self._require(work_id)
 
-    async def _resolve_material(self, record: WorkRecord) -> TransientMaterial | None:
-        resolver = self._resolvers.get(record.spec.originator)
+    async def _resolve_material(self, record: WorkRecord) -> Material[JsonValue] | None:
+        store = self._require_store()
+        resolver = self._resolvers.get(record.spec.originator.owner)
         if resolver is None:
-            self.store.fail(record.id, WorkFailure(code="material_unavailable"), self._clock())
+            store.fail(record.id, WorkFailure(code="material_unavailable"), self._clock())
             return None
         material = await resolver.resolve(record.spec.material)
-        if material is None:
-            self.store.fail(record.id, WorkFailure(code="material_unavailable"), self._clock())
-            return None
-        if (
-            material.reference != record.spec.material.reference
-            or material.digest != record.spec.material.digest
-            or content_digest(material.payload) != record.spec.material.digest
-            or material.security != record.spec.material.security
-            or material.evidence != record.spec.material.evidence
-            or not material.security.verify_binding()
-        ):
-            self.store.fail(record.id, WorkFailure(code="material_integrity"), self._clock())
+        if material is None or material.handle() != record.spec.material:
+            store.fail(record.id, WorkFailure(code="material_integrity"), self._clock())
             return None
         return material
 
-    def _select_admissible_capability(
-        self,
-        *,
-        crossing_id: str,
-        crossing_kind: str,
-        source: SecurityObject,
-        candidates: tuple[CapabilityAdapter, ...],
-        originator: str,
-    ) -> tuple[CapabilityAdapter, SecurityEvidence, DisclosureNormalForm] | None:
-        del originator
-        for candidate in candidates:
-            descriptor = candidate.descriptor
-            result = DisclosureNormalForm.compose(
-                sources=(source,),
-                observers=(descriptor.security,),
-            )
-            self.store.record_security_decision(
-                crossing_id=crossing_id,
-                crossing_kind=crossing_kind,
-                target_id=descriptor.id,
-                execution_boundary=descriptor.execution_boundary,
-                decision=result.decision(),
-            )
-            if result.accepted is not None:
-                return (
-                    candidate,
-                    SecurityEvidence(objects=(source, descriptor.security)),
-                    result.accepted,
-                )
-        return None
-
-    @staticmethod
-    def _verify_transient_material(material: TransientMaterial) -> None:
-        if content_digest(material.payload) != material.digest:
-            raise TransientInferenceError("material_integrity")
-        if not material.security.verify_binding():
-            raise TransientInferenceError("material_integrity")
-
     @asynccontextmanager
     async def _capability_slot(self, adapter: CapabilityAdapter) -> AsyncIterator[None]:
-        descriptor = adapter.descriptor
-        if descriptor.heavyweight and descriptor.execution_boundary == "local":
+        properties = adapter.definition.properties
+        if properties.heavyweight and properties.boundary.value == "local":
             async with self._heavyweight_local:
                 yield
             return
@@ -394,7 +300,12 @@ class WorkRuntime:
         return value
 
     def _require(self, work_id: str) -> WorkRecord:
-        record = self.store.get(work_id)
+        record = self._require_store().get(work_id)
         if record is None:
             raise WorkNotFound(work_id)
         return record
+
+    def _require_store(self) -> PlatformStore:
+        if self.store is None:
+            raise RuntimeError("durable work requires a PlatformStore")
+        return self.store

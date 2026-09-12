@@ -1,33 +1,23 @@
-"""MADRE governed execution and interoperability platform."""
+"""MADRE Kernel implementation."""
 
-from madre.broker import Broker
-from madre.capabilities import CapabilityRegistry
-from madre.interfaces import (
-    AgentEndpoint,
-    Discovery,
-    DurableWorkSubmission,
-    MaterialResolver,
-    ModuleRegistration,
-    OperationEndpoint,
-    TransientInference,
-    WorkInspection,
-    WorkResultAccess,
+from madre.capabilities import (
+    CapabilityAdapter,
+    CapabilityError,
+    CapabilityRegistry,
+    CapabilitySelection,
+    FunctionCapability,
+    RankedCapabilitySelection,
 )
 from madre.registry import InteroperabilityRegistry
-from madre.runtime import WorkRuntime
+from madre.runtime import Kernel
 
 __all__ = [
-    "AgentEndpoint",
-    "Broker",
+    "CapabilityAdapter",
+    "CapabilityError",
     "CapabilityRegistry",
-    "Discovery",
-    "DurableWorkSubmission",
+    "CapabilitySelection",
+    "FunctionCapability",
     "InteroperabilityRegistry",
-    "MaterialResolver",
-    "ModuleRegistration",
-    "OperationEndpoint",
-    "TransientInference",
-    "WorkInspection",
-    "WorkResultAccess",
-    "WorkRuntime",
+    "Kernel",
+    "RankedCapabilitySelection",
 ]

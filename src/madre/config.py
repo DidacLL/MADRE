@@ -1,4 +1,4 @@
-"""Local MADRE installation configuration."""
+"""Local installation mechanics, separate from public MADRE semantics."""
 
 from __future__ import annotations
 
@@ -9,17 +9,23 @@ from platformdirs import user_data_path
 from pydantic import BaseModel, ConfigDict, Field
 
 from madre.adapters.openai import OpenAIChatConfig
+from madre_sdk.execution import CapabilityDefinition
 
 
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
+class InstalledCapability(StrictModel):
+    definition: CapabilityDefinition
+    adapter: OpenAIChatConfig
+
+
 class Settings(StrictModel):
     data_dir: Path = Field(default_factory=lambda: user_data_path("madre", appauthor=False))
     host: str = "127.0.0.1"
     port: int = Field(default=8731, ge=1, le=65535)
-    capabilities: dict[str, OpenAIChatConfig] = Field(default_factory=dict)
+    capabilities: tuple[InstalledCapability, ...] = ()
 
 
 def load_settings(path: Path) -> Settings:

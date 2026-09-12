@@ -1,4 +1,4 @@
-"""SQLite lifecycle and schema for MADRE durable metadata/evidence."""
+"""SQLite lifecycle and schema for runtime metadata only."""
 
 from __future__ import annotations
 
@@ -17,9 +17,10 @@ _STORAGE_DDL = """
 CREATE TABLE runtime_work (
     id TEXT PRIMARY KEY,
     originator TEXT NOT NULL,
-    security_evidence_json TEXT NOT NULL,
-    inference_json TEXT NOT NULL,
+    originator_identity_json TEXT NOT NULL,
+    capability_query_json TEXT NOT NULL,
     material_handle_json TEXT NOT NULL,
+    output_specification_json TEXT NOT NULL,
     eligible_at TEXT,
     priority INTEGER NOT NULL,
     constraints_json TEXT NOT NULL,
@@ -40,8 +41,6 @@ CREATE TABLE runtime_work (
     output_digest TEXT,
     output_size INTEGER,
     output_produced_at TEXT,
-    result_producer_security_ids_json TEXT,
-    result_source_security_ids_json TEXT,
     delivery_status TEXT CHECK (
         delivery_status IS NULL OR delivery_status IN ('awaiting_consumption','consumed','lost')
     )
@@ -76,73 +75,18 @@ CREATE TABLE runtime_attempt (
     status TEXT NOT NULL CHECK (status IN ('running','succeeded','failed')),
     started_at TEXT NOT NULL,
     completed_at TEXT,
-    capability_id TEXT,
-    provider_id TEXT,
-    model_id TEXT,
+    capability_identity_json TEXT,
     execution_boundary TEXT,
-    disclosure_relation_id TEXT,
     output_digest TEXT,
     output_size INTEGER,
     error_code TEXT,
     PRIMARY KEY(work_id,number)
 );
 
-CREATE TABLE module_manifest (
+CREATE TABLE module_definition (
     module_id TEXT PRIMARY KEY,
-    manifest_json TEXT NOT NULL,
+    definition_json TEXT NOT NULL,
     updated_at TEXT NOT NULL
-);
-
-CREATE TABLE security_object (
-    security_id TEXT PRIMARY KEY,
-    object_json TEXT NOT NULL
-);
-
-CREATE TABLE security_relation (
-    relation_id TEXT PRIMARY KEY,
-    relation_kind TEXT NOT NULL CHECK (
-        relation_kind IN ('disclosure','control','effect_execution')
-    ),
-    relation_json TEXT NOT NULL
-);
-
-CREATE TABLE security_derivation (
-    derivation_id TEXT PRIMARY KEY,
-    derivation_json TEXT NOT NULL
-);
-
-CREATE TABLE security_decision (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    crossing_id TEXT NOT NULL,
-    crossing_kind TEXT NOT NULL,
-    target_id TEXT NOT NULL,
-    relation_id TEXT NOT NULL,
-    relation_kind TEXT NOT NULL CHECK (
-        relation_kind IN ('disclosure','control','effect_execution')
-    ),
-    algebra_version TEXT NOT NULL,
-    decision_json TEXT NOT NULL,
-    execution_boundary TEXT,
-    admissible INTEGER NOT NULL CHECK (admissible IN (0,1)),
-    failure_codes_json TEXT NOT NULL,
-    decided_at TEXT NOT NULL
-);
-
-CREATE TABLE broker_event (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    invocation_id TEXT NOT NULL,
-    crossing_kind TEXT NOT NULL,
-    requester_module_id TEXT NOT NULL,
-    target_module_id TEXT NOT NULL,
-    target_id TEXT NOT NULL,
-    event TEXT NOT NULL,
-    observed_at TEXT NOT NULL,
-    output_digest TEXT,
-    output_size INTEGER,
-    completion_context_json TEXT,
-    completion_evidence_json TEXT,
-    output_security_id TEXT,
-    derivation_ids_json TEXT
 );
 """
 
