@@ -34,22 +34,22 @@ class _FixtureModule:
     def __init__(
         self,
         identity: ModuleId,
-        prompt_type: MaterialType[str],
+        input_type: MaterialType[str],
         result_type: MaterialType[str],
         computation: ComputationContract[str],
         execution: ExecutionService,
     ) -> None:
         self.identity = identity
-        self.prompt_type = prompt_type
+        self.input_type = input_type
         self.result_type = result_type
         self.computation = computation
         self._execution = execution
 
-    async def run(self, prompt: Material[str]) -> Material[str]:
+    async def run(self, input_material: Material[str]) -> Material[str]:
         first = await self._execution.submit(
             WorkRequest(
                 module=self.identity,
-                materials=MaterialSet.of(prompt),
+                materials=MaterialSet.of(input_material),
                 computation=self.computation,
             )
         )
@@ -78,7 +78,7 @@ class _FixtureModule:
 
 
 def test_module_owns_interpretation_and_second_physical_request() -> None:
-    module, prompt_type, result_type, computation = build_contracts()
+    module, input_type, result_type, computation = build_contracts()
     calls: list[tuple[object, ...]] = []
 
     def mechanism(payloads: tuple[object, ...]) -> object:
@@ -90,17 +90,17 @@ def test_module_owns_interpretation_and_second_physical_request() -> None:
         build_capability(
             identity="fixture-mechanism",
             computation=computation,
-            prompt_type=prompt_type,
+            input_type=input_type,
             result_type=result_type,
             privacy=Privacy.P5,
             location=ExecutionLocation.OWNER_DEVICE,
             invoke=mechanism,
         )
     )
-    fixture_module = _FixtureModule(module, prompt_type, result_type, computation, Kernel(registry))
+    fixture_module = _FixtureModule(module, input_type, result_type, computation, Kernel(registry))
     source = Material(
         MaterialId(module, "source"),
-        prompt_type,
+        input_type,
         "begin",
         Sensitivity.S5,
     )
@@ -113,15 +113,15 @@ def test_module_owns_interpretation_and_second_physical_request() -> None:
     assert result.sensitivity is Sensitivity.S2
 
 
-def test_noncomposing_capability_is_absent_and_never_invoked() -> None:
-    module, prompt_type, result_type, computation = build_contracts()
+def test_capability_outside_carried_values_is_absent_and_never_invoked() -> None:
+    module, input_type, result_type, computation = build_contracts()
     invoked: list[str] = []
     registry = CapabilityRegistry()
     registry.register(
         build_capability(
             identity="third-party",
             computation=computation,
-            prompt_type=prompt_type,
+            input_type=input_type,
             result_type=result_type,
             privacy=Privacy.UNKNOWN,
             location=ExecutionLocation.EXTERNAL,
@@ -132,7 +132,7 @@ def test_noncomposing_capability_is_absent_and_never_invoked() -> None:
         build_capability(
             identity="owner-private",
             computation=computation,
-            prompt_type=prompt_type,
+            input_type=input_type,
             result_type=result_type,
             privacy=Privacy.P5,
             location=ExecutionLocation.OWNER_DEVICE,
@@ -142,7 +142,7 @@ def test_noncomposing_capability_is_absent_and_never_invoked() -> None:
     request = WorkRequest(
         module=module,
         materials=MaterialSet.of(
-            Material(MaterialId(module, "secret"), prompt_type, "secret", Sensitivity.S5)
+            Material(MaterialId(module, "secret"), input_type, "secret", Sensitivity.S5)
         ),
         computation=computation,
         preferences=(LatencyPreference((LatencyClass.INTERACTIVE, LatencyClass.STANDARD)),),
@@ -155,13 +155,13 @@ def test_noncomposing_capability_is_absent_and_never_invoked() -> None:
 
 
 def test_no_currently_usable_capability_is_ordinary_unavailability() -> None:
-    module, prompt_type, result_type, computation = build_contracts()
+    module, input_type, result_type, computation = build_contracts()
     registry = CapabilityRegistry()
     registry.register(
         build_capability(
             identity="external",
             computation=computation,
-            prompt_type=prompt_type,
+            input_type=input_type,
             result_type=result_type,
             privacy=Privacy.UNKNOWN,
             location=ExecutionLocation.EXTERNAL,
@@ -171,7 +171,7 @@ def test_no_currently_usable_capability_is_ordinary_unavailability() -> None:
     request = WorkRequest(
         module=module,
         materials=MaterialSet.of(
-            Material(MaterialId(module, "secret"), prompt_type, "secret", Sensitivity.S5)
+            Material(MaterialId(module, "secret"), input_type, "secret", Sensitivity.S5)
         ),
         computation=computation,
     )
@@ -181,11 +181,11 @@ def test_no_currently_usable_capability_is_ordinary_unavailability() -> None:
 
 
 def test_module_can_submit_material_reachable_from_another_module() -> None:
-    owner, prompt_type, _, computation = build_contracts()
+    owner, input_type, _, computation = build_contracts()
     consumer = ModuleId("consumer-module")
     shared = Material(
         MaterialId(owner, "shared-input"),
-        prompt_type,
+        input_type,
         "shared",
         Sensitivity.S3,
     )
@@ -201,14 +201,14 @@ def test_module_can_submit_material_reachable_from_another_module() -> None:
 
 
 def test_resource_capacity_filters_candidates_before_physical_attempt() -> None:
-    module, prompt_type, result_type, computation = build_contracts()
+    module, input_type, result_type, computation = build_contracts()
     calls: list[str] = []
     registry = CapabilityRegistry()
     registry.register(
         build_capability(
             identity="oversized",
             computation=computation,
-            prompt_type=prompt_type,
+            input_type=input_type,
             result_type=result_type,
             privacy=Privacy.P5,
             location=ExecutionLocation.OWNER_DEVICE,
@@ -220,7 +220,7 @@ def test_resource_capacity_filters_candidates_before_physical_attempt() -> None:
         build_capability(
             identity="fitting",
             computation=computation,
-            prompt_type=prompt_type,
+            input_type=input_type,
             result_type=result_type,
             privacy=Privacy.P5,
             location=ExecutionLocation.OWNER_DEVICE,
@@ -231,7 +231,7 @@ def test_resource_capacity_filters_candidates_before_physical_attempt() -> None:
     request = WorkRequest(
         module=module,
         materials=MaterialSet.of(
-            Material(MaterialId(module, "resource-input"), prompt_type, "input", Sensitivity.S2)
+            Material(MaterialId(module, "resource-input"), input_type, "input", Sensitivity.S2)
         ),
         computation=computation,
     )

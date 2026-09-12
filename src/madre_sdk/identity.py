@@ -138,12 +138,12 @@ class OutputSurfaceId:
 
 @dataclass(frozen=True, slots=True)
 class ResponsibilitySurfaceId:
-    module: ModuleId
+    namespace: str
     name: str
     revision: str = "1"
 
     def __post_init__(self) -> None:
-        _require_module(self.module, "ResponsibilitySurfaceId.module")
+        _require_text(self.namespace, "ResponsibilitySurfaceId.namespace")
         _require_text(self.name, "ResponsibilitySurfaceId.name")
         _require_text(self.revision, "ResponsibilitySurfaceId.revision")
 

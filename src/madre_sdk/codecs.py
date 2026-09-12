@@ -25,7 +25,6 @@ from madre_sdk.identity import (
     ModuleId,
     OperationId,
     OutputSurfaceId,
-    ResponsibilitySurfaceId,
     SkillId,
     WorkflowId,
 )
@@ -165,7 +164,6 @@ def _owned_id_to_dto(
         | MaterialTypeId
         | InputSurfaceId
         | OutputSurfaceId
-        | ResponsibilitySurfaceId
     ),
 ) -> _OwnedIdDto:
     return _OwnedIdDto(

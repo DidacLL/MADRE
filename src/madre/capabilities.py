@@ -11,7 +11,6 @@ from madre_sdk import (
     ComputationId,
     MaterialTypeId,
     PhysicalProperties,
-    ResponsibilitySurfaces,
     WorkRequest,
 )
 from madre_sdk.algebra import Privacy
@@ -108,7 +107,6 @@ class CapabilityDefinition:
     inputs: CapabilityInputs
     properties: PhysicalProperties
     resources: tuple[ResourceClaim, ...] = ()
-    responsibility: ResponsibilitySurfaces | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.identity, CapabilityId):
@@ -125,10 +123,6 @@ class CapabilityDefinition:
             raise TypeError("CapabilityDefinition.resources requires tuple")
         if any(not isinstance(claim, ResourceClaim) for claim in self.resources):
             raise TypeError("CapabilityDefinition.resources accepts only ResourceClaim")
-        if self.responsibility is not None and not isinstance(
-            self.responsibility, ResponsibilitySurfaces
-        ):
-            raise TypeError("CapabilityDefinition.responsibility requires ResponsibilitySurfaces")
         resource_ids = tuple(claim.resource for claim in self.resources)
         if len(resource_ids) != len(set(resource_ids)):
             raise ValueError("CapabilityDefinition cannot repeat a ResourceClaim")

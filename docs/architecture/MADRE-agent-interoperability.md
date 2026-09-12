@@ -26,9 +26,11 @@ Module code.
 `OutputSurface` identifies a produced or reachable `MaterialType` and Sensitivity.
 `ResponsibilitySurface` carries Integrity for one actual causal or physical role.
 
-Any definition may own the surface types that apply to its real responsibility. It
-does not receive irrelevant algebra fields. Collections derive their aggregate ranks
-from members.
+Each definition owns only the input or output surfaces applicable to its actual
+reach. Actual non-user participants and physical realizers are represented by
+responsibility surfaces when one bounded Operation call is constructed. Definitions
+do not receive irrelevant algebra fields, and collections derive their aggregate
+ranks from members.
 
 Module Sensitivity is derived for an exact current `MaterialSet` and the output
 surfaces owned by its definitions. Agent Privacy is derived from the exact Operation input

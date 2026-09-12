@@ -47,6 +47,7 @@ class _AttemptDto(_WireModel):
 
 
 class _WorkRecordDto(_WireModel):
+    schema_version: int
     id: str
     module_name: str
     module_revision: str
@@ -78,6 +79,7 @@ def _attempt_dto(attempt: WorkAttempt) -> _AttemptDto:
 
 def _record_response(record: WorkRecord, *, status_code: int = 200) -> Response:
     dto = _WorkRecordDto(
+        schema_version=1,
         id=record.identity.value,
         module_name=record.module.name,
         module_revision=record.module.revision,

@@ -58,9 +58,9 @@ there; the Module registry starts empty after restart.
 ## Capability extension boundary
 
 A Capability definition belongs to Kernel. It declares nominal identity, supported
-computation and material contracts, explicit receiving Privacy, applicable physical
-responsibility, location and latency properties, and typed resource claims. Its
-adapter performs one physical invocation and returns the declared result.
+computation and material contracts, explicit receiving Privacy, physical location
+and latency properties, and typed resource claims. Its adapter performs one
+physical invocation and returns the declared result.
 
 Physical requirements and preferences are segregated value objects with matching or
 ranking behavior. Resource coordination operates on generic `ResourceClaim` values.

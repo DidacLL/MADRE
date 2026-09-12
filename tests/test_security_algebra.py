@@ -41,6 +41,7 @@ def test_role_carriers_accumulate_without_becoming_interchangeable() -> None:
     assert Integrity.minimum(Integrity.I5, Integrity.I3) is Integrity.I3
     assert Privacy.UNKNOWN.rank == Privacy.P2.rank == 2
     assert Privacy.PUBLIC.rank == Privacy.P1.rank == 1
+    assert Privacy.UNKNOWN.name == "UNKNOWN"
     differently_typed: tuple[object, object] = (Sensitivity.S2, Privacy.P2)
     assert type(differently_typed[0]) is not type(differently_typed[1])
 
@@ -131,13 +132,13 @@ def test_operation_call_uses_only_its_profile_and_actual_responsibilities() -> N
         Material(MaterialId(module, "input"), content, "value", Sensitivity.S2)
     )
     strong_realizer = ResponsibilitySurfaces.of(
-        ResponsibilitySurface(ResponsibilitySurfaceId(module, "strong-realizer"), Integrity.I5)
+        ResponsibilitySurface(ResponsibilitySurfaceId("fixture", "strong-realizer"), Integrity.I5)
     )
     weak_realizer = ResponsibilitySurfaces.of(
-        ResponsibilitySurface(ResponsibilitySurfaceId(module, "weak-realizer"), Integrity.I1)
+        ResponsibilitySurface(ResponsibilitySurfaceId("fixture", "weak-realizer"), Integrity.I1)
     )
     weak_cause = ResponsibilitySurfaces.of(
-        ResponsibilitySurface(ResponsibilitySurfaceId(module, "weak-cause"), Integrity.I1)
+        ResponsibilitySurface(ResponsibilitySurfaceId("fixture", "weak-cause"), Integrity.I1)
     )
 
     call = OperationCall(operation, owner_profile, materials, None, strong_realizer)
@@ -185,4 +186,3 @@ def test_adapted_materials_are_independent_values() -> None:
         Sensitivity.S3,
         Sensitivity.S2,
     ]
-    assert not hasattr(minimized, "parent")

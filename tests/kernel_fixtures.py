@@ -53,7 +53,7 @@ def build_capability(
     *,
     identity: str,
     computation: ComputationContract[str],
-    prompt_type: MaterialType[str],
+    input_type: MaterialType[str],
     result_type: MaterialType[str],
     privacy: Privacy,
     location: ExecutionLocation,
@@ -67,7 +67,7 @@ def build_capability(
             output_type=result_type.identity,
             inputs=CapabilityInputs(
                 (
-                    CapabilityInput(prompt_type.identity, privacy),
+                    CapabilityInput(input_type.identity, privacy),
                     CapabilityInput(result_type.identity, privacy),
                 )
             ),
@@ -85,11 +85,11 @@ def build_contracts() -> tuple[
     ComputationContract[str],
 ]:
     module = ModuleId("fixture-module")
-    prompt_type = MaterialType[str](MaterialTypeId(module, "prompt"), "text/plain")
+    input_type = MaterialType[str](MaterialTypeId(module, "input"), "text/plain")
     result_type = MaterialType[str](MaterialTypeId(module, "result"), "text/plain")
     computation = ComputationContract[str](
         ComputationId("madre.fixture", "deterministic-text"),
-        frozenset((prompt_type.identity, result_type.identity)),
+        frozenset((input_type.identity, result_type.identity)),
         result_type,
     )
-    return module, prompt_type, result_type, computation
+    return module, input_type, result_type, computation
