@@ -8,7 +8,7 @@ from pydantic import JsonValue
 
 from madre_sdk.execution import CapabilityQuery, ExecutionRequest
 from madre_sdk.material import Material, MaterialSpecification
-from madre_sdk.security import ScopeIdentity
+from madre_sdk.semantic import ModuleDefinition
 from madre_sdk.services import ExecutionService
 
 
@@ -27,7 +27,7 @@ class InteractionBehavior:
 
     def __init__(
         self,
-        module: ScopeIdentity,
+        module: ModuleDefinition,
         capability: CapabilityQuery,
         physical_output: MaterialSpecification,
         interpreter: ResultInterpreter,
@@ -44,7 +44,7 @@ class InteractionBehavior:
     ) -> Material[JsonValue]:
         result = await services.execute(
             ExecutionRequest(
-                requester=self._module,
+                requester=self._module.identity,
                 material=material,
                 capability=self._capability,
                 output=self._physical_output,

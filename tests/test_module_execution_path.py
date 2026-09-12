@@ -153,7 +153,7 @@ def test_ordinary_module_owns_interpretation_after_capability_execution() -> Non
     kernel = Kernel(registry)
     interpreter = InterpretPhysicalResult(final_identity)
     behavior = InteractionBehavior(
-        module=module_identity,
+        module=module_definition,
         capability=CapabilityQuery(
             specialization=SPECIALIZATION,
             modality=MODALITY,

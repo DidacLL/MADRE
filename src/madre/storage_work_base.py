@@ -5,7 +5,7 @@ from __future__ import annotations
 import sqlite3
 from datetime import datetime
 
-from madre.contracts import WorkAttempt, WorkFailure, WorkRetry
+from madre.contracts import RetryDisposition, WorkAttempt, WorkFailure, WorkRetry
 from madre_sdk.execution import ExecutionBoundary
 from madre_sdk.security import ScopeIdentity
 
@@ -42,7 +42,10 @@ class WorkStoreBase:
                 requested_at=datetime.fromisoformat(row["requested_at"]),
                 allow_unknown_outcome=bool(row["allow_unknown_outcome"]),
                 previous_completed_at=datetime.fromisoformat(row["previous_completed_at"]),
-                previous_failure=WorkFailure(code=row["previous_error_code"]),
+                previous_failure=WorkFailure(
+                    code=row["previous_error_code"],
+                    retry=RetryDisposition(row["previous_retry_disposition"]),
+                ),
             )
             for row in rows
         )
@@ -53,7 +56,14 @@ class WorkStoreBase:
         ).fetchall()
         attempts = []
         for row in rows:
-            failure = WorkFailure(code=row["error_code"]) if row["error_code"] is not None else None
+            failure = (
+                WorkFailure(
+                    code=row["error_code"],
+                    retry=RetryDisposition(row["retry_disposition"]),
+                )
+                if row["error_code"] is not None
+                else None
+            )
             attempts.append(
                 WorkAttempt(
                     number=row["number"],

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from madre.catalog import ModuleCatalog
 from madre_sdk import (
     AgentDefinition,
@@ -138,3 +140,11 @@ def test_module_definitions_are_serializable_structural_aggregates() -> None:
     assert catalog.skills() == (skill,)
     assert catalog.workflows() == (workflow,)
     assert catalog.operations() == (private_operation, narrower_operation)
+
+    unresolved_agent = agent.model_copy(
+        update={
+            "skills": (SkillReference(identity=identity("missing-skill")),),
+        }
+    )
+    with pytest.raises(ValueError, match="Skill reference does not resolve"):
+        definition.model_copy(update={"agents": (unresolved_agent,)})

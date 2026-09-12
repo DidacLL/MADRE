@@ -110,7 +110,10 @@ class CapabilityQuery(FrozenValue):
         )
 
     @staticmethod
-    def _position(values: tuple[object, ...], candidate: object) -> int:
+    def _position[PreferenceT](
+        values: tuple[PreferenceT, ...],
+        candidate: PreferenceT,
+    ) -> int:
         if not values:
             return 0
         try:
@@ -119,7 +122,10 @@ class CapabilityQuery(FrozenValue):
             return len(values)
 
     @staticmethod
-    def _best_position(values: tuple[object, ...], candidates: frozenset[object]) -> int:
+    def _best_position[PreferenceT](
+        values: tuple[PreferenceT, ...],
+        candidates: frozenset[PreferenceT],
+    ) -> int:
         if not values:
             return 0
         return min(

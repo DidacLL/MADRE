@@ -27,7 +27,7 @@ If those surfaces do not match, construction raises `SecurityMismatch` and the
 request ends before physical execution. Kernel does not search for a security-approved
 candidate, persist the denial, or modify the request.
 
-If they match, Kernel grants the Capability a resource slot, passes the opaque payload
+If they match, Kernel reserves the Capability's resource slot, passes the opaque payload
 to its adapter, and receives opaque output. Kernel constructs the specified new
 Material and returns it to the requesting Module.
 
@@ -67,8 +67,8 @@ Kernel persists:
 - Material handle;
 - output Material specification;
 - eligibility, priority, timeout, and idempotency metadata;
-- attempt lifecycle, selected Capability identity/boundary, compact failure code,
-  output digest/size, and delivery state.
+- attempt lifecycle, selected Capability identity/boundary, compact lifecycle failure
+  code and retry disposition, output digest/size, and delivery state.
 
 Kernel does not persist:
 
@@ -83,6 +83,11 @@ When work becomes eligible, Kernel resolves the exact Material from its owning M
 checks the handle and digest, constructs the current request, and performs the same
 immediate execution path. Retry, cancellation, idempotency, scheduling, and restart
 recovery are lifecycle mechanics only; none changes security facts.
+
+If algebraic construction fails, the detailed `SecurityMismatch` remains transient.
+Durable work records only a generic terminal lifecycle failure; the same request
+cannot be retried. The Module must submit a different request after changing the
+responsible Material, surface, or action.
 
 Produced payload bytes remain transient in the current process until consumed. A
 restart before consumption marks delivery as lost.

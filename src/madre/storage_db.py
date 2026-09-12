@@ -32,6 +32,10 @@ CREATE TABLE runtime_work (
     started_at TEXT,
     completed_at TEXT,
     error_code TEXT,
+    retry_disposition TEXT CHECK (
+        retry_disposition IS NULL OR
+        retry_disposition IN ('retryable','unknown_outcome','terminal')
+    ),
     cancellation_requested_at TEXT,
     cancellation_disposition TEXT CHECK (
         cancellation_disposition IS NULL OR
@@ -63,6 +67,9 @@ CREATE TABLE runtime_retry (
     requested_at TEXT NOT NULL,
     previous_completed_at TEXT NOT NULL,
     previous_error_code TEXT NOT NULL,
+    previous_retry_disposition TEXT NOT NULL CHECK (
+        previous_retry_disposition IN ('retryable','unknown_outcome','terminal')
+    ),
     PRIMARY KEY(work_id,number),
     UNIQUE(work_id,idempotency_key)
 );
@@ -79,6 +86,10 @@ CREATE TABLE runtime_attempt (
     output_digest TEXT,
     output_size INTEGER,
     error_code TEXT,
+    retry_disposition TEXT CHECK (
+        retry_disposition IS NULL OR
+        retry_disposition IN ('retryable','unknown_outcome','terminal')
+    ),
     PRIMARY KEY(work_id,number)
 );
 

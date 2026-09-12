@@ -9,6 +9,7 @@ from typing import Protocol
 
 from pydantic import JsonValue
 
+from madre.contracts import RetryDisposition
 from madre_sdk.execution import (
     CapabilityDefinition,
     CapabilityQuery,
@@ -18,8 +19,15 @@ from madre_sdk.security import ScopeIdentity
 
 
 class CapabilityError(RuntimeError):
-    def __init__(self, code: str, message: str = "capability execution failed") -> None:
+    def __init__(
+        self,
+        code: str,
+        message: str = "capability execution failed",
+        *,
+        retry: RetryDisposition = RetryDisposition.RETRYABLE,
+    ) -> None:
         self.code = code
+        self.retry = retry
         super().__init__(message)
 
 

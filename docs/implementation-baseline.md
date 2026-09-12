@@ -47,11 +47,15 @@ Reference-only durable work retains:
 - output MaterialSpecification;
 - eligibility, priority, timeout, and idempotency;
 - attempt lifecycle, selected Capability identity/boundary, result digest/size, and a
-  compact failure code.
+  compact lifecycle failure code and retry disposition.
 
 Input and output payloads remain transient. SQLite contains no tables for security
 objects, relations, derivations, decisions, or broker events. A schema fingerprint
 recreates obsolete development storage rather than carrying compatibility machinery.
+
+An algebra mismatch becomes only a generic terminal durable-work failure. The
+detailed mismatch is not persisted, and the rejected request cannot enter the retry
+path.
 
 The catalog stores ModuleDefinition JSON and lists contained definitions. It does not
 route, filter, or grant anything.

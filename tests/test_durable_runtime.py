@@ -3,9 +3,12 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
+import pytest
+
 from madre import CapabilityRegistry, FunctionCapability, Kernel
 from madre.catalog import ModuleCatalog
-from madre.contracts import WorkSubmission
+from madre.contracts import RetryDisposition, WorkRetryRequest, WorkSubmission
+from madre.runtime import RetryConflict
 from madre.storage import PlatformStore, open_database
 from madre_sdk import (
     CapabilityDefinition,
@@ -111,6 +114,75 @@ def test_durable_work_persists_only_reference_and_execution_metadata(tmp_path: P
         assert result.identity == output_identity
         assert result.payload == {"result": source.payload}
         assert catalog.module(module) is not None
+
+        public_capability_identity = identifier("physical", "public-fixture")
+        capabilities.register(
+            FunctionCapability(
+                CapabilityDefinition(
+                    identity=public_capability_identity,
+                    properties=CapabilityProperties(
+                        specialization=specialization,
+                        modality=modality,
+                        boundary=ExecutionBoundary.REMOTE,
+                    ),
+                    security=SecuritySurface.compose(
+                        SecurityScope(
+                            identity=public_capability_identity,
+                            privacy=Privacy.PUBLIC,
+                        )
+                    ),
+                ),
+                lambda payload: payload,
+            )
+        )
+        secret_identity = identifier("module", "terminal-secret")
+        secret = Material[dict[str, str]](
+            identity=secret_identity,
+            contract=contract,
+            payload={"private": "value"},
+            security=SecurityScope(
+                identity=secret_identity,
+                sensitivity=Sensitivity.S5,
+            ),
+        )
+        repository.put(secret)
+        rejected_output = identifier("module", "never-produced")
+        rejected = asyncio.run(
+            kernel.submit(
+                WorkSubmission(
+                    originator=module,
+                    capability=CapabilityQuery(
+                        specialization=specialization,
+                        modality=modality,
+                        mechanism=public_capability_identity,
+                    ),
+                    material=secret.handle(),
+                    output=MaterialSpecification(
+                        identity=rejected_output,
+                        contract=contract,
+                        security=SecurityScope(
+                            identity=rejected_output,
+                            sensitivity=Sensitivity.S5,
+                        ),
+                    ),
+                )
+            )
+        )
+        assert asyncio.run(kernel.run_eligible()) == 1
+        terminal = kernel.inspect(rejected.id)
+        assert terminal is not None
+        assert terminal.failure is not None
+        assert terminal.failure.retry is RetryDisposition.TERMINAL
+        assert "security" not in terminal.failure.code
+        with pytest.raises(RetryConflict, match="submit a different request"):
+            asyncio.run(
+                kernel.retry(
+                    rejected.id,
+                    WorkRetryRequest(),
+                    idempotency_key="terminal-request",
+                )
+            )
+        assert terminal.retries == ()
 
         tables = {
             row["name"]

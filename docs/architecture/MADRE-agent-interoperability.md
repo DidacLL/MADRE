@@ -117,8 +117,8 @@ Being selected as CORE does not alter that behavior.
 
 ## Catalog
 
-The catalog registers and enumerates Module definitions and their contained public
-entities. It does not:
+The catalog registers and enumerates Module definitions and the canonical entities
+they own. It does not:
 
 - attach executable endpoints;
 - select semantic targets;

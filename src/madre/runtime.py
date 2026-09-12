@@ -11,10 +11,17 @@ from uuid import uuid4
 from pydantic import JsonValue
 
 from madre.capabilities import CapabilityAdapter, CapabilityError, CapabilityRegistry
-from madre.contracts import WorkFailure, WorkRecord, WorkRetryRequest, WorkSpec, WorkSubmission
+from madre.contracts import (
+    RetryDisposition,
+    WorkFailure,
+    WorkRecord,
+    WorkRetryRequest,
+    WorkSpec,
+    WorkSubmission,
+)
 from madre.interfaces import MaterialResolution
 from madre.storage import PlatformStore, utc_now
-from madre_sdk.execution import ExecutionRequest
+from madre_sdk.execution import ExecutionBoundary, ExecutionRequest
 from madre_sdk.material import Material
 from madre_sdk.security import Disclosure, ScopeIdentity, SecurityMismatch
 
@@ -173,9 +180,11 @@ class Kernel:
             raise RetryConflict("only failed work can be retried")
         if record.cancellation is not None:
             raise RetryConflict("cancelled work cannot be retried")
+        assert record.failure is not None
+        if record.failure.retry is RetryDisposition.TERMINAL:
+            raise RetryConflict("this request ended terminally; submit a different request")
         if (
-            record.failure is not None
-            and record.failure.code == "interrupted"
+            record.failure.retry is RetryDisposition.UNKNOWN_OUTCOME
             and not request.allow_unknown_outcome
         ):
             raise RetryConflict("interrupted work requires allow_unknown_outcome=true")
@@ -226,7 +235,11 @@ class Kernel:
             return self._require(work_id)
         adapter = self.capabilities.select(record.spec.capability)
         if adapter is None:
-            store.fail(work_id, WorkFailure(code="no_capability"), self._clock())
+            store.fail(
+                work_id,
+                WorkFailure(code="no_capability", retry=RetryDisposition.RETRYABLE),
+                self._clock(),
+            )
             return self._require(work_id)
 
         attempt = store.start_attempt(
@@ -250,7 +263,7 @@ class Kernel:
         except SecurityMismatch:
             store.fail(
                 work_id,
-                WorkFailure(code="security_mismatch"),
+                WorkFailure(code="request_failed", retry=RetryDisposition.TERMINAL),
                 self._clock(),
                 attempt_number=attempt,
             )
@@ -258,7 +271,7 @@ class Kernel:
         except CapabilityError as exc:
             store.fail(
                 work_id,
-                WorkFailure(code=exc.code),
+                WorkFailure(code=exc.code, retry=exc.retry),
                 self._clock(),
                 attempt_number=attempt,
             )
@@ -278,18 +291,26 @@ class Kernel:
         store = self._require_store()
         resolver = self._resolvers.get(record.spec.originator)
         if resolver is None:
-            store.fail(record.id, WorkFailure(code="material_unavailable"), self._clock())
+            store.fail(
+                record.id,
+                WorkFailure(code="material_unavailable", retry=RetryDisposition.RETRYABLE),
+                self._clock(),
+            )
             return None
         material = await resolver.resolve(record.spec.material)
         if material is None or material.handle() != record.spec.material:
-            store.fail(record.id, WorkFailure(code="material_integrity"), self._clock())
+            store.fail(
+                record.id,
+                WorkFailure(code="material_integrity", retry=RetryDisposition.TERMINAL),
+                self._clock(),
+            )
             return None
         return material
 
     @asynccontextmanager
     async def _capability_slot(self, adapter: CapabilityAdapter) -> AsyncIterator[None]:
         properties = adapter.definition.properties
-        if properties.heavyweight and properties.boundary.value == "local":
+        if properties.heavyweight and properties.boundary is ExecutionBoundary.LOCAL:
             async with self._heavyweight_local:
                 yield
             return

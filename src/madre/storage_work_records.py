@@ -6,7 +6,14 @@ import json
 import sqlite3
 from datetime import datetime
 
-from madre.contracts import ResultMetadata, WorkCancellation, WorkFailure, WorkRecord, WorkSpec
+from madre.contracts import (
+    ResultMetadata,
+    RetryDisposition,
+    WorkCancellation,
+    WorkFailure,
+    WorkRecord,
+    WorkSpec,
+)
 from madre.storage_db import _json
 from madre.storage_work_base import WorkStoreBase
 
@@ -80,7 +87,14 @@ class WorkRecordStore(WorkStoreBase):
                 "constraints": json.loads(row["constraints_json"]),
             }
         )
-        failure = WorkFailure(code=row["error_code"]) if row["error_code"] is not None else None
+        failure = (
+            WorkFailure(
+                code=row["error_code"],
+                retry=RetryDisposition(row["retry_disposition"]),
+            )
+            if row["error_code"] is not None
+            else None
+        )
         cancellation = None
         if row["cancellation_requested_at"] is not None:
             cancellation = WorkCancellation(

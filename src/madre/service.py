@@ -31,6 +31,16 @@ from madre_sdk.security import SecurityMismatch
 from madre_sdk.semantic import ModuleDefinition
 
 
+class _ApplicationState:
+    def __init__(self) -> None:
+        self.kernel: Kernel | None = None
+        self.catalog: ModuleCatalog | None = None
+
+    def clear(self) -> None:
+        self.kernel = None
+        self.catalog = None
+
+
 def _capabilities(settings: Settings) -> CapabilityRegistry:
     registry = CapabilityRegistry()
     for installed in settings.capabilities:
@@ -39,7 +49,7 @@ def _capabilities(settings: Settings) -> CapabilityRegistry:
 
 
 def create_app(settings: Settings) -> FastAPI:
-    state: dict[str, object] = {}
+    state = _ApplicationState()
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -47,8 +57,8 @@ def create_app(settings: Settings) -> FastAPI:
             store = PlatformStore(connection)
             catalog = ModuleCatalog(store)
             kernel = Kernel(_capabilities(settings), store)
-            state["kernel"] = kernel
-            state["catalog"] = catalog
+            state.kernel = kernel
+            state.catalog = catalog
             scheduler = asyncio.create_task(kernel.run_scheduler())
             try:
                 yield
@@ -63,14 +73,14 @@ def create_app(settings: Settings) -> FastAPI:
     app = FastAPI(title="MADRE", lifespan=lifespan)
 
     def kernel() -> Kernel:
-        value = state.get("kernel")
-        if not isinstance(value, Kernel):
+        value = state.kernel
+        if value is None:
             raise HTTPException(status_code=503, detail="runtime unavailable")
         return value
 
     def catalog() -> ModuleCatalog:
-        value = state.get("catalog")
-        if not isinstance(value, ModuleCatalog):
+        value = state.catalog
+        if value is None:
             raise HTTPException(status_code=503, detail="catalog unavailable")
         return value
 

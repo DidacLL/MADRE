@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from enum import Enum
 from typing import Literal
 
 from pydantic import AwareDatetime, Field, field_validator
@@ -41,8 +42,15 @@ class WorkSpec(FrozenValue):
     constraints: ExecutionConstraints = Field(default_factory=ExecutionConstraints)
 
 
+class RetryDisposition(Enum):
+    RETRYABLE = "retryable"
+    UNKNOWN_OUTCOME = "unknown_outcome"
+    TERMINAL = "terminal"
+
+
 class WorkFailure(FrozenValue):
     code: Identifier
+    retry: RetryDisposition
 
 
 class WorkCancellation(FrozenValue):

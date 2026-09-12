@@ -99,13 +99,17 @@ authorization layer.
 
 Durable storage contains reference-only execution intent, Module and Capability
 identities, Material handles, output specifications, scheduling/lifecycle metadata,
-digests, sizes, and compact failure codes.
+digests, sizes, and compact lifecycle failure/retry dispositions.
 
 It contains no input/output payload columns, prompts, private Module state, algebra
 relations, security decisions, rejected candidates, provenance graphs, or provider
 error bodies. A Module supplies Material just in time through its resolver. Produced
 payload bytes remain in process memory until consumed; a restart marks unconsumed
 delivery as lost.
+
+An incompatible algebraic composition ends that request. Its detailed mismatch is
+transient; durable work retains only a generic terminal failure and cannot retry the
+same rejected request.
 
 ## Adapter environment
 
