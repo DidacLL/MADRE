@@ -1,26 +1,19 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
 
 import pytest
 
 from madre import (
-    CapabilityDefinition,
-    CapabilityId,
-    CapabilityInput,
-    CapabilityInputs,
     CapabilityRegistry,
     CapabilityUnavailable,
     CapacityResourceCoordinator,
-    FunctionCapability,
     Kernel,
     ResourceClaim,
     ResourceId,
 )
 from madre_sdk import (
     ComputationContract,
-    ComputationId,
     ExecutionLocation,
     ExecutionService,
     LatencyClass,
@@ -29,13 +22,12 @@ from madre_sdk import (
     MaterialId,
     MaterialSet,
     MaterialType,
-    MaterialTypeId,
     ModuleId,
-    PhysicalProperties,
     Privacy,
     Sensitivity,
     WorkRequest,
 )
+from tests.kernel_fixtures import build_capability, build_contracts
 
 
 class _FixtureModule:
@@ -85,54 +77,8 @@ class _FixtureModule:
         )
 
 
-def _capability(
-    *,
-    identity: str,
-    computation: ComputationContract[str],
-    prompt_type: MaterialType[str],
-    result_type: MaterialType[str],
-    privacy: Privacy,
-    location: ExecutionLocation,
-    invoke: Callable[[tuple[object, ...]], object],
-    resources: tuple[ResourceClaim, ...] = (),
-) -> FunctionCapability:
-    return FunctionCapability(
-        CapabilityDefinition(
-            identity=CapabilityId(identity),
-            computation=computation.identity,
-            output_type=result_type.identity,
-            inputs=CapabilityInputs(
-                (
-                    CapabilityInput(prompt_type.identity, privacy),
-                    CapabilityInput(result_type.identity, privacy),
-                )
-            ),
-            properties=PhysicalProperties(location, LatencyClass.INTERACTIVE),
-            resources=resources,
-        ),
-        invoke,
-    )
-
-
-def _contracts() -> tuple[
-    ModuleId,
-    MaterialType[str],
-    MaterialType[str],
-    ComputationContract[str],
-]:
-    module = ModuleId("fixture-module")
-    prompt_type = MaterialType[str](MaterialTypeId(module, "prompt"), "text/plain")
-    result_type = MaterialType[str](MaterialTypeId(module, "result"), "text/plain")
-    computation = ComputationContract[str](
-        ComputationId("madre.fixture", "deterministic-text"),
-        frozenset((prompt_type.identity, result_type.identity)),
-        result_type,
-    )
-    return module, prompt_type, result_type, computation
-
-
 def test_module_owns_interpretation_and_second_physical_request() -> None:
-    module, prompt_type, result_type, computation = _contracts()
+    module, prompt_type, result_type, computation = build_contracts()
     calls: list[tuple[object, ...]] = []
 
     def mechanism(payloads: tuple[object, ...]) -> object:
@@ -141,7 +87,7 @@ def test_module_owns_interpretation_and_second_physical_request() -> None:
 
     registry = CapabilityRegistry()
     registry.register(
-        _capability(
+        build_capability(
             identity="fixture-mechanism",
             computation=computation,
             prompt_type=prompt_type,
@@ -168,11 +114,11 @@ def test_module_owns_interpretation_and_second_physical_request() -> None:
 
 
 def test_noncomposing_capability_is_absent_and_never_invoked() -> None:
-    module, prompt_type, result_type, computation = _contracts()
+    module, prompt_type, result_type, computation = build_contracts()
     invoked: list[str] = []
     registry = CapabilityRegistry()
     registry.register(
-        _capability(
+        build_capability(
             identity="third-party",
             computation=computation,
             prompt_type=prompt_type,
@@ -183,7 +129,7 @@ def test_noncomposing_capability_is_absent_and_never_invoked() -> None:
         )
     )
     registry.register(
-        _capability(
+        build_capability(
             identity="owner-private",
             computation=computation,
             prompt_type=prompt_type,
@@ -209,10 +155,10 @@ def test_noncomposing_capability_is_absent_and_never_invoked() -> None:
 
 
 def test_no_currently_usable_capability_is_ordinary_unavailability() -> None:
-    module, prompt_type, result_type, computation = _contracts()
+    module, prompt_type, result_type, computation = build_contracts()
     registry = CapabilityRegistry()
     registry.register(
-        _capability(
+        build_capability(
             identity="external",
             computation=computation,
             prompt_type=prompt_type,
@@ -235,7 +181,7 @@ def test_no_currently_usable_capability_is_ordinary_unavailability() -> None:
 
 
 def test_module_can_submit_material_reachable_from_another_module() -> None:
-    owner, prompt_type, _, computation = _contracts()
+    owner, prompt_type, _, computation = build_contracts()
     consumer = ModuleId("consumer-module")
     shared = Material(
         MaterialId(owner, "shared-input"),
@@ -255,11 +201,11 @@ def test_module_can_submit_material_reachable_from_another_module() -> None:
 
 
 def test_resource_capacity_filters_candidates_before_physical_attempt() -> None:
-    module, prompt_type, result_type, computation = _contracts()
+    module, prompt_type, result_type, computation = build_contracts()
     calls: list[str] = []
     registry = CapabilityRegistry()
     registry.register(
-        _capability(
+        build_capability(
             identity="oversized",
             computation=computation,
             prompt_type=prompt_type,
@@ -271,7 +217,7 @@ def test_resource_capacity_filters_candidates_before_physical_attempt() -> None:
         )
     )
     registry.register(
-        _capability(
+        build_capability(
             identity="fitting",
             computation=computation,
             prompt_type=prompt_type,

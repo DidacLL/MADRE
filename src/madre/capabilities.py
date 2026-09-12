@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-import inspect
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -325,35 +324,3 @@ class CapacityResourceCoordinator:
 
     def reserve(self, claims: tuple[ResourceClaim, ...]) -> ResourceReservation:
         return ResourceReservation(claims, self._capacities, self._semaphores)
-
-
-class FunctionCapability:
-    """Deterministic in-process fixture or installed mechanism implementation."""
-
-    def __init__(
-        self,
-        definition: CapabilityDefinition,
-        function: Callable[[tuple[object, ...]], object | Awaitable[object]],
-        *,
-        availability: Callable[[], bool] | None = None,
-    ) -> None:
-        self._definition = definition
-        self._function = function
-        self._availability = availability or (lambda: True)
-
-    @property
-    def definition(self) -> CapabilityDefinition:
-        return self._definition
-
-    def is_available(self) -> bool:
-        return self._availability()
-
-    async def invoke(self, request: CapabilityInvocation) -> object:
-        try:
-            async with asyncio.timeout(request.timeout_seconds):
-                output = self._function(request.payloads)
-                if inspect.isawaitable(output):
-                    return await output
-                return output
-        except TimeoutError as exc:
-            raise CapabilityError("timeout") from exc

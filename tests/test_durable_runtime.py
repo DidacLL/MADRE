@@ -18,11 +18,11 @@ from madre_sdk import (
     Sensitivity,
     WorkRequest,
 )
-from tests.test_module_execution_path import _capability, _contracts
+from tests.kernel_fixtures import build_capability, build_contracts
 
 
 def _request(*, sensitivity: Sensitivity, attempts: int = 1) -> WorkRequest[str]:
-    module, prompt_type, _, computation = _contracts()
+    module, prompt_type, _, computation = build_contracts()
     return WorkRequest(
         module=module,
         materials=MaterialSet.of(
@@ -34,10 +34,10 @@ def _request(*, sensitivity: Sensitivity, attempts: int = 1) -> WorkRequest[str]
 
 
 def _private_registry(output: object = "durable-output") -> CapabilityRegistry:
-    module, prompt_type, result_type, computation = _contracts()
+    module, prompt_type, result_type, computation = build_contracts()
     registry = CapabilityRegistry()
     registry.register(
-        _capability(
+        build_capability(
             identity="durable-private",
             computation=computation,
             prompt_type=prompt_type,
@@ -80,11 +80,11 @@ def test_opaque_input_and_pending_physical_result_survive_restart(tmp_path: Path
 
 
 def test_current_unavailability_waits_without_recording_an_attempt(tmp_path: Path) -> None:
-    module, prompt_type, result_type, computation = _contracts()
+    module, prompt_type, result_type, computation = build_contracts()
     now = [datetime(2026, 9, 12, 12, tzinfo=UTC)]
     registry = CapabilityRegistry()
     registry.register(
-        _capability(
+        build_capability(
             identity="external-only",
             computation=computation,
             prompt_type=prompt_type,
@@ -105,7 +105,7 @@ def test_current_unavailability_waits_without_recording_an_attempt(tmp_path: Pat
         assert waiting.attempts == ()
 
         registry.register(
-            _capability(
+            build_capability(
                 identity="owner-private",
                 computation=computation,
                 prompt_type=prompt_type,
@@ -131,10 +131,10 @@ def test_physical_failure_retries_according_to_request_policy(tmp_path: Path) ->
             raise CapabilityError("fixture_interruption")
         return "recovered"
 
-    module, prompt_type, result_type, computation = _contracts()
+    module, prompt_type, result_type, computation = build_contracts()
     registry = CapabilityRegistry()
     registry.register(
-        _capability(
+        build_capability(
             identity="flaky-physical",
             computation=computation,
             prompt_type=prompt_type,
