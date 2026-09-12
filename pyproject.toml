@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "madre-runtime"
 version = "0.1.0"
-description = "Local-first governed execution and agent interoperability platform"
+description = "Local-first physical capability execution for independent Modules"
 readme = "README.md"
 requires-python = ">=3.13"
 license = "GPL-3.0-only"

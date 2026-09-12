@@ -1,33 +1,39 @@
-"""MADRE governed execution and interoperability platform."""
+"""MADRE Kernel physical execution boundary."""
 
-from madre.broker import Broker
-from madre.capabilities import CapabilityRegistry
-from madre.interfaces import (
-    AgentEndpoint,
-    Discovery,
-    DurableWorkSubmission,
-    MaterialResolver,
-    ModuleRegistration,
-    OperationEndpoint,
-    TransientInference,
-    WorkInspection,
-    WorkResultAccess,
+from madre.capabilities import (
+    CapabilityAdapter,
+    CapabilityDefinition,
+    CapabilityError,
+    CapabilityId,
+    CapabilityInput,
+    CapabilityInputs,
+    CapabilityRegistry,
+    CapabilitySelection,
+    CapabilityUnavailable,
+    CapacityResourceCoordinator,
+    DeterministicCapabilitySelection,
+    FunctionCapability,
+    ResourceClaim,
+    ResourceCoordinator,
+    ResourceId,
 )
-from madre.registry import InteroperabilityRegistry
-from madre.runtime import WorkRuntime
+from madre.runtime import Kernel
 
 __all__ = [
-    "AgentEndpoint",
-    "Broker",
+    "CapacityResourceCoordinator",
+    "CapabilityAdapter",
+    "CapabilityDefinition",
+    "CapabilityError",
+    "CapabilityId",
+    "CapabilityInput",
+    "CapabilityInputs",
     "CapabilityRegistry",
-    "Discovery",
-    "DurableWorkSubmission",
-    "InteroperabilityRegistry",
-    "MaterialResolver",
-    "ModuleRegistration",
-    "OperationEndpoint",
-    "TransientInference",
-    "WorkInspection",
-    "WorkResultAccess",
-    "WorkRuntime",
+    "CapabilitySelection",
+    "CapabilityUnavailable",
+    "DeterministicCapabilitySelection",
+    "FunctionCapability",
+    "Kernel",
+    "ResourceClaim",
+    "ResourceCoordinator",
+    "ResourceId",
 ]

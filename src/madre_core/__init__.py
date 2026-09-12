@@ -1,21 +1,8 @@
-"""Shipped default MADRE CORE Module."""
+"""The shipped Module's private behavior.
 
-from madre_core.core import (
-    CORE_INTERACTION_AGENT_ID,
-    CORE_MODULE_ID,
-    DEFAULT_CORE_SELECTION,
-    ContinuationPolicy,
-    CoreContinuation,
-    CoreModule,
-    NoContinuation,
-)
+The package name is an installation artifact. CORE is not an SDK or Kernel type.
+"""
 
-__all__ = [
-    "CORE_INTERACTION_AGENT_ID",
-    "CORE_MODULE_ID",
-    "DEFAULT_CORE_SELECTION",
-    "ContinuationPolicy",
-    "CoreContinuation",
-    "CoreModule",
-    "NoContinuation",
-]
+from madre_core.module import InteractionBehavior, ResultInterpreter
+
+__all__ = ["InteractionBehavior", "ResultInterpreter"]

@@ -1,4 +1,4 @@
-"""Public durable storage facade for MADRE runtime metadata and evidence."""
+"""Public durable storage facade for MADRE runtime lifecycle metadata."""
 
 from madre.storage_db import open_database, utc_now
 from madre.storage_platform import PlatformStore

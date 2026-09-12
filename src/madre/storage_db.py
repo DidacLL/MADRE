@@ -1,4 +1,4 @@
-"""SQLite lifecycle and schema for MADRE durable metadata/evidence."""
+"""SQLite lifecycle and schema for runtime metadata only."""
 
 from __future__ import annotations
 
@@ -17,13 +17,13 @@ _STORAGE_DDL = """
 CREATE TABLE runtime_work (
     id TEXT PRIMARY KEY,
     originator TEXT NOT NULL,
-    security_history_json TEXT NOT NULL,
-    inference_json TEXT NOT NULL,
+    originator_identity_json TEXT NOT NULL,
+    capability_query_json TEXT NOT NULL,
     material_handle_json TEXT NOT NULL,
+    output_specification_json TEXT NOT NULL,
     eligible_at TEXT,
     priority INTEGER NOT NULL,
     constraints_json TEXT NOT NULL,
-    correlation_json TEXT NOT NULL,
     idempotency_key TEXT,
     status TEXT NOT NULL CHECK (status IN ('accepted','running','succeeded','failed','cancelled')),
     submitted_at TEXT NOT NULL,
@@ -32,6 +32,10 @@ CREATE TABLE runtime_work (
     started_at TEXT,
     completed_at TEXT,
     error_code TEXT,
+    retry_disposition TEXT CHECK (
+        retry_disposition IS NULL OR
+        retry_disposition IN ('retryable','unknown_outcome','terminal')
+    ),
     cancellation_requested_at TEXT,
     cancellation_disposition TEXT CHECK (
         cancellation_disposition IS NULL OR
@@ -40,9 +44,6 @@ CREATE TABLE runtime_work (
     output_digest TEXT,
     output_size INTEGER,
     output_produced_at TEXT,
-    output_integrity INTEGER CHECK (output_integrity IS NULL OR output_integrity BETWEEN 1 AND 5),
-    result_producer_security_ids_json TEXT,
-    result_source_security_ids_json TEXT,
     delivery_status TEXT CHECK (
         delivery_status IS NULL OR delivery_status IN ('awaiting_consumption','consumed','lost')
     )
@@ -66,6 +67,9 @@ CREATE TABLE runtime_retry (
     requested_at TEXT NOT NULL,
     previous_completed_at TEXT NOT NULL,
     previous_error_code TEXT NOT NULL,
+    previous_retry_disposition TEXT NOT NULL CHECK (
+        previous_retry_disposition IN ('retryable','unknown_outcome','terminal')
+    ),
     PRIMARY KEY(work_id,number),
     UNIQUE(work_id,idempotency_key)
 );
@@ -77,67 +81,22 @@ CREATE TABLE runtime_attempt (
     status TEXT NOT NULL CHECK (status IN ('running','succeeded','failed')),
     started_at TEXT NOT NULL,
     completed_at TEXT,
-    capability_id TEXT,
-    provider_id TEXT,
-    model_id TEXT,
+    capability_identity_json TEXT,
     execution_boundary TEXT,
-    security_transition_id TEXT,
     output_digest TEXT,
     output_size INTEGER,
     error_code TEXT,
+    retry_disposition TEXT CHECK (
+        retry_disposition IS NULL OR
+        retry_disposition IN ('retryable','unknown_outcome','terminal')
+    ),
     PRIMARY KEY(work_id,number)
 );
 
-CREATE TABLE module_manifest (
+CREATE TABLE module_definition (
     module_id TEXT PRIMARY KEY,
-    manifest_json TEXT NOT NULL,
+    definition_json TEXT NOT NULL,
     updated_at TEXT NOT NULL
-);
-
-CREATE TABLE security_object (
-    security_id TEXT PRIMARY KEY,
-    object_json TEXT NOT NULL
-);
-
-CREATE TABLE security_transition (
-    transition_id TEXT PRIMARY KEY,
-    transition_json TEXT NOT NULL
-);
-
-CREATE TABLE security_derivation (
-    derivation_id TEXT PRIMARY KEY,
-    derivation_json TEXT NOT NULL
-);
-
-CREATE TABLE security_decision (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    crossing_id TEXT NOT NULL,
-    crossing_kind TEXT NOT NULL,
-    target_id TEXT NOT NULL,
-    transition_id TEXT NOT NULL,
-    transition_json TEXT NOT NULL,
-    algebra_version TEXT NOT NULL,
-    decision_json TEXT NOT NULL,
-    execution_boundary TEXT,
-    admissible INTEGER NOT NULL CHECK (admissible IN (0,1)),
-    failure_codes_json TEXT NOT NULL,
-    decided_at TEXT NOT NULL
-);
-
-CREATE TABLE broker_event (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    invocation_id TEXT NOT NULL,
-    crossing_kind TEXT NOT NULL,
-    requester_module_id TEXT NOT NULL,
-    target_module_id TEXT NOT NULL,
-    target_id TEXT NOT NULL,
-    event TEXT NOT NULL,
-    observed_at TEXT NOT NULL,
-    output_digest TEXT,
-    output_size INTEGER,
-    completion_context_json TEXT,
-    output_security_id TEXT,
-    derivation_ids_json TEXT
 );
 """
 

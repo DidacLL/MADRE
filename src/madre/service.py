@@ -1,118 +1,65 @@
-"""Local HTTP transport over MADRE execution and interoperability contracts."""
+"""Local HTTP transport over execution and declarative catalog contracts."""
 
 from __future__ import annotations
 
 import asyncio
-import hashlib
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from urllib.parse import urlsplit
 
 from fastapi import FastAPI, Header, HTTPException, Response
+from pydantic import JsonValue
 
 from madre.adapters.openai import OpenAICompatibleChatCapability
-from madre.capabilities import CapabilityDescriptor, CapabilityRegistry
+from madre.capabilities import CapabilityRegistry
+from madre.catalog import ModuleCatalog
 from madre.config import Settings
-from madre.contracts import (
-    TransientInferenceRequest,
-    TransientInferenceResult,
-    WorkRecord,
-    WorkRetryRequest,
-    WorkSubmission,
-)
-from madre.registry import InteroperabilityRegistry, ModuleManifest
+from madre.contracts import WorkRecord, WorkRetryRequest, WorkSubmission
 from madre.runtime import (
     CancellationConflict,
+    ExecutionUnavailable,
     IdempotencyConflict,
+    Kernel,
     ResultLost,
     ResultUnavailable,
     RetryConflict,
-    TransientInferenceError,
     WorkNotFound,
-    WorkRuntime,
-)
-from madre.security import (
-    BindingEvidence,
-    SecurityObject,
-    SecuritySubjectRef,
-    SecurityValues,
 )
 from madre.storage import PlatformStore, open_database
+from madre_sdk.execution import ExecutionRequest
+from madre_sdk.material import Material
+from madre_sdk.security import SecurityMismatch
+from madre_sdk.semantic import ModuleDefinition
+
+
+class _ApplicationState:
+    def __init__(self) -> None:
+        self.kernel: Kernel | None = None
+        self.catalog: ModuleCatalog | None = None
+
+    def clear(self) -> None:
+        self.kernel = None
+        self.catalog = None
 
 
 def _capabilities(settings: Settings) -> CapabilityRegistry:
     registry = CapabilityRegistry()
-    for capability_id, config in settings.capabilities.items():
-        endpoint = urlsplit(config.endpoint)
-        if (
-            endpoint.scheme not in {"http", "https"}
-            or not endpoint.hostname
-            or endpoint.username is not None
-            or endpoint.password is not None
-            or endpoint.query
-            or endpoint.fragment
-            or "?" in config.endpoint
-            or "#" in config.endpoint
-        ):
-            raise ValueError("Capability endpoint must have a non-secret structural URL")
-        endpoint_host = endpoint.hostname.encode("idna").decode("ascii").lower()
-        endpoint_port = endpoint.port or (443 if endpoint.scheme == "https" else 80)
-        security = SecurityObject.issue(
-            subject_ref=SecuritySubjectRef(
-                owner_module_id="madre.platform",
-                subject_kind="capability",
-                publication_revision="1",
-                local_id=capability_id,
-            ),
-            values=SecurityValues(
-                privacy=config.privacy,
-                integrity=config.integrity,
-            ),
-            binding_evidence=(
-                BindingEvidence(key="adapter_kind", value=config.kind),
-                BindingEvidence(key="endpoint_scheme", value=endpoint.scheme),
-                BindingEvidence(key="endpoint_host", value=endpoint_host),
-                BindingEvidence(key="endpoint_port", value=str(endpoint_port)),
-                BindingEvidence(
-                    key="endpoint_path_digest",
-                    value=hashlib.sha256((endpoint.path or "/").encode()).hexdigest(),
-                ),
-                BindingEvidence(key="model", value=config.model),
-                BindingEvidence(key="boundary", value=config.boundary),
-                BindingEvidence(key="provider_id", value=config.provider_id or "none"),
-            ),
-        )
-        descriptor = CapabilityDescriptor(
-            id=capability_id,
-            specialization="model.inference.chat",
-            modality="text",
-            provider_id=config.provider_id,
-            model_id=config.model,
-            execution_boundary=config.boundary,
-            latency_class=config.latency_class,
-            supported_reasoning_efforts=config.reasoning_efforts,
-            quality_tier=config.quality_tier,
-            paid=config.paid,
-            resources=config.resources,
-            heavyweight=config.heavyweight,
-            security=security,
-        )
-        registry.register(OpenAICompatibleChatCapability(descriptor, config))
+    for installed in settings.capabilities:
+        registry.register(OpenAICompatibleChatCapability(installed.definition, installed.adapter))
     return registry
 
 
 def create_app(settings: Settings) -> FastAPI:
-    state: dict[str, object] = {}
+    state = _ApplicationState()
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         with open_database(settings.data_dir) as connection:
             store = PlatformStore(connection)
-            registry = InteroperabilityRegistry(store)
-            runtime = WorkRuntime(store, _capabilities(settings))
-            state["runtime"] = runtime
-            state["registry"] = registry
-            scheduler = asyncio.create_task(runtime.run_scheduler())
+            catalog = ModuleCatalog(store)
+            kernel = Kernel(_capabilities(settings), store)
+            state.kernel = kernel
+            state.catalog = catalog
+            scheduler = asyncio.create_task(kernel.run_scheduler())
             try:
                 yield
             finally:
@@ -125,29 +72,31 @@ def create_app(settings: Settings) -> FastAPI:
 
     app = FastAPI(title="MADRE", lifespan=lifespan)
 
-    def runtime() -> WorkRuntime:
-        value = state.get("runtime")
-        if not isinstance(value, WorkRuntime):
+    def kernel() -> Kernel:
+        value = state.kernel
+        if value is None:
             raise HTTPException(status_code=503, detail="runtime unavailable")
         return value
 
-    def interoperability() -> InteroperabilityRegistry:
-        value = state.get("registry")
-        if not isinstance(value, InteroperabilityRegistry):
-            raise HTTPException(status_code=503, detail="registry unavailable")
+    def catalog() -> ModuleCatalog:
+        value = state.catalog
+        if value is None:
+            raise HTTPException(status_code=503, detail="catalog unavailable")
         return value
 
-    @app.post("/v1/registry/modules", response_model=ModuleManifest)
-    async def register_module(manifest: ModuleManifest) -> ModuleManifest:
-        interoperability().register(manifest)
-        return manifest
+    @app.post("/v1/modules", response_model=ModuleDefinition)
+    async def register_module(definition: ModuleDefinition) -> ModuleDefinition:
+        catalog().register(definition)
+        return definition
 
-    @app.post("/v1/inference", response_model=TransientInferenceResult)
-    async def transient_inference(request: TransientInferenceRequest) -> TransientInferenceResult:
+    @app.post("/v1/executions", response_model=Material[JsonValue])
+    async def execute(request: ExecutionRequest) -> Material[JsonValue]:
         try:
-            return await runtime().infer(request)
-        except TransientInferenceError as exc:
-            raise HTTPException(status_code=422, detail=exc.code) from exc
+            return await kernel().execute(request)
+        except ExecutionUnavailable as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except SecurityMismatch as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @app.post("/v1/work", response_model=WorkRecord, status_code=202)
     async def submit_work(
@@ -156,17 +105,15 @@ def create_app(settings: Settings) -> FastAPI:
         idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     ) -> WorkRecord:
         try:
-            record = await runtime().submit(submission, idempotency_key=idempotency_key)
+            record = await kernel().submit(submission, idempotency_key=idempotency_key)
         except IdempotencyConflict as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
         response.headers["Location"] = f"/v1/work/{record.id}"
         return record
 
     @app.get("/v1/work/{work_id}", response_model=WorkRecord)
     async def inspect_work(work_id: str) -> WorkRecord:
-        record = runtime().inspect(work_id)
+        record = kernel().inspect(work_id)
         if record is None:
             raise HTTPException(status_code=404, detail="work not found")
         return record
@@ -174,7 +121,7 @@ def create_app(settings: Settings) -> FastAPI:
     @app.post("/v1/work/{work_id}/cancel", response_model=WorkRecord)
     async def cancel_work(work_id: str) -> WorkRecord:
         try:
-            return await runtime().cancel(work_id)
+            return await kernel().cancel(work_id)
         except WorkNotFound as exc:
             raise HTTPException(status_code=404, detail="work not found") from exc
         except CancellationConflict as exc:
@@ -187,18 +134,16 @@ def create_app(settings: Settings) -> FastAPI:
         idempotency_key: str = Header(alias="Idempotency-Key"),
     ) -> WorkRecord:
         try:
-            return await runtime().retry(work_id, request, idempotency_key=idempotency_key)
+            return await kernel().retry(work_id, request, idempotency_key=idempotency_key)
         except WorkNotFound as exc:
             raise HTTPException(status_code=404, detail="work not found") from exc
         except RetryConflict as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    @app.post("/v1/work/{work_id}/result")
-    async def consume_result(work_id: str) -> object:
+    @app.post("/v1/work/{work_id}/result", response_model=Material[JsonValue])
+    async def consume_result(work_id: str) -> Material[JsonValue]:
         try:
-            return runtime().consume_result(work_id)
+            return kernel().consume_result(work_id)
         except WorkNotFound as exc:
             raise HTTPException(status_code=404, detail="work not found") from exc
         except ResultLost as exc:

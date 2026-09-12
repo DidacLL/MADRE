@@ -5,10 +5,15 @@ from __future__ import annotations
 import json
 import sqlite3
 from datetime import datetime
-from typing import cast
 
-from madre.contracts import ResultEvidence, WorkCancellation, WorkFailure, WorkRecord, WorkSpec
-from madre.security import OrdinarySecurityLevel, SecurityHistory, SecurityLevel
+from madre.contracts import (
+    ResultMetadata,
+    RetryDisposition,
+    WorkCancellation,
+    WorkFailure,
+    WorkRecord,
+    WorkSpec,
+)
 from madre.storage_db import _json
 from madre.storage_work_base import WorkStoreBase
 
@@ -25,25 +30,25 @@ class WorkRecordStore(WorkStoreBase):
         try:
             with self.connection:
                 sequence = self._take_queue_sequence()
-                self._persist_security_history(spec.security)
                 self.connection.execute(
                     """
                     INSERT INTO runtime_work(
-                        id,originator,security_history_json,inference_json,material_handle_json,
-                        eligible_at,priority,constraints_json,correlation_json,idempotency_key,
+                        id,originator,originator_identity_json,capability_query_json,material_handle_json,
+                        output_specification_json,eligible_at,priority,constraints_json,
+                        idempotency_key,
                         status,submitted_at,enqueued_at,queue_sequence
                     ) VALUES (?,?,?,?,?,?,?,?,?,?, 'accepted',?,?,?)
                     """,
                     (
                         work_id,
-                        spec.originator,
-                        _json(spec.security),
-                        _json(spec.inference),
+                        spec.originator.owner,
+                        _json(spec.originator),
+                        _json(spec.capability),
                         _json(spec.material),
+                        _json(spec.output),
                         spec.eligible_at.isoformat() if spec.eligible_at else None,
                         spec.priority,
                         _json(spec.constraints),
-                        _json(spec.correlation),
                         idempotency_key,
                         submitted_at.isoformat(),
                         submitted_at.isoformat(),
@@ -53,19 +58,11 @@ class WorkRecordStore(WorkStoreBase):
         except sqlite3.IntegrityError:
             if (
                 idempotency_key is None
-                or self._idempotency_id(spec.originator, idempotency_key) is None
+                or self._idempotency_id(spec.originator.owner, idempotency_key) is None
             ):
                 raise
             return False
         return True
-
-    def update_security_history(self, work_id: str, history: SecurityHistory) -> None:
-        with self.connection:
-            self._persist_security_history(history)
-            self.connection.execute(
-                "UPDATE runtime_work SET security_history_json=? WHERE id=?",
-                (_json(history), work_id),
-            )
 
     def get_by_idempotency_key(self, originator: str, key: str) -> WorkRecord | None:
         identity = self._idempotency_id(originator, key)
@@ -81,17 +78,23 @@ class WorkRecordStore(WorkStoreBase):
             return None
         spec = WorkSpec.model_validate(
             {
-                "originator": row["originator"],
-                "security": json.loads(row["security_history_json"]),
-                "inference": json.loads(row["inference_json"]),
+                "originator": json.loads(row["originator_identity_json"]),
+                "capability": json.loads(row["capability_query_json"]),
                 "material": json.loads(row["material_handle_json"]),
+                "output": json.loads(row["output_specification_json"]),
                 "eligible_at": row["eligible_at"],
                 "priority": row["priority"],
                 "constraints": json.loads(row["constraints_json"]),
-                "correlation": json.loads(row["correlation_json"]),
             }
         )
-        failure = WorkFailure(code=row["error_code"]) if row["error_code"] is not None else None
+        failure = (
+            WorkFailure(
+                code=row["error_code"],
+                retry=RetryDisposition(row["retry_disposition"]),
+            )
+            if row["error_code"] is not None
+            else None
+        )
         cancellation = None
         if row["cancellation_requested_at"] is not None:
             cancellation = WorkCancellation(
@@ -100,19 +103,11 @@ class WorkRecordStore(WorkStoreBase):
             )
         result = None
         if row["output_digest"] is not None:
-            result = ResultEvidence(
+            result = ResultMetadata(
                 digest=row["output_digest"],
                 size=row["output_size"],
                 produced_at=datetime.fromisoformat(row["output_produced_at"]),
                 delivery_status=row["delivery_status"],
-                output_integrity=cast(
-                    OrdinarySecurityLevel,
-                    SecurityLevel(row["output_integrity"])
-                    if row["output_integrity"] is not None
-                    else None,
-                ),
-                producer_security_ids=tuple(json.loads(row["result_producer_security_ids_json"])),
-                source_security_ids=tuple(json.loads(row["result_source_security_ids_json"])),
             )
         return WorkRecord(
             id=work_id,

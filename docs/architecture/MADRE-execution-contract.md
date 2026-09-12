@@ -1,225 +1,63 @@
-# MADRE Execution Contract
+# MADRE Physical Execution Contract
 
-Authority: `MADRE.md` defines product meaning. This document owns transient/durable execution, material lifecycle, inference requirements/mechanism selection, scheduling-facing behavior, results and recovery.
+## Work request
 
-## 1. Execution classes
+A Module submits a typed `WorkRequest` containing:
 
-MADRE exposes two execution lifecycles.
+- its nominal `ModuleId`;
+- the actual nonempty `MaterialSet` to be forwarded;
+- a typed computation contract and expected physical result type;
+- typed physical requirements and preferences;
+- timing, timeout, priority, and physical retry policy.
 
-### Transient inference
+The request contains no concrete Capability identity and no future Material identity,
+classification, Operation, Agent instruction, or semantic continuation.
 
-```text
-Module -> minimal ephemeral material -> Kernel -> Capability -> transient result -> Module
-```
+## Selection and invocation
 
-Transient inference:
+Kernel considers only installed Capabilities that implement the computation and
+material contracts. It attempts immutable composition of the request's carried
+Sensitivity with each Capability's explicit receiving Privacy. Capabilities that
+cannot join simply do not enter the selectable set.
 
-- creates no durable `WorkRecord`;
-- may carry minimal input directly;
-- has no restart/recovery guarantee;
-- discards request/result bytes after handoff;
-- may request low latency or other execution properties.
+Kernel then applies physical requirements, availability, resource state, and typed
+preferences through injected selection and coordination strategies. If no mechanism
+can currently satisfy the work, the outcome is ordinary Capability unavailability.
+Durable work may try later according to its physical retry policy.
 
-A Module/Agent may use this primitive for interactive response, validation, probing, background reasoning or another semantic purpose. Kernel does not assign that meaning.
+For the selected mechanism Kernel records ordinary attempt telemetry, reserves its
+typed resources, and forwards the Material payload opaquely. The adapter returns a
+typed `PhysicalResult` containing physical output and mechanical metadata.
 
-### Durable work
+## Result ownership
 
-```text
-WorkSubmission -> WorkRecord -> 0..N WorkAttempts
-```
+Kernel returns or buffers `PhysicalResult`; it never returns Material. The requesting
+Module interprets the output and decides whether to construct independent new
+Material, submit another request, invoke a bounded Operation, present a result, or
+stop.
 
-A `WorkSubmission` is an explicit request for schedulable/recoverable physical computation. The caller has already decided semantically that the computation is useful.
+Physical output has no execution interface. Text or structured data resembling an
+Operation cannot invoke anything.
 
-The durable `WorkRecord` stores execution metadata, material identity/integrity binding, carried security identities/history and scheduling state. It never embeds or queues prompt/context/result content.
+## Durable work
 
-A `WorkAttempt` records physical truth: selected mechanism/model, relevant security/boundary identities, timing, outcome, failure classification, output digest/size and execution evidence.
+The queue serializes an opaque snapshot of the submitted payload together with the
+typed work contract and carried values required to reproduce physical dispatch after
+restart. A completed raw result remains in a delivery buffer until retrieved or
+acknowledged.
 
-## 2. Durable submission projection
+Retention and cleanup remove input and output bytes according to work lifecycle and
+delivery policy. Compact scheduling and physical attempt telemetry may remain. Queue
+storage cannot query, reinterpret, transform, or reuse payload bytes as Module domain
+knowledge.
 
-A durable submission contains, in substance:
+Immediate and durable execution share one dispatch path. Idempotent submission,
+cancellation, eligibility, priority, timeout, restart recovery, resource waiting,
+transport interruption, and physical failure are runtime mechanics.
 
-- originator identity for routing/correlation;
-- carried SecurityIDs/SecurityObjects and security-relevant history required for the lifecycle so far;
-- inference requirements/preferences;
-- a verifiable `MaterialHandle`;
-- eligibility, priority and execution constraints;
-- opaque semantic correlation identifiers.
+## Adapter contract
 
-A `MaterialHandle` contains enough information to reacquire exactly the prepared material later:
-
-```text
-material reference
-expected digest
-material SecurityID / immutable security binding
-opaque retrieval coordination value
-```
-
-The retrieval coordination value is not MADRE permission or an authentication credential. It only identifies the prepared material to its owning Module/resolver.
-
-The durable projection contains no private payload.
-
-## 3. Durable material ownership and just-in-time resolution
-
-For every durable work item, immediately eligible or delayed:
-
-> Kernel owns execution intent, not queued private material.
-
-The Module retains actual prepared material.
-
-Before requesting the payload, Kernel should establish all practical facts that do not require it, including eligibility, compatible mechanism candidates, role-relevant security evaluation and resource readiness.
-
-Only when a concrete attempt is genuinely ready does Kernel resolve the `MaterialHandle` through the Module-facing resolver.
-
-Kernel verifies at least:
-
-```text
-reference continuity
-expected digest
-security binding continuity
-```
-
-Verified bytes exist only transiently for that attempt and are discarded afterwards.
-
-Unavailable material produces truthful material-unavailable failure. Mismatch produces integrity/security-continuity failure.
-
-No durable prompt cache, prompt vault or queued private-material cache belongs in Kernel.
-
-## 4. Restart, retry and external effects
-
-Accepted work survives restart as execution intent and verification/security-history metadata.
-
-```text
-restore WorkRecord
-    -> select when eligible/resources permit
-    -> construct/evaluate the prospective transition
-    -> resolve material when ready
-    -> verify
-    -> execute
-```
-
-Retries reacquire material rather than depending on stale Kernel-owned bytes.
-
-Interrupted inference normally recomputes unless the selected mechanism exposes a concrete checkpoint/resume capability.
-
-Externally effectful Operations require different handling: if dispatch may have happened but outcome is unknown, Kernel records that uncertainty and does not blindly repeat the effect.
-
-A retry selecting a different Capability, endpoint, EffectProfile or material representation is a new prospective security transition and is evaluated using those newly bound facts.
-
-## 5. Inference requirements and mechanism selection
-
-A **Capability** is an available physical inference/execution mechanism with known properties.
-
-Modules generally express what execution they need, while Kernel knows which mechanisms are currently installed/available.
-
-Hard constraints must remain distinguishable from preferences/fallbacks.
-
-Relevant dimensions include, when required by real use cases:
-
-```text
-modality / specialization
-latency class
-reasoning effort / quality target
-cost policy
-locality/privacy constraints
-resource/availability constraints
-preferred provider/model/mechanism
-fallback permission/order
-```
-
-Kernel deterministically matches these against `CapabilityDescriptor` facts and current resource state. It does not inspect prompt semantics to choose a reasoning strategy.
-
-A preferred provider/model may be a soft preference unless the caller marks it as a hard requirement.
-
-Paid execution is an execution property and should be visible to the owning Module/UI. Conversational negotiation is not a Kernel requirement.
-
-## 6. Mechanism adapters and provider ecosystems
-
-A concrete Capability adapter may use:
-
-```text
-provider request/response schemas
-API keys or OAuth/account sessions
-vendor CLI
-SDK
-MCP
-HTTP / IPC
-local gateway/bridge
-model loading/runtime management
-backend/device/cache/session controls
-user-installed automation over local software
-```
-
-One provider may therefore contribute several distinct mechanisms.
-
-Provider credentials access the provider/mechanism; they do not grant MADRE work authority.
-
-Mechanism-native optimization such as model residency, KV-cache/session reuse or vectorized backend state belongs behind the adapter boundary. The SDK may expose controlled optional extension APIs for such mechanisms without making them universal Kernel request fields.
-
-## 7. Security at execution boundaries
-
-Every participating security-relevant object contributes its bound `SecurityID`/`SecurityObject` as defined in `MADRE-security-algebra.md`.
-
-Security evaluation is transition-local rather than a global reduction over the entire carried object history.
-
-For a candidate inference mechanism, the prospective transition identifies the concrete material disclosure edge(s) to the selected Capability and any other actual recipients on that path. The disclosure predicate compares source Sensitivity with actual observer Privacy, or matches carried UserRelease against that exact crossing.
-
-For an effectful Operation, the prospective transition additionally identifies the selected bound EffectProfile, actual causal controllers and actual effect executors. The control/effect predicates use their Integrity plus the EffectProfile's Risk and Autonomy.
-
-Conceptually:
-
-```text
-immutable carried security history
-    + prospective material/participant relationships
-    + candidate Capability or EffectProfile
-    -> SecurityTransition
-    -> SecurityAlgebra
-```
-
-A candidate mechanism that is rejected before receiving material is not recorded as having received that material merely because it was considered.
-
-Kernel handles bound security facts, transition structure supplied by public execution contracts, and material/binding integrity. It does not infer semantic truth, material classification or causal roles by reading prompt/output bytes.
-
-## 8. Scheduling and resources
-
-Kernel owns global deterministic scheduling/resource state.
-
-The architecture requires support for:
-
-- transient inference with latency requirements;
-- immediately eligible and delayed durable work;
-- originator/application fairness and priority;
-- budgets/deadlines as execution metadata where implemented;
-- GPU/CPU/RAM admission;
-- model residency/device coordination where useful;
-- cancellation and retry;
-- restart recovery.
-
-MADRE targets ordinary personal machines where inference resources may be scarce and already shared with the OS and other applications. Resource coordination must therefore prevent long background work from unnecessarily degrading interactive workloads.
-
-The exact scheduling/optimization algorithm should evolve from measured workloads rather than from speculative scheduler features.
-
-## 9. Result lifecycle
-
-Successful physical output is transient at the Kernel boundary:
-
-```text
-Capability -> transient result -> originator consumes -> bytes discarded
-```
-
-Durable-work evidence may retain output digest, size, production time, attempt reference and delivery state.
-
-A restart turns an unconsumed transient durable result into truthful result loss; Kernel does not gain hidden content durability.
-
-Once delivered, output is Module-owned `Artifact` material and may be used according to Module semantics. When that result participates in a later governed transition it has its own material SecurityObject and explicit transition role.
-
-## 10. Cancellation and failure evidence
-
-Cancellation records whether accepted durable work was prevented or whether cancellation arrived during a running attempt.
-
-Durable failure evidence should use stable runtime/adapter codes rather than persist arbitrary provider exception text containing private material.
-
-## 11. Persistence invariant
-
-Runtime persistence may contain public registry/mechanism metadata, work/attempt state, SecurityIDs/SecurityObjects and security-relevant transition/derivation evidence, opaque references/coordination values, digests, delivery state and evidence codes.
-
-It must not contain prompt/context/output payload columns.
+An adapter receives a typed invocation fixed by the selected Capability definition.
+Submitted payload cannot override configured endpoint, model, computation contract,
+or other immutable mechanism properties. Provider-specific dictionaries and response
+DTOs stay private to the adapter. Connection setup is supplied by its environment.

@@ -1,30 +1,46 @@
 # MADRE
 
-This document owns runnable setup and current usage. Product meaning lives in [`MADRE.md`](MADRE.md); implementation stage and validation state live in [`docs/implementation-baseline.md`](docs/implementation-baseline.md).
+MADRE is a local-first execution system through which independent Modules use shared
+physical Capabilities while retaining ownership of meaning, Material, behavior, and
+effects.
 
-MADRE is a local-first governed execution and agent-interoperability platform for AI-capable applications.
+Product meaning is defined in [`MADRE.md`](MADRE.md). Current executable state is
+recorded in [`docs/implementation-baseline.md`](docs/implementation-baseline.md).
 
-## Current implementation
+## Packages
 
-The reference Python distribution exposes three deliberate namespaces:
+- `madre_sdk` contains the public declarative definitions, ordinary Material values,
+  standalone Security Algebra, execution requests, and segregated behavior ports.
+- `madre` contains the reference Kernel, physical Capability adapters, declarative
+  catalog, durable lifecycle, SQLite metadata store, and local HTTP transport.
+- `madre_core` contains private behavior for the shipped Module. The package name is
+  an installation artifact; CORE is not a public type or Kernel concept.
 
-- `madre` — public Kernel contracts plus the current reference Kernel/transport implementation;
-- `madre_sdk` — the Module-facing typed SDK boundary;
-- `madre_core` — the shipped default CORE-capable Module, implemented only against `madre_sdk`.
+## Implemented path
 
-The Kernel provides reference-only durable `WorkSubmission -> WorkRecord -> WorkAttempt` execution, JIT Module-owned material resolution, generic transient inference, deterministic Capability selection, discovery, explicit Agent/Operation brokering, restart/retry/cancellation, transition-local Security Algebra evaluation, and execution/security evidence.
+The repository executes this path today:
 
-The SDK provides typed helpers for Modules, minimal Agents, portable Skills/Workflows, WorkPlan projection, immutable Operation-owned EffectProfiles, Artifact/ContextBundle construction and derivation, Module-owned durable material resolution, transient inference, durable submission/result access, discovery/brokering and CORE fallback selection/delegation. It imports only public MADRE contracts/protocols and does not expose runtime, storage, scheduler, FastAPI or provider-adapter internals.
+```text
+ordinary Module behavior
+    -> ExecutionRequest
+    -> Kernel
+    -> physical Capability
+    -> new ordinary Material
+    -> Module-owned interpreter
+    -> another ordinary Material
+```
 
-The shipped `madre_core.CoreModule` is an ordinary SDK Module. Its interaction Agent uses transient inference for the immediate path and can independently delegate to an explicit Agent or project continuation into ordinary durable work. CORE receives no Kernel bypass.
+The Capability output has no command status. Only the Module interpreter can decide
+what it means or whether another request or bounded Operation follows.
 
-The executable Security Algebra is the scoped model in `docs/architecture/MADRE-security-algebra.md`: `Sensitivity`, `Privacy`, `Integrity`, `Risk`, and `Autonomy` over explicit disclosure/control/effect topology. The previous Trust/Isolation/IntendedUse compatibility evaluator is no longer part of the runtime.
-
-The SDK intentionally does **not** provide a universal Agent session/memory framework, Planner, Workflow executor, security-policy DSL, generic shell/Internet surface or provider credential framework.
+Security values compose directly through immutable `SecurityScope`,
+`SecuritySurface`, `Disclosure`, `Control`, and `EffectExecution` values.
+There is no security evaluator, broker, evidence ledger, historical state, derivation
+ontology, user-presence exception, or persisted security decision.
 
 ## Development
 
-The project requires Python 3.13 and the uv version pinned in `pyproject.toml`/CI.
+Python 3.13 and the uv version pinned by the repository are required.
 
 ```bash
 uv sync --locked
@@ -35,48 +51,73 @@ uv run --locked mypy
 uv build --python .venv --no-build-isolation
 ```
 
-CI reinstalls the built wheel and verifies isolated imports of `madre`, `madre_sdk` and `madre_core` outside the checkout.
+CI installs the wheel into an isolated target and imports `madre`, `madre_sdk`,
+and `madre_core` outside the checkout.
 
-## Building a Module
+## Defining a Module
 
-Module code should normally import from `madre_sdk`. The SDK `Module` helper can publish a manifest, optional Agent/Operation endpoints and a Module-owned `MaterialRepository` through interface-segregated public protocols.
+Import public concepts from `madre_sdk`.
 
-Facets follow exact scopes and roles through `SecurityValues`. Sensitivity can apply to Module/Agent surfaces; ordinary material has no mandatory Integrity. `Artifact` and `ContextBundle` derivation creates new immutable representation/SecurityID bindings; ordinary derivation cannot increase Integrity, while explicit validation derivation is bounded by its validator path.
+A `ModuleDefinition` is immutable and serializable. It contains only declarative
+Module, Agent, Skill, Workflow, Operation, EffectProfile, contract, and exact security
+scope values. Every identity declares its domain kind as well as owner, name, and
+revision. Python behavior is bound separately through `ModuleRuntime`.
 
-An SDK `Operation` owns one or more immutable `EffectProfile`s. Each profile pairs `Risk` and `Autonomy`, with optional material-exposure `Privacy`. Actual executors separately declare Integrity. Invocation selects a profile identity rather than supplying these values ad hoc.
+Aggregate security values are structural:
 
-`MaterialRepository.retain(...)` produces a `MaterialHandle`; Kernel resolves that handle only when a durable attempt is ready and after candidate mechanism security evaluation. The supplied repository is in-memory. Recovery across a complete host restart requires the owning Module to retain/reconstruct its material and reattach its resolver; Kernel queue durability alone does not provide that.
+- Module Sensitivity is the maximum applicable Sensitivity among the exact scopes it
+  manages or exposes.
+- Agent Privacy is the minimum applicable Privacy among the Operations and other
+  surfaces it exposes.
+- Risk and Autonomy remain paired on one Operation EffectProfile.
 
-Agentless/UI-less Modules can use `CoreDelegate` with a configured `CoreSelection`. Selecting another CORE-capable Module changes ordinary Module configuration only; Kernel contains no special meaning for the shipped CORE module name.
+A transformation or model response is a new `Material` with a new identity and its
+own facts. It is never a derivation or fresh continuation token.
 
-## Local HTTP runtime
+The definitions round-trip through JSON. Their value-only shape is deliberately
+suitable for a future equivalent XML representation.
 
-Copy `madre.example.toml` to `madre.toml`, configure a Capability endpoint/model and its actual participation `privacy` (declare `integrity` only when its role requires it), then run:
+## Running the local transport
+
+Copy `madre.example.toml` to `madre.toml`, describe the installed physical
+Capability and its exact security scope, then run:
 
 ```bash
 uv run madre --config madre.toml
 ```
 
-The current HTTP transport exposes Module-manifest registration, generic transient inference, durable work submission/inspection/cancellation/retry and one-shot durable result consumption. It remains a transport for the local owner-controlled installation, not an independent authorization layer or the architecture of the SDK.
+The HTTP transport exposes:
 
-Native in-process Module integrations can additionally bind material resolvers and Agent/Operation endpoints through the public protocols used by the SDK. The current launcher does not assemble those integrations or start a CORE interaction surface. Module-manifest registration alone does not attach executable endpoints or a material resolver. The HTTP transport is not expanded into private content storage merely to make durable execution convenient.
+- `POST /v1/modules` for declarative catalog registration;
+- `POST /v1/executions` for immediate physical execution;
+- durable work submission, inspection, cancellation, retry, and one-shot result
+  consumption under `/v1/work`.
 
-## Privacy behavior
+The transport is a local implementation boundary, not an authentication or
+authorization layer.
 
-Durable runtime storage contains execution intent, `MaterialHandle` metadata, digests, immutable SecurityObjects, accepted SecurityTransitions/derivations, scheduling/lifecycle metadata and compact execution/security evidence. It contains no prompt/context/model-output payload columns and no arbitrary provider-error message text.
+## Durable privacy
 
-Transient inference input/result bytes are not persisted. Durable produced result bytes live only in process memory until consumed; restart before consumption marks delivery evidence as `lost`.
+Durable storage contains reference-only execution intent, Module and Capability
+identities, Material handles, output specifications, scheduling/lifecycle metadata,
+digests, sizes, and compact lifecycle failure/retry dispositions.
 
-See `docs/architecture/MADRE-execution-contract.md` for canonical execution semantics, `docs/architecture/MADRE-security-algebra.md` for the security model and `docs/implementation-baseline.md` for current executable truth.
+It contains no input/output payload columns, prompts, private Module state, algebra
+relations, security decisions, rejected candidates, provenance graphs, or provider
+error bodies. A Module supplies Material just in time through its resolver. Produced
+payload bytes remain in process memory until consumed; a restart marks unconsumed
+delivery as lost.
 
-## First local release work
+An incompatible algebraic composition ends that request. Its detailed mismatch is
+transient; durable work retains only a generic terminal failure and cannot retry the
+same rejected request.
 
-The current distribution is a validated runtime/SDK foundation, not yet an assembled
-end-user installation. The active stage and concrete completion criteria are in
-[`docs/implementation-baseline.md`](docs/implementation-baseline.md).
+## Adapter environment
 
-The example local inference participation is P3. The current CORE interaction code
-classifies its contexts as S5, so it cannot use that route without appropriate
-bounded material construction/explicit disclosure evidence. Do not raise the
-Capability declaration to P5 merely to get a demonstration working. A local URL
-alone establishes neither SECRET containment nor an Integrity warrant.
+MADRE does not model credentials, API keys, authentication, authorization,
+permissions, clearances, or provider trust. Provider environment setup belongs
+outside MADRE. The OpenAI-compatible adapter accepts an externally configured
+`httpx.AsyncClient` when non-default transport mechanics are required.
+
+Endpoint locality never supplies Privacy. The Capability definition must declare the
+exact observer surface independently.

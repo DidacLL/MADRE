@@ -1,128 +1,104 @@
 # MADRE Agent Harness
 
-This file is the standing execution contract for coding agents working in this repository. Keep it short, stable and limited to recurring repository-wide operating rules.
+MADRE is personal, owner-sovereign software. It connects Modules to installed
+physical inference and deterministic mechanisms while making information reach
+explicit and manageable by the owner.
 
-MADRE is a personal, single-owner research and software project. Optimize for durable product progress, repository legibility and working behavior.
+## Authority
 
-## Authority and precedence
+Use the current Owner request as the task goal and `MADRE.md` as the durable product
+model. Treat code, tests, architecture notes, history, and generated documents as
+implementation evidence. They do not acquire product authority through age,
+repetition, or apparent completeness.
 
-The current explicit Owner request is the task goal and highest project-specific authority for that task.
+Recover the intention behind Owner explanations. Do not transplant conventional AI
+platform, agent-harness, hosted-service, or enterprise-security architecture into
+MADRE merely because its vocabulary looks familiar.
 
-If an Owner decision changes enduring product meaning, propagate it into the appropriate canonical repository document during the task so chat does not become shadow product authority.
+## Ownership model
 
-Repository authority is otherwise:
+- A Module owns meaning, domain state, Material, transformations, Agents, Skills,
+  Workflows, interpretation, continuation, UI, and bounded Operations.
+- The SDK supplies the strongly typed reusable objects from which correct Modules
+  are built. Module authors use its algebraic construction directly.
+- Kernel owns live registries, physical Capability selection, routing, scheduling,
+  resource coordination, durable work queueing, physical retry, result delivery,
+  and ordinary execution logs.
+- A Capability is one physical inference or deterministic mechanism registered
+  inside Kernel. It returns physical output, not Material or instructions.
+- CORE is only an external installation-role assignment to an ordinary Module. It
+  changes no public type or runtime behavior.
 
-1. `MADRE.md` — canonical product meaning and invariants;
-2. the focused owner under `docs/architecture/` — detailed architecture for its responsibility;
-3. `docs/implementation-baseline.md` — descriptive current implementation stage, gaps and validation state;
-4. current code, tests and runtime evidence — implementation truth;
-5. `README.md` — runnable setup and current usage;
-6. `docs/design-memory/` — non-normative product rationale, examples, constraints, research directions and ecosystem notes, loaded only when relevant;
-7. Git history, PRs, issues and generated/supporting material — provenance/evidence only.
+Kernel may carry a Module's Material opaquely as work input. This does not transfer
+ownership. Kernel never assigns Material identity or meaning, classifies an output,
+or chooses a semantic continuation. The requesting Module receives physical output
+and decides what it means.
 
-Generated documents, commits, PR descriptions, schemas and implementation artifacts are not proof of Owner intent merely because they were committed, merged or labelled canonical. Use them as implementation/history evidence and resolve product meaning from direct Owner guidance plus the current canonical corpus.
+Modules describe required computation and physical execution preferences. They do
+not select, name, or inspect the concrete Capability used by Kernel.
 
-If the descriptive baseline disagrees with current executable behavior, code/tests/runtime evidence establish what actually works and the baseline must be corrected; executable behavior does not silently redefine product architecture.
+## Security Algebra
 
-## Context loading
+Sensitivity, Privacy, Integrity, Risk, and Autonomy are distinct ordered types.
+Composition is an intrinsic operation of immutable SDK values, not a Kernel service
+or a runtime lifecycle.
 
-Load only the context required by the task.
+- exposed Sensitivity accumulates by maximum;
+- receiving Privacy accumulates by minimum;
+- causal or physical Integrity accumulates by minimum;
+- information can reach a receiving surface only while accumulated Sensitivity is
+  no greater than accumulated Privacy;
+- one EffectProfile's `min(Risk, Autonomy)` is supported by the actual non-user
+  causal participants, using I5 when there are none;
+- one EffectProfile's Risk is supported by a nonempty set of actual physical
+  realizers;
+- values from separate EffectProfiles never combine.
 
-- Product/architecture work: read `MADRE.md`, then the focused architecture owner. Load the matching design-memory topic when product rationale, examples, constraints or an open direction materially affect the decision.
-- Runtime convergence work: read `MADRE.md`, `docs/implementation-baseline.md`, the relevant architecture owner, then the smallest code/test surface that answers the task.
-- SDK/Module work: read `MADRE.md`, `docs/architecture/MADRE-agent-interoperability.md`, the directly relevant design-memory topic, then the public contracts and smallest implementation surface.
-- Build/setup/usage work: start from `README.md`, configuration and directly relevant code; load product architecture only if the task reaches it.
-- Historical/refactor investigation: inspect `docs/refactors/` or Git history only when the task explicitly concerns that transition or provenance.
+Applicability comes from role-specific object types. Do not put optional algebra
+facets into one universal object. `Privacy.UNKNOWN` is the explicit P2 boundary for
+third-party handling outside the owner's control; it is not absent information or a
+value inferred from locality, endpoint, adapter, provider, or model.
 
-Expand context just in time through concrete dependencies, interfaces, failing behavior and tests. Prefer targeted repository search and direct inspection over broad ingestion.
+Composition either produces the immutable combined value or cannot produce one.
+Failed construction leaves the prior value unchanged and creates no durable object.
+Execution logs and work retries remain ordinary physical-runtime concerns and never
+become algebra operands.
 
-## Unit of work and continuation
+Every transformation creates independent new Material with a new identity and
+explicit applicable values. Prior Material remains unchanged. Optional provenance is
+Module metadata and does not influence composition.
 
-The explicit Owner request controls scope.
+## Public design
 
-Otherwise, one development session should complete one substantive coherent behavior, or a tightly coupled set of behaviors, that leaves the repository working and materially advances MADRE.
+Public MADRE objects are immutable, nominally typed, and responsible for their own
+invariants. Definitions are declarative and behavior implementations are separate.
+JSON and future XML are codecs at system boundaries, not the programming model.
 
-When asked simply to continue:
+Prefer cohesive domain objects, segregated ports, structural ownership, and derived
+values. Do not substitute string tags, generic dictionaries, dynamic type checks,
+duplicated summaries, import paths, or Python framework convenience for a durable
+OOP contract.
 
-1. read `docs/implementation-baseline.md`;
-2. if it declares an active development stage with incomplete completion criteria, continue that stage;
-3. otherwise inspect canonical product behavior for the next substantive unmet capability;
-4. do not extend the most recently edited subsystem merely because it has natural follow-up work.
-
-Keep working plans in the active session unless the plan itself becomes durable product or architecture knowledge.
+Add a reusable abstraction only when a concrete MADRE responsibility requires it.
+Semantic behavior remains private to concrete Modules; the SDK publishes only the
+reusable structure those Modules actually share.
 
 ## Engineering loop
 
-For each task:
+1. Identify the exact owner-visible behavior or boundary being changed.
+2. Inspect only the code and evidence needed to understand that surface.
+3. Replace divergent development contracts coherently; MADRE has no installed-base
+   compatibility requirement yet.
+4. Implement the smallest complete typed behavior.
+5. Validate public behavior and runtime evidence, not implementation-shaped tests.
+6. Inspect names, contracts, persistence, transport, tests, and docs for responsibility
+   leakage across the whole changed surface.
+7. Commit and push each coherent green checkpoint. Never merge without explicit Owner
+   instruction.
 
-1. Identify the observable behavior or product decision required.
-2. Inspect the nearest authoritative contract and current implementation evidence.
-3. Load relevant design memory before filling a semantic gap from convention.
-4. Choose the simplest coherent implementation suited to the present system.
-5. Implement the behavior end to end.
-6. Validate it with evidence proportional to the changed surface and use failures to steer corrections.
-7. Review the changed surface for correctness, unnecessary complexity and ownership drift.
-8. Complete ordinary branch, commit and pull-request work when useful. Integration into the default branch remains Owner-controlled unless explicitly delegated.
-9. Leave the repository sufficient for a fresh session to continue without reconstructing private chat history.
+Preserve unrelated user changes. Keep product meaning in `MADRE.md`, focused runtime
+architecture in `docs/architecture/`, executable truth in code and tests, and runnable
+setup in `README.md`.
 
-## Design discipline
-
-Preserve the ownership model in `MADRE.md` while allowing implementation architecture to evolve from evidence.
-
-A conventional architecture, security mechanism, policy, abstraction, service or dependency is not justified merely because it is common or considered best practice. Introduce it only when required by the current Owner request, canonical MADRE behavior, a demonstrated implementation need or concrete evidence.
-
-Do not confuse avoiding over-engineering with leaving architecture undefined. MADRE needs the smallest coherent, modular and human-readable set of contracts/classes required for its actual boundaries and SDK. Define cross-boundary concepts deliberately enough that later implementation does not fill a vacuum with unrelated conventions; keep Module-private semantics out of Kernel/framework ontology.
-
-Use suitable concrete dependencies directly when they make the current solution simpler, clearer or more reliable. Introduce a distinct abstraction only when an observed responsibility becomes clearer, safer, more reusable or easier to test because of it.
-
-When correcting architectural drift, preserve unrelated useful behavior. Fix the violated responsibility or contract rather than redesigning the surrounding subsystem without evidence that the wider structure is wrong.
-
-Treat names as part of software correctness and maintainability. Prefer terminology that lets a human reader infer responsibility without reconstructing hidden architectural meaning.
-
-When canonical contracts plus relevant design memory still leave a material product/architecture choice genuinely ambiguous, ask the Owner rather than silently importing a conventional answer. Ask the smallest focused question that exposes the concrete choice and consequence; do not offload large document reviews or routine implementation details to the Owner.
-
-Resolve implementation uncertainty through code, documentation, experiments and tests whenever those can provide the answer.
-
-## Development compatibility
-
-MADRE has no installed user base or production data to preserve during active development. Do not implement migrations, backward-compatibility paths or preservation machinery solely to carry generated runtime state from previous development revisions forward unless the Owner explicitly asks for it. Prefer recreating incompatible generated local state.
-
-This applies to generated development/runtime artifacts only. It does not make product definitions, architecture, source contracts or data-structure reasoning disposable.
-
-## Evidence and review
-
-Acceptance follows real behavior.
-
-Use real execution for claims about real execution. Use controlled fixtures and mocks for deterministic edge cases, protocol behavior and failure handling.
-
-Run validation proportional to the changed surface. Record exactly what was executed and what it established, including behavior the available environment could not exercise.
-
-Use deterministic tooling before additional model reasoning when a compiler, test, formatter, type checker, runtime probe or repository query can answer the question directly.
-
-Treat review as part of delivery. Add deeper or independent review when risk, uncertainty or blast radius makes it useful.
-
-## Repository learning and harness maintenance
-
-Put durable knowledge in the narrowest owner:
-
-- product invariants → `MADRE.md`;
-- detailed architecture → the focused `docs/architecture/` owner;
-- current development stage/gaps → `docs/implementation-baseline.md`;
-- product rationale, examples, constraints, exploratory directions and external-project lessons → `docs/design-memory/`;
-- recurring repository-wide agent behavior → `AGENTS.md`;
-- implementation behavior → code and tests;
-- temporary migration/refactor instructions → a focused folder under `docs/refactors/`;
-- historical/generated evidence → Git/PR history.
-
-Before adding durable design memory, search the existing topic and update it when the new material refines the same concept. Prefer one maintained statement over parallel formulations.
-
-Do not add a standing harness rule merely because one task exposed a local mistake. A rule belongs here only when it is recurring, repository-wide and continues to reduce future reasoning.
-
-## Completion
-
-Finish with a concise report of:
-
-- what can now actually be used;
-- what was executed and verified;
-- any real blocker or unverified behavior;
-- the next substantive behavior or genuine product decision, when one remains.
+At completion report the usable behavior, exact verification, pushed head, and only
+genuine unresolved product questions.

@@ -1,148 +1,84 @@
 # MADRE Platform Architecture
 
-Authority: `MADRE.md` defines product meaning. This document owns topology and responsibility placement.
-
-## 1. Topology
+## Ownership
 
 ```text
-                         MADRE installation
-
-Module A              SDK / interoperability              Kernel
---------              ----------------------              ------
-domain state   --->   public typed contracts     --->     security evaluation
-UI                     descriptors/endpoints              durable work
-Agents                 material resolution                scheduling/resources
-Skills                  discovery/brokering                mechanism selection
-Workflows                                                  recovery/evidence
-WorkPlans                                                          |
-Operations                                                         v
-                                                                  Inference
-Module B / CORE / adapters                                      mechanisms
+Module-owned domain
+  Material, meaning, state, Agents, Skills, Workflows, Operations
+            |
+            | typed physical work request
+            v
+Kernel runtime
+  live registries, selection, resources, queue, scheduling, delivery
+            |
+            | typed Capability invocation
+            v
+Physical mechanism
+  inference or deterministic computation
+            |
+            | physical result
+            v
+Module-owned domain
+  interpretation, new Material, continuation or stop
 ```
 
-Logical responsibility, not process topology, defines the architecture. Kernel, SDK-facing transport and execution workers may be in one process or several.
+The SDK supplies the shared domain values and narrow ports. The algebra is behavior of
+those values, not a box in this runtime diagram.
 
-## 2. Module boundary
+## Module boundary
 
-A Module is an independently owned application or integration boundary.
+A Module owns all decisions requiring semantic understanding. It constructs and
+classifies Material, defines its public surfaces, implements its Agents and bounded
+Operations, interprets physical output, and decides whether to continue.
 
-It owns semantic decisions and private state: domain data, UI, context/history, Agents, Skills, Workflows, WorkPlans, artifacts, Operations, domain-specific minimization/validation, learning and result interpretation.
+Module definitions canonically own their Agent, Skill, Workflow, and Operation
+definitions. Public references use nominal identities and constructors verify
+ownership and resolution. None of these building blocks imposes a default behavior.
 
-A Module may expose zero Agents and may rely on CORE for generic interaction/fallback behavior.
+## Kernel boundary
 
-MADRE must not reconstruct Module semantics from private content.
+Kernel maintains two live registries:
 
-## 3. SDK and interoperability boundary
+- running Module definitions available for public discovery;
+- installed physical Capability definitions and their adapter bindings.
 
-The SDK is the stable software boundary between Module semantics and Kernel execution.
+Kernel selects a physical mechanism from the computation contract, actual carried
+values, physical requirements, current availability, resource state, and request
+preferences. Modules neither name nor inspect installed Capabilities.
 
-It provides public typed contracts for concepts that independent implementations need to share, including as appropriate:
+Kernel may queue Material payload bytes as opaque work input and buffer raw physical
+results for delivery. It may inspect typed request metadata and algebraic values
+needed for selection. It does not inspect semantic payload meaning, create Material,
+choose output classification, or interpret results.
 
-```text
-Module + ModuleManifest
-Agent + public AgentDescriptor
-Skill + SkillDescriptor
-Workflow + WorkflowDescriptor
-Operation + OperationDescriptor + EffectProfile
-Artifact / ContextBundle
-Work submission/inspection/result access
-MaterialHandle + durable material resolver
-InferenceRequirement
-CapabilityDescriptor
-SecurityID / SecurityObject / SecurityTransition propagation
-```
+The durable store contains work lifecycle snapshots, scheduling data, physical
+attempt telemetry, and pending result delivery. Module definitions are never stored
+there; the Module registry starts empty after restart.
 
-These contracts do not imply that every Module must implement every concept. Module-facing responsibilities should be interface-segregated.
+## Capability extension boundary
 
-Module code should not depend on Kernel persistence classes, scheduler internals, HTTP/FastAPI implementation details or provider-adapter internals.
+A Capability definition belongs to Kernel. It declares nominal identity, supported
+computation and material contracts, explicit receiving Privacy, applicable physical
+responsibility, location and latency properties, and typed resource claims. Its
+adapter performs one physical invocation and returns the declared result.
 
-The SDK may provide higher-level reusable helpers and reference implementations without turning them into Kernel semantics. Examples include interaction patterns, delegation helpers, material/context construction helpers, EffectProfile/transition builders and adapter scaffolding.
+Physical requirements and preferences are segregated value objects with matching or
+ranking behavior. Resource coordination operates on generic `ResourceClaim` values.
+Adding a new mechanism, property, or resource must not require provider-specific
+Kernel branches.
 
-Public contracts should remain language-neutral even while the current prototype is implemented in Python.
+Provider payload DTOs and protocol details remain private to adapters. Installation
+supplies algebraic facts independently of provider and locality.
 
-## 4. Kernel boundary
+## Public Module directory
 
-Kernel responsibility is deterministic shared execution:
+Starting Modules register their immutable definitions in memory. The public directory
+returns only Module, Agent, and Operation surfaces reachable from the caller's exact
+current carried values. The returned definitions describe options; invoking another
+Module will be introduced only with a concrete behavior that establishes the required
+port.
 
-- validate/evaluate SecurityObjects and prospective SecurityTransitions at governed boundaries;
-- execute transient inference requests;
-- admit and schedule durable work;
-- allocate scarce GPU/CPU/RAM and execution resources;
-- select compatible inference mechanisms/models from Module requirements/preferences;
-- acquire durable-work material just-in-time from its owner;
-- verify material/security continuity;
-- record physical attempts and truthful outcomes;
-- recover accepted durable execution after restart;
-- broker explicit registered Agent/Operation invocations;
-- deliver transient results;
-- retain execution/security evidence without private payloads.
+## Installation configuration
 
-Kernel does not own semantic UI behavior, Agent reasoning, WorkPlans, prompt interpretation, generated-result meaning, material classification, semantic validation or domain mutation.
-
-Transient inference and durable work are execution primitives. Whether a Module uses transient inference as a fast-response lane, validation step, background probe or another pattern is Module/Agent semantics.
-
-## 5. Capability / inference mechanism boundary
-
-A **Capability** is an available physical inference/execution mechanism with known properties.
-
-```text
-Operation  = Module-owned bounded semantic callable
-Capability = physical computation/inference mechanism
-```
-
-One provider may expose several mechanisms through API, authenticated CLI/session, SDK, MCP, gateway, local bridge or user-installed adapter. Their cost, latency, privacy, modality, resource behavior and authentication can differ.
-
-Provider-specific request/response schemas, credentials/login/session handling, model loading, KV cache/session controls, process mechanics and backend/device behavior remain behind the mechanism adapter or external software boundary.
-
-The generic Kernel may expose controlled extension seams through the SDK/adapters when a mechanism has useful native capabilities, without making those mechanism-specific concepts mandatory fields of every MADRE request.
-
-## 6. Execution paths
-
-Kernel exposes two broad execution lifecycles:
-
-```text
-Transient inference
-    Module -> ephemeral material -> Kernel -> Capability -> transient result -> Module
-
-Durable work
-    Module -> execution intent + MaterialHandle -> Kernel queue/recovery
-           -> JIT resolution -> Capability -> transient result -> Module
-```
-
-Transient inference is non-durable and may carry minimal ephemeral material directly.
-
-Durable work never queues private material inside Kernel.
-
-The semantic composition of these primitives belongs to Modules/Agents.
-
-At governed boundaries, the public execution structure identifies actual disclosure/control/effect participants so Kernel can construct/evaluate the corresponding SecurityTransition without inspecting payload semantics.
-
-## 7. CORE placement
-
-CORE is a Module satisfying the installation's CORE contract.
-
-MADRE ships with a default CORE Module. The user may select another CORE-capable Module.
-
-CORE uses the same SDK, registry, Security Algebra and execution boundaries as other Modules. It is not a second Kernel.
-
-CORE eligibility requires sufficiently strong Privacy and Integrity characteristics for the sensitive disclosure/control paths it is expected to participate in. This does not imply low material Sensitivity: CORE-owned information may itself carry the highest Sensitivity levels.
-
-The shipped CORE commonly provides:
-
-- general/default UI and interaction Agent;
-- fallback behavior for UI-less or Agentless Modules;
-- generic delegation/escalation;
-- system-oriented intelligent assistance such as configuration/install support.
-
-When CORE owns the UI, its interaction Agent may implement low-latency response plus additional reasoning using ordinary Kernel execution primitives. Native Modules with their own UI may use their own strategy or delegate governed interaction material to CORE.
-
-## 8. Transport neutrality
-
-HTTP, IPC, in-process APIs, MCP, vendor CLIs and other adapters can realize the same logical boundaries. Transport does not create MADRE authority.
-
-## 9. Responsibility test
-
-- semantic meaning, interaction, planning, memory, learning, Skills/Workflows, material classification/validation and domain mutation → Module;
-- reusable public typed integration, security-object/transition construction and helpers → SDK/interoperability;
-- deterministic security validation/evaluation, durable lifecycle, resources, mechanism selection, recovery, explicit routing and evidence → Kernel;
-- provider/model/backend/software-specific computation and optimization → Capability adapter/external mechanism.
+Installation may assign an ordinary Module to a default interaction role. Kernel and
+the SDK neither inspect nor change behavior for that assignment.
