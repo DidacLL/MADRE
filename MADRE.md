@@ -150,7 +150,7 @@ CORE is an installation role assigned to an ordinary Module. The Module acting a
 CORE is exactly like every other Module at the SDK, Kernel, Capability, and Security
 Algebra boundaries.
 
-MADRE defines no `CoreModule`, Core turn, Core selection, delegation helper,
+MADRE defines no CORE-specific Module class, turn, selection, delegation helper,
 continuation contract, special service, security default, or privileged API. Changing
 which installed Module occupies the role changes only installation/application
 configuration.
