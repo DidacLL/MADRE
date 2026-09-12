@@ -1,120 +1,63 @@
-# MADRE Execution Contract
+# MADRE Physical Execution Contract
 
-## Immediate execution
+## Work request
 
-A Module creates an `ExecutionRequest` containing:
+A Module submits a typed `WorkRequest` containing:
 
-- the requesting Module identity;
-- the actual input Material;
-- a typed `CapabilityQuery`;
-- a `MaterialSpecification` for the new physical output;
-- mechanical execution constraints.
+- its nominal `ModuleId`;
+- the actual nonempty `MaterialSet` to be forwarded;
+- a typed computation contract and expected physical result type;
+- typed physical requirements and preferences;
+- timing, timeout, priority, and physical retry policy.
 
-The output specification belongs to the requesting Module, has an identity different
-from the input Material, names its content contract, and supplies its exact applicable
-security facts.
+The request contains no concrete Capability identity and no future Material identity,
+classification, Operation, Agent instruction, or semantic continuation.
 
-Kernel selects one Capability using only the typed physical properties in the query.
-Selection does not inspect Material bytes or Security Algebra history.
+## Selection and invocation
 
-The selected Capability joins the request through ordinary construction of a
-Disclosure from:
+Kernel considers only installed Capabilities that implement the computation and
+material contracts. It attempts immutable composition of the request's carried
+Sensitivity with each Capability's explicit receiving Privacy. Capabilities that
+cannot join simply do not enter the selectable set.
 
-- the input Material’s actual source surface;
-- the Capability’s actual observer surface.
+Kernel then applies physical requirements, availability, resource state, and typed
+preferences through injected selection and coordination strategies. If no mechanism
+can currently satisfy the work, the outcome is ordinary Capability unavailability.
+Durable work may try later according to its physical retry policy.
 
-If those surfaces do not match, construction raises `SecurityMismatch` and the
-request ends before physical execution. Kernel does not search for a security-approved
-candidate, persist the denial, or modify the request.
+For the selected mechanism Kernel records ordinary attempt telemetry, reserves its
+typed resources, and forwards the Material payload opaquely. The adapter returns a
+typed `PhysicalResult` containing physical output and mechanical metadata.
 
-If they match, Kernel reserves the Capability's resource slot, passes the opaque payload
-to its adapter, and receives opaque output. Kernel constructs the specified new
-Material and returns it to the requesting Module.
+## Result ownership
 
-A Capability result cannot encode an executable continuation. Even when its bytes
-mention an Operation, tool, target, or Kernel request, those bytes are ordinary
-Material. Only Module behavior may interpret them and make another explicit call.
+Kernel returns or buffers `PhysicalResult`; it never returns Material. The requesting
+Module interprets the output and decides whether to construct independent new
+Material, submit another request, invoke a bounded Operation, present a result, or
+stop.
 
-## Module-owned continuation
+Physical output has no execution interface. Text or structured data resembling an
+Operation cannot invoke anything.
 
-After receiving output Material, a Module may:
+## Durable work
 
-- return or present it;
-- store it in Module-owned state;
-- create another Material with a new identity and applicable facts;
-- make another physical execution request;
-- invoke one of its own bounded Operations;
-- stop.
+The queue serializes an opaque snapshot of the submitted payload together with the
+typed work contract and carried values required to reproduce physical dispatch after
+restart. A completed raw result remains in a delivery buffer until retrieved or
+acknowledged.
 
-These are Module decisions. Kernel and Capability expose no universal continuation,
-assistant turn, delegation, planning, or tool-use semantics.
+Retention and cleanup remove input and output bytes according to work lifecycle and
+delivery policy. Compact scheduling and physical attempt telemetry may remain. Queue
+storage cannot query, reinterpret, transform, or reuse payload bytes as Module domain
+knowledge.
 
-## Durable execution
+Immediate and durable execution share one dispatch path. Idempotent submission,
+cancellation, eligibility, priority, timeout, restart recovery, resource waiting,
+transport interruption, and physical failure are runtime mechanics.
 
-Durable work preserves execution intent without storing private Material bytes:
+## Adapter contract
 
-```text
-WorkSubmission -> WorkRecord -> WorkAttempt
-```
-
-A submission carries a Material handle rather than payload. The handle binds Material
-identity, contract, digest, and its exact security scope. It is not security history.
-
-Kernel persists:
-
-- requesting Module identity;
-- Capability query;
-- Material handle;
-- output Material specification;
-- eligibility, priority, timeout, and idempotency metadata;
-- attempt lifecycle, selected Capability identity/boundary, compact lifecycle failure
-  code and retry disposition, output digest/size, and delivery state.
-
-Kernel does not persist:
-
-- input or output payloads;
-- prompts, private context, Agent state, or WorkPlans;
-- Disclosure, Control, EffectExecution, SecurityScope, or SecuritySurface records
-  beyond the exact scope embedded in the reference contract;
-- mismatches, rejected candidates, security decisions, histories, or lineage;
-- provider error bodies or private adapter data.
-
-When work becomes eligible, Kernel resolves the exact Material from its owning Module,
-checks the handle and digest, constructs the current request, and performs the same
-immediate execution path. Retry, cancellation, idempotency, scheduling, and restart
-recovery are lifecycle mechanics only; none changes security facts.
-
-If algebraic construction fails, the detailed `SecurityMismatch` remains transient.
-Durable work records only a generic terminal lifecycle failure; the same request
-cannot be retried. The Module must submit a different request after changing the
-responsible Material, surface, or action.
-
-Produced payload bytes remain transient in the current process until consumed. A
-restart before consumption marks delivery as lost.
-
-## Capability selection
-
-`CapabilityQuery` and `CapabilityProperties` use typed values for specialization,
-modality, mechanism identity, execution boundary, latency, and physical resources. A
-selection strategy is replaceable through a small interface. Provider-style quality,
-reasoning, reputation, or payment tiers are not universal MADRE properties.
-
-The default strategy first requires an exact property match and then uses the
-query-declared tuple order. It contains no provider-specific branches and never ranks
-on Privacy, Integrity, reputation, authentication, or prior outcomes.
-
-Execution boundary is a physical property only. It neither supplies nor changes
-Privacy.
-
-## Effect execution
-
-Physical inference that returns Material does not itself realize a Module Operation.
-
-When a bounded Operation is executed, the Module constructs its exact Control and
-EffectExecution values from one declared EffectProfile, the actual non-user
-controllers, and the actual executors. Invalid construction prevents the action.
-EffectProfile values cannot be overridden by model output or request payload.
-
-Operation dispatch and uncertain external-effect retry semantics will be implemented
-only with a concrete Module-owned Operation path. They are not generalized into an
-Agent broker or tool framework.
+An adapter receives a typed invocation fixed by the selected Capability definition.
+Submitted payload cannot override configured endpoint, model, computation contract,
+or other immutable mechanism properties. Provider-specific dictionaries and response
+DTOs stay private to the adapter. Connection setup is supplied by its environment.

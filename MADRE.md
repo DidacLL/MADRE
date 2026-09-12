@@ -1,175 +1,161 @@
 # MADRE
 
-MADRE is a local-first system through which independent Modules use shared physical
-inference and execution mechanisms without surrendering ownership of meaning, data,
-behavior, or effects.
+MADRE is personal software that lets one owner use locally installed and external
+inference or deterministic mechanisms without silently surrendering control of what
+information reaches them.
 
-This document is the product contract. The focused documents under
-`docs/architecture/` refine it without changing its meaning.
+The owner may create, install, change, or remove Modules and may choose how their own
+computer is used. MADRE's information concern is unmanaged reach into third-party,
+SaaS, cloud, public, or otherwise less-private boundaries. It makes the relevant
+values explicit so the owner and their Modules can choose a destination, expose less,
+or first create independent minimized, tokenized, anonymized, summarized, or
+otherwise adapted Material.
 
-## Responsibility model
+## The building blocks
 
-A **Module** is an independently owned application or integration boundary. It owns
-its data, private state, interaction, Agents, Skills, Workflows, WorkPlans, Materials,
-semantic transformations, result interpretation, and Operations.
+A **Module** is an owner-installed application or integration. It owns all semantic
+work: its domain state and persistence, Material, UI, Agents, Skills, Workflows,
+transformations, interpretation, continuation, and bounded Operations.
 
-The **public SDK** supplies reusable, typed, language-neutral building blocks through
-which Modules describe those concepts and request physical execution. Definitions are
-declarative and serializable. Executable behavior is bound separately.
+The **SDK** is the strongly typed construction model for a correct Module. Human
+authors, future Module-generation tools, and wrappers around other software use the
+same objects and composition operations. Serialization is a boundary representation
+of those objects, not the way Module logic is programmed.
 
-The **Kernel** owns mechanism selection, resource coordination, transient execution,
-reference-only durable work, lifecycle recovery, and result delivery. It treats
-Material payloads as opaque and never decides what model output means or what should
-happen next.
+An **Agent** is a Module-owned intelligent actor. A **Skill** is reusable capability,
+knowledge, or instruction material owned by a Module. A **Workflow** is a reusable
+semantic recipe owned by a Module. MADRE does not prescribe their private behavior.
 
-A **Capability** is a physical inference or execution mechanism. It is not a Skill,
-Agent, semantic ability, trusted party, or grant of authority.
+An **Operation** is one explicit, bounded, Module-owned callable consequence. An
+**EffectProfile** describes one execution variant of that Operation through Risk and
+Autonomy. The Module implements and invokes its Operations.
 
-## Public building blocks
+A **Material** is a typed Module-owned value with its own identity, payload contract,
+payload, and Sensitivity. Every adaptation or produced semantic value is independent
+new Material. The Module that understands the transformation supplies its identity
+and applicable value.
 
-- A **Material** is an ordinary Module-owned value with its own identity, content
-  contract, payload, and applicable security facts.
-- An **Agent** is a Module-owned intelligent actor. MADRE describes its public surface
-  without prescribing its private reasoning, state, memory, or loop.
-- A **Skill** is reusable behavior, knowledge, or instruction material.
-- A **Workflow** is a reusable semantic recipe. MADRE does not impose a universal
-  Workflow execution language.
-- A **WorkPlan** is semantic planning state owned by its Module or Agent. Executable
-  portions become ordinary execution requests.
-- An **Operation** is bounded callable behavior deliberately exposed and implemented
-  by a Module.
-- An **EffectProfile** is one bounded execution variant of one Operation. It carries
-  exactly that Operation/profile identity, Risk, and Autonomy.
-
-Sensitivity can apply to any exact exposed or reachable scope, including Module,
-Agent, Operation, Capability, and Material surfaces. A Module that manages S5 Material
-has an effective S5 surface, while an isolated Material it creates through
-tokenization, anonymization, or minimization may independently be S4, S3, or S2.
-
-A composite Agent is as private as the meet of the Operations and other surfaces it
-actually exposes. Exposing fewer or different Operations can therefore produce a
-different effective Privacy. These values are structural results, not manually
-duplicated descriptor declarations.
+A **Capability** is one physical inference or deterministic mechanism installed in
+Kernel. It has physical contracts and the algebraic values applicable to its actual
+surfaces. It does not own meaning or decide what happens next.
 
 ## Security Algebra
 
-The Security Algebra is standalone. It is neither a Kernel subsystem nor an
-observability, policy, authorization, or audit facility.
+MADRE uses five distinct ordered carriers:
 
-Its five ordered carriers are nominally distinct:
+- **Sensitivity**: the confidentiality consequence of exposing information;
+- **Privacy**: the confidentiality boundary of a receiving surface;
+- **Integrity**: bounded causal or physical-realization responsibility;
+- **Risk**: the consequence class of one Operation variant;
+- **Autonomy**: the residual machine execution of that same variant.
 
-- **Sensitivity**: the confidentiality consequence of exposing an exact scope.
-- **Privacy**: the confidentiality boundary of an exact observer scope.
-- **Integrity**: bounded causal or effect-realization responsibility for an exact
-  control/execution scope.
-- **Risk**: the consequence magnitude of one bounded EffectProfile.
-- **Autonomy**: the residual machine execution of that same EffectProfile.
+Equal ranks do not make these types interchangeable. Integrity does not describe
+truth, model quality, reliability, reputation, or generic trust.
 
-There is no global score. Integrity does not mean truth, reliability, model quality,
-provider reputation, or generic trust.
+Applicability is expressed by role-specific types. Material and outbound surfaces
+carry Sensitivity. Receiving surfaces carry Privacy. Actual non-user causal
+participants and physical realizers carry Integrity. EffectProfiles carry Risk and
+Autonomy. An entity has no field for a facet that has no meaning in its role.
 
-`Privacy.UNKNOWN` means Privacy applies but no stronger confidentiality boundary is
-established. `None` means Privacy does not apply to that exact scope. Location and
-provider never imply Privacy: remote is not UNKNOWN, local is not private, and a
-provider name establishes no Privacy value.
+`Privacy.UNKNOWN` is the explicit P2 boundary used when information reaches a
+third-party environment outside the owner's control without being declared fully
+public. It is a real value, not missing knowledge. `Privacy.PUBLIC` is P1. Installation
+supplies the applicable Privacy explicitly; locality, endpoint, provider, adapter,
+and model identity never compute it.
 
-Exact scopes compose into immutable surfaces:
-
-- effective Sensitivity is the maximum applicable Sensitivity;
-- effective Privacy is the minimum applicable Privacy;
-- effective Integrity is the minimum applicable Integrity;
-- a facet with no applicable member remains `None`.
-
-The three relations are fixed:
+The algebra is intrinsic immutable composition:
 
 ```text
-Disclosure:
-    S_D = max Sensitivity of actual exposed source scopes
-    P_D = min Privacy of actual observer scopes
-    match iff S_D <= P_D
+accumulated Sensitivity = maximum participating Sensitivity
+accumulated Privacy     = minimum participating Privacy
+accumulated Integrity   = minimum participating Integrity
 
-Control:
-    D_C(R,A) = min(R,A)
-    I_C = min Integrity of actual non-user controllers
-          or I5 when there are none
-    match iff min(R,A) <= I_C
+information reach requires:
+    accumulated Sensitivity <= accumulated receiving Privacy
 
-Effect execution:
-    I_E = min Integrity of actual effect-realizing executors
-    executor set must be nonempty
-    match iff R <= I_E
+one bounded Operation variant requires:
+    min(profile Risk, profile Autonomy)
+        <= accumulated Integrity of actual non-user causal participants
+    no non-user causal participant contributes the I5 identity
+
+    profile Risk <= accumulated Integrity of actual physical realizers
+    at least one physical realizer participates
 ```
 
-The values travel with the participating objects and compose when another exact scope
-is added. An incompatible addition cannot construct the next object, so that request
-cannot continue. The responsible Module may create different Material, expose a
-different surface, choose another bounded action, or make another request.
+Risk and Autonomy from different EffectProfiles never combine. Adding a participant
+returns a new valid composite when the ranks support each other. Otherwise no new
+value exists and the earlier immutable value is unchanged. This is ordinary object
+construction used directly by Module and Kernel-side extension code where their own
+objects are assembled; it does not create a separate runtime function or stored
+state.
 
-There is no security evaluator, broker, admission service, decision record, rejected
-candidate, history, evidence ledger, ancestry, freshness, lineage, completed-output
-identity, retry authority, or reconstructed state. Runtime diagnostics may describe a
-failed attempt, but diagnostics never become security operands.
+Algebraic values are cumulative wherever their roles are cumulative. A Module's
+Sensitivity follows the Material and output surfaces it actually owns or makes
+reachable. An Agent's Privacy follows the exact input surfaces of the Operations it
+exposes. A Module may manage S5 Material while publishing distinct Operations whose
+independent outputs are S4, S3, or S2.
 
-There is no disclosure exception. User presence, approval, or an interaction session
-cannot change Sensitivity or Privacy. Live user action is represented only by the
-appropriate Autonomy value of the exact EffectProfile.
+## Kernel and physical work
 
-When a Module transforms, minimizes, selects, validates, summarizes, tokenizes,
-anonymizes, or otherwise adapts information, the output is simply new Material with a
-new identity and its own applicable security facts. Optional provenance is a separate
-future concern and never participates in the algebra.
+Kernel owns shared physical mechanics:
 
-## Execution
+- live registries of running Modules and installed Capabilities;
+- listing Module, Agent, and Operation surfaces that can be reached from the caller's
+  exact current values;
+- selection among installed physical mechanisms;
+- routing, timing, priority, resource coordination, and scheduling;
+- durable work queueing, physical attempts and retries;
+- delivery or temporary buffering of physical results;
+- ordinary execution logging.
 
-The ordinary path is:
+A Module submits its actual Material, required computation contract, and typed
+physical requirements or preferences. It never names or receives the identity of the
+concrete installed Capability chosen by Kernel. Kernel uses the carried algebraic
+values and physical request to find an available mechanism, forwards the Material
+opaquely, and returns a physical result.
 
-```text
-Module behavior
-    -> public SDK execution request
-    -> Kernel selects one physical Capability
-    -> the request and Capability surfaces compose
-    -> Capability performs physical computation
-    -> Kernel returns new ordinary Material
-    -> requesting Module interprets it
-    -> Module alone chooses any continuation or bounded Operation
-```
+Kernel receiving or durably queueing opaque input does not transfer Material
+ownership. Kernel does not understand payload meaning, create output Material,
+choose its Sensitivity, interpret the physical result, select a semantic continuation,
+or invoke an Operation. The requesting Module receives the result, interprets it, and
+may create new Material, submit another work request, invoke one of its bounded
+Operations, or stop.
 
-Model output is never a Kernel command. A model cannot select its own Capability,
-invoke Kernel, or realize an effect. Consequential behavior enters MADRE only through
-an explicit bounded Module-owned Operation and its exact EffectProfile. There is no
-CORE bypass.
+Durable queue storage exists only so physical work and undelivered results can survive
+Kernel restart. Payload bytes are opaque lifecycle snapshots retained until delivery
+and cleanup. Module definitions live only in the runtime registry and Modules register
+again after Kernel restart.
 
-Durable work stores execution intent, a Material handle, output specification,
-mechanism/lifecycle metadata, and result digests. The Module retains the payload and
-resolves it just in time. Security compositions, denials, model output, prompts,
-private context, and Module state are not durable Kernel data.
+Physical unavailability, interruption, timeout, and mechanism failure belong to work
+scheduling and retry. They do not alter the Security Algebra.
 
-## CORE
+## Interoperability
 
-CORE is an installation role assigned to an ordinary Module. The Module acting as
-CORE is exactly like every other Module at the SDK, Kernel, Capability, and Security
-Algebra boundaries.
+Module definitions declare nominal identities and the exact public Agent, Skill,
+Workflow, Operation, and role-specific surfaces they own. Kernel's live Module
+registry exposes only the currently reachable public definitions for the caller's
+actual values. Registry presence grants nothing and persists no Module domain state.
 
-MADRE defines no CORE-specific Module class, turn, selection, delegation helper,
-continuation contract, special service, security default, or privileged API. Changing
-which installed Module occupies the role changes only installation/application
-configuration.
+Definitions contain no executable Python objects, import paths, generic property
+bags, provider settings, or prescribed Agent loop. Implementations bind to narrow
+runtime ports outside serialization.
+
+Capability definitions belong to Kernel's extension boundary, not to Module-facing
+SDK discovery. Provider protocol and transport details remain private to adapters.
+
+## Installation role
+
+An installation may designate one ordinary Module as its default interaction role.
+That designation is external configuration only. It introduces no package, public
+type, behavior, privilege, default algebraic value, or Kernel branch, and removing the
+designation does not change the Module.
 
 ## External mechanics
 
-MADRE does not model credentials, API keys, authentication, authorization, RBAC,
-permissions, access roles, clearances, or provider trust. Those are external
-adapter/environment mechanics. An adapter may receive an already configured transport
-or client, but those mechanics are not public MADRE values and never enter Security
-Algebra composition.
+Provider accounts and connection setup belong to the adapter environment. They do
+not enter MADRE's domain or algebra.
 
-## Implementation direction
-
-The current Python implementation is a prototype of a language-neutral SDK. Its
-public definitions must remain strongly typed, cohesive, immutable, serializable, and
-independent of Python callables so a future Module can be assembled from declarative
-JSON or XML plus separately bound implementations.
-
-MADRE is not a universal agent framework, production RAG platform, credential vault,
-policy engine, generic shell, or unrestricted Internet environment. New abstractions
-must earn their place through a concrete MADRE responsibility.
+MADRE does not attempt to contain deliberately hostile owner-installed software. Its
+promise is narrower and more useful: correctly built Modules use explicit typed
+composition so the owner can understand and manage where their information goes,
+while Kernel provides durable access to a varied physical computation ecosystem.

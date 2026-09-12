@@ -1,143 +1,75 @@
-# MADRE Module and Agent Interoperability
+# MADRE Module Interoperability
 
-## Objective
+## Declarative public definitions
 
-The public SDK provides the building blocks needed for independent Modules to
-describe compatible surfaces without forcing one implementation language, reasoning
-loop, orchestration framework, or provider convention.
+The SDK represents Module interoperability through immutable domain objects:
 
-Interoperability is descriptive. A definition does not become authorization,
-execution routing, or a security decision.
+- `ModuleDefinition` canonically owns its child definitions and public surfaces;
+- `AgentDefinition` identifies its typed inputs and outputs and references the exact
+  Skills, Workflows, and Operations it exposes;
+- `SkillDefinition` identifies reusable Module-owned capability or knowledge;
+- `WorkflowDefinition` identifies a reusable Module-owned semantic recipe;
+- `OperationDefinition` identifies one bounded callable consequence and owns its
+  input surfaces, output surfaces, repeatability, and EffectProfiles.
 
-## Definition and implementation
+Every identity is nominal. Child identities structurally contain their `ModuleId`, so
+an identity from another category or owner cannot be substituted by matching strings.
+Constructors enforce uniqueness, ownership, and reference resolution.
 
-Every public entity has a declarative definition distinct from executable behavior.
+Definitions describe public structure only. Agent reasoning, state, memory,
+interpretation, semantic orchestration, and Operation implementations remain private
+Module code.
 
-A definition is:
+## Role-specific surfaces
 
-- immutable and strongly typed;
-- explicit about identity kind, owner, revision, contracts, contained/exposed members, and
-  applicable security scopes;
-- serializable without Python callables, import paths, runtime clients, or opaque
-  extension dictionaries;
-- suitable for a future equivalent JSON or XML representation.
+`InputSurface` identifies an accepted `MaterialType` and explicit Privacy.
+`OutputSurface` identifies a produced or reachable `MaterialType` and Sensitivity.
+`ResponsibilitySurface` carries Integrity for one actual causal or physical role.
 
-An implementation is private Module or adapter code bound through a segregated
-interface. Implementations may evolve without changing unrelated definitions.
+Any definition may own the surface types that apply to its real responsibility. It
+does not receive irrelevant algebra fields. Collections derive their aggregate ranks
+from members.
 
-## ModuleDefinition
-
-A Module definition owns:
-
-- its identity and description;
-- exact Module security facts when applicable;
-- the Material/security scopes it manages or can expose;
-- public Agents and canonical Skill, Workflow, and Operation definitions;
-- typed references identifying the exact public surfaces.
-
-Its effective SecuritySurface is calculated from those members. It is not an
-independently declared summary.
-
-A Module may omit every optional entity. The SDK does not manufacture a default
-Agent, assistant, planner, Workflow, or Operation.
-
-## AgentDefinition
-
-An Agent definition owns purpose, instructions when applicable, typed input/output
-Material contracts, typed references to Module-owned Skills and Workflows, and typed
-references to the Operations and exact scopes it exposes. The Module aggregate owns
-each reusable definition once and resolves every reference during construction.
-
-Its surface is the structural composition of those exact exposed members and any
-Agent-specific scope facts. Consequently:
-
-- Sensitivity may apply directly to an Agent or arrive from a reachable sub-scope;
-- Privacy is the minimum applicable Privacy among its exposed surfaces;
-- removing an exposed Operation can legitimately change the Agent’s effective
-  Privacy;
-- no registry or evaluator calculates a separate Agent security value.
-
-Agent behavior is a Module-owned implementation. State, memory, delegation, learning,
-and model prompting remain private unless a later exact interoperability need
-justifies a typed public contract.
-
-## SkillDefinition and WorkflowDefinition
-
-A Skill describes reusable behavior, knowledge, or instruction material, its purpose,
-resources, and optional input/output contracts.
-
-A Workflow describes a reusable semantic recipe and typed input/output contracts.
-
-Neither is automatically executable by Kernel. MADRE does not require a universal
-Workflow language or translate third-party agent conventions into Kernel semantics.
-
-## OperationDefinition and EffectProfile
-
-An Operation is one explicitly bounded Module-owned callable effect. Its definition
-contains purpose, typed input/output contracts, effect description, repeatability,
-exact security scope, and one or more EffectProfiles.
-
-Each EffectProfile belongs to exactly one Operation and contains only:
-
-- its own identity;
-- the exact Operation identity;
-- Risk;
-- Autonomy.
-
-Callers cannot replace those values. Controllers and executors are facts of one
-actual invocation and are composed into Control and EffectExecution at that time.
-They are not catalog metadata or a generic permission system.
+Module Sensitivity is derived for an exact current `MaterialSet` and the Module's
+reachable output surfaces. Agent Privacy is derived from the exact Operation input
+surfaces the Agent exposes. Public directory filtering therefore works at the
+published surface, not at an unrelated whole-Module summary.
 
 ## Material
 
-`Material[T]` contains exact identity, a `MaterialContract`, typed payload, and one
-security scope bound to the same identity. Its digest and durable handle are mechanical
-properties of that Material.
+`MaterialType[T]` defines nominal content-contract identity and media representation.
+`Material[T]` binds its own identity, owning Module, type, payload, and Sensitivity.
+`MaterialSet` is a nonempty immutable collection whose Sensitivity is the maximum of
+its members.
 
-All adaptations and generated outputs are new Material. There is no Artifact versus
-ContextBundle security ontology, derivation method, validation status, generated
-freshness, or ancestry contract.
+Module transformations always construct independent Material. No historical member
+is needed to use it.
 
-## Behavior ports
+## Runtime ports
 
-The current SDK exposes only the minimum executable seams needed by real behavior:
+Only responsibilities shared across implementations receive public ports:
 
-- `ExecutionService.execute(ExecutionRequest) -> Material`;
-- `ModuleBehavior.receive(Material, ExecutionService) -> Material`;
-- optional Agent and Operation behavior protocols;
-- `ModuleRuntime`, which binds one Module definition to its private behavior and
-  supplied execution service.
+- `ExecutionService.submit(WorkRequest) -> PhysicalResult`;
+- a typed Operation implementation port for one declared Operation;
+- read access to the live Module directory.
 
-These interfaces do not prescribe what a Module should think, how an Agent should
-loop, or whether a continuation exists.
+Private Module and Agent behavior is ordinary Module code. The SDK imposes no common
+receive method, turn type, loop, planner, or semantic runtime.
 
-The shipped interaction behavior uses only these ordinary ports. It submits Material
-for physical execution, receives new Material, and calls its own injected interpreter.
-Being selected as CORE does not alter that behavior.
+## Serialization
 
-## Catalog
+Explicit versioned codecs map the object graph to boundary DTOs and back. DTOs do not
+belong to the domain inheritance hierarchy. Wire data contains no executable objects,
+import paths, arbitrary property dictionaries, or duplicated derived ranks. The same
+domain graph can later receive an XML codec without redesign.
 
-The catalog registers and enumerates Module definitions and the canonical entities
-they own. It does not:
+## Directory behavior
 
-- attach executable endpoints;
-- select semantic targets;
-- filter by security;
-- route Agent or Operation calls;
-- accumulate participants;
-- record decisions;
-- grant access.
+Registration adds or replaces a running Module definition in Kernel's in-memory
+directory. Removal occurs when that Module leaves. Restart begins with an empty
+directory.
 
-A future cross-Module invocation mechanism must start from a concrete product
-behavior. It cannot be inferred from generic multi-agent platform patterns.
-
-## OOP boundary
-
-Public classes own their invariants and derived values. Repositories, selectors,
-adapters, and behaviors depend on narrow protocols. Serialization is a representation
-of the domain objects, not the domain model itself.
-
-Convenience functions, stringly typed identifiers, duplicated aggregate fields,
-generic property bags, and type-name dispatch are not substitutes for domain objects.
-Python is the current prototype language; its dynamic features do not weaken the
-public contract.
+A reachability query supplies the caller's exact current carried values. Each
+published input surface composes itself with those values; only the matching Module,
+Agent, and Operation definitions are returned. The query result is transient and does
+not change either Module.

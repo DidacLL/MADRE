@@ -1,112 +1,84 @@
 # MADRE Platform Architecture
 
-## Shape
+## Ownership
 
 ```text
-Module
-  owns meaning, data, UI, Agents, Skills, Workflows, WorkPlans,
-  Materials, transformations, result interpretation, and Operations
-        |
-        | declarative definitions and execution requests
-        v
-MADRE SDK
-  typed reusable value objects and segregated behavior ports
-        |
-        v
-Kernel
-  physical execution lifecycle, resources, mechanism selection,
-  reference-only durable work, recovery, and result delivery
-        |
-        v
-Capability
-  one physical inference or execution mechanism
+Module-owned domain
+  Material, meaning, state, Agents, Skills, Workflows, Operations
+            |
+            | typed physical work request
+            v
+Kernel runtime
+  live registries, selection, resources, queue, scheduling, delivery
+            |
+            | typed Capability invocation
+            v
+Physical mechanism
+  inference or deterministic computation
+            |
+            | physical result
+            v
+Module-owned domain
+  interpretation, new Material, continuation or stop
 ```
 
-The Security Algebra is used by objects at any layer but belongs to none of those
-layers. A scope or relation composes itself from the participating values. There is no
-security component beside the diagram.
+The SDK supplies the shared domain values and narrow ports. The algebra is behavior of
+those values, not a box in this runtime diagram.
 
-## Module ownership
+## Module boundary
 
-A Module owns every decision requiring semantic understanding:
+A Module owns all decisions requiring semantic understanding. It constructs and
+classifies Material, defines its public surfaces, implements its Agents and bounded
+Operations, interprets physical output, and decides whether to continue.
 
-- which Material matters and how it is classified;
-- which scopes are reachable or exposed together;
-- Agent behavior and private state;
-- adoption and interpretation of Skills and Workflows;
-- WorkPlan meaning;
-- transformations that create new Material;
-- interpretation of Capability output;
-- whether to continue, request more physical computation, or invoke a bounded
-  Operation;
-- the implementation and domain consequences of its Operations.
-
-A Module may expose no Agent, Skill, Workflow, or Operation. Those are available
-building blocks, not mandatory framework layers.
-
-## SDK boundary
-
-The SDK contains immutable serializable definitions for Module, Agent, Skill,
-Workflow, Operation, EffectProfile, Material, Capability, exact security scopes, and
-execution requests.
-
-Definitions contain no Python callable, provider client, runtime store, Kernel object,
-or private Module state. Runtime behavior is attached through small interfaces. This
-keeps the public model translatable to JSON or XML and permits a future tool to
-assemble definitions without generating Python framework code.
-
-The SDK does not define semantic loops, planning algorithms, memory policy, tool-use
-conventions, an assistant archetype, or CORE behavior.
+Module definitions canonically own their Agent, Skill, Workflow, and Operation
+definitions. Public references use nominal identities and constructors verify
+ownership and resolution. None of these building blocks imposes a default behavior.
 
 ## Kernel boundary
 
-Kernel may:
+Kernel maintains two live registries:
 
-- select a Capability whose typed physical properties match a request;
-- compose the request’s actual Material surface with the selected Capability surface;
-- execute transient work;
-- persist reference-only durable intent and lifecycle metadata;
-- resolve Module-owned Material immediately before a durable attempt;
-- coordinate scarce physical resources;
-- deliver new ordinary output Material;
-- report transient execution failures.
+- running Module definitions available for public discovery;
+- installed physical Capability definitions and their adapter bindings.
 
-Kernel may not:
+Kernel selects a physical mechanism from the computation contract, actual carried
+values, physical requirements, current availability, resource state, and request
+preferences. Modules neither name nor inspect installed Capabilities.
 
-- inspect payload meaning to select semantic behavior;
-- reinterpret or reclassify Material;
-- turn model output into a command;
-- decide a Module continuation;
-- expose generic shell or network powers to a model;
-- keep Security Algebra decisions, relations, operands, or denials;
-- construct permission, authorization, trust, or identity systems;
-- give the Module occupying CORE any distinct interface.
+Kernel may queue Material payload bytes as opaque work input and buffer raw physical
+results for delivery. It may inspect typed request metadata and algebraic values
+needed for selection. It does not inspect semantic payload meaning, create Material,
+choose output classification, or interpret results.
 
-## Capability boundary
+The durable store contains work lifecycle snapshots, scheduling data, physical
+attempt telemetry, and pending result delivery. Module definitions are never stored
+there; the Module registry starts empty after restart.
 
-A Capability definition describes one physical mechanism, its typed execution
-properties, and the exact security surface exposed by its use. The adapter implements
-transport, protocol mapping, process invocation, model loading, or hardware access.
+## Capability extension boundary
 
-A physical mechanism does not become an Agent, Skill, Operation, controller, or
-semantic authority. Its output is data. Provider authentication and client setup are
-external environment mechanics supplied to the adapter, not MADRE concepts.
+A Capability definition belongs to Kernel. It declares nominal identity, supported
+computation and material contracts, explicit receiving Privacy, applicable physical
+responsibility, location and latency properties, and typed resource claims. Its
+adapter performs one physical invocation and returns the declared result.
 
-## Catalog
+Physical requirements and preferences are segregated value objects with matching or
+ranking behavior. Resource coordination operates on generic `ResourceClaim` values.
+Adding a new mechanism, property, or resource must not require provider-specific
+Kernel branches.
 
-The catalog stores and lists declarative Module definitions. Catalog presence means
-only that a definition is available. It does not route calls, evaluate security,
-grant authority, score participants, or predict feasibility.
+Provider payload DTOs and protocol details remain private to adapters. Installation
+supplies algebraic facts independently of provider and locality.
 
-Cross-Module Agent or Operation invocation is not implemented by inventing a generic
-broker. A future execution path must be justified by an exact MADRE behavior and use
-the same public definitions and intrinsic algebra as every other path.
+## Public Module directory
 
-## CORE
+Starting Modules register their immutable definitions in memory. The public directory
+returns only Module, Agent, and Operation surfaces reachable from the caller's exact
+current carried values. The returned definitions describe options; invoking another
+Module will be introduced only with a concrete behavior that establishes the required
+port.
 
-CORE is an installation-level assignment of one ordinary Module to the default
-interaction/fallback position. The assignment is outside the SDK and Kernel.
+## Installation configuration
 
-The selected Module keeps the same definition, behavior ports, security surface, and
-execution path it has when not assigned CORE. No public type or runtime branch is
-allowed to test for that assignment.
+Installation may assign an ordinary Module to a default interaction role. Kernel and
+the SDK neither inspect nor change behavior for that assignment.

@@ -2,137 +2,89 @@
 
 ## Purpose
 
-The Security Algebra carries only the facts required to determine whether exact
-current scopes can compose. It is a standalone public value system. It has no
-evaluator, broker, policy service, observability role, persistence model, or history.
+The algebra is the reusable value system through which MADRE objects describe their
+actual information, receiving, causal, and physical-realization roles. Values are
+immutable and combine structurally as participants are assembled.
 
-## Carriers
+No runtime component owns the algebra. A Module author uses its SDK objects while
+constructing a Module, Material, public surface, or bounded Operation call. Kernel
+extension code uses the same values while assembling installed Capability surfaces.
 
-`Sensitivity`, `Privacy`, `Integrity`, `Risk`, and `Autonomy` are five
-different ordered types with ranks 1 through 5.
+## Typed carriers
 
-- Sensitivity belongs to an exact scope whose exposure has a confidentiality
-  consequence.
-- Privacy belongs to an exact observer scope.
-- Integrity belongs to an exact non-user controller or effect-realizing executor.
-- Risk and Autonomy belong together on one exact Operation EffectProfile.
+`Sensitivity`, `Privacy`, `Integrity`, `Risk`, and `Autonomy` are different ordered
+types with ranks 1 through 5. They cannot be substituted for one another.
 
-The rank values support ordering only within their carrier. They never form a global
-score.
+- Sensitivity accumulates by maximum.
+- Privacy accumulates by minimum.
+- Integrity accumulates by minimum.
+- Risk and Autonomy remain paired on one EffectProfile.
 
-`Privacy.UNKNOWN` is an applicable Privacy fact at rank 2. A missing Privacy value
-means Privacy does not apply to that scope. Locality and provider identity are not
-inputs to Privacy.
+Applicability is represented by the type of surface being built. An `InputSurface`
+has Privacy. An `OutputSurface` has Sensitivity. A `ResponsibilitySurface` has
+Integrity. An `EffectProfile` has Risk and Autonomy. There is no universal container
+with empty facet slots.
 
-Integrity is bounded causal/effect-realization responsibility. It says nothing about
-truth, intelligence, reliability, provider quality, reputation, or generic trust.
+`Privacy.UNKNOWN` is P2: an explicit receiving boundary outside the owner's control
+that is not declared fully public. It is not missing information. Installation must
+supply Privacy explicitly. Physical location and provider identity do not derive it.
 
-## Exact scopes and surfaces
+Integrity means only bounded causal or physical-realization responsibility.
 
-A `SecurityScope` binds the applicable Sensitivity, Privacy, and/or Integrity facts
-to one exact scope identity and revision.
+## Information composition
 
-A `SecuritySurface` is the immutable structural composition of the scopes exposed
-or reached together. It is associative, commutative, and idempotent for identical
-scope facts. Conflicting facts for the same exact identity cannot compose.
-
-For the applicable members of a surface:
-
-```text
-S(surface) = max Sensitivity
-P(surface) = min Privacy
-I(surface) = min Integrity
-```
-
-If no member carries a facet, that facet is not applicable to the surface.
-
-This same composition describes nested structures. A Module surface includes the
-Material and subscopes it actually manages or exposes. An Agent surface includes the
-Operations and other surfaces it actually exposes. A narrower isolated surface is
-free to have a different value from its owner’s complete surface.
-
-Aggregate values are never separately declared. They are consequences of the exact
-included scopes.
-
-## Disclosure
-
-A `Disclosure` is only this relation:
+An immutable carried-information value owns the actual nonempty Material or outbound
+surfaces being exposed. An immutable receiving value owns the actual nonempty input
+surfaces being reached.
 
 ```text
-S_D = S(actual exposed source surface)
-P_D = P(actual observer surface)
-
-match iff S_D <= P_D
+S = maximum Sensitivity of carried information
+P = minimum Privacy of receiving surfaces
+composition exists while S <= P
 ```
 
-Both facets must apply. Adding a source joins Sensitivity by maximum. Adding an
-observer meets Privacy by minimum. An addition that violates the inequality raises
-`SecurityMismatch`; the prior immutable Disclosure remains unchanged and no rejected
-relation exists.
+Adding another member returns a newly composed value. If the inequality would not
+hold, construction raises ordinary `ValueError`; no new value is returned and the
+prior immutable objects remain unchanged.
 
-There are no extra, implied, historical, or framework-supplied observers. The actual
-observer surface already carries the composition of what it exposes.
+## Bounded Operation composition
 
-There is no user exception. Presence, approval, acknowledgement, or a live session
-cannot change this relation.
+An `OperationCall` binds one exact Operation, one of its own EffectProfiles, its exact
+input Material, the actual non-user causal participants, and the actual physical
+realizers.
 
-## Control
-
-One EffectProfile supplies Risk and Autonomy:
+For profile Risk `R` and Autonomy `A`:
 
 ```text
-D_C(R,A) = min(R,A)
+min(R, A) <= minimum Integrity of actual non-user causal participants
+             or I5 when that set is empty
 
-I_C = min Integrity of actual non-user controllers
-      or I5 when there are none
-
-match iff D_C(R,A) <= I_C
+R <= minimum Integrity of actual physical realizers
+the physical-realizer set is nonempty
 ```
 
-A human user is not entered as an Integrity-bearing controller. A1 describes an exact
-live user action through Autonomy; A2 through A5 describe progressively greater
-residual machine execution. Autonomy affects only Control.
+Only the values of that one profile participate. Construction returns a valid
+`OperationCall` or raises ordinary `ValueError` without producing one.
 
-Adding a non-user controller meets Integrity by minimum. An incompatible addition
-cannot construct a new Control value.
+Autonomy describes the execution variant. User presence does not change information
+composition.
 
-## Effect execution
+## Structural aggregates
 
-```text
-I_E = min Integrity of actual effect-realizing executors
-executor surface must be nonempty
+Collections of the same role derive their carrier from their members. An aggregate
+cannot declare a separate summary rank.
 
-match iff R <= I_E
-```
+Module Sensitivity is the maximum of its actual current owned/reachable Material and
+declared public outputs. Agent Privacy is the minimum of the exact Operation input
+surfaces that Agent exposes. Narrowing those members changes the derived value without
+special Module or Agent rules.
 
-Only the executors that physically realize this exact bounded effect participate.
-Adding another executor meets Integrity by minimum. An incompatible addition cannot
-construct a new EffectExecution value.
+## Independent Material
 
-Risk or Autonomy values from separate EffectProfiles never combine.
+Every semantic adaptation constructs new `Material` with its own nominal identity,
+type, payload, owner, and explicit Sensitivity. The source Material is unchanged.
+Historical metadata, if a Module wants it, remains ordinary Module metadata and has
+no algebraic effect.
 
-## New Material
-
-Any transformation, selection, minimization, tokenization, anonymization, validation,
-summary, or other adaptation produces new Material with:
-
-- a new Material identity;
-- its own content contract and payload;
-- its own exact applicable security facts.
-
-No algebraic rule universally derives the new Sensitivity or Integrity from prior
-Material. The Module performing the semantic work owns the new facts. The original
-Material remains unchanged.
-
-MADRE defines no derivation record, ancestry, continuity, freshness, completed-output
-set, lineage graph, validation projection, or security retry. Optional provenance
-would be separate metadata and could not become an algebra operand.
-
-## Failure and observability
-
-`SecurityMismatch` reports why one attempted construction could not produce a
-composite. It is transient failure information.
-
-A runtime may log that an execution request failed, just as it may log a timeout or
-unavailable mechanism. Such diagnostics are not security state, do not modify any
-scope, and cannot authorize or constrain a later request.
+Execution attempts and diagnostics likewise have no algebraic effect. Only the exact
+members of the value being constructed participate.
