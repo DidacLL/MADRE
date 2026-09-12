@@ -75,7 +75,7 @@ Collections of the same role derive their carrier from their members. An aggrega
 cannot declare a separate summary rank.
 
 Module Sensitivity is the maximum of its actual current owned/reachable Material and
-declared public outputs. Agent Privacy is the minimum of the exact Operation input
+the output surfaces owned by its definitions. Agent Privacy is the minimum of the exact Operation input
 surfaces that Agent exposes. Narrowing those members changes the derived value without
 special Module or Agent rules.
 

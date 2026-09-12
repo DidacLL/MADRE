@@ -62,8 +62,9 @@ class Kernel:
 
     async def submit[OutputT](self, request: WorkRequest[OutputT]) -> PhysicalResult[OutputT]:
         physical_request = cast(WorkRequest[object], request)
-        adapter = self._capabilities.select(physical_request)
-        result = await self._invoke(adapter, physical_request, attempt=1)
+        adapter = self._select(physical_request)
+        async with self._resources.reserve(adapter.definition.resources):
+            result = await self._invoke(adapter, physical_request, attempt=1)
         return cast(PhysicalResult[OutputT], result)
 
     async def enqueue[OutputT](
@@ -150,20 +151,25 @@ class Kernel:
         if request is None:
             raise RuntimeError("queued work has no opaque request snapshot")
         try:
-            adapter = self._capabilities.select(request)
+            adapter = self._select(request)
         except CapabilityUnavailable:
             store.defer_unavailable(identity, self._clock())
             return False
-        started_at = self._clock()
-        attempt = store.start_attempt(identity, adapter.definition.identity, started_at)
-        if attempt is None:
-            return False
         try:
-            result = await self._invoke(adapter, request, attempt)
-        except CapabilityError as exc:
-            store.finish_failure(identity, attempt, WorkFailure(exc.code), self._clock())
-            self._schedule_changed.set()
-            return True
+            async with self._resources.reserve(adapter.definition.resources):
+                started_at = self._clock()
+                attempt = store.start_attempt(identity, adapter.definition.identity, started_at)
+                if attempt is None:
+                    return False
+                try:
+                    result = await self._invoke(adapter, request, attempt)
+                except CapabilityError as exc:
+                    store.finish_failure(identity, attempt, WorkFailure(exc.code), self._clock())
+                    self._schedule_changed.set()
+                    return True
+        except CapabilityUnavailable:
+            store.defer_unavailable(identity, self._clock())
+            return False
         encoded_result = self._result_codec.encode(result)
         store.finish_success(identity, attempt, encoded_result, self._clock())
         return True
@@ -177,8 +183,7 @@ class Kernel:
         invocation = CapabilityInvocation.from_request(request)
         started_at = datetime.now(UTC)
         try:
-            async with self._resources.reserve(adapter.definition.resources):
-                output = await adapter.invoke(invocation)
+            output = await adapter.invoke(invocation)
         except CapabilityError:
             raise
         except Exception as exc:
@@ -191,6 +196,12 @@ class Kernel:
             started_at=started_at,
             completed_at=completed_at,
             attempt=attempt,
+        )
+
+    def _select(self, request: WorkRequest[object]) -> CapabilityAdapter:
+        return self._capabilities.select(
+            request,
+            usable=lambda adapter: self._resources.supports(adapter.definition.resources),
         )
 
     @staticmethod

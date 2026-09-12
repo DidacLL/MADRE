@@ -38,7 +38,7 @@ def test_nontrivial_definition_round_trips_as_domain_objects() -> None:
     assert not hasattr(definition, "model_dump")
 
 
-def test_module_sensitivity_comes_from_current_material_and_public_outputs() -> None:
+def test_module_sensitivity_comes_from_current_material_and_owned_output_surfaces() -> None:
     definition = build_module_definition()
     secret_type, _, report_type = definition.material_types
     secret = Material(
@@ -55,7 +55,49 @@ def test_module_sensitivity_comes_from_current_material_and_public_outputs() -> 
     )
 
     assert definition.sensitivity_of(MaterialSet.of(secret)) is Sensitivity.S5
-    assert definition.sensitivity_of(MaterialSet.of(minimized)) is Sensitivity.S2
+    assert definition.sensitivity_of(MaterialSet.of(minimized)) is Sensitivity.S4
+
+    agent_outputs = definition.agents[0].outputs
+    skill_outputs = definition.skills[0].outputs
+    assert agent_outputs is not None
+    assert skill_outputs is not None
+    lower_outputs = replace(
+        definition,
+        agents=(
+            replace(
+                definition.agents[0],
+                outputs=replace(
+                    agent_outputs,
+                    members=(replace(agent_outputs.members[0], sensitivity=Sensitivity.S2),),
+                ),
+            ),
+        ),
+        skills=(
+            replace(
+                definition.skills[0],
+                outputs=replace(
+                    skill_outputs,
+                    members=(replace(skill_outputs.members[0], sensitivity=Sensitivity.S2),),
+                ),
+            ),
+        ),
+        operations=(
+            replace(
+                definition.operations[0],
+                outputs=replace(
+                    definition.operations[0].outputs,
+                    members=(
+                        replace(
+                            definition.operations[0].outputs.members[0],
+                            sensitivity=Sensitivity.S2,
+                        ),
+                    ),
+                ),
+            ),
+            definition.operations[1],
+        ),
+    )
+    assert lower_outputs.sensitivity_of(MaterialSet.of(minimized)) is Sensitivity.S2
 
 
 def test_agent_privacy_changes_with_exact_exposed_operations() -> None:

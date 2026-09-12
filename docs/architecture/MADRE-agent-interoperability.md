@@ -30,8 +30,8 @@ Any definition may own the surface types that apply to its real responsibility. 
 does not receive irrelevant algebra fields. Collections derive their aggregate ranks
 from members.
 
-Module Sensitivity is derived for an exact current `MaterialSet` and the Module's
-reachable output surfaces. Agent Privacy is derived from the exact Operation input
+Module Sensitivity is derived for an exact current `MaterialSet` and the output
+surfaces owned by its definitions. Agent Privacy is derived from the exact Operation input
 surfaces the Agent exposes. Public directory filtering therefore works at the
 published surface, not at an unrelated whole-Module summary.
 

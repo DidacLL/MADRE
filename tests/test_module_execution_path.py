@@ -12,13 +12,17 @@ from madre import (
     CapabilityInputs,
     CapabilityRegistry,
     CapabilityUnavailable,
+    CapacityResourceCoordinator,
     FunctionCapability,
     Kernel,
+    ResourceClaim,
+    ResourceId,
 )
 from madre_sdk import (
     ComputationContract,
     ComputationId,
     ExecutionLocation,
+    ExecutionService,
     LatencyClass,
     LatencyPreference,
     Material,
@@ -41,16 +45,16 @@ class _FixtureModule:
         prompt_type: MaterialType[str],
         result_type: MaterialType[str],
         computation: ComputationContract[str],
-        kernel: Kernel,
+        execution: ExecutionService,
     ) -> None:
         self.identity = identity
         self.prompt_type = prompt_type
         self.result_type = result_type
         self.computation = computation
-        self.kernel = kernel
+        self._execution = execution
 
     async def run(self, prompt: Material[str]) -> Material[str]:
-        first = await self.kernel.submit(
+        first = await self._execution.submit(
             WorkRequest(
                 module=self.identity,
                 materials=MaterialSet.of(prompt),
@@ -66,7 +70,7 @@ class _FixtureModule:
         if interpreted.payload != "continue":
             return interpreted
 
-        second = await self.kernel.submit(
+        second = await self._execution.submit(
             WorkRequest(
                 module=self.identity,
                 materials=MaterialSet.of(interpreted),
@@ -90,6 +94,7 @@ def _capability(
     privacy: Privacy,
     location: ExecutionLocation,
     invoke: Callable[[tuple[object, ...]], object],
+    resources: tuple[ResourceClaim, ...] = (),
 ) -> FunctionCapability:
     return FunctionCapability(
         CapabilityDefinition(
@@ -103,6 +108,7 @@ def _capability(
                 )
             ),
             properties=PhysicalProperties(location, LatencyClass.INTERACTIVE),
+            resources=resources,
         ),
         invoke,
     )
@@ -246,3 +252,50 @@ def test_module_can_submit_material_reachable_from_another_module() -> None:
 
     assert request.module is consumer
     assert request.materials.materials == (shared,)
+
+
+def test_resource_capacity_filters_candidates_before_physical_attempt() -> None:
+    module, prompt_type, result_type, computation = _contracts()
+    calls: list[str] = []
+    registry = CapabilityRegistry()
+    registry.register(
+        _capability(
+            identity="oversized",
+            computation=computation,
+            prompt_type=prompt_type,
+            result_type=result_type,
+            privacy=Privacy.P5,
+            location=ExecutionLocation.OWNER_DEVICE,
+            invoke=lambda _: calls.append("oversized"),
+            resources=(ResourceClaim(ResourceId("accelerator"), 2),),
+        )
+    )
+    registry.register(
+        _capability(
+            identity="fitting",
+            computation=computation,
+            prompt_type=prompt_type,
+            result_type=result_type,
+            privacy=Privacy.P5,
+            location=ExecutionLocation.OWNER_DEVICE,
+            invoke=lambda _: "completed",
+            resources=(ResourceClaim(ResourceId("accelerator"), 1),),
+        )
+    )
+    request = WorkRequest(
+        module=module,
+        materials=MaterialSet.of(
+            Material(MaterialId(module, "resource-input"), prompt_type, "input", Sensitivity.S2)
+        ),
+        computation=computation,
+    )
+
+    result = asyncio.run(
+        Kernel(
+            registry,
+            resources=CapacityResourceCoordinator({ResourceId("accelerator"): 1}),
+        ).submit(request)
+    )
+
+    assert result.output == "completed"
+    assert calls == []

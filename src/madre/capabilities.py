@@ -235,9 +235,15 @@ class CapabilityRegistry:
     def remove(self, identity: CapabilityId) -> None:
         self._adapters.pop(identity, None)
 
-    def select(self, request: WorkRequest[object]) -> CapabilityAdapter:
+    def select(
+        self,
+        request: WorkRequest[object],
+        usable: Callable[[CapabilityAdapter], bool] | None = None,
+    ) -> CapabilityAdapter:
         matching = tuple(
-            adapter for adapter in self._adapters.values() if self._can_use(adapter, request)
+            adapter
+            for adapter in self._adapters.values()
+            if self._can_use(adapter, request) and (usable is None or usable(adapter))
         )
         return self._selection.select(request, matching)
 
@@ -265,6 +271,8 @@ class CapabilityRegistry:
 
 
 class ResourceCoordinator(Protocol):
+    def supports(self, claims: tuple[ResourceClaim, ...]) -> bool: ...
+
     def reserve(self, claims: tuple[ResourceClaim, ...]) -> ResourceReservation: ...
 
 
@@ -311,6 +319,9 @@ class CapacityResourceCoordinator:
             raise ValueError("Resource capacities must be positive")
         self._capacities = supplied
         self._semaphores: dict[ResourceId, asyncio.Semaphore] = {}
+
+    def supports(self, claims: tuple[ResourceClaim, ...]) -> bool:
+        return all(claim.units <= self._capacities.get(claim.resource, 1) for claim in claims)
 
     def reserve(self, claims: tuple[ResourceClaim, ...]) -> ResourceReservation:
         return ResourceReservation(claims, self._capacities, self._semaphores)

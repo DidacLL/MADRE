@@ -355,6 +355,14 @@ class ModuleDefinition:
 
     def sensitivity_of(self, materials: MaterialSet) -> Sensitivity:
         values = [materials.sensitivity]
+        for agent in self.agents:
+            if agent.outputs is not None:
+                values.append(agent.outputs.sensitivity)
+        for skill in self.skills:
+            if skill.outputs is not None:
+                values.append(skill.outputs.sensitivity)
+        values.extend(workflow.outputs.sensitivity for workflow in self.workflows)
+        values.extend(operation.outputs.sensitivity for operation in self.operations)
         if self.public_outputs is not None:
             values.append(self.public_outputs.sensitivity)
         first, *rest = values
