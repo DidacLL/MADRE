@@ -1,197 +1,186 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
-from pydantic import ValidationError
 
 from madre_sdk import (
     Autonomy,
-    Control,
-    Disclosure,
-    EffectExecution,
+    DisplayName,
     EffectProfile,
-    IdentityKind,
+    EffectProfileId,
+    InputSurface,
+    InputSurfaces,
     Integrity,
     Material,
-    MaterialContract,
+    MaterialId,
+    MaterialSet,
+    MaterialType,
+    MaterialTypeId,
+    ModuleId,
+    OperationCall,
+    OperationDefinition,
+    OperationId,
+    OutputSurface,
+    OutputSurfaces,
     Privacy,
+    Purpose,
+    ResponsibilitySurface,
+    ResponsibilitySurfaces,
     Risk,
-    ScopeIdentity,
-    SecurityMismatch,
-    SecurityScope,
-    SecuritySurface,
     Sensitivity,
+    SurfaceId,
 )
 
 
-def identity(
-    name: str,
-    kind: IdentityKind = IdentityKind.SURFACE,
-) -> ScopeIdentity:
-    return ScopeIdentity(kind=kind, owner="module", name=name)
+def test_role_carriers_accumulate_without_becoming_interchangeable() -> None:
+    assert Sensitivity.maximum(Sensitivity.S2, Sensitivity.S5) is Sensitivity.S5
+    assert Privacy.minimum(Privacy.P5, Privacy.P3) is Privacy.P3
+    assert Integrity.minimum(Integrity.I5, Integrity.I3) is Integrity.I3
+    assert Privacy.UNKNOWN.rank == Privacy.P2.rank == 2
+    assert Privacy.PUBLIC.rank == Privacy.P1.rank == 1
+    differently_typed: tuple[object, object] = (Sensitivity.S2, Privacy.P2)
+    assert type(differently_typed[0]) is not type(differently_typed[1])
+
+    with pytest.raises(TypeError):
+        Sensitivity.maximum(Sensitivity.S2, Privacy.P2)  # type: ignore[arg-type]
 
 
-def scope(
-    name: str,
-    *,
-    sensitivity: Sensitivity | None = None,
-    privacy: Privacy | None = None,
-    integrity: Integrity | None = None,
-) -> SecurityScope:
-    return SecurityScope(
-        identity=identity(name),
-        sensitivity=sensitivity,
-        privacy=privacy,
-        integrity=integrity,
+def test_information_composition_is_immutable_and_role_specific() -> None:
+    module = ModuleId("composition")
+    text_type = MaterialType[str](MaterialTypeId(module, "text"), "text/plain")
+    initial = MaterialSet.of(
+        Material(MaterialId(module, "minimized"), text_type, "safe", Sensitivity.S2)
+    )
+    expanded = initial.including(
+        Material(MaterialId(module, "secret"), text_type, "secret", Sensitivity.S5)
+    )
+    private_input = InputSurface(
+        SurfaceId(module, "private-input"),
+        text_type.identity,
+        Privacy.P5,
+    )
+    constrained_input = InputSurface(
+        SurfaceId(module, "constrained-input"),
+        text_type.identity,
+        Privacy.P3,
     )
 
-
-def profile(
-    risk: Risk = Risk.R4,
-    autonomy: Autonomy = Autonomy.A4,
-) -> EffectProfile:
-    operation = identity("operation", IdentityKind.OPERATION)
-    return EffectProfile(
-        identity=identity(f"{operation.name}.profile", IdentityKind.EFFECT_PROFILE),
-        operation=operation,
-        risk=risk,
-        autonomy=autonomy,
-    )
-
-
-def test_surfaces_are_order_independent_composites_of_applicable_facets() -> None:
-    low = scope("low", sensitivity=Sensitivity.S2)
-    high = scope("high", sensitivity=Sensitivity.S5)
-    secret = scope("secret", privacy=Privacy.SECRET)
-    local_private = scope("local-private", privacy=Privacy.LOCAL_PRIVATE)
-    causal = scope("causal", integrity=Integrity.I4)
-
-    first = SecuritySurface.compose(low, high, secret, local_private, causal)
-    second = SecuritySurface.compose(causal, local_private, secret, high, low)
-
-    assert first == second
-    assert first.sensitivity is Sensitivity.S5
-    assert first.privacy is Privacy.LOCAL_PRIVATE
-    assert first.integrity is Integrity.I4
-    assert first.including(high) == first
-
-
-def test_disclosure_addition_cannot_create_or_mutate_an_invalid_composite() -> None:
-    initial = Disclosure(
-        sources=SecuritySurface.compose(scope("source", sensitivity=Sensitivity.S2)),
-        observers=SecuritySurface.compose(scope("observer", privacy=Privacy.SECRET)),
-    )
-    expanded = initial.including_source(scope("secret-source", sensitivity=Sensitivity.S5))
-
-    with pytest.raises(SecurityMismatch, match="S5 exceeds LOCAL_PRIVATE"):
-        expanded.including_observer(scope("narrower-observer", privacy=Privacy.LOCAL_PRIVATE))
-
+    assert private_input.compose(expanded) is expanded
     assert initial.sensitivity is Sensitivity.S2
-    assert initial.privacy is Privacy.SECRET
+    with pytest.raises(ValueError):
+        constrained_input.compose(expanded)
+    assert initial.sensitivity is Sensitivity.S2
     assert expanded.sensitivity is Sensitivity.S5
-    assert expanded.privacy is Privacy.SECRET
+    assert not hasattr(private_input, "sensitivity")
+    assert not hasattr(expanded.materials[0], "privacy")
 
 
-def test_unknown_privacy_is_a_value_and_none_is_not_applicable() -> None:
-    observer = SecuritySurface.compose(
-        scope("unknown", privacy=Privacy.UNKNOWN),
-        scope("executor-only", integrity=Integrity.I5),
+def test_privacy_is_explicit_and_independent_of_physical_location() -> None:
+    module = ModuleId("explicit-privacy")
+    content = MaterialType[str](MaterialTypeId(module, "content"), "text/plain")
+    remote_owner_controlled = InputSurface(
+        SurfaceId(module, "remote-owner-controlled"),
+        content.identity,
+        Privacy.P4,
     )
-    assert observer.privacy is Privacy.UNKNOWN
+    local_public_relay = InputSurface(
+        SurfaceId(module, "local-public-relay"),
+        content.identity,
+        Privacy.PUBLIC,
+    )
 
-    with pytest.raises(SecurityMismatch, match="S3 exceeds UNKNOWN"):
-        Disclosure(
-            sources=SecuritySurface.compose(scope("source", sensitivity=Sensitivity.S3)),
-            observers=observer,
-        )
-
-
-def test_live_user_autonomy_is_not_a_disclosure_exception() -> None:
-    live_action = profile(risk=Risk.R5, autonomy=Autonomy.A1)
-    assert Control(profile=live_action).controller_integrity is Integrity.I5
-
-    with pytest.raises(SecurityMismatch, match="S5 exceeds PUBLIC"):
-        Disclosure(
-            sources=SecuritySurface.compose(scope("source", sensitivity=Sensitivity.S5)),
-            observers=SecuritySurface.compose(scope("observer", privacy=Privacy.PUBLIC)),
-        )
+    assert remote_owner_controlled.privacy is Privacy.P4
+    assert local_public_relay.privacy is Privacy.P1
+    assert not hasattr(remote_owner_controlled, "location")
 
 
-def test_control_and_effect_execution_use_only_their_exact_relations() -> None:
-    no_machine_controller = Control(profile=profile(Risk.R5, Autonomy.A1))
-    assert no_machine_controller.demand == 1
-    assert no_machine_controller.controller_integrity is Integrity.I5
-
-    with pytest.raises(SecurityMismatch, match="demand 4 exceeds I3"):
-        Control(
-            profile=profile(Risk.R4, Autonomy.A4),
-            controllers=SecuritySurface.compose(scope("controller", integrity=Integrity.I3)),
-        )
-
-    execution = EffectExecution(
-        profile=profile(Risk.R4, Autonomy.A5),
-        executors=SecuritySurface.compose(
-            scope("executor-a", integrity=Integrity.I5),
-            scope("executor-b", integrity=Integrity.I4),
+def test_operation_call_uses_only_its_profile_and_actual_responsibilities() -> None:
+    module = ModuleId("bounded-operation")
+    content = MaterialType[str](MaterialTypeId(module, "content"), "text/plain")
+    operation_id = OperationId(module, "write")
+    owner_profile = EffectProfile(
+        EffectProfileId(operation_id, "owner-action"),
+        Risk.R4,
+        Autonomy.A1,
+    )
+    automated_profile = EffectProfile(
+        EffectProfileId(operation_id, "automated"),
+        Risk.R2,
+        Autonomy.A4,
+    )
+    operation = OperationDefinition(
+        operation_id,
+        DisplayName("Write"),
+        Purpose("Write one bounded output."),
+        InputSurfaces.of(
+            InputSurface(SurfaceId(module, "write-input"), content.identity, Privacy.P5)
         ),
-    )
-    assert execution.executor_integrity is Integrity.I4
-
-    with pytest.raises(SecurityMismatch, match="R5 exceeds I4"):
-        EffectExecution(
-            profile=profile(Risk.R5, Autonomy.A1),
-            executors=execution.executors,
-        )
-
-    with pytest.raises(ValidationError):
-        SecuritySurface(scopes=())
-
-
-def test_adaptation_creates_independent_material_instead_of_lineage() -> None:
-    contract = MaterialContract(
-        identity=identity("text-contract", IdentityKind.MATERIAL_CONTRACT),
-        media_type="text/plain",
-    )
-    original_identity = identity("secret", IdentityKind.MATERIAL)
-    original = Material[str](
-        identity=original_identity,
-        contract=contract,
-        payload="owner secret",
-        security=SecurityScope(
-            identity=original_identity,
-            sensitivity=Sensitivity.S5,
-        ),
-    )
-
-    lowered = []
-    for name, level in (
-        ("tokenized", Sensitivity.S4),
-        ("anonymized", Sensitivity.S3),
-        ("minimized", Sensitivity.S2),
-    ):
-        material_identity = identity(name, IdentityKind.MATERIAL)
-        lowered.append(
-            Material[str](
-                identity=material_identity,
-                contract=contract,
-                payload=name,
-                security=SecurityScope(
-                    identity=material_identity,
-                    sensitivity=level,
-                ),
+        OutputSurfaces.of(
+            OutputSurface(
+                SurfaceId(module, "write-output"),
+                content.identity,
+                Sensitivity.S2,
             )
-        )
+        ),
+        (owner_profile, automated_profile),
+    )
+    materials = MaterialSet.of(
+        Material(MaterialId(module, "input"), content, "value", Sensitivity.S2)
+    )
+    strong_realizer = ResponsibilitySurfaces.of(
+        ResponsibilitySurface(SurfaceId(module, "strong-realizer"), Integrity.I5)
+    )
+    weak_realizer = ResponsibilitySurfaces.of(
+        ResponsibilitySurface(SurfaceId(module, "weak-realizer"), Integrity.I1)
+    )
+    weak_cause = ResponsibilitySurfaces.of(
+        ResponsibilitySurface(SurfaceId(module, "weak-cause"), Integrity.I1)
+    )
 
-    assert original.security.sensitivity is Sensitivity.S5
-    assert {material.identity for material in lowered}.isdisjoint({original.identity})
-    assert [material.security.sensitivity for material in lowered] == [
+    call = OperationCall(operation, owner_profile, materials, None, strong_realizer)
+    assert call.profile.causal_demand == 1
+    with pytest.raises(ValueError):
+        replace(call, physical_realizers=weak_realizer)
+    with pytest.raises(ValueError):
+        OperationCall(operation, automated_profile, materials, weak_cause, strong_realizer)
+
+    independent = OperationCall(operation, automated_profile, materials, None, strong_realizer)
+    assert independent.profile.causal_demand == 2
+
+
+def test_live_user_profile_does_not_change_information_composition() -> None:
+    module = ModuleId("user-action")
+    content = MaterialType[str](MaterialTypeId(module, "content"), "text/plain")
+    secret = MaterialSet.of(
+        Material(MaterialId(module, "secret"), content, "secret", Sensitivity.S5)
+    )
+    third_party = InputSurface(
+        SurfaceId(module, "third-party"),
+        content.identity,
+        Privacy.UNKNOWN,
+    )
+    operation = OperationId(module, "owner-action")
+    profile = EffectProfile(EffectProfileId(operation, "live"), Risk.R1, Autonomy.A1)
+
+    assert profile.autonomy is Autonomy.A1
+    with pytest.raises(ValueError):
+        third_party.compose(secret)
+
+
+def test_adapted_materials_are_independent_values() -> None:
+    module = ModuleId("adaptation")
+    content = MaterialType[str](MaterialTypeId(module, "content"), "text/plain")
+    original = Material(MaterialId(module, "source"), content, "secret", Sensitivity.S5)
+    tokenized = Material(MaterialId(module, "tokenized"), content, "token", Sensitivity.S4)
+    anonymized = Material(MaterialId(module, "anonymized"), content, "group", Sensitivity.S3)
+    minimized = Material(MaterialId(module, "minimized"), content, "fact", Sensitivity.S2)
+
+    assert len({item.identity for item in (original, tokenized, anonymized, minimized)}) == 4
+    assert original.sensitivity is Sensitivity.S5
+    assert [item.sensitivity for item in (tokenized, anonymized, minimized)] == [
         Sensitivity.S4,
         Sensitivity.S3,
         Sensitivity.S2,
     ]
-
-
-def test_ordered_carriers_are_nominally_distinct() -> None:
-    assert Sensitivity.S1 != Privacy.PUBLIC
-    assert Privacy.PUBLIC != Integrity.I1
-    assert Integrity.I1 != Risk.R1
-    assert Risk.R1 != Autonomy.A1
+    assert not hasattr(minimized, "parent")

@@ -29,4 +29,19 @@ divergence evidence and must not be treated as the current contract.
 
 ## Executable behavior recorded after replacement
 
-None yet at this documentation checkpoint.
+The public `madre_sdk` package now provides:
+
+- nominal immutable identities for Modules and every Module-owned definition;
+- five non-interchangeable ordered carriers;
+- role-specific input, output, and responsibility surfaces with direct immutable
+  composition;
+- typed independent Material and nonempty Material sets;
+- canonical Module, Agent, Skill, Workflow, Operation, and EffectProfile definitions;
+- bounded Operation-call construction from one exact profile and actual participants;
+- typed physical work requests and raw physical results without Capability identity;
+- a versioned JSON codec separate from the domain inheritance model;
+- narrow physical execution, Operation implementation, and Module-directory ports.
+
+Focused SDK tests and strict type checking pass. Kernel consumers still target the
+superseded SDK at this checkpoint and are the next replacement slice; no complete
+runtime claim is made yet.

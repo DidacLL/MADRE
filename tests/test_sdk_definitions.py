@@ -1,165 +1,91 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
-from madre.catalog import ModuleCatalog
 from madre_sdk import (
     AgentDefinition,
-    Autonomy,
-    EffectProfile,
-    IdentityKind,
-    Integrity,
-    MaterialContract,
+    AgentId,
+    DisplayName,
+    Material,
+    MaterialId,
+    MaterialSet,
     ModuleDefinition,
-    OperationDefinition,
-    OperationReference,
+    ModuleDefinitionJsonCodec,
+    ModuleId,
+    OperationId,
     Privacy,
-    Repeatability,
-    Risk,
-    ScopeIdentity,
-    SecurityScope,
+    Purpose,
     Sensitivity,
-    SkillDefinition,
-    SkillReference,
-    SurfaceReference,
-    WorkflowDefinition,
-    WorkflowReference,
 )
+from tests.sdk_fixtures import build_module_definition
 
 
-class DefinitionStore:
-    def __init__(self) -> None:
-        self._definitions: tuple[ModuleDefinition, ...] = ()
+def test_nontrivial_definition_round_trips_as_domain_objects() -> None:
+    definition = build_module_definition()
+    codec = ModuleDefinitionJsonCodec()
 
-    def put_module(self, definition: ModuleDefinition) -> None:
-        self._definitions = (definition,)
+    encoded = codec.encode(definition)
+    decoded = codec.decode(encoded)
 
-    def modules(self) -> tuple[ModuleDefinition, ...]:
-        return self._definitions
-
-
-def identity(
-    name: str,
-    kind: IdentityKind = IdentityKind.SURFACE,
-) -> ScopeIdentity:
-    return ScopeIdentity(kind=kind, owner="module", name=name, revision="7")
+    assert decoded == definition
+    assert '"schema_version":1' in encoded
+    assert "callable" not in encoded
+    assert "import_path" not in encoded
+    assert not hasattr(definition, "model_dump")
 
 
-def contract(name: str) -> MaterialContract:
-    return MaterialContract(
-        identity=identity(name, IdentityKind.MATERIAL_CONTRACT),
-        media_type="application/json",
+def test_module_sensitivity_comes_from_current_material_and_public_outputs() -> None:
+    definition = build_module_definition()
+    secret_type, _, report_type = definition.material_types
+    secret = Material(
+        MaterialId(definition.identity, "current-secret"),
+        secret_type,
+        "secret",
+        Sensitivity.S5,
+    )
+    minimized = Material(
+        MaterialId(definition.identity, "current-report"),
+        report_type,
+        {"count": 3},
+        Sensitivity.S2,
     )
 
+    assert definition.sensitivity_of(MaterialSet.of(secret)) is Sensitivity.S5
+    assert definition.sensitivity_of(MaterialSet.of(minimized)) is Sensitivity.S2
 
-def operation(name: str, privacy: Privacy) -> OperationDefinition:
-    operation_identity = identity(name, IdentityKind.OPERATION)
-    return OperationDefinition(
-        identity=operation_identity,
-        purpose=f"bounded {name}",
-        input_contract=contract("input"),
-        output_contract=contract("output"),
-        effect=name,
-        repeatability=Repeatability.IDEMPOTENT,
-        security=SecurityScope(
-            identity=operation_identity,
-            privacy=privacy,
-            integrity=Integrity.I4,
-        ),
-        effect_profiles=(
-            EffectProfile(
-                identity=identity(f"{name}.bounded", IdentityKind.EFFECT_PROFILE),
-                operation=operation_identity,
-                risk=Risk.R3,
-                autonomy=Autonomy.A2,
-            ),
-        ),
+
+def test_agent_privacy_changes_with_exact_exposed_operations() -> None:
+    definition = build_module_definition()
+    agent = definition.agents[0]
+    private_operation = definition.operations[0]
+
+    assert definition.agent_privacy(agent.identity) is Privacy.P3
+
+    narrowed_agent = replace(agent, exposed_operations=(private_operation.identity,))
+    narrowed = replace(definition, agents=(narrowed_agent,))
+    assert narrowed.agent_privacy(agent.identity) is Privacy.P5
+
+
+def test_nominal_identity_categories_and_ownership_are_constructor_invariants() -> None:
+    definition = build_module_definition()
+    foreign_module = ModuleId("foreign")
+    invalid_agent = AgentDefinition(
+        AgentId(foreign_module, "agent"),
+        DisplayName("Foreign"),
+        Purpose("A definition owned by another Module."),
     )
 
-
-def test_module_definitions_are_serializable_structural_aggregates() -> None:
-    private_operation = operation("private-operation", Privacy.SECRET)
-    narrower_operation = operation("narrower-operation", Privacy.LOCAL_PRIVATE)
-    skill = SkillDefinition(
-        identity=identity("skill", IdentityKind.SKILL),
-        purpose="Reusable knowledge",
-        instructions=("Preserve Module meaning.",),
-        input_contract=contract("input"),
-        output_contract=contract("output"),
-    )
-    workflow = WorkflowDefinition(
-        identity=identity("workflow", IdentityKind.WORKFLOW),
-        purpose="Reusable semantic recipe",
-        instructions=("Interpret inside the Module.",),
-        input_contract=contract("input"),
-        output_contract=contract("output"),
-    )
-    agent_identity = identity("agent", IdentityKind.AGENT)
-    agent = AgentDefinition(
-        identity=agent_identity,
-        purpose="Module-owned actor",
-        input_contract=contract("input"),
-        output_contract=contract("output"),
-        security=SecurityScope(identity=agent_identity, privacy=Privacy.SECRET),
-        skills=(SkillReference(identity=skill.identity),),
-        workflows=(WorkflowReference(identity=workflow.identity),),
-        exposed_operations=(
-            OperationReference(identity=private_operation.identity),
-            OperationReference(identity=narrower_operation.identity),
-        ),
-    )
-    module_identity = identity("module", IdentityKind.MODULE)
-    secret_material_scope = SecurityScope(
-        identity=identity("managed-secret", IdentityKind.MATERIAL),
-        sensitivity=Sensitivity.S5,
-    )
-    definition = ModuleDefinition(
-        identity=module_identity,
-        description="An ordinary Module",
-        security=SecurityScope(
-            identity=module_identity,
-            privacy=Privacy.SECRET,
-            integrity=Integrity.I5,
-        ),
-        managed_scopes=(secret_material_scope,),
-        agents=(agent,),
-        skills=(skill,),
-        workflows=(workflow,),
-        operations=(private_operation, narrower_operation),
-        public_surfaces=(SurfaceReference(identity=private_operation.identity),),
-    )
-
-    restored = ModuleDefinition.model_validate_json(definition.model_dump_json())
-
-    assert restored == definition
-    assert restored.surface.sensitivity is Sensitivity.S5
-    assert restored.surface.privacy is Privacy.LOCAL_PRIVATE
-    assert restored.agent_surface(agent.identity).privacy is Privacy.LOCAL_PRIVATE
-
-    reduced_agent = agent.model_copy(
-        update={"exposed_operations": (OperationReference(identity=private_operation.identity),)}
-    )
-    reduced_definition = definition.model_copy(update={"agents": (reduced_agent,)})
-    assert reduced_definition.agent_surface(agent.identity).privacy is Privacy.SECRET
-
-    catalog = ModuleCatalog(DefinitionStore())
-    catalog.register(restored)
-    assert catalog.skills() == (skill,)
-    assert catalog.workflows() == (workflow,)
-    assert catalog.operations() == (private_operation, narrower_operation)
-
-    unresolved_agent = agent.model_copy(
-        update={
-            "skills": (SkillReference(identity=identity("missing-skill", IdentityKind.SKILL)),),
-        }
-    )
-    with pytest.raises(ValueError, match="Skill reference does not resolve"):
-        definition.model_copy(update={"agents": (unresolved_agent,)})
+    with pytest.raises(ValueError):
+        replace(definition, agents=(invalid_agent,))
+    with pytest.raises(TypeError):
+        AgentId(OperationId(definition.identity, "wrong-category"), "agent")  # type: ignore[arg-type]
 
 
-def test_definition_identities_are_not_interchangeable_by_shape() -> None:
-    with pytest.raises(ValueError, match="MaterialContract requires a material_contract"):
-        MaterialContract(
-            identity=identity("wrong-kind", IdentityKind.OPERATION),
-            media_type="application/json",
-        )
+def test_definition_has_no_universal_behavior_protocol() -> None:
+    definition = build_module_definition()
+
+    assert isinstance(definition, ModuleDefinition)
+    assert not hasattr(definition, "receive")
+    assert not hasattr(definition.agents[0], "receive")
