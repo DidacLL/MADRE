@@ -23,23 +23,6 @@ class LatencyClass(Enum):
     BATCH = "batch"
 
 
-class ReasoningEffort(Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-
-
-class QualityTier(Enum):
-    BASIC = "basic"
-    STANDARD = "standard"
-    HIGH = "high"
-
-
-class CostClass(Enum):
-    FREE = "free"
-    PAID = "paid"
-
-
 class ExecutionConstraints(FrozenValue):
     timeout_seconds: float = Field(default=120, gt=0, allow_inf_nan=False)
 
@@ -49,11 +32,6 @@ class CapabilityProperties(FrozenValue):
     modality: ScopeIdentity
     boundary: ExecutionBoundary
     latency: LatencyClass = LatencyClass.STANDARD
-    reasoning_efforts: frozenset[ReasoningEffort] = frozenset(
-        {ReasoningEffort.LOW, ReasoningEffort.MEDIUM, ReasoningEffort.HIGH}
-    )
-    quality: QualityTier = QualityTier.STANDARD
-    cost: CostClass = CostClass.FREE
     resources: frozenset[ScopeIdentity] = frozenset()
     heavyweight: bool = False
 
@@ -87,9 +65,6 @@ class CapabilityQuery(FrozenValue):
     mechanism: ScopeIdentity | None = None
     boundaries: tuple[ExecutionBoundary, ...] = ()
     latencies: tuple[LatencyClass, ...] = ()
-    reasoning_efforts: tuple[ReasoningEffort, ...] = ()
-    qualities: tuple[QualityTier, ...] = ()
-    costs: tuple[CostClass, ...] = ()
     required_resources: frozenset[ScopeIdentity] = frozenset()
 
     @model_validator(mode="after")
@@ -110,10 +85,6 @@ class CapabilityQuery(FrozenValue):
             self.mechanism is None or capability.identity == self.mechanism,
             not self.boundaries or properties.boundary in self.boundaries,
             not self.latencies or properties.latency in self.latencies,
-            not self.reasoning_efforts
-            or bool(set(self.reasoning_efforts) & properties.reasoning_efforts),
-            not self.qualities or properties.quality in self.qualities,
-            not self.costs or properties.cost in self.costs,
             self.required_resources.issubset(properties.resources),
         )
         return all(required)
@@ -123,9 +94,6 @@ class CapabilityQuery(FrozenValue):
         return (
             self._position(self.boundaries, properties.boundary),
             self._position(self.latencies, properties.latency),
-            self._best_position(self.reasoning_efforts, properties.reasoning_efforts),
-            self._position(self.qualities, properties.quality),
-            self._position(self.costs, properties.cost),
         )
 
     @staticmethod
@@ -139,18 +107,6 @@ class CapabilityQuery(FrozenValue):
             return values.index(candidate)
         except ValueError:
             return len(values)
-
-    @staticmethod
-    def _best_position[PreferenceT](
-        values: tuple[PreferenceT, ...],
-        candidates: frozenset[PreferenceT],
-    ) -> int:
-        if not values:
-            return 0
-        return min(
-            (index for index, value in enumerate(values) if value in candidates),
-            default=len(values),
-        )
 
 
 class ExecutionRequest(FrozenValue):

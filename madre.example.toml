@@ -13,9 +13,6 @@ revision = "1"
 [capabilities.definition.properties]
 boundary = "local"
 latency = "interactive"
-reasoning_efforts = ["low", "medium", "high"]
-quality = "standard"
-cost = "free"
 heavyweight = true
 
 [capabilities.definition.properties.specialization]

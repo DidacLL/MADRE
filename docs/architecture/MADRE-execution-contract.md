@@ -95,8 +95,9 @@ restart before consumption marks delivery as lost.
 ## Capability selection
 
 `CapabilityQuery` and `CapabilityProperties` use typed values for specialization,
-modality, execution boundary, latency, reasoning effort, quality, cost, and resources.
-A selection strategy is replaceable through a small interface.
+modality, mechanism identity, execution boundary, latency, and physical resources. A
+selection strategy is replaceable through a small interface. Provider-style quality,
+reasoning, reputation, or payment tiers are not universal MADRE properties.
 
 The default strategy first requires an exact property match and then uses the
 query-declared tuple order. It contains no provider-specific branches and never ranks
