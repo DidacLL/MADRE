@@ -13,6 +13,7 @@ from madre_sdk import (
     CapabilityQuery,
     ExecutionBoundary,
     ExecutionRequest,
+    IdentityKind,
     Material,
     MaterialContract,
     MaterialSpecification,
@@ -27,17 +28,21 @@ from madre_sdk import (
 )
 
 
-def identity(owner: str, name: str) -> ScopeIdentity:
-    return ScopeIdentity(owner=owner, name=name)
+def identity(
+    owner: str,
+    name: str,
+    kind: IdentityKind = IdentityKind.SURFACE,
+) -> ScopeIdentity:
+    return ScopeIdentity(kind=kind, owner=owner, name=name)
 
 
-SPECIALIZATION = identity("madre.execution", "language-inference")
-MODALITY = identity("madre.execution", "structured-text")
+SPECIALIZATION = identity("madre.execution", "language-inference", IdentityKind.SPECIALIZATION)
+MODALITY = identity("madre.execution", "structured-text", IdentityKind.MODALITY)
 
 
 def contract(owner: str, name: str) -> MaterialContract:
     return MaterialContract(
-        identity=identity(owner, name),
+        identity=identity(owner, name, IdentityKind.MATERIAL_CONTRACT),
         media_type="application/json",
     )
 
@@ -48,7 +53,7 @@ def material(
     payload: JsonValue,
     sensitivity: Sensitivity,
 ) -> Material[JsonValue]:
-    material_identity = identity(owner, name)
+    material_identity = identity(owner, name, IdentityKind.MATERIAL)
     return Material[JsonValue](
         identity=material_identity,
         contract=contract(owner, "structured-content"),
@@ -65,7 +70,7 @@ def capability(
     privacy: Privacy,
     boundary: ExecutionBoundary,
 ) -> CapabilityDefinition:
-    capability_identity = identity("physical", name)
+    capability_identity = identity("physical", name, IdentityKind.CAPABILITY)
     return CapabilityDefinition(
         identity=capability_identity,
         properties=CapabilityProperties(
@@ -108,13 +113,13 @@ class InterpretPhysicalResult:
 
 
 def test_ordinary_module_owns_interpretation_after_capability_execution() -> None:
-    module_identity = identity("module", "module")
+    module_identity = identity("module", "module", IdentityKind.MODULE)
     module_definition = ModuleDefinition(
         identity=module_identity,
         description="Ordinary first-party Module",
         managed_scopes=(
             SecurityScope(
-                identity=identity("module", "managed-context"),
+                identity=identity("module", "managed-context", IdentityKind.MATERIAL),
                 sensitivity=Sensitivity.S3,
             ),
         ),
@@ -125,8 +130,8 @@ def test_ordinary_module_owns_interpretation_after_capability_execution() -> Non
         {"prompt": "bounded input"},
         Sensitivity.S3,
     )
-    raw_identity = identity("module", "physical-output")
-    final_identity = identity("module", "interpreted-output")
+    raw_identity = identity("module", "physical-output", IdentityKind.MATERIAL)
+    final_identity = identity("module", "interpreted-output", IdentityKind.MATERIAL)
     raw_output = MaterialSpecification(
         identity=raw_identity,
         contract=contract("module", "physical-response"),
@@ -199,13 +204,13 @@ def test_incompatible_capability_addition_ends_request_without_execution() -> No
     )
     kernel = Kernel(registry)
     source = material("module", "secret", {"secret": True}, Sensitivity.S5)
-    output_identity = identity("module", "uncreated-output")
+    output_identity = identity("module", "uncreated-output", IdentityKind.MATERIAL)
 
     with pytest.raises(SecurityMismatch, match="S5 exceeds PUBLIC"):
         asyncio.run(
             kernel.execute(
                 ExecutionRequest(
-                    requester=identity("module", "module"),
+                    requester=identity("module", "module", IdentityKind.MODULE),
                     material=source,
                     capability=CapabilityQuery(
                         specialization=SPECIALIZATION,

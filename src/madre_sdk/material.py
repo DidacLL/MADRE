@@ -7,9 +7,15 @@ import json
 from collections.abc import Mapping
 from typing import Protocol, TypeVar
 
-from pydantic import JsonValue, model_validator
+from pydantic import Field, JsonValue, model_validator
 
-from madre_sdk.security import FrozenValue, ScopeIdentity, SecurityScope, SecuritySurface
+from madre_sdk.security import (
+    FrozenValue,
+    IdentityKind,
+    ScopeIdentity,
+    SecurityScope,
+    SecuritySurface,
+)
 
 PayloadT = TypeVar("PayloadT")
 ResolvedT = TypeVar("ResolvedT", covariant=True)
@@ -23,7 +29,12 @@ class MaterialContract(FrozenValue):
     """Stable semantic contract identity, independent of one wire language."""
 
     identity: ScopeIdentity
-    media_type: str
+    media_type: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def has_contract_identity(self) -> MaterialContract:
+        self.identity.require(IdentityKind.MATERIAL_CONTRACT, "MaterialContract")
+        return self
 
 
 class MaterialSpecification(FrozenValue):
@@ -35,6 +46,7 @@ class MaterialSpecification(FrozenValue):
 
     @model_validator(mode="after")
     def scope_matches_material(self) -> MaterialSpecification:
+        self.identity.require(IdentityKind.MATERIAL, "MaterialSpecification")
         if self.security.identity != self.identity:
             raise ValueError("Material security must describe the same exact Material identity")
         if self.security.sensitivity is None:
@@ -52,6 +64,7 @@ class Material[PayloadT](FrozenValue):
 
     @model_validator(mode="after")
     def scope_matches_material(self) -> Material[PayloadT]:
+        self.identity.require(IdentityKind.MATERIAL, "Material")
         if self.security.identity != self.identity:
             raise ValueError("Material security must describe the same exact Material identity")
         if self.security.sensitivity is None:
@@ -89,6 +102,7 @@ class MaterialHandle(FrozenValue):
 
     @model_validator(mode="after")
     def scope_matches_material(self) -> MaterialHandle:
+        self.identity.require(IdentityKind.MATERIAL, "MaterialHandle")
         if self.security.identity != self.identity:
             raise ValueError("Material security must describe the same exact Material identity")
         if self.security.sensitivity is None:

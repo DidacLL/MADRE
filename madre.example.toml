@@ -5,6 +5,7 @@ port = 8731
 [[capabilities]]
 
 [capabilities.definition.identity]
+kind = "capability"
 owner = "installation"
 name = "local-chat"
 revision = "1"
@@ -18,11 +19,13 @@ cost = "free"
 heavyweight = true
 
 [capabilities.definition.properties.specialization]
+kind = "specialization"
 owner = "madre.execution"
 name = "language-inference"
 revision = "1"
 
 [capabilities.definition.properties.modality]
+kind = "modality"
 owner = "madre.execution"
 name = "structured-text"
 revision = "1"
@@ -34,6 +37,7 @@ revision = "1"
 privacy = 4
 
 [capabilities.definition.security.scopes.identity]
+kind = "capability"
 owner = "installation"
 name = "local-chat"
 revision = "1"

@@ -11,6 +11,7 @@ from madre_sdk.material import Material, MaterialContract
 from madre_sdk.security import (
     EffectProfile,
     FrozenValue,
+    IdentityKind,
     ScopeIdentity,
     SecurityScope,
     SecuritySurface,
@@ -44,6 +45,7 @@ class SkillDefinition(FrozenValue):
 
     @model_validator(mode="after")
     def binds_security(self) -> Self:
+        self.identity.require(IdentityKind.SKILL, "SkillDefinition")
         if self.security is not None and self.security.identity != self.identity:
             raise ValueError("Skill security must describe the exact Skill")
         return self
@@ -59,6 +61,7 @@ class WorkflowDefinition(FrozenValue):
 
     @model_validator(mode="after")
     def binds_security(self) -> Self:
+        self.identity.require(IdentityKind.WORKFLOW, "WorkflowDefinition")
         if self.security is not None and self.security.identity != self.identity:
             raise ValueError("Workflow security must describe the exact Workflow")
         return self
@@ -76,6 +79,7 @@ class OperationDefinition(FrozenValue):
 
     @model_validator(mode="after")
     def binds_profiles_and_security(self) -> Self:
+        self.identity.require(IdentityKind.OPERATION, "OperationDefinition")
         if self.security.identity != self.identity:
             raise ValueError("Operation security must describe the exact Operation")
         identities = tuple(profile.identity for profile in self.effect_profiles)
@@ -92,13 +96,28 @@ class OperationDefinition(FrozenValue):
 class SkillReference(FrozenValue):
     identity: ScopeIdentity
 
+    @model_validator(mode="after")
+    def references_skill(self) -> Self:
+        self.identity.require(IdentityKind.SKILL, "SkillReference")
+        return self
+
 
 class WorkflowReference(FrozenValue):
     identity: ScopeIdentity
 
+    @model_validator(mode="after")
+    def references_workflow(self) -> Self:
+        self.identity.require(IdentityKind.WORKFLOW, "WorkflowReference")
+        return self
+
 
 class OperationReference(FrozenValue):
     identity: ScopeIdentity
+
+    @model_validator(mode="after")
+    def references_operation(self) -> Self:
+        self.identity.require(IdentityKind.OPERATION, "OperationReference")
+        return self
 
 
 class SurfaceReference(FrozenValue):
@@ -119,6 +138,7 @@ class AgentDefinition(FrozenValue):
 
     @model_validator(mode="after")
     def owns_members(self) -> Self:
+        self.identity.require(IdentityKind.AGENT, "AgentDefinition")
         owner = self.identity.owner
         if self.security is not None and self.security.identity != self.identity:
             raise ValueError("Agent security must describe the exact Agent")
@@ -153,6 +173,7 @@ class ModuleDefinition(FrozenValue):
 
     @model_validator(mode="after")
     def owns_members(self) -> Self:
+        self.identity.require(IdentityKind.MODULE, "ModuleDefinition")
         owner = self.identity.owner
         if self.identity.name != owner:
             raise ValueError("a Module identity name must equal its owner")

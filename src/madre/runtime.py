@@ -23,7 +23,7 @@ from madre.interfaces import MaterialResolution
 from madre.storage import PlatformStore, utc_now
 from madre_sdk.execution import ExecutionBoundary, ExecutionRequest
 from madre_sdk.material import Material
-from madre_sdk.security import Disclosure, ScopeIdentity, SecurityMismatch
+from madre_sdk.security import Disclosure, IdentityKind, ScopeIdentity, SecurityMismatch
 
 
 class IdempotencyConflict(RuntimeError):
@@ -78,8 +78,7 @@ class Kernel:
         module: ScopeIdentity,
         resolver: MaterialResolution,
     ) -> None:
-        if module.name != module.owner:
-            raise ValueError("material resolver identity must describe a Module")
+        module.require(IdentityKind.MODULE, "material resolver")
         self._resolvers[module] = resolver
 
     async def execute(self, request: ExecutionRequest) -> Material[JsonValue]:

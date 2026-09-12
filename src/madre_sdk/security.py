@@ -81,12 +81,33 @@ class Autonomy(_OrderedCarrier):
     A5 = 5
 
 
-class ScopeIdentity(FrozenValue):
-    """Identity of one exact Module-owned or physical scope."""
+class IdentityKind(Enum):
+    MODULE = "module"
+    AGENT = "agent"
+    SKILL = "skill"
+    WORKFLOW = "workflow"
+    OPERATION = "operation"
+    EFFECT_PROFILE = "effect_profile"
+    MATERIAL = "material"
+    MATERIAL_CONTRACT = "material_contract"
+    CAPABILITY = "capability"
+    SPECIALIZATION = "specialization"
+    MODALITY = "modality"
+    RESOURCE = "resource"
+    SURFACE = "surface"
 
+
+class ScopeIdentity(FrozenValue):
+    """Typed identity of one exact SDK entity, property, or narrower scope."""
+
+    kind: IdentityKind
     owner: Identifier
     name: Identifier
     revision: Identifier = "1"
+
+    def require(self, expected: IdentityKind, subject: str) -> None:
+        if self.kind is not expected:
+            raise ValueError(f"{subject} requires a {expected.value} identity")
 
 
 class SecurityScope(FrozenValue):
@@ -180,6 +201,8 @@ class EffectProfile(FrozenValue):
 
     @model_validator(mode="after")
     def belongs_to_operation(self) -> Self:
+        self.identity.require(IdentityKind.EFFECT_PROFILE, "EffectProfile")
+        self.operation.require(IdentityKind.OPERATION, "EffectProfile operation")
         if self.identity.owner != self.operation.owner:
             raise ValueError("EffectProfile and Operation must have the same owner")
         return self

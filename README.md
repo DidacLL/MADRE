@@ -60,7 +60,8 @@ Import public concepts from `madre_sdk`.
 
 A `ModuleDefinition` is immutable and serializable. It contains only declarative
 Module, Agent, Skill, Workflow, Operation, EffectProfile, contract, and exact security
-scope values. Python behavior is bound separately through `ModuleRuntime`.
+scope values. Every identity declares its domain kind as well as owner, name, and
+revision. Python behavior is bound separately through `ModuleRuntime`.
 
 Aggregate security values are structural:
 

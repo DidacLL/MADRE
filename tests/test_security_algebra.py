@@ -9,6 +9,7 @@ from madre_sdk import (
     Disclosure,
     EffectExecution,
     EffectProfile,
+    IdentityKind,
     Integrity,
     Material,
     MaterialContract,
@@ -22,8 +23,11 @@ from madre_sdk import (
 )
 
 
-def identity(name: str) -> ScopeIdentity:
-    return ScopeIdentity(owner="module", name=name)
+def identity(
+    name: str,
+    kind: IdentityKind = IdentityKind.SURFACE,
+) -> ScopeIdentity:
+    return ScopeIdentity(kind=kind, owner="module", name=name)
 
 
 def scope(
@@ -45,9 +49,9 @@ def profile(
     risk: Risk = Risk.R4,
     autonomy: Autonomy = Autonomy.A4,
 ) -> EffectProfile:
-    operation = identity("operation")
+    operation = identity("operation", IdentityKind.OPERATION)
     return EffectProfile(
-        identity=identity(f"{operation.name}.profile"),
+        identity=identity(f"{operation.name}.profile", IdentityKind.EFFECT_PROFILE),
         operation=operation,
         risk=risk,
         autonomy=autonomy,
@@ -143,8 +147,11 @@ def test_control_and_effect_execution_use_only_their_exact_relations() -> None:
 
 
 def test_adaptation_creates_independent_material_instead_of_lineage() -> None:
-    contract = MaterialContract(identity=identity("text-contract"), media_type="text/plain")
-    original_identity = identity("secret")
+    contract = MaterialContract(
+        identity=identity("text-contract", IdentityKind.MATERIAL_CONTRACT),
+        media_type="text/plain",
+    )
+    original_identity = identity("secret", IdentityKind.MATERIAL)
     original = Material[str](
         identity=original_identity,
         contract=contract,
@@ -161,7 +168,7 @@ def test_adaptation_creates_independent_material_instead_of_lineage() -> None:
         ("anonymized", Sensitivity.S3),
         ("minimized", Sensitivity.S2),
     ):
-        material_identity = identity(name)
+        material_identity = identity(name, IdentityKind.MATERIAL)
         lowered.append(
             Material[str](
                 identity=material_identity,

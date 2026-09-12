@@ -16,7 +16,7 @@ Every public entity has a declarative definition distinct from executable behavi
 A definition is:
 
 - immutable and strongly typed;
-- explicit about identity, revision, contracts, contained/exposed members, and
+- explicit about identity kind, owner, revision, contracts, contained/exposed members, and
   applicable security scopes;
 - serializable without Python callables, import paths, runtime clients, or opaque
   extension dictionaries;

@@ -8,6 +8,7 @@ This file records current implementation truth. Product authority remains
 `madre_sdk` currently provides:
 
 - nominal ordered Sensitivity, Privacy, Integrity, Risk, and Autonomy carriers;
+- typed exact identities whose kind is validated by each owning definition;
 - exact immutable SecurityScope and structural SecuritySurface values;
 - intrinsically valid Disclosure, Control, and EffectExecution relations;
 - immutable Module, Agent, Skill, Workflow, Operation, EffectProfile, Capability, and

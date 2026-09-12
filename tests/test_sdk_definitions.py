@@ -7,6 +7,7 @@ from madre_sdk import (
     AgentDefinition,
     Autonomy,
     EffectProfile,
+    IdentityKind,
     Integrity,
     MaterialContract,
     ModuleDefinition,
@@ -37,16 +38,22 @@ class DefinitionStore:
         return self._definitions
 
 
-def identity(name: str) -> ScopeIdentity:
-    return ScopeIdentity(owner="module", name=name, revision="7")
+def identity(
+    name: str,
+    kind: IdentityKind = IdentityKind.SURFACE,
+) -> ScopeIdentity:
+    return ScopeIdentity(kind=kind, owner="module", name=name, revision="7")
 
 
 def contract(name: str) -> MaterialContract:
-    return MaterialContract(identity=identity(name), media_type="application/json")
+    return MaterialContract(
+        identity=identity(name, IdentityKind.MATERIAL_CONTRACT),
+        media_type="application/json",
+    )
 
 
 def operation(name: str, privacy: Privacy) -> OperationDefinition:
-    operation_identity = identity(name)
+    operation_identity = identity(name, IdentityKind.OPERATION)
     return OperationDefinition(
         identity=operation_identity,
         purpose=f"bounded {name}",
@@ -61,7 +68,7 @@ def operation(name: str, privacy: Privacy) -> OperationDefinition:
         ),
         effect_profiles=(
             EffectProfile(
-                identity=identity(f"{name}.bounded"),
+                identity=identity(f"{name}.bounded", IdentityKind.EFFECT_PROFILE),
                 operation=operation_identity,
                 risk=Risk.R3,
                 autonomy=Autonomy.A2,
@@ -74,20 +81,20 @@ def test_module_definitions_are_serializable_structural_aggregates() -> None:
     private_operation = operation("private-operation", Privacy.SECRET)
     narrower_operation = operation("narrower-operation", Privacy.LOCAL_PRIVATE)
     skill = SkillDefinition(
-        identity=identity("skill"),
+        identity=identity("skill", IdentityKind.SKILL),
         purpose="Reusable knowledge",
         instructions=("Preserve Module meaning.",),
         input_contract=contract("input"),
         output_contract=contract("output"),
     )
     workflow = WorkflowDefinition(
-        identity=identity("workflow"),
+        identity=identity("workflow", IdentityKind.WORKFLOW),
         purpose="Reusable semantic recipe",
         instructions=("Interpret inside the Module.",),
         input_contract=contract("input"),
         output_contract=contract("output"),
     )
-    agent_identity = identity("agent")
+    agent_identity = identity("agent", IdentityKind.AGENT)
     agent = AgentDefinition(
         identity=agent_identity,
         purpose="Module-owned actor",
@@ -101,9 +108,9 @@ def test_module_definitions_are_serializable_structural_aggregates() -> None:
             OperationReference(identity=narrower_operation.identity),
         ),
     )
-    module_identity = identity("module")
+    module_identity = identity("module", IdentityKind.MODULE)
     secret_material_scope = SecurityScope(
-        identity=identity("managed-secret"),
+        identity=identity("managed-secret", IdentityKind.MATERIAL),
         sensitivity=Sensitivity.S5,
     )
     definition = ModuleDefinition(
@@ -143,8 +150,16 @@ def test_module_definitions_are_serializable_structural_aggregates() -> None:
 
     unresolved_agent = agent.model_copy(
         update={
-            "skills": (SkillReference(identity=identity("missing-skill")),),
+            "skills": (SkillReference(identity=identity("missing-skill", IdentityKind.SKILL)),),
         }
     )
     with pytest.raises(ValueError, match="Skill reference does not resolve"):
         definition.model_copy(update={"agents": (unresolved_agent,)})
+
+
+def test_definition_identities_are_not_interchangeable_by_shape() -> None:
+    with pytest.raises(ValueError, match="MaterialContract requires a material_contract"):
+        MaterialContract(
+            identity=identity("wrong-kind", IdentityKind.OPERATION),
+            media_type="application/json",
+        )

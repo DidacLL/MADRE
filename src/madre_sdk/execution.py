@@ -8,7 +8,7 @@ from typing import Self
 from pydantic import Field, JsonValue, model_validator
 
 from madre_sdk.material import Material, MaterialSpecification
-from madre_sdk.security import FrozenValue, ScopeIdentity, SecuritySurface
+from madre_sdk.security import FrozenValue, IdentityKind, ScopeIdentity, SecuritySurface
 
 
 class ExecutionBoundary(Enum):
@@ -57,6 +57,14 @@ class CapabilityProperties(FrozenValue):
     resources: frozenset[ScopeIdentity] = frozenset()
     heavyweight: bool = False
 
+    @model_validator(mode="after")
+    def has_typed_properties(self) -> Self:
+        self.specialization.require(IdentityKind.SPECIALIZATION, "Capability specialization")
+        self.modality.require(IdentityKind.MODALITY, "Capability modality")
+        for resource in self.resources:
+            resource.require(IdentityKind.RESOURCE, "Capability resource")
+        return self
+
 
 class CapabilityDefinition(FrozenValue):
     """A physical mechanism and the exact surface it exposes during execution."""
@@ -67,6 +75,7 @@ class CapabilityDefinition(FrozenValue):
 
     @model_validator(mode="after")
     def has_observer_privacy(self) -> Self:
+        self.identity.require(IdentityKind.CAPABILITY, "CapabilityDefinition")
         if self.security.privacy is None:
             raise ValueError("a Capability execution surface must carry Privacy")
         return self
@@ -82,6 +91,16 @@ class CapabilityQuery(FrozenValue):
     qualities: tuple[QualityTier, ...] = ()
     costs: tuple[CostClass, ...] = ()
     required_resources: frozenset[ScopeIdentity] = frozenset()
+
+    @model_validator(mode="after")
+    def has_typed_properties(self) -> Self:
+        self.specialization.require(IdentityKind.SPECIALIZATION, "Capability specialization")
+        self.modality.require(IdentityKind.MODALITY, "Capability modality")
+        if self.mechanism is not None:
+            self.mechanism.require(IdentityKind.CAPABILITY, "Capability mechanism")
+        for resource in self.required_resources:
+            resource.require(IdentityKind.RESOURCE, "required Capability resource")
+        return self
 
     def accepts(self, capability: CapabilityDefinition) -> bool:
         properties = capability.properties
@@ -143,6 +162,7 @@ class ExecutionRequest(FrozenValue):
 
     @model_validator(mode="after")
     def creates_new_module_owned_material(self) -> Self:
+        self.requester.require(IdentityKind.MODULE, "ExecutionRequest requester")
         if self.output.identity == self.material.identity:
             raise ValueError("physical output must be a new Material identity")
         if self.output.identity.owner != self.requester.owner:

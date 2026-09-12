@@ -15,6 +15,7 @@ from madre_sdk import (
     CapabilityProperties,
     CapabilityQuery,
     ExecutionBoundary,
+    IdentityKind,
     Material,
     MaterialContract,
     MaterialRepository,
@@ -28,19 +29,23 @@ from madre_sdk import (
 )
 
 
-def identifier(owner: str, name: str) -> ScopeIdentity:
-    return ScopeIdentity(owner=owner, name=name)
+def identifier(
+    owner: str,
+    name: str,
+    kind: IdentityKind = IdentityKind.SURFACE,
+) -> ScopeIdentity:
+    return ScopeIdentity(kind=kind, owner=owner, name=name)
 
 
 def test_durable_work_persists_only_reference_and_execution_metadata(tmp_path: Path) -> None:
-    module = identifier("module", "module")
-    specialization = identifier("madre.execution", "inference")
-    modality = identifier("madre.execution", "json")
+    module = identifier("module", "module", IdentityKind.MODULE)
+    specialization = identifier("madre.execution", "inference", IdentityKind.SPECIALIZATION)
+    modality = identifier("madre.execution", "json", IdentityKind.MODALITY)
     contract = MaterialContract(
-        identity=identifier("module", "contract"),
+        identity=identifier("module", "contract", IdentityKind.MATERIAL_CONTRACT),
         media_type="application/json",
     )
-    source_identity = identifier("module", "source")
+    source_identity = identifier("module", "source", IdentityKind.MATERIAL)
     source = Material[dict[str, str]](
         identity=source_identity,
         contract=contract,
@@ -53,7 +58,7 @@ def test_durable_work_persists_only_reference_and_execution_metadata(tmp_path: P
     repository = MaterialRepository()
     repository.put(source)
 
-    capability_identity = identifier("physical", "fixture")
+    capability_identity = identifier("physical", "fixture", IdentityKind.CAPABILITY)
     definition = CapabilityDefinition(
         identity=capability_identity,
         properties=CapabilityProperties(
@@ -71,7 +76,7 @@ def test_durable_work_persists_only_reference_and_execution_metadata(tmp_path: P
     capabilities = CapabilityRegistry()
     capabilities.register(FunctionCapability(definition, lambda payload: {"result": payload}))
 
-    output_identity = identifier("module", "output")
+    output_identity = identifier("module", "output", IdentityKind.MATERIAL)
     with open_database(tmp_path) as connection:
         store = PlatformStore(connection)
         catalog = ModuleCatalog(store)
@@ -115,7 +120,9 @@ def test_durable_work_persists_only_reference_and_execution_metadata(tmp_path: P
         assert result.payload == {"result": source.payload}
         assert catalog.module(module) is not None
 
-        public_capability_identity = identifier("physical", "public-fixture")
+        public_capability_identity = identifier(
+            "physical", "public-fixture", IdentityKind.CAPABILITY
+        )
         capabilities.register(
             FunctionCapability(
                 CapabilityDefinition(
@@ -135,7 +142,7 @@ def test_durable_work_persists_only_reference_and_execution_metadata(tmp_path: P
                 lambda payload: payload,
             )
         )
-        secret_identity = identifier("module", "terminal-secret")
+        secret_identity = identifier("module", "terminal-secret", IdentityKind.MATERIAL)
         secret = Material[dict[str, str]](
             identity=secret_identity,
             contract=contract,
@@ -146,7 +153,7 @@ def test_durable_work_persists_only_reference_and_execution_metadata(tmp_path: P
             ),
         )
         repository.put(secret)
-        rejected_output = identifier("module", "never-produced")
+        rejected_output = identifier("module", "never-produced", IdentityKind.MATERIAL)
         rejected = asyncio.run(
             kernel.submit(
                 WorkSubmission(

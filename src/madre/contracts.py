@@ -14,7 +14,7 @@ from madre_sdk.execution import (
     ExecutionConstraints,
 )
 from madre_sdk.material import MaterialHandle, MaterialSpecification
-from madre_sdk.security import FrozenValue, Identifier, ScopeIdentity
+from madre_sdk.security import FrozenValue, Identifier, IdentityKind, ScopeIdentity
 
 
 class WorkSubmission(FrozenValue):
@@ -31,6 +31,12 @@ class WorkSubmission(FrozenValue):
     def utc_time(cls, value: datetime | None) -> datetime | None:
         return value.astimezone(UTC) if value is not None else None
 
+    @field_validator("originator")
+    @classmethod
+    def module_originator(cls, value: ScopeIdentity) -> ScopeIdentity:
+        value.require(IdentityKind.MODULE, "WorkSubmission originator")
+        return value
+
 
 class WorkSpec(FrozenValue):
     originator: ScopeIdentity
@@ -40,6 +46,12 @@ class WorkSpec(FrozenValue):
     eligible_at: AwareDatetime | None = None
     priority: int = 0
     constraints: ExecutionConstraints = Field(default_factory=ExecutionConstraints)
+
+    @field_validator("originator")
+    @classmethod
+    def module_originator(cls, value: ScopeIdentity) -> ScopeIdentity:
+        value.require(IdentityKind.MODULE, "WorkSpec originator")
+        return value
 
 
 class RetryDisposition(Enum):
