@@ -1,4 +1,4 @@
-"""Segregated construction helpers for MADRE security scopes and relations."""
+"""Typed construction helpers for MADRE security scopes and relations."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ from madre.security import (
     Autonomy,
     CompositionResult,
     ControlNormalForm,
+    DirectUserAction,
     DisclosureNormalForm,
     EffectExecutionNormalForm,
     EffectProfile,
@@ -25,12 +26,12 @@ def material_security(
     owner_module_id: str,
     scope_id: str,
     sensitivity: Sensitivity,
+    integrity: Integrity | None = None,
     publication_revision: str = "1",
     scope_revision: str = "1",
     content_digest: str | None = None,
-    sources: tuple[SecurityObject, ...] = (),
 ) -> SecurityObject:
-    """Issue an exact material scope. Ordinary construction cannot claim Integrity."""
+    """Issue an exact material scope."""
     return SecurityObject.issue(
         scope=SecurityScopeRef(
             owner_module_id=owner_module_id,
@@ -39,7 +40,7 @@ def material_security(
             scope_revision=scope_revision,
         ),
         sensitivity=sensitivity,
-        sensitivity_sources=sources,
+        integrity=integrity,
         binding=ScopeBinding(content_digest=content_digest),
     )
 
@@ -53,7 +54,7 @@ def observer_security(
     scope_revision: str = "1",
     contract_digest: str | None = None,
 ) -> SecurityObject:
-    """Issue an exact privacy-bearing participant or observation boundary."""
+    """Issue an exact privacy-bearing observation boundary."""
     return SecurityObject.issue(
         scope=SecurityScopeRef(
             owner_module_id=owner_module_id,
@@ -71,12 +72,13 @@ def participant_security(
     owner_module_id: str,
     scope_id: str,
     privacy: Privacy,
+    sensitivity: Sensitivity | None = None,
     integrity: Integrity | None = None,
     publication_revision: str = "1",
     scope_revision: str = "1",
     contract_digest: str | None = None,
 ) -> SecurityObject:
-    """Issue a published participant scope; Integrity applies only if it executes/controls."""
+    """Issue an exact Module/Agent/endpoint scope with only its applicable facets."""
     return SecurityObject.issue(
         scope=SecurityScopeRef(
             owner_module_id=owner_module_id,
@@ -84,6 +86,7 @@ def participant_security(
             publication_revision=publication_revision,
             scope_revision=scope_revision,
         ),
+        sensitivity=sensitivity,
         privacy=privacy,
         integrity=integrity,
         binding=ScopeBinding(contract_digest=contract_digest),
@@ -99,7 +102,7 @@ def executor_security(
     scope_revision: str = "1",
     contract_digest: str | None = None,
 ) -> SecurityObject:
-    """Issue an exact integrity-bearing controller or executor scope."""
+    """Issue an exact Integrity-bearing controller or executor scope."""
     return SecurityObject.issue(
         scope=SecurityScopeRef(
             owner_module_id=owner_module_id,
@@ -138,10 +141,12 @@ def effect_profile(
 def compose_disclosure(
     *sources: SecurityObject,
     observers: tuple[SecurityObject, ...],
-    crossing_id: str,
+    direct_user_action: DirectUserAction | None = None,
 ) -> CompositionResult[DisclosureNormalForm]:
     return DisclosureNormalForm.compose(
-        crossing_id=crossing_id, sources=sources, observers=observers
+        sources=sources,
+        observers=observers,
+        direct_user_action=direct_user_action,
     )
 
 
