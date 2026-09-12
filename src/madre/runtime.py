@@ -1,4 +1,4 @@
-"""Deterministic inference and durable work using prospective disclosure forms."""
+"""Deterministic inference and durable work using relation-local security composition."""
 
 from __future__ import annotations
 
@@ -24,13 +24,7 @@ from madre.contracts import (
     WorkSubmission,
 )
 from madre.interfaces import MaterialResolver
-from madre.security import (
-    DirectUserAction,
-    DirectUserInteraction,
-    DisclosureNormalForm,
-    SecurityEvidence,
-    SecurityObject,
-)
+from madre.security import DisclosureNormalForm, SecurityEvidence, SecurityObject
 from madre.storage import PlatformStore, utc_now
 
 
@@ -100,22 +94,17 @@ class WorkRuntime:
     async def infer(self, request: TransientInferenceRequest) -> TransientInferenceResult:
         self._verify_transient_material(request.material)
         crossing_id = uuid4().hex
-        evidence = request.evidence.merge(request.material.evidence).extend(
-            objects=(request.material.security,)
-        )
         candidates = self.capabilities.candidates(request.inference)
         selection = self._select_admissible_capability(
             crossing_id=crossing_id,
             crossing_kind="transient-capability-candidate",
-            evidence=evidence,
             source=request.material.security,
             candidates=candidates,
-            direct_interaction=request.direct_interaction,
             originator=request.originator,
         )
         if selection is None:
             raise TransientInferenceError("no_capability" if not candidates else "security_denied")
-        adapter, accepted = selection
+        adapter, current_facts, _ = selection
         descriptor = adapter.descriptor
         try:
             async with self._capability_slot(adapter):
@@ -135,17 +124,17 @@ class WorkRuntime:
             output_size=content_size(result),
             producer_security_ids=(descriptor.security.security_id,),
             source_security_ids=(request.material.security.security_id,),
-            evidence=accepted,
+            evidence=current_facts,
         )
 
     async def submit(
         self, submission: WorkSubmission, *, idempotency_key: str | None = None
     ) -> WorkRecord:
         handle = submission.material
-        evidence = submission.evidence.merge(handle.evidence).extend(objects=(handle.security,))
+        current_facts = SecurityEvidence(objects=(*submission.evidence.objects, handle.security))
         spec = WorkSpec(
             originator=submission.originator,
-            evidence=evidence,
+            evidence=current_facts,
             inference=submission.inference,
             material=handle,
             eligible_at=submission.eligible_at,
@@ -275,17 +264,14 @@ class WorkRuntime:
         selection = self._select_admissible_capability(
             crossing_id=work_id,
             crossing_kind="capability-candidate",
-            evidence=record.spec.evidence,
             source=record.spec.material.security,
             candidates=candidates,
-            direct_interaction=None,
             originator=record.spec.originator,
         )
         if selection is None:
             self.store.fail(work_id, WorkFailure(code="security_denied"), self._clock())
             return self._require(work_id)
-        adapter, accepted = selection
-        relation = accepted.relations[-1]
+        adapter, current_facts, relation = selection
         descriptor = adapter.descriptor
         result: JsonValue = None
         failure: WorkFailure | None = None
@@ -306,7 +292,7 @@ class WorkRuntime:
             )
             if attempt is None:
                 return self._require(work_id)
-            self.store.update_security_evidence(work_id, accepted)
+            self.store.update_security_evidence(work_id, current_facts)
             try:
                 result = await adapter.execute(material.payload, record.spec.constraints)
             except CapabilityError as exc:
@@ -357,52 +343,29 @@ class WorkRuntime:
         *,
         crossing_id: str,
         crossing_kind: str,
-        evidence: SecurityEvidence,
         source: SecurityObject,
         candidates: tuple[CapabilityAdapter, ...],
-        direct_interaction: DirectUserInteraction | None,
         originator: str,
-    ) -> tuple[CapabilityAdapter, SecurityEvidence] | None:
-        active_interaction = direct_interaction
-        if active_interaction is not None and (
-            active_interaction.interaction_scope.owner_module_id != originator
-        ):
-            active_interaction = None
+    ) -> tuple[CapabilityAdapter, SecurityEvidence, DisclosureNormalForm] | None:
+        del originator
         for candidate in candidates:
             descriptor = candidate.descriptor
-            action = None
-            if active_interaction is not None and source.binding.content_digest is not None:
-                action = DirectUserAction(
-                    crossing_id=crossing_id,
-                    interaction=active_interaction,
-                    source_security_id=source.security_id,
-                    source_scope_revision=source.scope.scope_revision,
-                    source_digest=source.binding.content_digest,
-                    observer_security_ids=(descriptor.security.security_id,),
-                )
             result = DisclosureNormalForm.compose(
                 sources=(source,),
                 observers=(descriptor.security,),
-                crossing_id=crossing_id,
-                direct_user_action=action,
-                active_interaction=active_interaction,
             )
             self.store.record_security_decision(
                 crossing_id=crossing_id,
                 crossing_kind=crossing_kind,
                 target_id=descriptor.id,
-                evidence=evidence.extend(objects=(descriptor.security,)),
                 execution_boundary=descriptor.execution_boundary,
                 decision=result.decision(),
             )
             if result.accepted is not None:
                 return (
                     candidate,
-                    evidence.extend(
-                        objects=(descriptor.security,),
-                        relations=(result.accepted,),
-                        decisions=(result.decision(),),
-                    ),
+                    SecurityEvidence(objects=(source, descriptor.security)),
+                    result.accepted,
                 )
         return None
 
