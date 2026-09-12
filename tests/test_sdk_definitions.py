@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from madre.catalog import ModuleCatalog
 from madre_sdk import (
     AgentDefinition,
     Autonomy,
@@ -8,6 +9,7 @@ from madre_sdk import (
     MaterialContract,
     ModuleDefinition,
     OperationDefinition,
+    OperationReference,
     Privacy,
     Repeatability,
     Risk,
@@ -15,8 +17,22 @@ from madre_sdk import (
     SecurityScope,
     Sensitivity,
     SkillDefinition,
+    SkillReference,
+    SurfaceReference,
     WorkflowDefinition,
+    WorkflowReference,
 )
+
+
+class DefinitionStore:
+    def __init__(self) -> None:
+        self._definitions: tuple[ModuleDefinition, ...] = ()
+
+    def put_module(self, definition: ModuleDefinition) -> None:
+        self._definitions = (definition,)
+
+    def modules(self) -> tuple[ModuleDefinition, ...]:
+        return self._definitions
 
 
 def identity(name: str) -> ScopeIdentity:
@@ -76,9 +92,12 @@ def test_module_definitions_are_serializable_structural_aggregates() -> None:
         input_contract=contract("input"),
         output_contract=contract("output"),
         security=SecurityScope(identity=agent_identity, privacy=Privacy.SECRET),
-        skills=(skill,),
-        workflows=(workflow,),
-        operations=(private_operation, narrower_operation),
+        skills=(SkillReference(identity=skill.identity),),
+        workflows=(WorkflowReference(identity=workflow.identity),),
+        exposed_operations=(
+            OperationReference(identity=private_operation.identity),
+            OperationReference(identity=narrower_operation.identity),
+        ),
     )
     module_identity = identity("module")
     secret_material_scope = SecurityScope(
@@ -97,6 +116,8 @@ def test_module_definitions_are_serializable_structural_aggregates() -> None:
         agents=(agent,),
         skills=(skill,),
         workflows=(workflow,),
+        operations=(private_operation, narrower_operation),
+        public_surfaces=(SurfaceReference(identity=private_operation.identity),),
     )
 
     restored = ModuleDefinition.model_validate_json(definition.model_dump_json())
@@ -104,7 +125,16 @@ def test_module_definitions_are_serializable_structural_aggregates() -> None:
     assert restored == definition
     assert restored.surface.sensitivity is Sensitivity.S5
     assert restored.surface.privacy is Privacy.LOCAL_PRIVATE
-    assert agent.surface.privacy is Privacy.LOCAL_PRIVATE
+    assert restored.agent_surface(agent.identity).privacy is Privacy.LOCAL_PRIVATE
 
-    reduced_agent = agent.model_copy(update={"operations": (private_operation,)})
-    assert reduced_agent.surface.privacy is Privacy.SECRET
+    reduced_agent = agent.model_copy(
+        update={"exposed_operations": (OperationReference(identity=private_operation.identity),)}
+    )
+    reduced_definition = definition.model_copy(update={"agents": (reduced_agent,)})
+    assert reduced_definition.agent_surface(agent.identity).privacy is Privacy.SECRET
+
+    catalog = ModuleCatalog(DefinitionStore())
+    catalog.register(restored)
+    assert catalog.skills() == (skill,)
+    assert catalog.workflows() == (workflow,)
+    assert catalog.operations() == (private_operation, narrower_operation)

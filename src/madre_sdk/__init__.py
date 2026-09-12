@@ -44,9 +44,13 @@ from madre_sdk.semantic import (
     ModuleRuntime,
     OperationBehavior,
     OperationDefinition,
+    OperationReference,
     Repeatability,
     SkillDefinition,
+    SkillReference,
+    SurfaceReference,
     WorkflowDefinition,
+    WorkflowReference,
 )
 from madre_sdk.services import ExecutionService
 
@@ -80,6 +84,7 @@ __all__ = [
     "ModuleRuntime",
     "OperationBehavior",
     "OperationDefinition",
+    "OperationReference",
     "Privacy",
     "QualityTier",
     "ReasoningEffort",
@@ -91,5 +96,8 @@ __all__ = [
     "SecuritySurface",
     "Sensitivity",
     "SkillDefinition",
+    "SkillReference",
+    "SurfaceReference",
     "WorkflowDefinition",
+    "WorkflowReference",
 ]
