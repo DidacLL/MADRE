@@ -4,8 +4,8 @@ import asyncio
 from pathlib import Path
 
 from madre import CapabilityRegistry, FunctionCapability, Kernel
+from madre.catalog import ModuleCatalog
 from madre.contracts import WorkSubmission
-from madre.registry import InteroperabilityRegistry
 from madre.storage import PlatformStore, open_database
 from madre_sdk import (
     CapabilityDefinition,
@@ -71,7 +71,7 @@ def test_durable_work_persists_only_reference_and_execution_metadata(tmp_path: P
     output_identity = identifier("module", "output")
     with open_database(tmp_path) as connection:
         store = PlatformStore(connection)
-        catalog = InteroperabilityRegistry(store)
+        catalog = ModuleCatalog(store)
         catalog.register(
             ModuleDefinition(
                 identity=module,

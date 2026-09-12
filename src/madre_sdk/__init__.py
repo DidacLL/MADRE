@@ -48,7 +48,7 @@ from madre_sdk.semantic import (
     SkillDefinition,
     WorkflowDefinition,
 )
-from madre_sdk.services import ExecutionService, ModuleServices
+from madre_sdk.services import ExecutionService
 
 __all__ = [
     "AgentBehavior",
@@ -78,7 +78,6 @@ __all__ = [
     "ModuleBehavior",
     "ModuleDefinition",
     "ModuleRuntime",
-    "ModuleServices",
     "OperationBehavior",
     "OperationDefinition",
     "Privacy",

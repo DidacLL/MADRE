@@ -18,7 +18,6 @@ from madre_sdk import (
     MaterialSpecification,
     ModuleDefinition,
     ModuleRuntime,
-    ModuleServices,
     Privacy,
     ScopeIdentity,
     SecurityMismatch,
@@ -165,7 +164,7 @@ def test_ordinary_module_owns_interpretation_after_capability_execution() -> Non
     runtime = ModuleRuntime(
         definition=module_definition,
         behavior=behavior,
-        services=ModuleServices(kernel),
+        services=kernel,
     )
 
     result = asyncio.run(runtime.receive(input_material))

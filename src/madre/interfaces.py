@@ -7,17 +7,7 @@ from typing import Protocol
 from pydantic import JsonValue
 
 from madre.contracts import WorkRecord, WorkRetryRequest, WorkSubmission
-from madre_sdk.execution import ExecutionRequest
 from madre_sdk.material import Material, MaterialHandle
-from madre_sdk.semantic import ModuleDefinition
-
-
-class ModuleRegistration(Protocol):
-    def register(self, definition: ModuleDefinition) -> None: ...
-
-
-class TransientExecution(Protocol):
-    async def execute(self, request: ExecutionRequest) -> Material[JsonValue]: ...
 
 
 class DurableWorkSubmission(Protocol):

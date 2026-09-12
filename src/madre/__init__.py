@@ -8,7 +8,7 @@ from madre.capabilities import (
     FunctionCapability,
     RankedCapabilitySelection,
 )
-from madre.registry import InteroperabilityRegistry
+from madre.catalog import ModuleCatalog
 from madre.runtime import Kernel
 
 __all__ = [
@@ -17,7 +17,7 @@ __all__ = [
     "CapabilityRegistry",
     "CapabilitySelection",
     "FunctionCapability",
-    "InteroperabilityRegistry",
+    "ModuleCatalog",
     "Kernel",
     "RankedCapabilitySelection",
 ]

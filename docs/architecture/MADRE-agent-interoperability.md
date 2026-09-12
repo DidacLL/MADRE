@@ -1,129 +1,141 @@
-# MADRE Agent Interoperability
+# MADRE Module and Agent Interoperability
 
-Authority: `MADRE.md` defines product meaning. This document owns public
-Module/Agent/Skill/Workflow/Operation contracts, CORE capability, registry/brokering,
-and the SDK-facing boundary.
+## Objective
 
-## Ownership
+The public SDK provides the building blocks needed for independent Modules to
+describe compatible surfaces without forcing one implementation language, reasoning
+loop, orchestration framework, or provider convention.
 
-A Module owns domain meaning, data, UI/interaction, Agent reasoning and state, Skills,
-Workflows, WorkPlans, transformations, validation, result interpretation, and domain
-effects. Kernel owns deterministic physical execution, routing, security composition,
-durable lifecycle, resources, and evidence. A model never emits semantic commands that
-Kernel interprets as Operations.
+Interoperability is descriptive. A definition does not become authorization,
+execution routing, or a security decision.
 
-CORE is an ordinary replaceable Module using the same SDK and security relations. It
-has no bypass or private Kernel contract.
+## Definition and implementation
 
-## Public descriptors
+Every public entity has a declarative definition distinct from executable behavior.
 
-`ModuleManifest` publishes a Module revision and its Agent, Skill, Workflow, and
-Operation descriptors. Descriptors are existence, compatibility, and routing facts;
-registration creates no authority.
+A definition is:
 
-An Agent descriptor exposes identity, purpose, input/output contracts, published
-Skills/Workflows, exact participant SecurityObject, and provenance. Agent private
-reasoning, sessions, memory, prompts, and domain state remain private.
+- immutable and strongly typed;
+- explicit about identity, revision, contracts, contained/exposed members, and
+  applicable security scopes;
+- serializable without Python callables, import paths, runtime clients, or opaque
+  extension dictionaries;
+- suitable for a future equivalent JSON or XML representation.
 
-Skills are reusable instructions/resources and Workflows are reusable semantic
-recipes. MADRE does not impose a universal Skill instance, Workflow engine, Planner,
-Task ontology, or Agent loop.
+An implementation is private Module or adapter code bound through a segregated
+interface. Implementations may evolve without changing unrelated definitions.
 
-## Operations and EffectProfiles
+## ModuleDefinition
 
-An Operation is bounded callable behavior implemented by its owning Module. Its
-descriptor publishes identity/revision, purpose, input/output contracts, effect and
-repeatability facts, and one or more immutable EffectProfiles.
+A Module definition owns:
 
-An EffectProfile is only a bounded Operation variant:
+- its identity and description;
+- exact Module security facts when applicable;
+- the Material/security scopes it manages or can expose;
+- public Agents, Skills, Workflows, and Operations;
+- optional discovery terms.
 
-```text
-exact Operation/profile identity + Risk + Autonomy
-```
+Its effective SecuritySurface is calculated from those members. It is not an
+independently declared summary.
 
-It contains no Integrity, Privacy, SecurityObject, or disclosure flag. Actual
-observers and executors are properties of the concrete route, not the abstract
-profile.
+A Module may omit every optional entity. The SDK does not manufacture a default
+Agent, assistant, planner, Workflow, or Operation.
 
-The caller supplies an `OperationUse` selecting a published profile plus any
-additional concrete disclosure observers and semantic non-user controllers. The
-active direct-user interaction may be carried only for the immediate invocation.
-Risk and Autonomy cannot be caller-overridden. Broker adds protocol-known target
-observers and effect executors, then composes Disclosure, Control, and EffectExecution
-normal forms atomically before dispatch.
+## AgentDefinition
 
-Unknown external-effect outcomes are not blindly retried or reclassified as ordinary
-failures.
+An Agent definition owns purpose, instructions when applicable, typed input/output
+Material contracts, and the Skills, Workflows, and Operations it exposes.
 
-## Material and derivation
+Its surface is the structural composition of those exact exposed members and any
+Agent-specific scope facts. Consequently:
 
-Artifact and ContextBundle are Module-owned immutable representations. Their material
-scope requires exact content binding and Sensitivity. Ordinary material construction
-cannot assert Integrity.
+- Sensitivity may apply directly to an Agent or arrive from a reachable sub-scope;
+- Privacy is the minimum applicable Privacy among its exposed surfaces;
+- removing an exposed Operation can legitimately change the Agent’s effective
+  Privacy;
+- no registry or evaluator calculates a separate Agent security value.
 
-Ordinary derivation preserves the source Sensitivity lower bound. Selection uses
-exactly retained members. A semantic transform is a Module-owned procedure producing
-a new representation and may establish a different Sensitivity. Explicit validation
-binds an exact procedure and actual validators to a distinct Integrity-bearing
-projection. Raw inference output remains ordinary material without Integrity.
+Agent behavior is a Module-owned implementation. State, memory, delegation, learning,
+and model prompting remain private unless a later exact interoperability need
+justifies a typed public contract.
 
-Material contracts carry exact SecurityObjects plus `SecurityEvidence`; evidence is
-not active admission state. Kernel does not persist private material payloads.
+## SkillDefinition and WorkflowDefinition
 
-## Registry and discovery
+A Skill describes reusable behavior, knowledge, or instruction material, its purpose,
+resources, and optional input/output contracts.
 
-Registry is a catalog/router. It supports registration, exact Module/Agent/Operation
-lookup, and deterministic `list_agents`, `list_skills`, `list_workflows`, and
-`list_operations`. These lists accept no security history/evidence input and make no
-admissibility claim.
+A Workflow describes a reusable semantic recipe and typed input/output contracts.
 
-Useful security-aware discovery cannot be decided from accumulated history or a
-partial source alone. A future subsystem must receive a complete typed prospective use
-including source, selected EffectProfile, controllers, executor route, and destination
-facts. That subsystem is deliberately deferred; the current honest catalog leaves it
-unblocked.
+Neither is automatically executable by Kernel. MADRE does not require a universal
+Workflow language or translate third-party agent conventions into Kernel semantics.
 
-Semantic usefulness and target choice remain Module/Agent responsibilities.
+## OperationDefinition and EffectProfile
 
-## Exact brokering
+An Operation is one explicitly bounded Module-owned callable effect. Its definition
+contains purpose, typed input/output contracts, effect description, repeatability,
+exact security scope, and one or more EffectProfiles.
 
-`InvocationContext` explicitly carries the current Module, optional Agent or
-Operation, exact endpoint attachment, and optional live direct-user interaction.
-It is created at Module/Kernel entry and propagated through endpoint, behavior, and
-bound nested clients. It is never reconstructed from evidence and never stored as
-ambient asynchronous state.
+Each EffectProfile belongs to exactly one Operation and contains only:
 
-Agent input discloses only to actual target Module/Agent/endpoint observers. Agent
-output creates a new disclosure to the captured requester recipients.
+- its own identity;
+- the exact Operation identity;
+- Risk;
+- Autonomy.
 
-Operation input uses `OperationUse` plus Kernel-known topology:
+Callers cannot replace those values. Controllers and executors are facts of one
+actual invocation and are composed into Control and EffectExecution at that time.
+They are not catalog metadata or a generic permission system.
 
-```text
-source -> actual target and additional observers
-profile + actual non-user controllers
-profile + actual effect executors
-```
+## Material
 
-All three forms must be accepted before dispatch. Return material gets a new
-disclosure relation. Historical participants, credentials, ownership, Work IDs,
-retries, and denied route candidates are not operands.
+`Material[T]` contains exact identity, a `MaterialContract`, typed payload, and one
+security scope bound to the same identity. Its digest and durable handle are mechanical
+properties of that Material.
 
-Endpoint attachment captures the exact Module publication and endpoint SecurityObject.
-Replacement or mutation cannot silently change an in-flight target. Additional
-transport recipients/executors must be represented explicitly by the adapter or
-Broker route that actually introduces them.
+All adaptations and generated outputs are new Material. There is no Artifact versus
+ContextBundle security ontology, derivation method, validation status, generated
+freshness, or ancestry contract.
 
-## SDK boundary
+## Behavior ports
 
-The SDK exposes immutable public contracts and segregated factories for material,
-observer/participant, and controller/executor scopes; EffectProfile declaration;
-relation composition; Module semantics; material derivation; execution clients; and
-broker clients.
+The current SDK exposes only the minimum executable seams needed by real behavior:
 
-Configured clients are inert. Module entry creates invocation-bound copies; the
-binding expires when execution ends and cannot be rebound. Callers may add evidence,
-observers, or controllers through typed contracts, but cannot replace the active
-causal identity.
+- `ExecutionService.execute(ExecutionRequest) -> Material`;
+- `ModuleBehavior.receive(Material, ExecutionService) -> Material`;
+- optional Agent and Operation behavior protocols;
+- `ModuleRuntime`, which binds one Module definition to its private behavior and
+  granted execution service.
 
-The SDK imports only stable public Kernel contract namespaces. Kernel imports neither
-SDK nor CORE. CORE imports only the SDK.
+These interfaces do not prescribe what a Module should think, how an Agent should
+loop, or whether a continuation exists.
+
+The shipped interaction behavior uses only these ordinary ports. It submits Material
+for physical execution, receives new Material, and calls its own injected interpreter.
+Being selected as CORE does not alter that behavior.
+
+## Catalog
+
+The catalog registers and enumerates Module definitions and their contained public
+entities. It does not:
+
+- attach executable endpoints;
+- select semantic targets;
+- filter by security;
+- route Agent or Operation calls;
+- accumulate participants;
+- record decisions;
+- grant access.
+
+A future cross-Module invocation mechanism must start from a concrete product
+behavior. It cannot be inferred from generic multi-agent platform patterns.
+
+## OOP boundary
+
+Public classes own their invariants and derived values. Repositories, selectors,
+adapters, and behaviors depend on narrow protocols. Serialization is a representation
+of the domain objects, not the domain model itself.
+
+Convenience functions, stringly typed identifiers, duplicated aggregate fields,
+generic property bags, and type-name dispatch are not substitutes for domain objects.
+Python is the current prototype language; its dynamic features do not weaken the
+public contract.

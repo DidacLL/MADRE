@@ -1,77 +1,83 @@
 # Implementation Baseline
 
-This file describes current repository state. Product authority remains `MADRE.md`;
-focused architecture is under `docs/architecture/`.
+This file records current implementation truth. Product authority remains
+`MADRE.md`.
 
-## Implemented security architecture
+## Public SDK
 
-The Python SDK is a typed reference implementation of relation-local Security
-Algebra normal forms.
+`madre_sdk` currently provides:
 
-- Sensitivity, Privacy, Integrity, Risk, and Autonomy are nominal public enums with
-  integer wire ranks and runtime/static cross-facet rejection.
-- Exact immutable SecurityObjects use role-neutral scope/revision identity and generic
-  content/contract digests. They carry only applicable S/P/I facts.
-- EffectProfile carries only exact Operation/profile identity, Risk, and Autonomy.
-- OperationUse carries the selected profile plus actual additional observers,
-  controllers, and optional immediate direct interaction.
-- Disclosure, Control, and EffectExecution each have one fixed composition law and
-  produce only feasible accepted forms. There is no injected evaluator or global
-  score.
-- DirectUserInteraction and freshly Kernel-bound DirectUserAction make one exact
-  exceptional crossing possible. Durable work cannot carry this structure.
-- SecurityEvidence stores scope facts, accepted forms, and derivations without
-  becoming active numeric authority. A fixed reconstruction audit is used only for
-  persistence verification, diagnostics, and tests.
-- Ordinary/selection derivation preserves sensitivity closure; Module-owned transform
-  can create a new sensitivity; explicit validation creates the only warranted
-  Integrity-bearing material projection. Generated inference has no Integrity.
+- nominal ordered Sensitivity, Privacy, Integrity, Risk, and Autonomy carriers;
+- exact immutable SecurityScope and structural SecuritySurface values;
+- intrinsically valid Disclosure, Control, and EffectExecution relations;
+- immutable Module, Agent, Skill, Workflow, Operation, EffectProfile, Capability, and
+  Material definitions;
+- typed Material contracts, handles, and output specifications;
+- typed Capability properties/queries and ExecutionRequest;
+- segregated execution, Module behavior, Agent behavior, and Operation behavior ports;
+- ModuleRuntime for binding one declarative definition to private behavior.
 
-## Runtime and interoperability
+Definitions serialize through Pydantic JSON without behavior objects or extension
+bags. Material payload is the only intentionally generic content value.
 
-Registry is a deterministic catalog/router with exact lookup and plain `list_*`
-enumeration. It does not claim that listed descriptors are admissible. Complete
-prospective security-aware discovery is deliberately deferred: it will require a typed
-prospective use with source, profile, controller, executor-route, and destination
-facts.
+## Runtime
 
-Capability privacy is declared by the adapter/installation. OpenAI-compatible omitted
-privacy normalizes to UNKNOWN. Local/remote execution boundary never computes Privacy.
+`madre.Kernel.execute` selects one physical Capability using typed execution
+properties, constructs the exact Disclosure through the SDK algebra, executes the
+adapter, and returns new ordinary Material.
 
-Transient inference and durable work compose candidate disclosure directly. Denied
-candidates are decision evidence only. Durable material remains Module-owned,
-reference-only, and JIT-resolved. Retry, cancellation, scheduling, originator fairness,
-heavy-local admission, result loss, and unknown external-effect handling retain their
-existing semantics.
+An incompatible Capability surface raises SecurityMismatch before adapter execution.
+The mismatch is not persisted and Kernel does not search security candidates.
 
-Broker keeps explicit InvocationContext propagation, exact publication/endpoint
-attachment, and lifetime-bound SDK clients. Agent calls compose actual input/output
-disclosures. Operation calls atomically require accepted disclosure, control, and
-effect-execution forms from OperationUse plus Kernel-known topology.
+The shipped Module behavior in `madre_core` uses the same ExecutionService and
+ModuleRuntime boundary as any other Module. It receives Capability output as Material
+and passes it to a Module-owned interpreter. No CORE-specific public contract exists.
 
-## Persistence
+The OpenAI-compatible adapter fixes configured model and streaming properties after
+copying the input payload, so payload bytes cannot override them. It accepts an
+externally configured HTTP client and contains no credential model.
 
-Generated SQLite state is recreated when its schema fingerprint changes. No
-compatibility path exists for superseded development state.
+## Durable work and catalog
 
-Persistence contains reference-only work, exact SecurityObjects, canonical accepted
-relation rows, derivations, relation-local decisions, broker causal evidence, digests,
-and lifecycle metadata. Attempts carry the accepted disclosure relation identity.
-There are no private payload columns, legacy history/transition columns, or output
-Integrity.
+Reference-only durable work retains:
 
-## Package boundaries
+- Module identity;
+- typed Capability query;
+- MaterialHandle;
+- output MaterialSpecification;
+- eligibility, priority, timeout, correlation, and idempotency;
+- attempt lifecycle, selected Capability identity/boundary, result digest/size, and a
+  compact failure code.
 
-`madre_sdk` imports public Kernel contracts. `madre_core` imports only `madre_sdk`.
-Kernel imports neither SDK nor CORE. CORE remains an ordinary replaceable Module with
-no security bypass.
+Input and output payloads remain transient. SQLite contains no tables for security
+objects, relations, derivations, decisions, or broker events. A schema fingerprint
+recreates obsolete development storage rather than carrying compatibility machinery.
 
-## Current validation path
+The catalog stores ModuleDefinition JSON and lists contained definitions. It does not
+route, filter, or grant anything.
 
-Run from a clean checkout:
+## Verified behavior
+
+The targeted suite proves:
+
+- max Sensitivity, min Privacy, and min Integrity structural composition;
+- order independence and idempotence for identical scopes;
+- immutable failure of a nonmatching addition;
+- UNKNOWN Privacy versus a non-applicable facet;
+- absence of a live-user Disclosure exception;
+- exact Control and EffectExecution equations;
+- independent new Material at S4, S3, and S2 from an unchanged S5 source;
+- Module Sensitivity and Agent Privacy derived from actual members;
+- declarative definition JSON round-trip;
+- ordinary Module -> Kernel -> Capability -> Material -> Module interpretation;
+- no Capability execution after a Disclosure mismatch;
+- local/remote execution boundary does not infer Privacy;
+- durable execution and catalog persistence without private payload or security-state
+  tables.
+
+Run:
 
 ```text
-uv sync --locked
 uv run --locked pytest
 uv run --locked ruff check .
 uv run --locked ruff format --check .
@@ -79,14 +85,13 @@ uv run --locked mypy
 uv build --python .venv --no-build-isolation
 ```
 
-Reinstall the built wheel into an isolated target and import `madre`, `madre_sdk`, and
-`madre_core` from outside the checkout before publishing implementation changes.
+## Genuine next work
 
-## Deferred product assembly
+The repository now has the first useful in-process Module execution path. It does not
+yet provide an assembled end-user interaction application, a concrete bounded
+Operation execution journey, restart-capable Module material reacquisition, or a
+declarative XML loader.
 
-The next product stage remains an assembled local usage path wiring Kernel, Broker,
-CORE, and an independent SDK Module to real inference and one bounded Operation.
-Module-owned material reacquisition across restart, supported setup, and ordinary
-local interaction require real-machine acceptance. Do not confuse wheel/test evidence
-with deployed usability, and do not expand into a universal planner, Agent memory,
-policy engine, or dynamic security discovery while establishing that path.
+Those behaviors should be added only through concrete Module needs. They must not
+reintroduce generic agent brokering, a security service, a universal behavior engine,
+or CORE-specific SDK concepts.

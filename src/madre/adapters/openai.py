@@ -15,15 +15,7 @@ import httpx
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, TypeAdapter
 
 from madre.capabilities import CapabilityError
-from madre_sdk.execution import (
-    CapabilityDefinition,
-    CostClass,
-    ExecutionBoundary,
-    ExecutionConstraints,
-    LatencyClass,
-    QualityTier,
-    ReasoningEffort,
-)
+from madre_sdk.execution import CapabilityDefinition, ExecutionConstraints
 
 
 class OpenAIChatConfig(BaseModel):
@@ -32,14 +24,6 @@ class OpenAIChatConfig(BaseModel):
     kind: Literal["openai_chat"] = "openai_chat"
     endpoint: str
     model: str = Field(min_length=1)
-    boundary: ExecutionBoundary = ExecutionBoundary.LOCAL
-    latency: LatencyClass = LatencyClass.STANDARD
-    quality: QualityTier = QualityTier.STANDARD
-    reasoning_efforts: frozenset[ReasoningEffort] = frozenset(
-        {ReasoningEffort.LOW, ReasoningEffort.MEDIUM, ReasoningEffort.HIGH}
-    )
-    cost: CostClass = CostClass.FREE
-    heavyweight: bool = True
 
 
 class OpenAICompatibleChatCapability:

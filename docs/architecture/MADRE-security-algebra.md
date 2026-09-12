@@ -1,172 +1,138 @@
 # MADRE Security Algebra
 
-Authority: `MADRE.md` defines product meaning. This document owns the typed security
-facts, relation normal forms, composition laws, direct-user crossing, derivation, and
-evidence contracts used at MADRE-governed boundaries.
+## Purpose
 
-## Purpose and boundary
+The Security Algebra carries only the facts required to determine whether exact
+current scopes can compose. It is a standalone public value system. It has no
+evaluator, broker, policy service, observability role, persistence model, or history.
 
-MADRE preserves the owner's control of sensitive information and bounds consequential
-machine execution. It governs crossings made through MADRE contracts. It is not IAM,
-RBAC, a permission service, a provider-reputation system, an LLM truth score, a hostile
-native-process sandbox, or a generic tool-approval framework.
+## Carriers
 
-The algebra is deterministic. There is no policy strategy to inject and no global
-security score. Modules establish semantic facts; adapters establish mechanism facts;
-Kernel composes those normalized facts without interpreting private payloads.
+`Sensitivity`, `Privacy`, `Integrity`, `Risk`, and `Autonomy` are five
+different ordered types with ranks 1 through 5.
 
-## Five nominal facets
+- Sensitivity belongs to an exact scope whose exposure has a confidentiality
+  consequence.
+- Privacy belongs to an exact observer scope.
+- Integrity belongs to an exact non-user controller or effect-realizing executor.
+- Risk and Autonomy belong together on one exact Operation EffectProfile.
 
-The public carriers are five distinct ordered types. Their serialized ranks happen to
-be `1..5`, but one facet cannot be substituted for another.
+The rank values support ordering only within their carrier. They never form a global
+score.
 
-| Facet | Meaning | Values |
-| --- | --- | --- |
-| `Sensitivity` | sensitive state reachable through an exact source scope | `S1..S5` |
-| `Privacy` | confidentiality/exposure of an exact observer scope | `PUBLIC`, `UNKNOWN`, `LOCAL_PRIVATE`, `MODULE_PRIVATE`, `SECRET` |
-| `Integrity` | warranted causal/effect-realization responsibility of an exact scope | `I1..I5` |
-| `Risk` | consequence class of one bounded effect variant | `R1..R5` |
-| `Autonomy` | residual machine-controlled execution in that variant | `A1..A5` |
+`Privacy.UNKNOWN` is an applicable Privacy fact at rank 2. A missing Privacy value
+means Privacy does not apply to that scope. Locality and provider identity are not
+inputs to Privacy.
 
-`Privacy.UNKNOWN` is a normalized fact: Privacy applies, but no stronger handling
-guarantee is established. `None` means the facet does not apply. Location, provider,
-protocol, or `execution_boundary` never computes Privacy. A remote P4 boundary and a
-local P1 boundary are both valid declarations.
+Integrity is bounded causal/effect-realization responsibility. It says nothing about
+truth, intelligence, reliability, provider quality, reputation, or generic trust.
 
-Integrity is deliberately narrow. It is not truth, intelligence, generic reliability,
-model reputation, or moral correctness. Raw inference output gains no Integrity.
+## Exact scopes and surfaces
 
-## Exact scopes and immutable facts
+A `SecurityScope` binds the applicable Sensitivity, Privacy, and/or Integrity facts
+to one exact scope identity and revision.
 
-`SecurityScopeRef(owner_module_id, scope_id, publication_revision, scope_revision)`
-identifies one exact, role-neutral projection. `SecurityObject` binds that identity to
-only applicable Sensitivity, Privacy, and Integrity facts plus generic content and
-contract digests. Its immutable `SecurityID` covers every bound field.
+A `SecuritySurface` is the immutable structural composition of the scopes exposed
+or reached together. It is associative, commutative, and idempotent for identical
+scope facts. Conflicting facts for the same exact identity cannot compose.
 
-Material construction requires Sensitivity and cannot claim arbitrary Integrity.
-Privacy-bearing observer construction requires Privacy. Controller/executor
-construction requires Integrity. A scope that actually has more than one role may
-carry the corresponding facts, but applicability is determined by the relation, not a
-global subject-kind matrix.
-
-Module and adapter layers supply generic digests. The security layer does not know
-provider, endpoint, hostname, or location key vocabularies.
-
-## Operation profiles and actual use
-
-An `EffectProfile` is an immutable Operation-owned bounded execution variant. It
-contains only exact Operation/profile identity and its `Risk` and `Autonomy`. It has no
-Privacy, Integrity, nested SecurityObject, or material-disclosure flag.
-
-`OperationUse` selects a published profile and carries concrete additional observers,
-actual non-user controllers, and an optional active direct-user interaction. Callers
-cannot override Risk or Autonomy. Protocol-known observers and executors are added by
-Broker from the actual route.
-
-## Feasible relation normal forms
-
-Only feasible forms become active state. Composition returns a typed
-`CompositionResult`: either an accepted form or relation-local failures. A denied
-prospective candidate is evidence only and cannot contaminate the next candidate.
-
-### Disclosure
-
-For exact source scopes and actual observers:
+For the applicable members of a surface:
 
 ```text
-S = max(source Sensitivity)
-P = min(observer Privacy)
-ordinary feasibility: S <= P
+S(surface) = max Sensitivity
+P(surface) = min Privacy
+I(surface) = min Integrity
 ```
 
-`DisclosureNormalForm` carries exact source and observer SecurityIDs plus `S` and `P`.
-Incremental composition uses `max` for another source and `min` for another observer.
-Independent disclosures remain independent. A mechanism considered and rejected
-before receiving bytes is not an observer in any accepted form.
+If no member carries a facet, that facet is not applicable to the surface.
 
-### Control
+This same composition describes nested structures. A Module surface includes the
+Material and subscopes it actually manages or exposes. An Agent surface includes the
+Operations and other surfaces it actually exposes. A narrower isolated surface is
+free to have a different value from its owner’s complete surface.
 
-For one exact EffectProfile and its actual non-user controllers:
+Aggregate values are never separately declared. They are consequences of the exact
+included scopes.
+
+## Disclosure
+
+A `Disclosure` is only this relation:
 
 ```text
-demand(R, A) = min(R, A)
-controller Integrity = min(actual controller Integrity), or I5 if none
-feasibility: demand <= controller Integrity
+S_D = S(actual exposed source surface)
+P_D = P(actual observer surface)
+
+match iff S_D <= P_D
 ```
 
-The demand is the greatest monotone value bounded by both Risk and Autonomy: their
-meet on the five-rank chain. Different profiles never contribute facets to a fictional
-combined profile.
+Both facets must apply. Adding a source joins Sensitivity by maximum. Adding an
+observer meets Privacy by minimum. An addition that violates the inequality raises
+`SecurityMismatch`; the prior immutable Disclosure remains unchanged and no rejected
+relation exists.
 
-### Effect execution
+There are no extra, implied, historical, or framework-supplied observers. The actual
+observer surface already carries the composition of what it exposes.
 
-For one exact EffectProfile and actual effect-realizing executors:
+There is no user exception. Presence, approval, acknowledgement, or a live session
+cannot change this relation.
+
+## Control
+
+One EffectProfile supplies Risk and Autonomy:
 
 ```text
-executor Integrity = min(actual executor Integrity)
-feasibility: Risk <= executor Integrity
+D_C(R,A) = min(R,A)
+
+I_C = min Integrity of actual non-user controllers
+      or I5 when there are none
+
+match iff D_C(R,A) <= I_C
 ```
 
-An executor set must be nonempty. A forwarding observer or historical participant is
-not an executor merely because its SecurityID exists in evidence.
+A human user is not entered as an Integrity-bearing controller. A1 describes an exact
+live user action through Autonomy; A2 through A5 describe progressively greater
+residual machine execution. Autonomy affects only Control.
 
-## Structural direct-user crossings
+Adding a non-user controller meets Integrity by minimum. An incompatible addition
+cannot construct a new Control value.
 
-An otherwise inadmissible disclosure may be performed by the owner only as one exact,
-live, direct action. This does not change Sensitivity or Privacy.
+## Effect execution
 
-`DirectUserInteraction` is part of the active `InvocationContext` and binds the
-interaction-owning Module, interaction scope/revision, and current execution instance.
-Kernel allocates a fresh crossing identity and constructs `DirectUserAction` over:
+```text
+I_E = min Integrity of actual effect-realizing executors
+executor surface must be nonempty
 
-- the active interaction;
-- exact source SecurityID, scope revision, and content digest;
-- the exact ordered observer path;
-- the exact Operation and EffectProfile identity when an effect exists.
+match iff R <= I_E
+```
 
-`DisclosureNormalForm` accepts the exception only when every field matches the current
-crossing and active invocation. Changed material, revision, digest, observer,
-destination, profile, effect, crossing identity, or execution instance fails.
+Only the executors that physically realize this exact bounded effect participate.
+Adding another executor meets Integrity by minimum. An incompatible addition cannot
+construct a new EffectExecution value.
 
-Durable `WorkSubmission`, scheduling, and background continuation have no direct
-interaction field. Completed action evidence is audit information, never a reusable
-approval, role, credential, clearance, permission, or authority token.
+Risk or Autonomy values from separate EffectProfiles never combine.
 
-## Derivation
+## New Material
 
-`DerivationEvidence` is provenance, separate from active feasibility.
+Any transformation, selection, minimization, tokenization, anonymization, validation,
+summary, or other adaptation produces new Material with:
 
-- Ordinary derivation binds exact sources/producers and cannot lower reachable source
-  Sensitivity.
-- Structured selection computes exactly the maximum Sensitivity of retained scopes.
-- A Module-owned transform binds its exact procedure/revision, inputs, output
-  SecurityID, and output digest. Because it creates a genuinely new representation,
-  it may lower, preserve, or raise Sensitivity.
-- Validation binds an exact procedure and actual Integrity-bearing validators before
-  creating a distinct bounded Integrity projection. It is not generic truth scoring.
-- Inference output is ordinary generated material and gains no automatic Integrity.
+- a new Material identity;
+- its own content contract and payload;
+- its own exact applicable security facts.
 
-## Active state versus evidence
+No algebraic rule universally derives the new Sensitivity or Integrity from prior
+Material. The Module performing the semantic work owns the new facts. The original
+Material remains unchanged.
 
-`SecurityEvidence` contains immutable scope facts, accepted relation forms,
-derivations, decisions, and causal/provenance records. Merge is idempotent and detects
-identity conflicts. Evidence has no numeric decision semantics.
+MADRE defines no derivation record, ancestry, continuity, freshness, completed-output
+set, lineage graph, validation projection, or security retry. Optional provenance
+would be separate metadata and could not become an algebra operand.
 
-Ordinary admission receives the current source, profile, observer, controller,
-executor, and invocation values directly. It never searches evidence to rediscover
-current operands. Registration, ownership, credentials, Work IDs, retries, historical
-participants, and rejected candidates are not implicit operands.
+## Failure and observability
 
-One fixed audit/reconstruction function rebuilds recorded forms from their exact
-objects and compares them with persisted summaries. It exists for persistence
-verification, diagnostics, and tests, not ordinary invocation admission.
+`SecurityMismatch` reports why one attempted construction could not produce a
+composite. It is transient failure information.
 
-## Valuation ownership
-
-Modules classify their own semantic scopes and transformations. Capability adapters
-or installation construction establish the Privacy contract of concrete observation
-boundaries. Effect-owning Modules establish bounded Risk and Autonomy profiles.
-Integrity-bearing control/executor scopes declare their exact warranted contract.
-
-Kernel validates identities and composes facts. It must not infer values from payload
-text, provider name, local/remote location, credentials, prior success, or model output.
+A runtime may log that an execution request failed, just as it may log a timeout or
+unavailable mechanism. Such diagnostics are not security state, do not modify any
+scope, and cannot authorize or constrain a later request.

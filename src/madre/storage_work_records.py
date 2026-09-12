@@ -6,7 +6,7 @@ import json
 import sqlite3
 from datetime import datetime
 
-from madre.contracts import ResultEvidence, WorkCancellation, WorkFailure, WorkRecord, WorkSpec
+from madre.contracts import ResultMetadata, WorkCancellation, WorkFailure, WorkRecord, WorkSpec
 from madre.storage_db import _json
 from madre.storage_work_base import WorkStoreBase
 
@@ -91,7 +91,7 @@ class WorkRecordStore(WorkStoreBase):
             )
         result = None
         if row["output_digest"] is not None:
-            result = ResultEvidence(
+            result = ResultMetadata(
                 digest=row["output_digest"],
                 size=row["output_size"],
                 produced_at=datetime.fromisoformat(row["output_produced_at"]),

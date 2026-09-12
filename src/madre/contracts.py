@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Literal, Self
 
-from pydantic import AwareDatetime, Field, JsonValue, field_validator, model_validator
+from pydantic import AwareDatetime, Field, field_validator, model_validator
 
 from madre_sdk.execution import (
     CapabilityQuery,
@@ -85,7 +85,7 @@ class WorkAttempt(FrozenValue):
     failure: WorkFailure | None = None
 
 
-class ResultEvidence(FrozenValue):
+class ResultMetadata(FrozenValue):
     digest: str
     size: int = Field(ge=0)
     produced_at: AwareDatetime
@@ -106,18 +106,8 @@ class WorkRecord(FrozenValue):
     cancellation: WorkCancellation | None = None
     retries: tuple[WorkRetry, ...] = ()
     attempts: tuple[WorkAttempt, ...] = ()
-    result: ResultEvidence | None = None
+    result: ResultMetadata | None = None
 
 
 class WorkRetryRequest(FrozenValue):
     allow_unknown_outcome: bool = False
-
-
-class TransientDiagnostic(FrozenValue):
-    """Runtime-only failure detail; never part of Material or algebra state."""
-
-    code: Identifier
-    detail: str = ""
-
-
-JsonPayload = JsonValue

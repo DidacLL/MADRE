@@ -2,18 +2,43 @@ data_dir = ".madre-data"
 host = "127.0.0.1"
 port = 8731
 
-[capabilities.local-chat]
+[[capabilities]]
+
+[capabilities.definition.identity]
+owner = "installation"
+name = "local-chat"
+revision = "1"
+
+[capabilities.definition.properties]
+boundary = "local"
+latency = "interactive"
+reasoning_efforts = ["low", "medium", "high"]
+quality = "standard"
+cost = "free"
+heavyweight = true
+
+[capabilities.definition.properties.specialization]
+owner = "madre.execution"
+name = "language-inference"
+revision = "1"
+
+[capabilities.definition.properties.modality]
+owner = "madre.execution"
+name = "structured-text"
+revision = "1"
+
+[[capabilities.definition.security.scopes]]
+
+# This is an explicit fact about the actual observer boundary.
+# The local endpoint does not imply this value.
+privacy = 4
+
+[capabilities.definition.security.scopes.identity]
+owner = "installation"
+name = "local-chat"
+revision = "1"
+
+[capabilities.adapter]
 kind = "openai_chat"
 endpoint = "http://127.0.0.1:11434/v1"
 model = "local-model"
-provider_id = "local-openai-compatible"
-boundary = "local"
-latency_class = "standard"
-quality_tier = "standard"
-reasoning_efforts = ["low", "medium", "high"]
-paid = false
-heavyweight = true
-# This example assumes inference stays in the user's local MADRE environment.
-# Local transport alone does not establish MODULE_PRIVATE or SECRET containment.
-privacy = 3
-# api_key_env = "OPENAI_API_KEY"  # optional for providers that require it

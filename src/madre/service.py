@@ -11,9 +11,9 @@ from pydantic import JsonValue
 
 from madre.adapters.openai import OpenAICompatibleChatCapability
 from madre.capabilities import CapabilityRegistry
+from madre.catalog import ModuleCatalog
 from madre.config import Settings
 from madre.contracts import WorkRecord, WorkRetryRequest, WorkSubmission
-from madre.registry import InteroperabilityRegistry
 from madre.runtime import (
     CancellationConflict,
     ExecutionUnavailable,
@@ -45,10 +45,10 @@ def create_app(settings: Settings) -> FastAPI:
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         with open_database(settings.data_dir) as connection:
             store = PlatformStore(connection)
-            registry = InteroperabilityRegistry(store)
+            catalog = ModuleCatalog(store)
             kernel = Kernel(_capabilities(settings), store)
             state["kernel"] = kernel
-            state["registry"] = registry
+            state["catalog"] = catalog
             scheduler = asyncio.create_task(kernel.run_scheduler())
             try:
                 yield
@@ -68,15 +68,15 @@ def create_app(settings: Settings) -> FastAPI:
             raise HTTPException(status_code=503, detail="runtime unavailable")
         return value
 
-    def interoperability() -> InteroperabilityRegistry:
-        value = state.get("registry")
-        if not isinstance(value, InteroperabilityRegistry):
+    def catalog() -> ModuleCatalog:
+        value = state.get("catalog")
+        if not isinstance(value, ModuleCatalog):
             raise HTTPException(status_code=503, detail="catalog unavailable")
         return value
 
     @app.post("/v1/modules", response_model=ModuleDefinition)
     async def register_module(definition: ModuleDefinition) -> ModuleDefinition:
-        interoperability().register(definition)
+        catalog().register(definition)
         return definition
 
     @app.post("/v1/executions", response_model=Material[JsonValue])

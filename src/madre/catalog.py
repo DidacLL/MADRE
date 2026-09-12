@@ -13,15 +13,15 @@ from madre_sdk.semantic import (
 )
 
 
-class RegistryStore(Protocol):
+class ModuleCatalogStore(Protocol):
     def put_module(self, definition: ModuleDefinition) -> None: ...
     def modules(self) -> tuple[ModuleDefinition, ...]: ...
 
 
-class InteroperabilityRegistry:
-    """Discovery only: presence in this catalog grants no execution or security status."""
+class ModuleCatalog:
+    """Discovery only: catalog presence grants no execution or security status."""
 
-    def __init__(self, store: RegistryStore) -> None:
+    def __init__(self, store: ModuleCatalogStore) -> None:
         self._store = store
 
     def register(self, definition: ModuleDefinition) -> None:
