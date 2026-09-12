@@ -1,4 +1,4 @@
-"""Durable work attempt, retry, cancellation, recovery, and result evidence."""
+"""Durable work attempt, retry, cancellation, recovery, and result delivery."""
 
 from __future__ import annotations
 

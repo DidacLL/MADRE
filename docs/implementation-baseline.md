@@ -45,7 +45,7 @@ Reference-only durable work retains:
 - typed Capability query;
 - MaterialHandle;
 - output MaterialSpecification;
-- eligibility, priority, timeout, correlation, and idempotency;
+- eligibility, priority, timeout, and idempotency;
 - attempt lifecycle, selected Capability identity/boundary, result digest/size, and a
   compact failure code.
 

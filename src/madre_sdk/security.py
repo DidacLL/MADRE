@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from copy import deepcopy
 from enum import Enum
-from typing import Annotated, Self
+from typing import Annotated, Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -14,6 +16,23 @@ class FrozenValue(BaseModel):
     """Serializable immutable value used by the language-neutral public SDK."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
+
+    def model_copy(
+        self,
+        *,
+        update: Mapping[str, Any] | None = None,
+        deep: bool = False,
+    ) -> Self:
+        """Copy through validation so immutable domain invariants cannot be bypassed."""
+
+        if update is None:
+            return super().model_copy(deep=deep)
+        values = {
+            name: deepcopy(getattr(self, name)) if deep else getattr(self, name)
+            for name in type(self).model_fields
+        }
+        values.update(update)
+        return type(self).model_validate(values)
 
 
 class _OrderedCarrier(Enum):

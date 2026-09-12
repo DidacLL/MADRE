@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Literal, Self
+from typing import Literal
 
-from pydantic import AwareDatetime, Field, field_validator, model_validator
+from pydantic import AwareDatetime, Field, field_validator
 
 from madre_sdk.execution import (
     CapabilityQuery,
@@ -16,11 +16,6 @@ from madre_sdk.material import MaterialHandle, MaterialSpecification
 from madre_sdk.security import FrozenValue, Identifier, ScopeIdentity
 
 
-class CorrelationEntry(FrozenValue):
-    key: Identifier
-    value: Identifier
-
-
 class WorkSubmission(FrozenValue):
     originator: ScopeIdentity
     capability: CapabilityQuery
@@ -29,19 +24,11 @@ class WorkSubmission(FrozenValue):
     eligible_at: AwareDatetime | None = None
     priority: int = 0
     constraints: ExecutionConstraints = Field(default_factory=ExecutionConstraints)
-    correlation: tuple[CorrelationEntry, ...] = ()
 
     @field_validator("eligible_at")
     @classmethod
     def utc_time(cls, value: datetime | None) -> datetime | None:
         return value.astimezone(UTC) if value is not None else None
-
-    @model_validator(mode="after")
-    def unique_correlation_keys(self) -> Self:
-        keys = tuple(entry.key for entry in self.correlation)
-        if len(keys) != len(set(keys)):
-            raise ValueError("correlation keys must be unique")
-        return self
 
 
 class WorkSpec(FrozenValue):
@@ -52,7 +39,6 @@ class WorkSpec(FrozenValue):
     eligible_at: AwareDatetime | None = None
     priority: int = 0
     constraints: ExecutionConstraints = Field(default_factory=ExecutionConstraints)
-    correlation: tuple[CorrelationEntry, ...] = ()
 
 
 class WorkFailure(FrozenValue):

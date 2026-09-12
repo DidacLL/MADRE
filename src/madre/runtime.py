@@ -16,7 +16,7 @@ from madre.interfaces import MaterialResolution
 from madre.storage import PlatformStore, utc_now
 from madre_sdk.execution import ExecutionRequest
 from madre_sdk.material import Material
-from madre_sdk.security import Disclosure, SecurityMismatch
+from madre_sdk.security import Disclosure, ScopeIdentity, SecurityMismatch
 
 
 class IdempotencyConflict(RuntimeError):
@@ -61,15 +61,19 @@ class Kernel:
         self._schedule_changed = asyncio.Event()
         self._heavyweight_local = asyncio.Lock()
         self._results: dict[str, Material[JsonValue]] = {}
-        self._resolvers: dict[str, MaterialResolution] = {}
+        self._resolvers: dict[ScopeIdentity, MaterialResolution] = {}
         if store is not None:
             store.fail_interrupted_attempts(self._clock())
             store.mark_unconsumed_results_lost()
 
-    def register_material_resolver(self, module_id: str, resolver: MaterialResolution) -> None:
-        if not module_id:
-            raise ValueError("Module identity must not be empty")
-        self._resolvers[module_id] = resolver
+    def register_material_resolver(
+        self,
+        module: ScopeIdentity,
+        resolver: MaterialResolution,
+    ) -> None:
+        if module.name != module.owner:
+            raise ValueError("material resolver identity must describe a Module")
+        self._resolvers[module] = resolver
 
     async def execute(self, request: ExecutionRequest) -> Material[JsonValue]:
         adapter = self.capabilities.select(request.capability)
@@ -272,7 +276,7 @@ class Kernel:
 
     async def _resolve_material(self, record: WorkRecord) -> Material[JsonValue] | None:
         store = self._require_store()
-        resolver = self._resolvers.get(record.spec.originator.owner)
+        resolver = self._resolvers.get(record.spec.originator)
         if resolver is None:
             store.fail(record.id, WorkFailure(code="material_unavailable"), self._clock())
             return None

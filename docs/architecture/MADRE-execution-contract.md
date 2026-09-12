@@ -66,7 +66,7 @@ Kernel persists:
 - Capability query;
 - Material handle;
 - output Material specification;
-- eligibility, priority, timeout, correlation, and idempotency metadata;
+- eligibility, priority, timeout, and idempotency metadata;
 - attempt lifecycle, selected Capability identity/boundary, compact failure code,
   output digest/size, and delivery state.
 

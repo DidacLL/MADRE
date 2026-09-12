@@ -38,7 +38,6 @@ class SkillDefinition(FrozenValue):
     identity: ScopeIdentity
     purpose: str = Field(min_length=1)
     instructions: tuple[str, ...] = ()
-    resources: tuple[ScopeIdentity, ...] = ()
     input_contract: MaterialContract | None = None
     output_contract: MaterialContract | None = None
     security: SecurityScope | None = None
@@ -151,7 +150,6 @@ class ModuleDefinition(FrozenValue):
     workflows: tuple[WorkflowDefinition, ...] = ()
     operations: tuple[OperationDefinition, ...] = ()
     public_surfaces: tuple[SurfaceReference, ...] = ()
-    discovery_terms: tuple[str, ...] = ()
 
     @model_validator(mode="after")
     def owns_members(self) -> Self:

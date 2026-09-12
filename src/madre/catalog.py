@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
+from madre_sdk.security import ScopeIdentity
 from madre_sdk.semantic import (
     AgentDefinition,
     ModuleDefinition,
@@ -27,13 +28,9 @@ class ModuleCatalog:
     def register(self, definition: ModuleDefinition) -> None:
         self._store.put_module(definition)
 
-    def module(self, module_id: str) -> ModuleDefinition | None:
+    def module(self, identity: ScopeIdentity) -> ModuleDefinition | None:
         return next(
-            (
-                definition
-                for definition in self._store.modules()
-                if definition.identity.owner == module_id
-            ),
+            (definition for definition in self._store.modules() if definition.identity == identity),
             None,
         )
 

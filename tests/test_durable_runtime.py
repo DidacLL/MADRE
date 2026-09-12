@@ -80,7 +80,7 @@ def test_durable_work_persists_only_reference_and_execution_metadata(tmp_path: P
             )
         )
         kernel = Kernel(capabilities, store)
-        kernel.register_material_resolver(module.owner, repository)
+        kernel.register_material_resolver(module, repository)
         record = asyncio.run(
             kernel.submit(
                 WorkSubmission(
@@ -110,7 +110,7 @@ def test_durable_work_persists_only_reference_and_execution_metadata(tmp_path: P
         result = kernel.consume_result(record.id)
         assert result.identity == output_identity
         assert result.payload == {"result": source.payload}
-        assert catalog.module(module.owner) is not None
+        assert catalog.module(module) is not None
 
         tables = {
             row["name"]

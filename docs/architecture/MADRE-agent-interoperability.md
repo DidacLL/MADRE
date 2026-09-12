@@ -32,8 +32,8 @@ A Module definition owns:
 - its identity and description;
 - exact Module security facts when applicable;
 - the Material/security scopes it manages or can expose;
-- public Agents, Skills, Workflows, and Operations;
-- optional discovery terms.
+- public Agents and canonical Skill, Workflow, and Operation definitions;
+- typed references identifying the exact public surfaces.
 
 Its effective SecuritySurface is calculated from those members. It is not an
 independently declared summary.
@@ -44,7 +44,9 @@ Agent, assistant, planner, Workflow, or Operation.
 ## AgentDefinition
 
 An Agent definition owns purpose, instructions when applicable, typed input/output
-Material contracts, and the Skills, Workflows, and Operations it exposes.
+Material contracts, typed references to Module-owned Skills and Workflows, and typed
+references to the Operations and exact scopes it exposes. The Module aggregate owns
+each reusable definition once and resolves every reference during construction.
 
 Its surface is the structural composition of those exact exposed members and any
 Agent-specific scope facts. Consequently:
@@ -104,7 +106,7 @@ The current SDK exposes only the minimum executable seams needed by real behavio
 - `ModuleBehavior.receive(Material, ExecutionService) -> Material`;
 - optional Agent and Operation behavior protocols;
 - `ModuleRuntime`, which binds one Module definition to its private behavior and
-  granted execution service.
+  supplied execution service.
 
 These interfaces do not prescribe what a Module should think, how an Agent should
 loop, or whether a continuation exists.

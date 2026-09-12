@@ -24,7 +24,6 @@ CREATE TABLE runtime_work (
     eligible_at TEXT,
     priority INTEGER NOT NULL,
     constraints_json TEXT NOT NULL,
-    correlation_json TEXT NOT NULL,
     idempotency_key TEXT,
     status TEXT NOT NULL CHECK (status IN ('accepted','running','succeeded','failed','cancelled')),
     submitted_at TEXT NOT NULL,

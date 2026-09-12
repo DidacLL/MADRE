@@ -28,9 +28,9 @@ class WorkRecordStore(WorkStoreBase):
                     INSERT INTO runtime_work(
                         id,originator,originator_identity_json,capability_query_json,material_handle_json,
                         output_specification_json,eligible_at,priority,constraints_json,
-                        correlation_json,idempotency_key,
+                        idempotency_key,
                         status,submitted_at,enqueued_at,queue_sequence
-                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?, 'accepted',?,?,?)
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?, 'accepted',?,?,?)
                     """,
                     (
                         work_id,
@@ -42,7 +42,6 @@ class WorkRecordStore(WorkStoreBase):
                         spec.eligible_at.isoformat() if spec.eligible_at else None,
                         spec.priority,
                         _json(spec.constraints),
-                        _json(spec.correlation),
                         idempotency_key,
                         submitted_at.isoformat(),
                         submitted_at.isoformat(),
@@ -79,7 +78,6 @@ class WorkRecordStore(WorkStoreBase):
                 "eligible_at": row["eligible_at"],
                 "priority": row["priority"],
                 "constraints": json.loads(row["constraints_json"]),
-                "correlation": json.loads(row["correlation_json"]),
             }
         )
         failure = WorkFailure(code=row["error_code"]) if row["error_code"] is not None else None
