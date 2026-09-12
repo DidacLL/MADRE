@@ -22,7 +22,6 @@ from madre_sdk import (
     ComputationId,
     ExecutionLocation,
     LatencyClass,
-    MaterialType,
     MaterialTypeId,
     ModuleId,
     PhysicalProperties,
@@ -34,23 +33,22 @@ class _ConfigModel(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class MaterialTypeConfig(_ConfigModel):
+class MaterialTypeIdConfig(_ConfigModel):
     module: str
     module_revision: str = "1"
     name: str
     revision: str = "1"
-    media_type: str
 
-    def material_type(self) -> MaterialType[object]:
-        module = ModuleId(self.module, self.module_revision)
-        return MaterialType[object](
-            MaterialTypeId(module, self.name, self.revision),
-            self.media_type,
+    def identity(self) -> MaterialTypeId:
+        return MaterialTypeId(
+            ModuleId(self.module, self.module_revision),
+            self.name,
+            self.revision,
         )
 
 
 class CapabilityInputConfig(_ConfigModel):
-    material_type: MaterialTypeConfig
+    material_type: MaterialTypeIdConfig
     privacy: Privacy
 
 
@@ -66,7 +64,7 @@ class InstalledOpenAIChat(_ConfigModel):
     computation_name: str
     computation_revision: str = "1"
     inputs: tuple[CapabilityInputConfig, ...]
-    output_type: MaterialTypeConfig
+    output_type: MaterialTypeIdConfig
     location: ExecutionLocation
     latency: LatencyClass = LatencyClass.STANDARD
     resources: tuple[ResourceClaimConfig, ...] = ()
@@ -80,10 +78,10 @@ class InstalledOpenAIChat(_ConfigModel):
                 self.computation_name,
                 self.computation_revision,
             ),
-            output_type=self.output_type.material_type(),
+            output_type=self.output_type.identity(),
             inputs=CapabilityInputs(
                 tuple(
-                    CapabilityInput(item.material_type.material_type().identity, item.privacy)
+                    CapabilityInput(item.material_type.identity(), item.privacy)
                     for item in self.inputs
                 )
             ),

@@ -25,6 +25,8 @@ from madre_sdk.surfaces import (
 
 
 def _require_text(value: str, field: str) -> None:
+    if not isinstance(value, str):
+        raise TypeError(f"{field} requires str")
     if not value or value.isspace():
         raise ValueError(f"{field} must not be blank")
 
@@ -62,6 +64,14 @@ class EffectProfile:
     risk: Risk
     autonomy: Autonomy
 
+    def __post_init__(self) -> None:
+        if not isinstance(self.identity, EffectProfileId):
+            raise TypeError("EffectProfile.identity requires EffectProfileId")
+        if not isinstance(self.risk, Risk):
+            raise TypeError("EffectProfile.risk requires Risk")
+        if not isinstance(self.autonomy, Autonomy):
+            raise TypeError("EffectProfile.autonomy requires Autonomy")
+
     @property
     def operation(self) -> OperationId:
         return self.identity.operation
@@ -79,6 +89,18 @@ class SkillDefinition:
     inputs: InputSurfaces | None = None
     outputs: OutputSurfaces | None = None
 
+    def __post_init__(self) -> None:
+        if not isinstance(self.identity, SkillId):
+            raise TypeError("SkillDefinition.identity requires SkillId")
+        if not isinstance(self.name, DisplayName):
+            raise TypeError("SkillDefinition.name requires DisplayName")
+        if not isinstance(self.purpose, Purpose):
+            raise TypeError("SkillDefinition.purpose requires Purpose")
+        if self.inputs is not None and not isinstance(self.inputs, InputSurfaces):
+            raise TypeError("SkillDefinition.inputs requires InputSurfaces")
+        if self.outputs is not None and not isinstance(self.outputs, OutputSurfaces):
+            raise TypeError("SkillDefinition.outputs requires OutputSurfaces")
+
 
 @dataclass(frozen=True, slots=True)
 class WorkflowDefinition:
@@ -91,6 +113,22 @@ class WorkflowDefinition:
     operations: tuple[OperationId, ...] = ()
 
     def __post_init__(self) -> None:
+        if not isinstance(self.identity, WorkflowId):
+            raise TypeError("WorkflowDefinition.identity requires WorkflowId")
+        if not isinstance(self.name, DisplayName):
+            raise TypeError("WorkflowDefinition.name requires DisplayName")
+        if not isinstance(self.purpose, Purpose):
+            raise TypeError("WorkflowDefinition.purpose requires Purpose")
+        if not isinstance(self.inputs, InputSurfaces):
+            raise TypeError("WorkflowDefinition.inputs requires InputSurfaces")
+        if not isinstance(self.outputs, OutputSurfaces):
+            raise TypeError("WorkflowDefinition.outputs requires OutputSurfaces")
+        if not isinstance(self.skills, tuple) or not isinstance(self.operations, tuple):
+            raise TypeError("WorkflowDefinition references require tuples")
+        if any(not isinstance(identity, SkillId) for identity in self.skills):
+            raise TypeError("WorkflowDefinition.skills accepts only SkillId")
+        if any(not isinstance(identity, OperationId) for identity in self.operations):
+            raise TypeError("WorkflowDefinition.operations accepts only OperationId")
         _require_unique(self.skills, "Workflow skills")
         _require_unique(self.operations, "Workflow operations")
 
@@ -106,8 +144,24 @@ class OperationDefinition:
     repeatability: Repeatability | None = None
 
     def __post_init__(self) -> None:
+        if not isinstance(self.identity, OperationId):
+            raise TypeError("OperationDefinition.identity requires OperationId")
+        if not isinstance(self.name, DisplayName):
+            raise TypeError("OperationDefinition.name requires DisplayName")
+        if not isinstance(self.purpose, Purpose):
+            raise TypeError("OperationDefinition.purpose requires Purpose")
+        if not isinstance(self.inputs, InputSurfaces):
+            raise TypeError("OperationDefinition.inputs requires InputSurfaces")
+        if not isinstance(self.outputs, OutputSurfaces):
+            raise TypeError("OperationDefinition.outputs requires OutputSurfaces")
+        if not isinstance(self.effect_profiles, tuple):
+            raise TypeError("OperationDefinition.effect_profiles requires tuple")
         if not self.effect_profiles:
             raise ValueError("OperationDefinition requires at least one EffectProfile")
+        if any(not isinstance(profile, EffectProfile) for profile in self.effect_profiles):
+            raise TypeError("OperationDefinition.effect_profiles accepts only EffectProfile")
+        if self.repeatability is not None and not isinstance(self.repeatability, Repeatability):
+            raise TypeError("OperationDefinition.repeatability requires Repeatability")
         profile_ids = tuple(profile.identity for profile in self.effect_profiles)
         _require_unique(profile_ids, "Operation EffectProfile identities")
         if any(profile.operation != self.identity for profile in self.effect_profiles):
@@ -132,6 +186,27 @@ class AgentDefinition:
     exposed_operations: tuple[OperationId, ...] = ()
 
     def __post_init__(self) -> None:
+        if not isinstance(self.identity, AgentId):
+            raise TypeError("AgentDefinition.identity requires AgentId")
+        if not isinstance(self.name, DisplayName):
+            raise TypeError("AgentDefinition.name requires DisplayName")
+        if not isinstance(self.purpose, Purpose):
+            raise TypeError("AgentDefinition.purpose requires Purpose")
+        if self.inputs is not None and not isinstance(self.inputs, InputSurfaces):
+            raise TypeError("AgentDefinition.inputs requires InputSurfaces")
+        if self.outputs is not None and not isinstance(self.outputs, OutputSurfaces):
+            raise TypeError("AgentDefinition.outputs requires OutputSurfaces")
+        if not all(
+            isinstance(references, tuple)
+            for references in (self.skills, self.workflows, self.exposed_operations)
+        ):
+            raise TypeError("AgentDefinition references require tuples")
+        if any(not isinstance(identity, SkillId) for identity in self.skills):
+            raise TypeError("AgentDefinition.skills accepts only SkillId")
+        if any(not isinstance(identity, WorkflowId) for identity in self.workflows):
+            raise TypeError("AgentDefinition.workflows accepts only WorkflowId")
+        if any(not isinstance(identity, OperationId) for identity in self.exposed_operations):
+            raise TypeError("AgentDefinition.exposed_operations accepts only OperationId")
         _require_unique(self.skills, "Agent skills")
         _require_unique(self.workflows, "Agent workflows")
         _require_unique(self.exposed_operations, "Agent exposed Operations")
@@ -151,6 +226,36 @@ class ModuleDefinition:
     public_outputs: OutputSurfaces | None = None
 
     def __post_init__(self) -> None:
+        if not isinstance(self.identity, ModuleId):
+            raise TypeError("ModuleDefinition.identity requires ModuleId")
+        if not isinstance(self.name, DisplayName):
+            raise TypeError("ModuleDefinition.name requires DisplayName")
+        if not isinstance(self.purpose, Purpose):
+            raise TypeError("ModuleDefinition.purpose requires Purpose")
+        collections = (
+            self.material_types,
+            self.agents,
+            self.skills,
+            self.workflows,
+            self.operations,
+            self.public_operations,
+        )
+        if not all(isinstance(collection, tuple) for collection in collections):
+            raise TypeError("ModuleDefinition collections require tuples")
+        if any(not isinstance(item, MaterialType) for item in self.material_types):
+            raise TypeError("ModuleDefinition.material_types accepts only MaterialType")
+        if any(not isinstance(item, AgentDefinition) for item in self.agents):
+            raise TypeError("ModuleDefinition.agents accepts only AgentDefinition")
+        if any(not isinstance(item, SkillDefinition) for item in self.skills):
+            raise TypeError("ModuleDefinition.skills accepts only SkillDefinition")
+        if any(not isinstance(item, WorkflowDefinition) for item in self.workflows):
+            raise TypeError("ModuleDefinition.workflows accepts only WorkflowDefinition")
+        if any(not isinstance(item, OperationDefinition) for item in self.operations):
+            raise TypeError("ModuleDefinition.operations accepts only OperationDefinition")
+        if any(not isinstance(item, OperationId) for item in self.public_operations):
+            raise TypeError("ModuleDefinition.public_operations accepts only OperationId")
+        if self.public_outputs is not None and not isinstance(self.public_outputs, OutputSurfaces):
+            raise TypeError("ModuleDefinition.public_outputs requires OutputSurfaces")
         _require_unique(
             tuple(material_type.identity for material_type in self.material_types),
             "Module MaterialType identities",
@@ -205,25 +310,38 @@ class ModuleDefinition:
 
     def _require_surfaces(self) -> None:
         material_type_ids = {material_type.identity for material_type in self.material_types}
-        surfaces: list[InputSurface | OutputSurface] = []
+        input_surfaces: list[InputSurface] = []
+        output_surfaces: list[OutputSurface] = []
         for agent in self.agents:
             if agent.inputs is not None:
-                surfaces.extend(agent.inputs.members)
+                input_surfaces.extend(agent.inputs.members)
             if agent.outputs is not None:
-                surfaces.extend(agent.outputs.members)
+                output_surfaces.extend(agent.outputs.members)
         for skill in self.skills:
             if skill.inputs is not None:
-                surfaces.extend(skill.inputs.members)
+                input_surfaces.extend(skill.inputs.members)
             if skill.outputs is not None:
-                surfaces.extend(skill.outputs.members)
+                output_surfaces.extend(skill.outputs.members)
         for workflow in self.workflows:
-            surfaces.extend(workflow.inputs.members)
-            surfaces.extend(workflow.outputs.members)
+            input_surfaces.extend(workflow.inputs.members)
+            output_surfaces.extend(workflow.outputs.members)
         for operation in self.operations:
-            surfaces.extend(operation.inputs.members)
-            surfaces.extend(operation.outputs.members)
+            input_surfaces.extend(operation.inputs.members)
+            output_surfaces.extend(operation.outputs.members)
         if self.public_outputs is not None:
-            surfaces.extend(self.public_outputs.members)
+            output_surfaces.extend(self.public_outputs.members)
+        _require_unique(
+            tuple(surface.identity for surface in input_surfaces),
+            "Module input-surface identities",
+        )
+        _require_unique(
+            tuple(surface.identity for surface in output_surfaces),
+            "Module output-surface identities",
+        )
+        surfaces: tuple[InputSurface | OutputSurface, ...] = (
+            *input_surfaces,
+            *output_surfaces,
+        )
         if any(surface.identity.module != self.identity for surface in surfaces):
             raise ValueError("Every public surface must belong to its Module")
         if any(surface.material_type not in material_type_ids for surface in surfaces):
@@ -268,6 +386,18 @@ class ModuleDirectoryEntry:
     operations: tuple[OperationDefinition, ...]
 
     def __post_init__(self) -> None:
+        if not isinstance(self.identity, ModuleId):
+            raise TypeError("ModuleDirectoryEntry.identity requires ModuleId")
+        if not isinstance(self.name, DisplayName):
+            raise TypeError("ModuleDirectoryEntry.name requires DisplayName")
+        if not isinstance(self.purpose, Purpose):
+            raise TypeError("ModuleDirectoryEntry.purpose requires Purpose")
+        if not isinstance(self.agents, tuple) or not isinstance(self.operations, tuple):
+            raise TypeError("ModuleDirectoryEntry definitions require tuples")
+        if any(not isinstance(agent, AgentDefinition) for agent in self.agents):
+            raise TypeError("ModuleDirectoryEntry.agents accepts only AgentDefinition")
+        if any(not isinstance(operation, OperationDefinition) for operation in self.operations):
+            raise TypeError("ModuleDirectoryEntry.operations accepts only OperationDefinition")
         if not self.agents and not self.operations:
             raise ValueError("ModuleDirectoryEntry requires a reachable public definition")
         if any(agent.identity.module != self.identity for agent in self.agents):
@@ -285,6 +415,18 @@ class OperationCall:
     physical_realizers: ResponsibilitySurfaces
 
     def __post_init__(self) -> None:
+        if not isinstance(self.operation, OperationDefinition):
+            raise TypeError("OperationCall.operation requires OperationDefinition")
+        if not isinstance(self.profile, EffectProfile):
+            raise TypeError("OperationCall.profile requires EffectProfile")
+        if not isinstance(self.materials, MaterialSet):
+            raise TypeError("OperationCall.materials requires MaterialSet")
+        if self.causal_participants is not None and not isinstance(
+            self.causal_participants, ResponsibilitySurfaces
+        ):
+            raise TypeError("OperationCall.causal_participants requires ResponsibilitySurfaces")
+        if not isinstance(self.physical_realizers, ResponsibilitySurfaces):
+            raise TypeError("OperationCall.physical_realizers requires ResponsibilitySurfaces")
         if self.profile not in self.operation.effect_profiles:
             raise ValueError("OperationCall profile must belong to its Operation")
         self.operation.inputs.compose(self.materials)

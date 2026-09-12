@@ -10,7 +10,6 @@ from typing import Protocol
 
 from madre_sdk import (
     ComputationId,
-    MaterialType,
     MaterialTypeId,
     PhysicalProperties,
     ResponsibilitySurfaces,
@@ -21,6 +20,8 @@ from madre_sdk.material import MaterialSet
 
 
 def _require_text(value: str, field: str) -> None:
+    if not isinstance(value, str):
+        raise TypeError(f"{field} requires str")
     if not value or value.isspace():
         raise ValueError(f"{field} must not be blank")
 
@@ -51,6 +52,8 @@ class ResourceClaim:
     def __post_init__(self) -> None:
         if not isinstance(self.resource, ResourceId):
             raise TypeError("ResourceClaim.resource requires ResourceId")
+        if not isinstance(self.units, int) or isinstance(self.units, bool):
+            raise TypeError("ResourceClaim.units requires int")
         if self.units < 1:
             raise ValueError("ResourceClaim.units must be positive")
 
@@ -72,6 +75,8 @@ class CapabilityInputs:
     members: tuple[CapabilityInput, ...]
 
     def __post_init__(self) -> None:
+        if not isinstance(self.members, tuple):
+            raise TypeError("CapabilityInputs.members requires tuple")
         if not self.members:
             raise ValueError("CapabilityInputs requires at least one input")
         if any(not isinstance(member, CapabilityInput) for member in self.members):
@@ -100,7 +105,7 @@ class CapabilityInputs:
 class CapabilityDefinition:
     identity: CapabilityId
     computation: ComputationId
-    output_type: MaterialType[object]
+    output_type: MaterialTypeId
     inputs: CapabilityInputs
     properties: PhysicalProperties
     resources: tuple[ResourceClaim, ...] = ()
@@ -111,12 +116,20 @@ class CapabilityDefinition:
             raise TypeError("CapabilityDefinition.identity requires CapabilityId")
         if not isinstance(self.computation, ComputationId):
             raise TypeError("CapabilityDefinition.computation requires ComputationId")
-        if not isinstance(self.output_type, MaterialType):
-            raise TypeError("CapabilityDefinition.output_type requires MaterialType")
+        if not isinstance(self.output_type, MaterialTypeId):
+            raise TypeError("CapabilityDefinition.output_type requires MaterialTypeId")
         if not isinstance(self.inputs, CapabilityInputs):
             raise TypeError("CapabilityDefinition.inputs requires CapabilityInputs")
         if not isinstance(self.properties, PhysicalProperties):
             raise TypeError("CapabilityDefinition.properties requires PhysicalProperties")
+        if not isinstance(self.resources, tuple):
+            raise TypeError("CapabilityDefinition.resources requires tuple")
+        if any(not isinstance(claim, ResourceClaim) for claim in self.resources):
+            raise TypeError("CapabilityDefinition.resources accepts only ResourceClaim")
+        if self.responsibility is not None and not isinstance(
+            self.responsibility, ResponsibilitySurfaces
+        ):
+            raise TypeError("CapabilityDefinition.responsibility requires ResponsibilitySurfaces")
         resource_ids = tuple(claim.resource for claim in self.resources)
         if len(resource_ids) != len(set(resource_ids)):
             raise ValueError("CapabilityDefinition cannot repeat a ResourceClaim")
@@ -130,10 +143,20 @@ class CapabilityInvocation:
     timeout_seconds: float
 
     def __post_init__(self) -> None:
+        if not isinstance(self.computation, ComputationId):
+            raise TypeError("CapabilityInvocation.computation requires ComputationId")
+        if not isinstance(self.input_types, tuple) or not isinstance(self.payloads, tuple):
+            raise TypeError("CapabilityInvocation inputs require tuples")
+        if any(not isinstance(identity, MaterialTypeId) for identity in self.input_types):
+            raise TypeError("CapabilityInvocation.input_types accepts only MaterialTypeId")
         if not self.payloads:
             raise ValueError("CapabilityInvocation requires at least one payload")
         if len(self.input_types) != len(self.payloads):
             raise ValueError("CapabilityInvocation input types and payloads must align")
+        if not isinstance(self.timeout_seconds, (int, float)) or isinstance(
+            self.timeout_seconds, bool
+        ):
+            raise TypeError("CapabilityInvocation.timeout_seconds requires a number")
         if self.timeout_seconds <= 0:
             raise ValueError("CapabilityInvocation timeout must be positive")
 
@@ -223,7 +246,7 @@ class CapabilityRegistry:
         definition = adapter.definition
         if definition.computation != request.computation.identity:
             return False
-        if definition.output_type.identity != request.computation.output_type.identity:
+        if definition.output_type != request.computation.output_type.identity:
             return False
         request_types = {
             material.material_type.identity for material in request.materials.materials

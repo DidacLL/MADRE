@@ -6,6 +6,8 @@ from dataclasses import dataclass
 
 
 def _require_text(value: str, field: str) -> None:
+    if not isinstance(value, str):
+        raise TypeError(f"{field} requires str")
     if not value or value.isspace():
         raise ValueError(f"{field} must not be blank")
 
@@ -111,15 +113,39 @@ class MaterialTypeId:
 
 
 @dataclass(frozen=True, slots=True)
-class SurfaceId:
+class InputSurfaceId:
     module: ModuleId
     name: str
     revision: str = "1"
 
     def __post_init__(self) -> None:
-        _require_module(self.module, "SurfaceId.module")
-        _require_text(self.name, "SurfaceId.name")
-        _require_text(self.revision, "SurfaceId.revision")
+        _require_module(self.module, "InputSurfaceId.module")
+        _require_text(self.name, "InputSurfaceId.name")
+        _require_text(self.revision, "InputSurfaceId.revision")
+
+
+@dataclass(frozen=True, slots=True)
+class OutputSurfaceId:
+    module: ModuleId
+    name: str
+    revision: str = "1"
+
+    def __post_init__(self) -> None:
+        _require_module(self.module, "OutputSurfaceId.module")
+        _require_text(self.name, "OutputSurfaceId.name")
+        _require_text(self.revision, "OutputSurfaceId.revision")
+
+
+@dataclass(frozen=True, slots=True)
+class ResponsibilitySurfaceId:
+    module: ModuleId
+    name: str
+    revision: str = "1"
+
+    def __post_init__(self) -> None:
+        _require_module(self.module, "ResponsibilitySurfaceId.module")
+        _require_text(self.name, "ResponsibilitySurfaceId.name")
+        _require_text(self.revision, "ResponsibilitySurfaceId.revision")
 
 
 @dataclass(frozen=True, slots=True)

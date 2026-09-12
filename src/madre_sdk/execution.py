@@ -28,6 +28,12 @@ class PhysicalProperties:
     location: ExecutionLocation
     latency: LatencyClass
 
+    def __post_init__(self) -> None:
+        if not isinstance(self.location, ExecutionLocation):
+            raise TypeError("PhysicalProperties.location requires ExecutionLocation")
+        if not isinstance(self.latency, LatencyClass):
+            raise TypeError("PhysicalProperties.latency requires LatencyClass")
+
 
 class PhysicalRequirement(ABC):
     @abstractmethod
@@ -46,8 +52,12 @@ class LocationRequirement(PhysicalRequirement):
     allowed: frozenset[ExecutionLocation]
 
     def __post_init__(self) -> None:
+        if not isinstance(self.allowed, frozenset):
+            raise TypeError("LocationRequirement.allowed requires frozenset")
         if not self.allowed:
             raise ValueError("LocationRequirement requires at least one location")
+        if any(not isinstance(location, ExecutionLocation) for location in self.allowed):
+            raise TypeError("LocationRequirement accepts only ExecutionLocation")
 
     def matches(self, properties: PhysicalProperties) -> bool:
         return properties.location in self.allowed
@@ -56,6 +66,10 @@ class LocationRequirement(PhysicalRequirement):
 @dataclass(frozen=True, slots=True)
 class LatencyRequirement(PhysicalRequirement):
     maximum: LatencyClass
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.maximum, LatencyClass):
+            raise TypeError("LatencyRequirement.maximum requires LatencyClass")
 
     def matches(self, properties: PhysicalProperties) -> bool:
         return int(properties.latency.value) <= int(self.maximum.value)
@@ -66,8 +80,12 @@ class LocationPreference(PhysicalPreference):
     order: tuple[ExecutionLocation, ...]
 
     def __post_init__(self) -> None:
+        if not isinstance(self.order, tuple):
+            raise TypeError("LocationPreference.order requires tuple")
         if not self.order:
             raise ValueError("LocationPreference requires at least one location")
+        if any(not isinstance(location, ExecutionLocation) for location in self.order):
+            raise TypeError("LocationPreference accepts only ExecutionLocation")
         if len(self.order) != len(set(self.order)):
             raise ValueError("LocationPreference cannot repeat a location")
 
@@ -83,8 +101,12 @@ class LatencyPreference(PhysicalPreference):
     order: tuple[LatencyClass, ...]
 
     def __post_init__(self) -> None:
+        if not isinstance(self.order, tuple):
+            raise TypeError("LatencyPreference.order requires tuple")
         if not self.order:
             raise ValueError("LatencyPreference requires at least one latency class")
+        if any(not isinstance(latency, LatencyClass) for latency in self.order):
+            raise TypeError("LatencyPreference accepts only LatencyClass")
         if len(self.order) != len(set(self.order)):
             raise ValueError("LatencyPreference cannot repeat a latency class")
 
@@ -102,8 +124,16 @@ class ComputationContract[OutputT]:
     output_type: MaterialType[OutputT]
 
     def __post_init__(self) -> None:
+        if not isinstance(self.identity, ComputationId):
+            raise TypeError("ComputationContract.identity requires ComputationId")
+        if not isinstance(self.accepted_inputs, frozenset):
+            raise TypeError("ComputationContract.accepted_inputs requires frozenset")
         if not self.accepted_inputs:
             raise ValueError("ComputationContract requires at least one accepted input type")
+        if any(not isinstance(identity, MaterialTypeId) for identity in self.accepted_inputs):
+            raise TypeError("ComputationContract.accepted_inputs accepts only MaterialTypeId")
+        if not isinstance(self.output_type, MaterialType):
+            raise TypeError("ComputationContract.output_type requires MaterialType")
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,6 +142,10 @@ class WorkTiming:
     timeout: timedelta = timedelta(minutes=2)
 
     def __post_init__(self) -> None:
+        if self.not_before is not None and not isinstance(self.not_before, datetime):
+            raise TypeError("WorkTiming.not_before requires datetime")
+        if not isinstance(self.timeout, timedelta):
+            raise TypeError("WorkTiming.timeout requires timedelta")
         if self.timeout <= timedelta(0):
             raise ValueError("WorkTiming.timeout must be positive")
         if self.not_before is not None and self.not_before.tzinfo is None:
@@ -127,6 +161,8 @@ class Priority:
     value: int = 50
 
     def __post_init__(self) -> None:
+        if not isinstance(self.value, int) or isinstance(self.value, bool):
+            raise TypeError("Priority.value requires int")
         if not 0 <= self.value <= 100:
             raise ValueError("Priority.value must be between 0 and 100")
 
@@ -137,6 +173,10 @@ class PhysicalRetryPolicy:
     initial_backoff: timedelta = timedelta(0)
 
     def __post_init__(self) -> None:
+        if not isinstance(self.maximum_attempts, int) or isinstance(self.maximum_attempts, bool):
+            raise TypeError("PhysicalRetryPolicy.maximum_attempts requires int")
+        if not isinstance(self.initial_backoff, timedelta):
+            raise TypeError("PhysicalRetryPolicy.initial_backoff requires timedelta")
         if self.maximum_attempts < 1:
             raise ValueError("PhysicalRetryPolicy.maximum_attempts must be positive")
         if self.initial_backoff < timedelta(0):
@@ -155,8 +195,24 @@ class WorkRequest[OutputT]:
     retry: PhysicalRetryPolicy = PhysicalRetryPolicy()
 
     def __post_init__(self) -> None:
-        if any(material.owner != self.module for material in self.materials.materials):
-            raise ValueError("WorkRequest Material must be owned by the originating Module")
+        if not isinstance(self.module, ModuleId):
+            raise TypeError("WorkRequest.module requires ModuleId")
+        if not isinstance(self.materials, MaterialSet):
+            raise TypeError("WorkRequest.materials requires MaterialSet")
+        if not isinstance(self.computation, ComputationContract):
+            raise TypeError("WorkRequest.computation requires ComputationContract")
+        if not isinstance(self.requirements, tuple) or not isinstance(self.preferences, tuple):
+            raise TypeError("WorkRequest physical constraints require tuples")
+        if any(not isinstance(item, PhysicalRequirement) for item in self.requirements):
+            raise TypeError("WorkRequest.requirements accepts only PhysicalRequirement")
+        if any(not isinstance(item, PhysicalPreference) for item in self.preferences):
+            raise TypeError("WorkRequest.preferences accepts only PhysicalPreference")
+        if not isinstance(self.timing, WorkTiming):
+            raise TypeError("WorkRequest.timing requires WorkTiming")
+        if not isinstance(self.priority, Priority):
+            raise TypeError("WorkRequest.priority requires Priority")
+        if not isinstance(self.retry, PhysicalRetryPolicy):
+            raise TypeError("WorkRequest.retry requires PhysicalRetryPolicy")
         if any(
             material.material_type.identity not in self.computation.accepted_inputs
             for material in self.materials.materials
@@ -174,6 +230,14 @@ class PhysicalResult[OutputT]:
     attempt: int
 
     def __post_init__(self) -> None:
+        if not isinstance(self.computation, ComputationId):
+            raise TypeError("PhysicalResult.computation requires ComputationId")
+        if not isinstance(self.output_type, MaterialType):
+            raise TypeError("PhysicalResult.output_type requires MaterialType")
+        if not isinstance(self.started_at, datetime) or not isinstance(self.completed_at, datetime):
+            raise TypeError("PhysicalResult timestamps require datetime")
+        if not isinstance(self.attempt, int) or isinstance(self.attempt, bool):
+            raise TypeError("PhysicalResult.attempt requires int")
         if self.started_at.tzinfo is None or self.completed_at.tzinfo is None:
             raise ValueError("PhysicalResult timestamps must include a timezone")
         if self.completed_at < self.started_at:

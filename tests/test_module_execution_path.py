@@ -95,7 +95,7 @@ def _capability(
         CapabilityDefinition(
             identity=CapabilityId(identity),
             computation=computation.identity,
-            output_type=result_type,
+            output_type=result_type.identity,
             inputs=CapabilityInputs(
                 (
                     CapabilityInput(prompt_type.identity, privacy),
@@ -226,3 +226,23 @@ def test_no_currently_usable_capability_is_ordinary_unavailability() -> None:
 
     with pytest.raises(CapabilityUnavailable):
         asyncio.run(Kernel(registry).submit(request))
+
+
+def test_module_can_submit_material_reachable_from_another_module() -> None:
+    owner, prompt_type, _, computation = _contracts()
+    consumer = ModuleId("consumer-module")
+    shared = Material(
+        MaterialId(owner, "shared-input"),
+        prompt_type,
+        "shared",
+        Sensitivity.S3,
+    )
+
+    request = WorkRequest(
+        module=consumer,
+        materials=MaterialSet.of(shared),
+        computation=computation,
+    )
+
+    assert request.module is consumer
+    assert request.materials.materials == (shared,)

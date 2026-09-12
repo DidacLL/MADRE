@@ -15,14 +15,12 @@ latency = 1
 privacy = 4
 
 [openai_chat.inputs.material_type]
-module = "installed-chat"
+module = "example-module"
 name = "chat-request"
-media_type = "application/json"
 
 [openai_chat.output_type]
-module = "installed-chat"
+module = "example-module"
 name = "chat-response"
-media_type = "application/json"
 
 [openai_chat.adapter]
 endpoint = "http://127.0.0.1:11434/v1"

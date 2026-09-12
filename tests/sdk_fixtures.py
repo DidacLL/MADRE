@@ -8,6 +8,7 @@ from madre_sdk import (
     EffectProfile,
     EffectProfileId,
     InputSurface,
+    InputSurfaceId,
     InputSurfaces,
     MaterialType,
     MaterialTypeId,
@@ -16,6 +17,7 @@ from madre_sdk import (
     OperationDefinition,
     OperationId,
     OutputSurface,
+    OutputSurfaceId,
     OutputSurfaces,
     Privacy,
     Purpose,
@@ -24,7 +26,6 @@ from madre_sdk import (
     Sensitivity,
     SkillDefinition,
     SkillId,
-    SurfaceId,
     WorkflowDefinition,
     WorkflowId,
 )
@@ -52,14 +53,14 @@ def build_module_definition() -> ModuleDefinition:
         purpose=Purpose("Summarize owner material inside a private receiving boundary."),
         inputs=InputSurfaces.of(
             InputSurface(
-                SurfaceId(module_id, "private-summary-input"),
+                InputSurfaceId(module_id, "private-summary-input"),
                 secret_type.identity,
                 Privacy.P5,
             )
         ),
         outputs=OutputSurfaces.of(
             OutputSurface(
-                SurfaceId(module_id, "private-summary-output"),
+                OutputSurfaceId(module_id, "private-summary-output"),
                 summary_type.identity,
                 Sensitivity.S4,
             )
@@ -81,14 +82,14 @@ def build_module_definition() -> ModuleDefinition:
         purpose=Purpose("Publish only independently minimized report material."),
         inputs=InputSurfaces.of(
             InputSurface(
-                SurfaceId(module_id, "publish-minimized-input"),
+                InputSurfaceId(module_id, "publish-minimized-input"),
                 report_type.identity,
                 Privacy.P3,
             )
         ),
         outputs=OutputSurfaces.of(
             OutputSurface(
-                SurfaceId(module_id, "publish-minimized-output"),
+                OutputSurfaceId(module_id, "publish-minimized-output"),
                 report_type.identity,
                 Sensitivity.S2,
             )
@@ -108,16 +109,40 @@ def build_module_definition() -> ModuleDefinition:
         identity=skill_id,
         name=DisplayName("Summarization"),
         purpose=Purpose("Produce a concise semantic summary."),
-        inputs=local_operation.inputs,
-        outputs=local_operation.outputs,
+        inputs=InputSurfaces.of(
+            InputSurface(
+                InputSurfaceId(module_id, "summarization-input"),
+                secret_type.identity,
+                Privacy.P5,
+            )
+        ),
+        outputs=OutputSurfaces.of(
+            OutputSurface(
+                OutputSurfaceId(module_id, "summarization-output"),
+                summary_type.identity,
+                Sensitivity.S4,
+            )
+        ),
     )
     workflow_id = WorkflowId(module_id, "review-and-publish")
     workflow = WorkflowDefinition(
         identity=workflow_id,
         name=DisplayName("Review and publish"),
         purpose=Purpose("Create and publish a minimized report after owner review."),
-        inputs=publish_operation.inputs,
-        outputs=publish_operation.outputs,
+        inputs=InputSurfaces.of(
+            InputSurface(
+                InputSurfaceId(module_id, "review-and-publish-input"),
+                report_type.identity,
+                Privacy.P3,
+            )
+        ),
+        outputs=OutputSurfaces.of(
+            OutputSurface(
+                OutputSurfaceId(module_id, "review-and-publish-output"),
+                report_type.identity,
+                Sensitivity.S2,
+            )
+        ),
         skills=(skill_id,),
         operations=(publish_operation_id,),
     )
@@ -125,7 +150,13 @@ def build_module_definition() -> ModuleDefinition:
         identity=AgentId(module_id, "researcher"),
         name=DisplayName("Researcher"),
         purpose=Purpose("Help the owner prepare research material."),
-        outputs=local_operation.outputs,
+        outputs=OutputSurfaces.of(
+            OutputSurface(
+                OutputSurfaceId(module_id, "researcher-output"),
+                summary_type.identity,
+                Sensitivity.S4,
+            )
+        ),
         skills=(skill_id,),
         workflows=(workflow_id,),
         exposed_operations=(local_operation_id, publish_operation_id),
@@ -140,5 +171,11 @@ def build_module_definition() -> ModuleDefinition:
         workflows=(workflow,),
         operations=(local_operation, publish_operation),
         public_operations=(local_operation_id, publish_operation_id),
-        public_outputs=publish_operation.outputs,
+        public_outputs=OutputSurfaces.of(
+            OutputSurface(
+                OutputSurfaceId(module_id, "public-report-output"),
+                report_type.identity,
+                Sensitivity.S2,
+            )
+        ),
     )

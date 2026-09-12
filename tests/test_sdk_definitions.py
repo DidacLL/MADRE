@@ -8,6 +8,7 @@ from madre_sdk import (
     AgentDefinition,
     AgentId,
     DisplayName,
+    InputSurface,
     Material,
     MaterialId,
     MaterialSet,
@@ -15,6 +16,7 @@ from madre_sdk import (
     ModuleDefinitionJsonCodec,
     ModuleId,
     OperationId,
+    OutputSurfaceId,
     Privacy,
     Purpose,
     Sensitivity,
@@ -81,6 +83,20 @@ def test_nominal_identity_categories_and_ownership_are_constructor_invariants() 
         replace(definition, agents=(invalid_agent,))
     with pytest.raises(TypeError):
         AgentId(OperationId(definition.identity, "wrong-category"), "agent")  # type: ignore[arg-type]
+    with pytest.raises(TypeError):
+        InputSurface(
+            OutputSurfaceId(definition.identity, "wrong-surface-category"),  # type: ignore[arg-type]
+            definition.material_types[0].identity,
+            Privacy.P5,
+        )
+
+
+def test_each_exact_surface_is_owned_once_in_the_module_graph() -> None:
+    definition = build_module_definition()
+    duplicated_skill = replace(definition.skills[0], inputs=definition.operations[0].inputs)
+
+    with pytest.raises(ValueError):
+        replace(definition, skills=(duplicated_skill,))
 
 
 def test_definition_has_no_universal_behavior_protocol() -> None:

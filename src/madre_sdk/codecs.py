@@ -20,11 +20,13 @@ from madre_sdk.definitions import (
 from madre_sdk.identity import (
     AgentId,
     EffectProfileId,
+    InputSurfaceId,
     MaterialTypeId,
     ModuleId,
     OperationId,
+    OutputSurfaceId,
+    ResponsibilitySurfaceId,
     SkillId,
-    SurfaceId,
     WorkflowId,
 )
 from madre_sdk.material import MaterialType
@@ -155,7 +157,16 @@ def _module_id_from_dto(dto: _ModuleIdDto) -> ModuleId:
 
 
 def _owned_id_to_dto(
-    identity: AgentId | SkillId | WorkflowId | OperationId | MaterialTypeId | SurfaceId,
+    identity: (
+        AgentId
+        | SkillId
+        | WorkflowId
+        | OperationId
+        | MaterialTypeId
+        | InputSurfaceId
+        | OutputSurfaceId
+        | ResponsibilitySurfaceId
+    ),
 ) -> _OwnedIdDto:
     return _OwnedIdDto(
         module=_module_id_to_dto(identity.module),
@@ -184,8 +195,12 @@ def _material_type_id(dto: _OwnedIdDto) -> MaterialTypeId:
     return MaterialTypeId(_module_id_from_dto(dto.module), dto.name, dto.revision)
 
 
-def _surface_id(dto: _OwnedIdDto) -> SurfaceId:
-    return SurfaceId(_module_id_from_dto(dto.module), dto.name, dto.revision)
+def _input_surface_id(dto: _OwnedIdDto) -> InputSurfaceId:
+    return InputSurfaceId(_module_id_from_dto(dto.module), dto.name, dto.revision)
+
+
+def _output_surface_id(dto: _OwnedIdDto) -> OutputSurfaceId:
+    return OutputSurfaceId(_module_id_from_dto(dto.module), dto.name, dto.revision)
 
 
 def _input_surface_to_dto(surface: InputSurface) -> _InputSurfaceDto:
@@ -198,7 +213,7 @@ def _input_surface_to_dto(surface: InputSurface) -> _InputSurfaceDto:
 
 def _input_surface_from_dto(dto: _InputSurfaceDto) -> InputSurface:
     return InputSurface(
-        identity=_surface_id(dto.identity),
+        identity=_input_surface_id(dto.identity),
         material_type=_material_type_id(dto.material_type),
         privacy=Privacy[dto.privacy],
     )
@@ -214,7 +229,7 @@ def _output_surface_to_dto(surface: OutputSurface) -> _OutputSurfaceDto:
 
 def _output_surface_from_dto(dto: _OutputSurfaceDto) -> OutputSurface:
     return OutputSurface(
-        identity=_surface_id(dto.identity),
+        identity=_output_surface_id(dto.identity),
         material_type=_material_type_id(dto.material_type),
         sensitivity=Sensitivity[dto.sensitivity],
     )

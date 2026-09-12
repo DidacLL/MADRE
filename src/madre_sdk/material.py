@@ -19,6 +19,8 @@ class MaterialType(Generic[PayloadT_co]):  # noqa: UP046
     def __post_init__(self) -> None:
         if not isinstance(self.identity, MaterialTypeId):
             raise TypeError("MaterialType.identity requires MaterialTypeId")
+        if not isinstance(self.media_type, str):
+            raise TypeError("MaterialType.media_type requires str")
         if not self.media_type or self.media_type.isspace():
             raise ValueError("MaterialType.media_type must not be blank")
 
@@ -48,6 +50,8 @@ class MaterialSet:
     materials: tuple[Material[object], ...]
 
     def __post_init__(self) -> None:
+        if not isinstance(self.materials, tuple):
+            raise TypeError("MaterialSet.materials requires tuple")
         if not self.materials:
             raise ValueError("MaterialSet requires at least one Material")
         if any(not isinstance(material, Material) for material in self.materials):

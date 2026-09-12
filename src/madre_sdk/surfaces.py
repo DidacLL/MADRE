@@ -5,19 +5,24 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from madre_sdk.algebra import Integrity, Privacy, Sensitivity
-from madre_sdk.identity import MaterialTypeId, SurfaceId
+from madre_sdk.identity import (
+    InputSurfaceId,
+    MaterialTypeId,
+    OutputSurfaceId,
+    ResponsibilitySurfaceId,
+)
 from madre_sdk.material import MaterialSet
 
 
 @dataclass(frozen=True, slots=True)
 class InputSurface:
-    identity: SurfaceId
+    identity: InputSurfaceId
     material_type: MaterialTypeId
     privacy: Privacy
 
     def __post_init__(self) -> None:
-        if not isinstance(self.identity, SurfaceId):
-            raise TypeError("InputSurface.identity requires SurfaceId")
+        if not isinstance(self.identity, InputSurfaceId):
+            raise TypeError("InputSurface.identity requires InputSurfaceId")
         if not isinstance(self.material_type, MaterialTypeId):
             raise TypeError("InputSurface.material_type requires MaterialTypeId")
         if not isinstance(self.privacy, Privacy):
@@ -34,13 +39,13 @@ class InputSurface:
 
 @dataclass(frozen=True, slots=True)
 class OutputSurface:
-    identity: SurfaceId
+    identity: OutputSurfaceId
     material_type: MaterialTypeId
     sensitivity: Sensitivity
 
     def __post_init__(self) -> None:
-        if not isinstance(self.identity, SurfaceId):
-            raise TypeError("OutputSurface.identity requires SurfaceId")
+        if not isinstance(self.identity, OutputSurfaceId):
+            raise TypeError("OutputSurface.identity requires OutputSurfaceId")
         if not isinstance(self.material_type, MaterialTypeId):
             raise TypeError("OutputSurface.material_type requires MaterialTypeId")
         if not isinstance(self.sensitivity, Sensitivity):
@@ -49,12 +54,12 @@ class OutputSurface:
 
 @dataclass(frozen=True, slots=True)
 class ResponsibilitySurface:
-    identity: SurfaceId
+    identity: ResponsibilitySurfaceId
     integrity: Integrity
 
     def __post_init__(self) -> None:
-        if not isinstance(self.identity, SurfaceId):
-            raise TypeError("ResponsibilitySurface.identity requires SurfaceId")
+        if not isinstance(self.identity, ResponsibilitySurfaceId):
+            raise TypeError("ResponsibilitySurface.identity requires ResponsibilitySurfaceId")
         if not isinstance(self.integrity, Integrity):
             raise TypeError("ResponsibilitySurface.integrity requires Integrity")
 
@@ -64,6 +69,8 @@ class InputSurfaces:
     members: tuple[InputSurface, ...]
 
     def __post_init__(self) -> None:
+        if not isinstance(self.members, tuple):
+            raise TypeError("InputSurfaces.members requires tuple")
         if not self.members:
             raise ValueError("InputSurfaces requires at least one surface")
         if any(not isinstance(member, InputSurface) for member in self.members):
@@ -102,6 +109,8 @@ class OutputSurfaces:
     members: tuple[OutputSurface, ...]
 
     def __post_init__(self) -> None:
+        if not isinstance(self.members, tuple):
+            raise TypeError("OutputSurfaces.members requires tuple")
         if not self.members:
             raise ValueError("OutputSurfaces requires at least one surface")
         if any(not isinstance(member, OutputSurface) for member in self.members):
@@ -125,6 +134,8 @@ class ResponsibilitySurfaces:
     members: tuple[ResponsibilitySurface, ...]
 
     def __post_init__(self) -> None:
+        if not isinstance(self.members, tuple):
+            raise TypeError("ResponsibilitySurfaces.members requires tuple")
         if not self.members:
             raise ValueError("ResponsibilitySurfaces requires at least one surface")
         if any(not isinstance(member, ResponsibilitySurface) for member in self.members):

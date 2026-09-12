@@ -10,6 +10,7 @@ from madre_sdk import (
     EffectProfile,
     EffectProfileId,
     InputSurface,
+    InputSurfaceId,
     InputSurfaces,
     Integrity,
     Material,
@@ -22,14 +23,15 @@ from madre_sdk import (
     OperationDefinition,
     OperationId,
     OutputSurface,
+    OutputSurfaceId,
     OutputSurfaces,
     Privacy,
     Purpose,
     ResponsibilitySurface,
+    ResponsibilitySurfaceId,
     ResponsibilitySurfaces,
     Risk,
     Sensitivity,
-    SurfaceId,
 )
 
 
@@ -56,12 +58,12 @@ def test_information_composition_is_immutable_and_role_specific() -> None:
         Material(MaterialId(module, "secret"), text_type, "secret", Sensitivity.S5)
     )
     private_input = InputSurface(
-        SurfaceId(module, "private-input"),
+        InputSurfaceId(module, "private-input"),
         text_type.identity,
         Privacy.P5,
     )
     constrained_input = InputSurface(
-        SurfaceId(module, "constrained-input"),
+        InputSurfaceId(module, "constrained-input"),
         text_type.identity,
         Privacy.P3,
     )
@@ -80,12 +82,12 @@ def test_privacy_is_explicit_and_independent_of_physical_location() -> None:
     module = ModuleId("explicit-privacy")
     content = MaterialType[str](MaterialTypeId(module, "content"), "text/plain")
     remote_owner_controlled = InputSurface(
-        SurfaceId(module, "remote-owner-controlled"),
+        InputSurfaceId(module, "remote-owner-controlled"),
         content.identity,
         Privacy.P4,
     )
     local_public_relay = InputSurface(
-        SurfaceId(module, "local-public-relay"),
+        InputSurfaceId(module, "local-public-relay"),
         content.identity,
         Privacy.PUBLIC,
     )
@@ -114,11 +116,11 @@ def test_operation_call_uses_only_its_profile_and_actual_responsibilities() -> N
         DisplayName("Write"),
         Purpose("Write one bounded output."),
         InputSurfaces.of(
-            InputSurface(SurfaceId(module, "write-input"), content.identity, Privacy.P5)
+            InputSurface(InputSurfaceId(module, "write-input"), content.identity, Privacy.P5)
         ),
         OutputSurfaces.of(
             OutputSurface(
-                SurfaceId(module, "write-output"),
+                OutputSurfaceId(module, "write-output"),
                 content.identity,
                 Sensitivity.S2,
             )
@@ -129,13 +131,13 @@ def test_operation_call_uses_only_its_profile_and_actual_responsibilities() -> N
         Material(MaterialId(module, "input"), content, "value", Sensitivity.S2)
     )
     strong_realizer = ResponsibilitySurfaces.of(
-        ResponsibilitySurface(SurfaceId(module, "strong-realizer"), Integrity.I5)
+        ResponsibilitySurface(ResponsibilitySurfaceId(module, "strong-realizer"), Integrity.I5)
     )
     weak_realizer = ResponsibilitySurfaces.of(
-        ResponsibilitySurface(SurfaceId(module, "weak-realizer"), Integrity.I1)
+        ResponsibilitySurface(ResponsibilitySurfaceId(module, "weak-realizer"), Integrity.I1)
     )
     weak_cause = ResponsibilitySurfaces.of(
-        ResponsibilitySurface(SurfaceId(module, "weak-cause"), Integrity.I1)
+        ResponsibilitySurface(ResponsibilitySurfaceId(module, "weak-cause"), Integrity.I1)
     )
 
     call = OperationCall(operation, owner_profile, materials, None, strong_realizer)
@@ -156,7 +158,7 @@ def test_autonomy_does_not_change_information_reach() -> None:
         Material(MaterialId(module, "secret"), content, "secret", Sensitivity.S5)
     )
     third_party = InputSurface(
-        SurfaceId(module, "third-party"),
+        InputSurfaceId(module, "third-party"),
         content.identity,
         Privacy.UNKNOWN,
     )

@@ -33,14 +33,13 @@ class Sensitivity(_OrderedCarrier):
 
 
 class Privacy(_OrderedCarrier):
+    PUBLIC = 1
+    UNKNOWN = 2
     P1 = 1
     P2 = 2
     P3 = 3
     P4 = 4
     P5 = 5
-
-    PUBLIC = 1
-    UNKNOWN = 2
 
 
 class Integrity(_OrderedCarrier):
