@@ -20,8 +20,7 @@ from madre.capabilities import (
 )
 from madre.storage import WorkQueueStore, utc_now
 from madre.work import WorkFailure, WorkId, WorkRecord, WorkStatus
-from madre.work_codec import PhysicalResultJsonCodec, WorkRequestJsonCodec
-from madre_sdk import PhysicalResult, WorkRequest
+from madre_sdk import PhysicalResult, PhysicalResultJsonCodec, WorkRequest, WorkRequestJsonCodec
 
 
 class IdempotencyConflict(RuntimeError):
@@ -51,19 +50,19 @@ class Kernel:
         request_codec: WorkRequestJsonCodec | None = None,
         result_codec: PhysicalResultJsonCodec | None = None,
     ) -> None:
-        self.capabilities = capabilities
-        self.store = store
-        self.resources = resources or CapacityResourceCoordinator()
+        self._capabilities = capabilities
+        self._store = store
+        self._resources = resources or CapacityResourceCoordinator()
         self._clock = clock or utc_now
         self._request_codec = request_codec or WorkRequestJsonCodec()
         self._result_codec = result_codec or PhysicalResultJsonCodec()
         self._schedule_changed = asyncio.Event()
-        if self.store is not None:
-            self.store.recover_interrupted(self._clock())
+        if self._store is not None:
+            self._store.recover_interrupted(self._clock())
 
     async def submit[OutputT](self, request: WorkRequest[OutputT]) -> PhysicalResult[OutputT]:
         physical_request = cast(WorkRequest[object], request)
-        adapter = self.capabilities.select(physical_request)
+        adapter = self._capabilities.select(physical_request)
         result = await self._invoke(adapter, physical_request, attempt=1)
         return cast(PhysicalResult[OutputT], result)
 
@@ -151,7 +150,7 @@ class Kernel:
         if request is None:
             raise RuntimeError("queued work has no opaque request snapshot")
         try:
-            adapter = self.capabilities.select(request)
+            adapter = self._capabilities.select(request)
         except CapabilityUnavailable:
             store.defer_unavailable(identity, self._clock())
             return False
@@ -178,7 +177,7 @@ class Kernel:
         invocation = CapabilityInvocation.from_request(request)
         started_at = datetime.now(UTC)
         try:
-            async with self.resources.reserve(adapter.definition.resources):
+            async with self._resources.reserve(adapter.definition.resources):
                 output = await adapter.invoke(invocation)
         except CapabilityError:
             raise
@@ -209,6 +208,6 @@ class Kernel:
         return record
 
     def _require_store(self) -> WorkQueueStore:
-        if self.store is None:
+        if self._store is None:
             raise RuntimeError("durable work requires WorkQueueStore")
-        return self.store
+        return self._store

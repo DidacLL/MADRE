@@ -22,8 +22,14 @@ from madre.runtime import (
 )
 from madre.storage import WorkQueueStore, open_database
 from madre.work import WorkAttempt, WorkId, WorkRecord
-from madre.work_codec import MaterialSetJsonCodec, PhysicalResultJsonCodec, WorkRequestJsonCodec
-from madre_sdk import ModuleDefinitionJsonCodec, ModuleDirectoryJsonCodec, ModuleId
+from madre_sdk import (
+    MaterialSetJsonCodec,
+    ModuleDefinitionJsonCodec,
+    ModuleDirectoryJsonCodec,
+    ModuleId,
+    PhysicalResultJsonCodec,
+    WorkRequestJsonCodec,
+)
 
 
 class _WireModel(BaseModel):

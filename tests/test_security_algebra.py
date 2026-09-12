@@ -149,7 +149,7 @@ def test_operation_call_uses_only_its_profile_and_actual_responsibilities() -> N
     assert independent.profile.causal_demand == 2
 
 
-def test_live_user_profile_does_not_change_information_composition() -> None:
+def test_autonomy_does_not_change_information_reach() -> None:
     module = ModuleId("user-action")
     content = MaterialType[str](MaterialTypeId(module, "content"), "text/plain")
     secret = MaterialSet.of(

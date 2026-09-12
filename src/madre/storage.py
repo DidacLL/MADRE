@@ -21,8 +21,7 @@ from madre.work import (
     WorkRecord,
     WorkStatus,
 )
-from madre.work_codec import WorkRequestJsonCodec
-from madre_sdk import ComputationId, ModuleId, WorkRequest
+from madre_sdk import ComputationId, ModuleId, WorkRequest, WorkRequestJsonCodec
 
 _STORAGE_DDL = """
 CREATE TABLE runtime_work (
@@ -131,8 +130,8 @@ class WorkQueueStore:
         connection: sqlite3.Connection,
         request_codec: WorkRequestJsonCodec | None = None,
     ) -> None:
-        self.connection = connection
-        self.request_codec = request_codec or WorkRequestJsonCodec()
+        self._connection = connection
+        self._request_codec = request_codec or WorkRequestJsonCodec()
 
     def create(
         self,
@@ -144,9 +143,9 @@ class WorkQueueStore:
         idempotency_key: str | None,
     ) -> bool:
         try:
-            with self.connection:
+            with self._connection:
                 sequence = self._take_sequence()
-                self.connection.execute(
+                self._connection.execute(
                     """
                     INSERT INTO runtime_work(
                         id,module_name,module_revision,computation_namespace,
@@ -184,7 +183,7 @@ class WorkQueueStore:
         module: ModuleId,
         key: str,
     ) -> tuple[WorkRecord, str] | None:
-        row = self.connection.execute(
+        row = self._connection.execute(
             """SELECT id,request_digest FROM runtime_work
                WHERE module_name=? AND module_revision=? AND idempotency_key=?""",
             (module.name, module.revision, key),
@@ -196,7 +195,7 @@ class WorkQueueStore:
         return record, str(row["request_digest"])
 
     def get(self, identity: WorkId) -> WorkRecord | None:
-        row = self.connection.execute(
+        row = self._connection.execute(
             "SELECT * FROM runtime_work WHERE id=?",
             (identity.value,),
         ).fetchone()
@@ -232,16 +231,16 @@ class WorkQueueStore:
         )
 
     def load_request(self, identity: WorkId) -> WorkRequest[object] | None:
-        row = self.connection.execute(
+        row = self._connection.execute(
             "SELECT request_json FROM runtime_work WHERE id=?",
             (identity.value,),
         ).fetchone()
         if row is None or row["request_json"] is None:
             return None
-        return self.request_codec.decode(str(row["request_json"]))
+        return self._request_codec.decode(str(row["request_json"]))
 
     def next_eligible(self, now: datetime) -> WorkId | None:
-        row = self.connection.execute(
+        row = self._connection.execute(
             """
             SELECT id FROM runtime_work
             WHERE status='queued' AND (not_before IS NULL OR not_before<=?)
@@ -253,7 +252,7 @@ class WorkQueueStore:
         return WorkId(str(row["id"])) if row is not None else None
 
     def next_eligibility(self) -> datetime | None:
-        row = self.connection.execute(
+        row = self._connection.execute(
             """SELECT MIN(not_before) AS next_time FROM runtime_work
                WHERE status='queued' AND not_before IS NOT NULL"""
         ).fetchone()
@@ -262,15 +261,15 @@ class WorkQueueStore:
         )
 
     def defer_unavailable(self, identity: WorkId, now: datetime) -> None:
-        row = self.connection.execute(
+        row = self._connection.execute(
             "SELECT backoff_seconds FROM runtime_work WHERE id=? AND status='queued'",
             (identity.value,),
         ).fetchone()
         if row is None:
             return
         delay = max(float(row["backoff_seconds"]), 1.0)
-        with self.connection:
-            self.connection.execute(
+        with self._connection:
+            self._connection.execute(
                 "UPDATE runtime_work SET not_before=? WHERE id=? AND status='queued'",
                 ((now + timedelta(seconds=delay)).isoformat(), identity.value),
             )
@@ -281,19 +280,19 @@ class WorkQueueStore:
         capability: CapabilityId,
         started_at: datetime,
     ) -> int | None:
-        with self.connection:
-            updated = self.connection.execute(
+        with self._connection:
+            updated = self._connection.execute(
                 "UPDATE runtime_work SET status='running' WHERE id=? AND status='queued'",
                 (identity.value,),
             )
             if updated.rowcount != 1:
                 return None
-            row = self.connection.execute(
+            row = self._connection.execute(
                 "SELECT COALESCE(MAX(number),0)+1 AS number FROM runtime_attempt WHERE work_id=?",
                 (identity.value,),
             ).fetchone()
             number = int(row["number"])
-            self.connection.execute(
+            self._connection.execute(
                 """INSERT INTO runtime_attempt(
                        work_id,number,status,started_at,capability_name,capability_revision
                    ) VALUES (?,?,'running',?,?,?)""",
@@ -314,14 +313,14 @@ class WorkQueueStore:
         encoded_result: str,
         completed_at: datetime,
     ) -> None:
-        with self.connection:
-            self.connection.execute(
+        with self._connection:
+            self._connection.execute(
                 """UPDATE runtime_attempt
                    SET status='succeeded',completed_at=?,error_code=NULL
                    WHERE work_id=? AND number=?""",
                 (completed_at.isoformat(), identity.value, attempt),
             )
-            self.connection.execute(
+            self._connection.execute(
                 """UPDATE runtime_work
                    SET status='succeeded',completed_at=?,error_code=NULL,
                        request_json=NULL,result_json=?,delivery_status='pending'
@@ -336,14 +335,14 @@ class WorkQueueStore:
         failure: WorkFailure,
         completed_at: datetime,
     ) -> None:
-        with self.connection:
-            self.connection.execute(
+        with self._connection:
+            self._connection.execute(
                 """UPDATE runtime_attempt
                    SET status='failed',completed_at=?,error_code=?
                    WHERE work_id=? AND number=?""",
                 (completed_at.isoformat(), failure.code, identity.value, attempt),
             )
-            row = self.connection.execute(
+            row = self._connection.execute(
                 """SELECT maximum_attempts,backoff_seconds
                    FROM runtime_work WHERE id=?""",
                 (identity.value,),
@@ -352,22 +351,22 @@ class WorkQueueStore:
             if retry:
                 not_before = completed_at + timedelta(seconds=float(row["backoff_seconds"]))
                 sequence = self._take_sequence()
-                self.connection.execute(
+                self._connection.execute(
                     """UPDATE runtime_work
                        SET status='queued',not_before=?,queue_sequence=?,error_code=?
                        WHERE id=?""",
                     (not_before.isoformat(), sequence, failure.code, identity.value),
                 )
             else:
-                self.connection.execute(
+                self._connection.execute(
                     """UPDATE runtime_work
                        SET status='failed',completed_at=?,error_code=? WHERE id=?""",
                     (completed_at.isoformat(), failure.code, identity.value),
                 )
 
     def cancel(self, identity: WorkId, cancelled_at: datetime) -> bool:
-        with self.connection:
-            updated = self.connection.execute(
+        with self._connection:
+            updated = self._connection.execute(
                 """UPDATE runtime_work
                    SET status='cancelled',completed_at=?,request_json=NULL
                    WHERE id=? AND status='queued'""",
@@ -376,8 +375,8 @@ class WorkQueueStore:
             return updated.rowcount == 1
 
     def consume_result(self, identity: WorkId) -> str | None:
-        with self.connection:
-            row = self.connection.execute(
+        with self._connection:
+            row = self._connection.execute(
                 """SELECT result_json FROM runtime_work
                    WHERE id=? AND delivery_status='pending'""",
                 (identity.value,),
@@ -385,7 +384,7 @@ class WorkQueueStore:
             if row is None or row["result_json"] is None:
                 return None
             encoded = str(row["result_json"])
-            self.connection.execute(
+            self._connection.execute(
                 """UPDATE runtime_work
                    SET result_json=NULL,delivery_status='delivered' WHERE id=?""",
                 (identity.value,),
@@ -393,13 +392,13 @@ class WorkQueueStore:
             return encoded
 
     def recover_interrupted(self, now: datetime) -> int:
-        rows = self.connection.execute(
+        rows = self._connection.execute(
             "SELECT id FROM runtime_work WHERE status='running'"
         ).fetchall()
         recovered = 0
         for row in rows:
             identity = WorkId(str(row["id"]))
-            attempt = self.connection.execute(
+            attempt = self._connection.execute(
                 """SELECT number FROM runtime_attempt
                    WHERE work_id=? AND status='running' ORDER BY number DESC LIMIT 1""",
                 (identity.value,),
@@ -411,8 +410,8 @@ class WorkQueueStore:
         return recovered
 
     def cleanup_failed_inputs(self, completed_before: datetime) -> int:
-        with self.connection:
-            updated = self.connection.execute(
+        with self._connection:
+            updated = self._connection.execute(
                 """UPDATE runtime_work SET request_json=NULL
                    WHERE status='failed' AND completed_at<? AND request_json IS NOT NULL""",
                 (completed_before.isoformat(),),
@@ -420,13 +419,13 @@ class WorkQueueStore:
             return updated.rowcount
 
     def table_names(self) -> tuple[str, ...]:
-        rows = self.connection.execute(
+        rows = self._connection.execute(
             "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
         ).fetchall()
         return tuple(str(row["name"]) for row in rows)
 
     def _attempts(self, identity: WorkId) -> tuple[WorkAttempt, ...]:
-        rows = self.connection.execute(
+        rows = self._connection.execute(
             "SELECT * FROM runtime_attempt WHERE work_id=? ORDER BY number",
             (identity.value,),
         ).fetchall()
@@ -450,11 +449,11 @@ class WorkQueueStore:
         )
 
     def _take_sequence(self) -> int:
-        row = self.connection.execute(
+        row = self._connection.execute(
             "SELECT next_queue_sequence FROM runtime_scheduler_state WHERE singleton=1"
         ).fetchone()
         sequence = int(row["next_queue_sequence"])
-        self.connection.execute(
+        self._connection.execute(
             """UPDATE runtime_scheduler_state
                SET next_queue_sequence=? WHERE singleton=1""",
             (sequence + 1,),

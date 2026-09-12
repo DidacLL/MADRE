@@ -200,7 +200,6 @@ def test_noncomposing_capability_is_absent_and_never_invoked() -> None:
 
     assert result.output == "private-result"
     assert invoked == []
-    assert not hasattr(registry, "rejections")
 
 
 def test_no_currently_usable_capability_is_ordinary_unavailability() -> None:

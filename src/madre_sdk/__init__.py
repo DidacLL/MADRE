@@ -54,6 +54,11 @@ from madre_sdk.surfaces import (
     ResponsibilitySurface,
     ResponsibilitySurfaces,
 )
+from madre_sdk.work_codecs import (
+    MaterialSetJsonCodec,
+    PhysicalResultJsonCodec,
+    WorkRequestJsonCodec,
+)
 
 __all__ = [
     "AgentDefinition",
@@ -77,6 +82,7 @@ __all__ = [
     "Material",
     "MaterialId",
     "MaterialSet",
+    "MaterialSetJsonCodec",
     "MaterialType",
     "MaterialTypeId",
     "ModuleDefinition",
@@ -95,6 +101,7 @@ __all__ = [
     "PhysicalProperties",
     "PhysicalRequirement",
     "PhysicalResult",
+    "PhysicalResultJsonCodec",
     "PhysicalRetryPolicy",
     "Priority",
     "Privacy",
@@ -110,5 +117,6 @@ __all__ = [
     "WorkflowDefinition",
     "WorkflowId",
     "WorkRequest",
+    "WorkRequestJsonCodec",
     "WorkTiming",
 ]

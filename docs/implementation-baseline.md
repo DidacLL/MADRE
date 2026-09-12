@@ -1,76 +1,91 @@
 # Implementation Baseline
 
-This branch is replacing a development-only runtime whose public contracts diverged
-from `MADRE.md`. The architecture files describe the replacement boundary; executable
-claims belong here only after the corresponding slice is implemented and verified.
+This document records executable behavior on the current branch. Product meaning and
+ownership remain defined by `MADRE.md`.
 
-## Verified foundation inherited from the target branch
+## Public Module SDK
 
-The repository has a Python package managed by `uv`, a FastAPI process boundary,
-SQLite-backed durable work mechanics, and an OpenAI-compatible physical adapter.
-These concrete dependencies may remain where they continue to serve the corrected
-ownership model.
+`madre_sdk` provides immutable, slotted domain objects with constructor-owned
+invariants:
 
-## Replacement sequence
-
-1. Rebuild the public SDK around nominal immutable identities, role-specific algebra
-   values, Material, Module definitions, bounded Operations, and explicit codecs.
-2. Rebuild physical work so Modules submit Material opaquely and receive raw
-   `PhysicalResult`, while installed Capability definitions remain Kernel-private.
-3. Recreate durable queue storage around opaque input and pending-output snapshots;
-   retain physical scheduling, cancellation, retry, and attempt telemetry.
-4. Replace stored Module definitions with a live registry and exact public-surface
-   reachability.
-5. Remove the development demonstration package and prove the complete path with a
-   private integration fixture.
-
-Until each slice is recorded below, the older implementation and its tests are only
-divergence evidence and must not be treated as the current contract.
-
-## Executable behavior recorded after replacement
-
-The public `madre_sdk` package now provides:
-
-- nominal immutable identities for Modules and every Module-owned definition;
-- five non-interchangeable ordered carriers;
-- role-specific input, output, and responsibility surfaces with direct immutable
-  composition;
+- nominal identities for Modules and each Module-owned definition;
+- distinct Sensitivity, Privacy, Integrity, Risk, and Autonomy carriers;
+- role-specific input, output, and responsibility surfaces;
 - typed independent Material and nonempty Material sets;
 - canonical Module, Agent, Skill, Workflow, Operation, and EffectProfile definitions;
-- bounded Operation-call construction from one exact profile and actual participants;
-- typed physical work requests and raw physical results without Capability identity;
-- a versioned JSON codec separate from the domain inheritance model;
-- narrow physical execution, Operation implementation, and Module-directory ports.
+- bounded Operation-call construction from one profile and its actual participants;
+- typed physical work requests and raw physical results;
+- versioned JSON codecs for definitions, directory entries, Material sets, work
+  requests, and physical results;
+- narrow execution, Operation-implementation, and Module-directory ports.
 
-Kernel's immediate physical path now uses that SDK:
+Definitions contain structure but no executable behavior. Pydantic is used only by
+private wire and installation DTOs, not as the public domain inheritance model.
 
-- installed Capability identities and definitions remain in the Kernel extension
-  package and never enter `WorkRequest` or `PhysicalResult`;
-- Capability inputs own their explicit Privacy independently of physical location;
-- registry selection first requires computation and Material contracts, then direct
-  immutable value composition, physical requirements, availability, and preferences;
-- resource coordination operates on typed resource claims rather than mechanism or
-  locality cases;
-- Kernel forwards payloads through a typed physical invocation and returns raw
-  `PhysicalResult` without constructing Material;
-- a private fixture Module interprets a first result, constructs independent Material,
-  and makes a second ordinary work request as its own continuation.
+## Kernel physical execution
 
-Durable physical work and Module discovery now use the same boundary:
+Installed Capability identities, definitions, and adapter bindings belong to the
+`madre` Kernel package. A Module supplies a computation contract, its actual Material,
+and typed physical requirements and preferences. It does not supply or receive a
+Capability identity.
 
-- SQLite stores an opaque versioned input snapshot until execution and a raw pending
-  physical result until delivery;
-- queued input and pending output survive process restart, while Kernel never creates
-  Material;
-- selected physical attempts record only the mechanism actually used;
-- physical failure follows the request's attempt policy, while current Capability
-  unavailability remains queued without recording a rejected participant;
-- cancellation and delivery remove their payload bytes, and failed input has an
-  explicit cleanup operation;
-- the SQLite schema contains only work, attempt, and scheduler tables;
-- running Module definitions live only in `ModuleRegistry`, which starts empty and
-  returns exact reachable public Agent and Operation definitions.
+The live Capability registry considers computation and Material contracts, direct
+composition of carried Sensitivity with explicitly installed receiving Privacy,
+current availability, typed physical properties, and request preferences. Resource
+coordination operates on typed resource claims. Kernel forwards payloads opaquely and
+returns `PhysicalResult`; it never creates Material.
 
-Focused SDK, immediate execution, restart, retry, delivery, schema, and registry
-tests, Ruff, and strict type checking pass. HTTP transport, installation mapping, and
-the OpenAI-compatible adapter still target superseded contracts at this checkpoint.
+The OpenAI-compatible adapter is one private physical protocol boundary. Installation
+supplies its endpoint, model, Material contracts, physical properties, resources, and
+Privacy explicitly. Submitted payload cannot override the installed model or streaming
+mode. Connection mechanics are injected into the adapter and are not MADRE domain
+objects.
+
+## Durable physical work
+
+Immediate and queued work share Kernel's physical invocation path. SQLite stores only:
+
+- opaque queued request snapshots needed across restart;
+- scheduling state and physical attempt telemetry;
+- raw physical results pending delivery.
+
+Queued input and pending output survive restart. Successful execution removes the
+queued input; delivery removes the raw output; cancellation removes queued input; and
+failed input has explicit lifecycle cleanup. Capability unavailability defers queued
+work without starting an attempt. Physical interruption or mechanism failure follows
+the request's physical attempt policy.
+
+The development database format is recreated when its schema fingerprint changes.
+There is no installed-base compatibility or migration path.
+
+## Live Module directory
+
+Running Modules register their immutable definitions in an in-memory registry. The
+registry begins empty after restart and returns only the public Agent and Operation
+definitions whose exact input surfaces can receive the caller's current Material.
+Module definitions are not written to SQLite.
+
+The local FastAPI boundary exposes registration, removal, reachability, immediate
+execution, durable submission, inspection, cancellation, and physical-result delivery
+using the same explicit codecs.
+
+## Exercised behavior
+
+Focused tests establish:
+
+- carrier aggregation, typed separation, independent Material adaptation, and bounded
+  Operation construction;
+- structural Module Sensitivity and Agent Privacy;
+- full declarative definition JSON round-trip;
+- a private fixture Module making a first request, interpreting the raw result,
+  constructing new Material, and making its own second request;
+- Capability selection by actual contracts and carried values without Module knowledge
+  of the installed mechanism;
+- restart survival, physical retry, output delivery, cleanup, and the work-only SQLite
+  schema;
+- live Module registration and exact reachable-surface filtering, including through
+  HTTP;
+- explicit installation Privacy and adapter-owned request properties.
+
+The repository ships no Module or default interaction implementation. The executable
+Module path is exercised only by a private integration fixture using the public SDK.

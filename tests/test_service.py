@@ -6,8 +6,14 @@ from fastapi.testclient import TestClient
 
 from madre.config import Settings
 from madre.service import create_app
-from madre.work_codec import MaterialSetJsonCodec
-from madre_sdk import Material, MaterialId, MaterialSet, ModuleDefinitionJsonCodec, Sensitivity
+from madre_sdk import (
+    Material,
+    MaterialId,
+    MaterialSet,
+    MaterialSetJsonCodec,
+    ModuleDefinitionJsonCodec,
+    Sensitivity,
+)
 from tests.sdk_fixtures import build_module_definition
 
 

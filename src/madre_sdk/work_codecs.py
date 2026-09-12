@@ -1,4 +1,4 @@
-"""Versioned queue codecs for opaque physical work snapshots."""
+"""Versioned JSON boundary codecs for Module physical-work values."""
 
 from __future__ import annotations
 
@@ -6,28 +6,23 @@ from datetime import datetime, timedelta
 
 from pydantic import BaseModel, ConfigDict, JsonValue, TypeAdapter
 
-from madre_sdk import (
+from madre_sdk.algebra import Sensitivity
+from madre_sdk.execution import (
     ComputationContract,
-    ComputationId,
     ExecutionLocation,
     LatencyClass,
     LatencyPreference,
     LatencyRequirement,
     LocationPreference,
     LocationRequirement,
-    Material,
-    MaterialId,
-    MaterialSet,
-    MaterialType,
-    MaterialTypeId,
-    ModuleId,
     PhysicalResult,
     PhysicalRetryPolicy,
     Priority,
-    Sensitivity,
     WorkRequest,
     WorkTiming,
 )
+from madre_sdk.identity import ComputationId, MaterialId, MaterialTypeId, ModuleId
+from madre_sdk.material import Material, MaterialSet, MaterialType
 
 
 class _WireModel(BaseModel):
