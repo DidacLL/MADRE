@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from madre_sdk.definitions import ModuleDefinition, OperationCall
+from madre_sdk.definitions import ModuleDirectoryEntry, OperationCall
 from madre_sdk.execution import PhysicalResult, WorkRequest
 from madre_sdk.material import Material, MaterialSet
 
@@ -18,4 +18,4 @@ class OperationImplementation[OutputT](Protocol):
 
 
 class ModuleDirectory(Protocol):
-    async def reachable(self, materials: MaterialSet) -> tuple[ModuleDefinition, ...]: ...
+    async def reachable(self, materials: MaterialSet) -> tuple[ModuleDirectoryEntry, ...]: ...

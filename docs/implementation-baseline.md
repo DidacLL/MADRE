@@ -56,6 +56,21 @@ Kernel's immediate physical path now uses that SDK:
 - a private fixture Module interprets a first result, constructs independent Material,
   and makes a second ordinary work request as its own continuation.
 
-Focused SDK and immediate-Kernel tests, Ruff, and strict type checking pass. Durable
-storage, HTTP transport, the live Module registry, and the existing adapter still
-target superseded contracts at this checkpoint and are the next replacement slices.
+Durable physical work and Module discovery now use the same boundary:
+
+- SQLite stores an opaque versioned input snapshot until execution and a raw pending
+  physical result until delivery;
+- queued input and pending output survive process restart, while Kernel never creates
+  Material;
+- selected physical attempts record only the mechanism actually used;
+- physical failure follows the request's attempt policy, while current Capability
+  unavailability remains queued without recording a rejected participant;
+- cancellation and delivery remove their payload bytes, and failed input has an
+  explicit cleanup operation;
+- the SQLite schema contains only work, attempt, and scheduler tables;
+- running Module definitions live only in `ModuleRegistry`, which starts empty and
+  returns exact reachable public Agent and Operation definitions.
+
+Focused SDK, immediate execution, restart, retry, delivery, schema, and registry
+tests, Ruff, and strict type checking pass. HTTP transport, installation mapping, and
+the OpenAI-compatible adapter still target superseded contracts at this checkpoint.

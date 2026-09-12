@@ -147,6 +147,7 @@ class ModuleDefinition:
     skills: tuple[SkillDefinition, ...] = ()
     workflows: tuple[WorkflowDefinition, ...] = ()
     operations: tuple[OperationDefinition, ...] = ()
+    public_operations: tuple[OperationId, ...] = ()
     public_outputs: OutputSurfaces | None = None
 
     def __post_init__(self) -> None:
@@ -164,6 +165,7 @@ class ModuleDefinition:
             tuple(operation.identity for operation in self.operations),
             "Module Operation identities",
         )
+        _require_unique(self.public_operations, "Module public Operation identities")
         self._require_ownership()
         self._require_references()
         self._require_surfaces()
@@ -186,6 +188,8 @@ class ModuleDefinition:
         skill_ids = {skill.identity for skill in self.skills}
         workflow_ids = {workflow.identity for workflow in self.workflows}
         operation_ids = {operation.identity for operation in self.operations}
+        if not set(self.public_operations).issubset(operation_ids):
+            raise ValueError("Module publishes an unknown Operation")
         for workflow in self.workflows:
             if not set(workflow.skills).issubset(skill_ids):
                 raise ValueError("Workflow references an unknown Skill")
@@ -253,6 +257,23 @@ class ModuleDefinition:
             raise ValueError("Agent exposes no Privacy-bearing input surface")
         first, *rest = (surface.privacy for surface in surfaces)
         return Privacy.minimum(first, *rest)
+
+
+@dataclass(frozen=True, slots=True)
+class ModuleDirectoryEntry:
+    identity: ModuleId
+    name: DisplayName
+    purpose: Purpose
+    agents: tuple[AgentDefinition, ...]
+    operations: tuple[OperationDefinition, ...]
+
+    def __post_init__(self) -> None:
+        if not self.agents and not self.operations:
+            raise ValueError("ModuleDirectoryEntry requires a reachable public definition")
+        if any(agent.identity.module != self.identity for agent in self.agents):
+            raise ValueError("Directory Agent must belong to its Module")
+        if any(operation.identity.module != self.identity for operation in self.operations):
+            raise ValueError("Directory Operation must belong to its Module")
 
 
 @dataclass(frozen=True, slots=True)

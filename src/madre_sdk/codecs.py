@@ -128,6 +128,7 @@ class _ModuleDefinitionDto(_WireModel):
     skills: tuple[_SkillDto, ...]
     workflows: tuple[_WorkflowDto, ...]
     operations: tuple[_OperationDto, ...]
+    public_operations: tuple[_OwnedIdDto, ...]
     public_outputs: tuple[_OutputSurfaceDto, ...] | None
 
 
@@ -361,6 +362,9 @@ class ModuleDefinitionJsonCodec:
             skills=tuple(_skill_to_dto(skill) for skill in definition.skills),
             workflows=tuple(_workflow_to_dto(workflow) for workflow in definition.workflows),
             operations=tuple(_operation_to_dto(operation) for operation in definition.operations),
+            public_operations=tuple(
+                _owned_id_to_dto(identity) for identity in definition.public_operations
+            ),
             public_outputs=(
                 None
                 if definition.public_outputs is None
@@ -388,6 +392,7 @@ class ModuleDefinitionJsonCodec:
             skills=tuple(_skill_from_dto(skill) for skill in dto.skills),
             workflows=tuple(_workflow_from_dto(workflow) for workflow in dto.workflows),
             operations=tuple(_operation_from_dto(operation) for operation in dto.operations),
+            public_operations=tuple(_operation_id(identity) for identity in dto.public_operations),
             public_outputs=(
                 None if dto.public_outputs is None else _outputs_from_dto(dto.public_outputs)
             ),

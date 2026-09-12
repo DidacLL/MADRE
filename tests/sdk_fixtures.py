@@ -139,5 +139,6 @@ def build_module_definition() -> ModuleDefinition:
         skills=(skill,),
         workflows=(workflow,),
         operations=(local_operation, publish_operation),
+        public_operations=(local_operation_id, publish_operation_id),
         public_outputs=publish_operation.outputs,
     )

@@ -1,208 +1,166 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-import pytest
-
-from madre import CapabilityRegistry, FunctionCapability, Kernel
-from madre.catalog import ModuleCatalog
-from madre.contracts import RetryDisposition, WorkRetryRequest, WorkSubmission
-from madre.runtime import RetryConflict
-from madre.storage import PlatformStore, open_database
+from madre import CapabilityError, CapabilityRegistry, Kernel
+from madre.storage import WorkQueueStore, open_database
+from madre.work import DeliveryStatus, WorkStatus
 from madre_sdk import (
-    CapabilityDefinition,
-    CapabilityProperties,
-    CapabilityQuery,
-    ExecutionBoundary,
-    IdentityKind,
+    ExecutionLocation,
     Material,
-    MaterialContract,
-    MaterialRepository,
-    MaterialSpecification,
-    ModuleDefinition,
+    MaterialId,
+    MaterialSet,
+    PhysicalResult,
+    PhysicalRetryPolicy,
     Privacy,
-    ScopeIdentity,
-    SecurityScope,
-    SecuritySurface,
     Sensitivity,
+    WorkRequest,
 )
+from tests.test_module_execution_path import _capability, _contracts
 
 
-def identifier(
-    owner: str,
-    name: str,
-    kind: IdentityKind = IdentityKind.SURFACE,
-) -> ScopeIdentity:
-    return ScopeIdentity(kind=kind, owner=owner, name=name)
-
-
-def test_durable_work_persists_only_reference_and_execution_metadata(tmp_path: Path) -> None:
-    module = identifier("module", "module", IdentityKind.MODULE)
-    specialization = identifier("madre.execution", "inference", IdentityKind.SPECIALIZATION)
-    modality = identifier("madre.execution", "json", IdentityKind.MODALITY)
-    contract = MaterialContract(
-        identity=identifier("module", "contract", IdentityKind.MATERIAL_CONTRACT),
-        media_type="application/json",
-    )
-    source_identity = identifier("module", "source", IdentityKind.MATERIAL)
-    source = Material[dict[str, str]](
-        identity=source_identity,
-        contract=contract,
-        payload={"request": "execute"},
-        security=SecurityScope(
-            identity=source_identity,
-            sensitivity=Sensitivity.S2,
+def _request(*, sensitivity: Sensitivity, attempts: int = 1) -> WorkRequest[str]:
+    module, prompt_type, _, computation = _contracts()
+    return WorkRequest(
+        module=module,
+        materials=MaterialSet.of(
+            Material(MaterialId(module, "durable-input"), prompt_type, "queued", sensitivity)
         ),
+        computation=computation,
+        retry=PhysicalRetryPolicy(attempts, timedelta(0)),
     )
-    repository = MaterialRepository()
-    repository.put(source)
 
-    capability_identity = identifier("physical", "fixture", IdentityKind.CAPABILITY)
-    definition = CapabilityDefinition(
-        identity=capability_identity,
-        properties=CapabilityProperties(
-            specialization=specialization,
-            modality=modality,
-            boundary=ExecutionBoundary.LOCAL,
-        ),
-        security=SecuritySurface.compose(
-            SecurityScope(
-                identity=capability_identity,
-                privacy=Privacy.SECRET,
-            )
-        ),
+
+def _private_registry(output: object = "durable-output") -> CapabilityRegistry:
+    module, prompt_type, result_type, computation = _contracts()
+    registry = CapabilityRegistry()
+    registry.register(
+        _capability(
+            identity="durable-private",
+            computation=computation,
+            prompt_type=prompt_type,
+            result_type=result_type,
+            privacy=Privacy.P5,
+            location=ExecutionLocation.OWNER_DEVICE,
+            invoke=lambda _: output,
+        )
     )
-    capabilities = CapabilityRegistry()
-    capabilities.register(FunctionCapability(definition, lambda payload: {"result": payload}))
+    return registry
 
-    output_identity = identifier("module", "output", IdentityKind.MATERIAL)
+
+def test_opaque_input_and_pending_physical_result_survive_restart(tmp_path: Path) -> None:
+    request = _request(sensitivity=Sensitivity.S5)
+
     with open_database(tmp_path) as connection:
-        store = PlatformStore(connection)
-        catalog = ModuleCatalog(store)
-        catalog.register(
-            ModuleDefinition(
-                identity=module,
-                description="Ordinary Module",
-                managed_scopes=(source.security,),
-            )
-        )
-        kernel = Kernel(capabilities, store)
-        kernel.register_material_resolver(module, repository)
-        record = asyncio.run(
-            kernel.submit(
-                WorkSubmission(
-                    originator=module,
-                    capability=CapabilityQuery(
-                        specialization=specialization,
-                        modality=modality,
-                    ),
-                    material=source.handle(),
-                    output=MaterialSpecification(
-                        identity=output_identity,
-                        contract=contract,
-                        security=SecurityScope(
-                            identity=output_identity,
-                            sensitivity=Sensitivity.S2,
-                        ),
-                    ),
-                )
-            )
-        )
+        first_store = WorkQueueStore(connection)
+        first_kernel = Kernel(_private_registry(), first_store)
+        queued = asyncio.run(first_kernel.enqueue(request, idempotency_key="durable"))
+        assert first_store.load_request(queued.identity) == request
 
-        assert source.payload["request"] not in record.model_dump_json()
-        assert asyncio.run(kernel.run_eligible()) == 1
-        completed = kernel.inspect(record.id)
+    with open_database(tmp_path) as connection:
+        second_store = WorkQueueStore(connection)
+        second_kernel = Kernel(_private_registry(), second_store)
+        assert asyncio.run(second_kernel.run_eligible()) == 1
+        completed = second_kernel.inspect(queued.identity)
         assert completed is not None
-        assert completed.status == "succeeded"
-        result = kernel.consume_result(record.id)
-        assert result.identity == output_identity
-        assert result.payload == {"result": source.payload}
-        assert catalog.module(module) is not None
+        assert completed.status is WorkStatus.SUCCEEDED
+        assert completed.delivery is DeliveryStatus.PENDING
+        assert second_store.load_request(queued.identity) is None
 
-        public_capability_identity = identifier(
-            "physical", "public-fixture", IdentityKind.CAPABILITY
+    with open_database(tmp_path) as connection:
+        third_kernel = Kernel(_private_registry(), WorkQueueStore(connection))
+        result = third_kernel.consume_result(queued.identity)
+        assert isinstance(result, PhysicalResult)
+        assert result.output == "durable-output"
+        delivered = third_kernel.inspect(queued.identity)
+        assert delivered is not None
+        assert delivered.delivery is DeliveryStatus.DELIVERED
+
+
+def test_current_unavailability_waits_without_recording_an_attempt(tmp_path: Path) -> None:
+    module, prompt_type, result_type, computation = _contracts()
+    now = [datetime(2026, 9, 12, 12, tzinfo=UTC)]
+    registry = CapabilityRegistry()
+    registry.register(
+        _capability(
+            identity="external-only",
+            computation=computation,
+            prompt_type=prompt_type,
+            result_type=result_type,
+            privacy=Privacy.UNKNOWN,
+            location=ExecutionLocation.EXTERNAL,
+            invoke=lambda _: "unused",
         )
-        capabilities.register(
-            FunctionCapability(
-                CapabilityDefinition(
-                    identity=public_capability_identity,
-                    properties=CapabilityProperties(
-                        specialization=specialization,
-                        modality=modality,
-                        boundary=ExecutionBoundary.REMOTE,
-                    ),
-                    security=SecuritySurface.compose(
-                        SecurityScope(
-                            identity=public_capability_identity,
-                            privacy=Privacy.PUBLIC,
-                        )
-                    ),
-                ),
-                lambda payload: payload,
+    )
+
+    with open_database(tmp_path) as connection:
+        kernel = Kernel(registry, WorkQueueStore(connection), clock=lambda: now[0])
+        queued = asyncio.run(kernel.enqueue(_request(sensitivity=Sensitivity.S5)))
+        assert asyncio.run(kernel.run_eligible()) == 0
+        waiting = kernel.inspect(queued.identity)
+        assert waiting is not None
+        assert waiting.status is WorkStatus.QUEUED
+        assert waiting.attempts == ()
+
+        registry.register(
+            _capability(
+                identity="owner-private",
+                computation=computation,
+                prompt_type=prompt_type,
+                result_type=result_type,
+                privacy=Privacy.P5,
+                location=ExecutionLocation.OWNER_DEVICE,
+                invoke=lambda _: "available",
             )
         )
-        secret_identity = identifier("module", "terminal-secret", IdentityKind.MATERIAL)
-        secret = Material[dict[str, str]](
-            identity=secret_identity,
-            contract=contract,
-            payload={"private": "value"},
-            security=SecurityScope(
-                identity=secret_identity,
-                sensitivity=Sensitivity.S5,
-            ),
-        )
-        repository.put(secret)
-        rejected_output = identifier("module", "never-produced", IdentityKind.MATERIAL)
-        rejected = asyncio.run(
-            kernel.submit(
-                WorkSubmission(
-                    originator=module,
-                    capability=CapabilityQuery(
-                        specialization=specialization,
-                        modality=modality,
-                        mechanism=public_capability_identity,
-                    ),
-                    material=secret.handle(),
-                    output=MaterialSpecification(
-                        identity=rejected_output,
-                        contract=contract,
-                        security=SecurityScope(
-                            identity=rejected_output,
-                            sensitivity=Sensitivity.S5,
-                        ),
-                    ),
-                )
-            )
-        )
+        now[0] += timedelta(seconds=2)
         assert asyncio.run(kernel.run_eligible()) == 1
-        terminal = kernel.inspect(rejected.id)
-        assert terminal is not None
-        assert terminal.failure is not None
-        assert terminal.failure.retry is RetryDisposition.TERMINAL
-        assert "security" not in terminal.failure.code
-        with pytest.raises(RetryConflict, match="submit a different request"):
-            asyncio.run(
-                kernel.retry(
-                    rejected.id,
-                    WorkRetryRequest(),
-                    idempotency_key="terminal-request",
-                )
-            )
-        assert terminal.retries == ()
+        result = kernel.consume_result(queued.identity)
+        assert result.output == "available"
 
-        tables = {
-            row["name"]
-            for row in connection.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'"
-            ).fetchall()
-        }
-        assert not tables.intersection(
-            {
-                "security_object",
-                "security_relation",
-                "security_derivation",
-                "security_decision",
-                "broker_event",
-            }
+
+def test_physical_failure_retries_according_to_request_policy(tmp_path: Path) -> None:
+    calls = 0
+
+    def flaky(_: tuple[object, ...]) -> object:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise CapabilityError("fixture_interruption")
+        return "recovered"
+
+    module, prompt_type, result_type, computation = _contracts()
+    registry = CapabilityRegistry()
+    registry.register(
+        _capability(
+            identity="flaky-physical",
+            computation=computation,
+            prompt_type=prompt_type,
+            result_type=result_type,
+            privacy=Privacy.P5,
+            location=ExecutionLocation.OWNER_DEVICE,
+            invoke=flaky,
+        )
+    )
+
+    with open_database(tmp_path) as connection:
+        kernel = Kernel(registry, WorkQueueStore(connection))
+        queued = asyncio.run(kernel.enqueue(_request(sensitivity=Sensitivity.S5, attempts=2)))
+        assert asyncio.run(kernel.run_eligible()) == 2
+        record = kernel.inspect(queued.identity)
+        assert record is not None
+        assert record.status is WorkStatus.SUCCEEDED
+        assert [attempt.status.value for attempt in record.attempts] == ["failed", "succeeded"]
+        assert kernel.consume_result(queued.identity).output == "recovered"
+
+
+def test_sqlite_contains_only_work_lifecycle_tables(tmp_path: Path) -> None:
+    with open_database(tmp_path) as connection:
+        store = WorkQueueStore(connection)
+        assert store.table_names() == (
+            "runtime_attempt",
+            "runtime_scheduler_state",
+            "runtime_work",
         )
