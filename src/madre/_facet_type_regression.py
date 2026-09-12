@@ -1,6 +1,6 @@
-"""Compile-only regression: equal ranks must never make security facets assignable."""
+"""Compile-only proof that equal ranks do not make carriers assignable."""
 
-from madre_sdk.security import Autonomy, Integrity, Privacy, Risk, Sensitivity
+from madre_sdk.algebra import Autonomy, Integrity, Privacy, Risk, Sensitivity
 
 sensitivity: Sensitivity = Sensitivity.S1
 privacy: Privacy = Privacy.PUBLIC

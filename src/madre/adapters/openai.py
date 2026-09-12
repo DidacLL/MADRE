@@ -1,27 +1,20 @@
-"""Adapter for one external OpenAI-compatible transport protocol.
-
-Authentication, headers, and provider environment configuration are supplied by the
-injected HTTP client and are not MADRE concepts.
-"""
+"""One private protocol adapter for OpenAI-compatible chat transports."""
 
 from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
-from typing import Literal
 from urllib.parse import urlsplit
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, TypeAdapter
 
-from madre.capabilities import CapabilityError
-from madre_sdk.execution import CapabilityDefinition, ExecutionConstraints
+from madre.capabilities import CapabilityDefinition, CapabilityError, CapabilityInvocation
 
 
 class OpenAIChatConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    kind: Literal["openai_chat"] = "openai_chat"
     endpoint: str
     model: str = Field(min_length=1)
 
@@ -51,22 +44,27 @@ class OpenAICompatibleChatCapability:
     def definition(self) -> CapabilityDefinition:
         return self._definition
 
-    async def execute(self, payload: JsonValue, constraints: ExecutionConstraints) -> JsonValue:
-        if not isinstance(payload, dict):
+    def is_available(self) -> bool:
+        return True
+
+    async def invoke(self, request: CapabilityInvocation) -> object:
+        if len(request.payloads) != 1 or not isinstance(request.payloads[0], dict):
             raise CapabilityError("invalid_input")
-        request = dict(payload)
-        request["model"] = self._model
-        request["stream"] = False
+        provider_payload = dict(request.payloads[0])
+        provider_payload["model"] = self._model
+        provider_payload["stream"] = False
         try:
-            async with asyncio.timeout(constraints.timeout_seconds):
+            async with asyncio.timeout(request.timeout_seconds):
                 if self._client is not None:
                     response = await self._client.post(
-                        f"{self._endpoint}/chat/completions", json=request
+                        f"{self._endpoint}/chat/completions",
+                        json=provider_payload,
                     )
                 else:
-                    async with self._client_factory(constraints.timeout_seconds) as client:
+                    async with self._client_factory(request.timeout_seconds) as client:
                         response = await client.post(
-                            f"{self._endpoint}/chat/completions", json=request
+                            f"{self._endpoint}/chat/completions",
+                            json=provider_payload,
                         )
                 response.raise_for_status()
                 parsed: JsonValue = TypeAdapter(JsonValue).validate_python(response.json())

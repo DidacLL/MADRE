@@ -1,7 +1,7 @@
 """Strongly typed public building blocks for independent MADRE Modules."""
 
 from madre_sdk.algebra import Autonomy, Integrity, Privacy, Risk, Sensitivity
-from madre_sdk.codecs import ModuleDefinitionJsonCodec
+from madre_sdk.codecs import ModuleDefinitionJsonCodec, ModuleDirectoryJsonCodec
 from madre_sdk.definitions import (
     AgentDefinition,
     DisplayName,
@@ -83,6 +83,7 @@ __all__ = [
     "ModuleDefinitionJsonCodec",
     "ModuleDirectory",
     "ModuleDirectoryEntry",
+    "ModuleDirectoryJsonCodec",
     "ModuleId",
     "OperationCall",
     "OperationDefinition",

@@ -10,6 +10,7 @@ from madre_sdk.definitions import (
     DisplayName,
     EffectProfile,
     ModuleDefinition,
+    ModuleDirectoryEntry,
     OperationDefinition,
     Purpose,
     Repeatability,
@@ -130,6 +131,19 @@ class _ModuleDefinitionDto(_WireModel):
     operations: tuple[_OperationDto, ...]
     public_operations: tuple[_OwnedIdDto, ...]
     public_outputs: tuple[_OutputSurfaceDto, ...] | None
+
+
+class _ModuleDirectoryEntryDto(_WireModel):
+    identity: _ModuleIdDto
+    name: str
+    purpose: str
+    agents: tuple[_AgentDto, ...]
+    operations: tuple[_OperationDto, ...]
+
+
+class _ModuleDirectoryDto(_WireModel):
+    schema_version: int
+    entries: tuple[_ModuleDirectoryEntryDto, ...]
 
 
 def _module_id_to_dto(identity: ModuleId) -> _ModuleIdDto:
@@ -396,4 +410,41 @@ class ModuleDefinitionJsonCodec:
             public_outputs=(
                 None if dto.public_outputs is None else _outputs_from_dto(dto.public_outputs)
             ),
+        )
+
+
+class ModuleDirectoryJsonCodec:
+    VERSION = 1
+
+    def encode(self, entries: tuple[ModuleDirectoryEntry, ...]) -> str:
+        dto = _ModuleDirectoryDto(
+            schema_version=self.VERSION,
+            entries=tuple(
+                _ModuleDirectoryEntryDto(
+                    identity=_module_id_to_dto(entry.identity),
+                    name=entry.name.value,
+                    purpose=entry.purpose.value,
+                    agents=tuple(_agent_to_dto(agent) for agent in entry.agents),
+                    operations=tuple(
+                        _operation_to_dto(operation) for operation in entry.operations
+                    ),
+                )
+                for entry in entries
+            ),
+        )
+        return dto.model_dump_json()
+
+    def decode(self, encoded: str) -> tuple[ModuleDirectoryEntry, ...]:
+        dto = _ModuleDirectoryDto.model_validate_json(encoded)
+        if dto.schema_version != self.VERSION:
+            raise ValueError(f"Unsupported Module directory schema: {dto.schema_version}")
+        return tuple(
+            ModuleDirectoryEntry(
+                identity=_module_id_from_dto(entry.identity),
+                name=DisplayName(entry.name),
+                purpose=Purpose(entry.purpose),
+                agents=tuple(_agent_from_dto(agent) for agent in entry.agents),
+                operations=tuple(_operation_from_dto(operation) for operation in entry.operations),
+            )
+            for entry in dto.entries
         )

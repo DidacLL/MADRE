@@ -1,46 +1,82 @@
 # MADRE
 
-MADRE is a local-first execution system through which independent Modules use shared
-physical Capabilities while retaining ownership of meaning, Material, behavior, and
-effects.
+MADRE is a personal runtime through which independently implemented Modules use
+installed physical inference and deterministic mechanisms while retaining ownership
+of their Material, meaning, and behavior.
 
-Product meaning is defined in [`MADRE.md`](MADRE.md). Current executable state is
+Product meaning is defined in [`MADRE.md`](MADRE.md). Current executable behavior is
 recorded in [`docs/implementation-baseline.md`](docs/implementation-baseline.md).
 
 ## Packages
 
-- `madre_sdk` contains the public declarative definitions, ordinary Material values,
-  standalone Security Algebra, execution requests, and segregated behavior ports.
-- `madre` contains the reference Kernel, physical Capability adapters, declarative
-  catalog, durable lifecycle, SQLite metadata store, and local HTTP transport.
-- `madre_core` contains private behavior for the shipped Module. The package name is
-  an installation artifact; CORE is not a public type or Kernel concept.
+- `madre_sdk` contains the immutable OOP model used to build Modules: nominal
+  identities, typed Material, role-specific surfaces, the five algebraic carriers,
+  declarative Module building blocks, bounded Operation calls, physical work
+  contracts, and explicit JSON codecs.
+- `madre` contains Kernel, installed Capability definitions and adapters, physical
+  selection and resources, durable queueing and delivery, the live Module registry,
+  and local HTTP transport.
 
-## Implemented path
+There is no shipped Module. Installation may assign any separately installed ordinary
+Module to a default interaction role without changing its SDK or Kernel behavior.
 
-The repository executes this path today:
+## Executable path
 
 ```text
-ordinary Module behavior
-    -> ExecutionRequest
-    -> Kernel
-    -> physical Capability
-    -> new ordinary Material
-    -> Module-owned interpreter
-    -> another ordinary Material
+Module-created Material
+    -> typed WorkRequest without a Capability identity
+    -> Kernel selects and schedules an installed physical Capability
+    -> Capability receives opaque payload and returns physical output
+    -> Kernel returns PhysicalResult
+    -> Module interprets it and may construct new Material or continue
 ```
 
-The Capability output has no command status. Only the Module interpreter can decide
-what it means or whether another request or bounded Operation follows.
+The private integration fixture proves a Module-owned second request after
+interpreting the first physical result. Physical output has no interface through
+which it can invoke Kernel or an Operation.
 
-Security values compose directly through immutable `SecurityScope`,
-`SecuritySurface`, `Disclosure`, `Control`, and `EffectExecution` values.
-There is no security evaluator, broker, evidence ledger, historical state, derivation
-ontology, user-presence exception, or persisted security decision.
+Capability selection uses the request's computation and Material contracts, direct
+composition of carried Sensitivity with explicitly installed receiving Privacy,
+typed physical requirements and preferences, current availability, and generic
+resource claims. Modules do not name or inspect the selected Capability.
 
-## Development
+## Durable work
 
-Python 3.13 and the uv version pinned by the repository are required.
+SQLite stores only the physical work queue, selected attempt telemetry, scheduling
+state, opaque queued input, and raw results pending delivery. Queued input and pending
+output survive restart. Kernel removes input after successful execution, removes
+output after delivery, and provides cleanup for expired failed input.
+
+The Module registry is live memory, not SQLite. Running Modules register their
+definition at startup and may query the exact public Module, Agent, and Operation
+surfaces reachable from their current Material.
+
+## Running
+
+Python 3.13 and the `uv` version pinned by the repository are required.
+
+```bash
+uv sync --locked
+uv run madre --config madre.toml
+```
+
+Copy `madre.example.toml` to `madre.toml` and describe installed physical mechanisms.
+Privacy is supplied explicitly for every installed receiving boundary; physical
+location does not determine it.
+
+The local HTTP process accepts the same versioned JSON documents produced by the SDK
+codecs:
+
+- `POST /v1/modules` registers or replaces a running Module definition;
+- `DELETE /v1/modules/{module_name}` removes it;
+- `POST /v1/modules/reachable` lists exact reachable public definitions;
+- `POST /v1/executions` performs immediate physical work;
+- `POST /v1/work` queues durable physical work;
+- `GET /v1/work/{work_id}` inspects scheduling and attempt state;
+- `POST /v1/work/{work_id}/cancel` cancels queued work;
+- `POST /v1/work/{work_id}/result` consumes a pending physical result.
+
+## Development verification
 
 ```bash
 uv sync --locked
@@ -50,74 +86,3 @@ uv run --locked ruff format --check .
 uv run --locked mypy
 uv build --python .venv --no-build-isolation
 ```
-
-CI installs the wheel into an isolated target and imports `madre`, `madre_sdk`,
-and `madre_core` outside the checkout.
-
-## Defining a Module
-
-Import public concepts from `madre_sdk`.
-
-A `ModuleDefinition` is immutable and serializable. It contains only declarative
-Module, Agent, Skill, Workflow, Operation, EffectProfile, contract, and exact security
-scope values. Every identity declares its domain kind as well as owner, name, and
-revision. Python behavior is bound separately through `ModuleRuntime`.
-
-Aggregate security values are structural:
-
-- Module Sensitivity is the maximum applicable Sensitivity among the exact scopes it
-  manages or exposes.
-- Agent Privacy is the minimum applicable Privacy among the Operations and other
-  surfaces it exposes.
-- Risk and Autonomy remain paired on one Operation EffectProfile.
-
-A transformation or model response is a new `Material` with a new identity and its
-own facts. It is never a derivation or fresh continuation token.
-
-The definitions round-trip through JSON. Their value-only shape is deliberately
-suitable for a future equivalent XML representation.
-
-## Running the local transport
-
-Copy `madre.example.toml` to `madre.toml`, describe the installed physical
-Capability and its exact security scope, then run:
-
-```bash
-uv run madre --config madre.toml
-```
-
-The HTTP transport exposes:
-
-- `POST /v1/modules` for declarative catalog registration;
-- `POST /v1/executions` for immediate physical execution;
-- durable work submission, inspection, cancellation, retry, and one-shot result
-  consumption under `/v1/work`.
-
-The transport is a local implementation boundary, not an authentication or
-authorization layer.
-
-## Durable privacy
-
-Durable storage contains reference-only execution intent, Module and Capability
-identities, Material handles, output specifications, scheduling/lifecycle metadata,
-digests, sizes, and compact lifecycle failure/retry dispositions.
-
-It contains no input/output payload columns, prompts, private Module state, algebra
-relations, security decisions, rejected candidates, provenance graphs, or provider
-error bodies. A Module supplies Material just in time through its resolver. Produced
-payload bytes remain in process memory until consumed; a restart marks unconsumed
-delivery as lost.
-
-An incompatible algebraic composition ends that request. Its detailed mismatch is
-transient; durable work retains only a generic terminal failure and cannot retry the
-same rejected request.
-
-## Adapter environment
-
-MADRE does not model credentials, API keys, authentication, authorization,
-permissions, clearances, or provider trust. Provider environment setup belongs
-outside MADRE. The OpenAI-compatible adapter accepts an externally configured
-`httpx.AsyncClient` when non-default transport mechanics are required.
-
-Endpoint locality never supplies Privacy. The Capability definition must declare the
-exact observer surface independently.

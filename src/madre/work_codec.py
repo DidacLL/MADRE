@@ -51,6 +51,7 @@ class _MaterialTypeDto(_WireModel):
 
 
 class _MaterialDto(_WireModel):
+    module: _ModuleIdDto
     name: str
     revision: str
     material_type: _MaterialTypeDto
@@ -84,6 +85,11 @@ class _WorkRequestDto(_WireModel):
     priority: int
     maximum_attempts: int
     initial_backoff_seconds: float
+
+
+class _MaterialSetDto(_WireModel):
+    schema_version: int
+    materials: tuple[_MaterialDto, ...]
 
 
 class _PhysicalResultDto(_WireModel):
@@ -160,6 +166,7 @@ class WorkRequestJsonCodec:
             module=_module_to_dto(request.module),
             materials=tuple(
                 _MaterialDto(
+                    module=_module_to_dto(material.owner),
                     name=material.identity.name,
                     revision=material.identity.revision,
                     material_type=_type_to_dto(material.material_type),
@@ -202,7 +209,7 @@ class WorkRequestJsonCodec:
         module = _module_from_dto(dto.module)
         materials = tuple(
             Material[object](
-                MaterialId(module, item.name, item.revision),
+                MaterialId(_module_from_dto(item.module), item.name, item.revision),
                 _type_from_dto(item.material_type),
                 item.payload,
                 Sensitivity[item.sensitivity],
@@ -253,6 +260,44 @@ class WorkRequestJsonCodec:
                 dto.maximum_attempts,
                 timedelta(seconds=dto.initial_backoff_seconds),
             ),
+        )
+
+
+class MaterialSetJsonCodec:
+    VERSION = 1
+
+    def encode(self, materials: MaterialSet) -> str:
+        payload_adapter: TypeAdapter[JsonValue] = TypeAdapter(JsonValue)
+        dto = _MaterialSetDto(
+            schema_version=self.VERSION,
+            materials=tuple(
+                _MaterialDto(
+                    module=_module_to_dto(material.owner),
+                    name=material.identity.name,
+                    revision=material.identity.revision,
+                    material_type=_type_to_dto(material.material_type),
+                    payload=payload_adapter.validate_python(material.payload),
+                    sensitivity=material.sensitivity.name,
+                )
+                for material in materials.materials
+            ),
+        )
+        return dto.model_dump_json()
+
+    def decode(self, encoded: str) -> MaterialSet:
+        dto = _MaterialSetDto.model_validate_json(encoded)
+        if dto.schema_version != self.VERSION:
+            raise ValueError(f"Unsupported MaterialSet schema: {dto.schema_version}")
+        return MaterialSet(
+            tuple(
+                Material[object](
+                    MaterialId(_module_from_dto(item.module), item.name, item.revision),
+                    _type_from_dto(item.material_type),
+                    item.payload,
+                    Sensitivity[item.sensitivity],
+                )
+                for item in dto.materials
+            )
         )
 
 
