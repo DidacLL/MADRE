@@ -29,9 +29,7 @@ class InputSurface:
             for material in materials.materials
         ):
             raise ValueError("Material type is not accepted by this input surface")
-        if materials.sensitivity.rank > self.privacy.rank:
-            raise ValueError("Material Sensitivity exceeds receiving Privacy")
-        return materials
+        return materials.compose_with(self.privacy)
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,9 +94,7 @@ class InputSurfaces:
         privacy_values = tuple(surface.privacy for surface in actual if surface is not None)
         first, *rest = privacy_values
         privacy = Privacy.minimum(first, *rest)
-        if materials.sensitivity.rank > privacy.rank:
-            raise ValueError("Material Sensitivity exceeds receiving Privacy")
-        return materials
+        return materials.compose_with(privacy)
 
 
 @dataclass(frozen=True, slots=True)

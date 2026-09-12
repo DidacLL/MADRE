@@ -1,239 +1,229 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 
 import pytest
-from pydantic import JsonValue
 
-from madre import CapabilityRegistry, FunctionCapability, Kernel
-from madre_core import InteractionBehavior
-from madre_sdk import (
+from madre import (
     CapabilityDefinition,
-    CapabilityProperties,
-    CapabilityQuery,
-    ExecutionBoundary,
-    ExecutionRequest,
-    IdentityKind,
+    CapabilityId,
+    CapabilityInput,
+    CapabilityInputs,
+    CapabilityRegistry,
+    CapabilityUnavailable,
+    FunctionCapability,
+    Kernel,
+)
+from madre_sdk import (
+    ComputationContract,
+    ComputationId,
+    ExecutionLocation,
+    LatencyClass,
+    LatencyPreference,
     Material,
-    MaterialContract,
-    MaterialSpecification,
-    ModuleDefinition,
-    ModuleRuntime,
+    MaterialId,
+    MaterialSet,
+    MaterialType,
+    MaterialTypeId,
+    ModuleId,
+    PhysicalProperties,
     Privacy,
-    ScopeIdentity,
-    SecurityMismatch,
-    SecurityScope,
-    SecuritySurface,
     Sensitivity,
+    WorkRequest,
 )
 
 
-def identity(
-    owner: str,
-    name: str,
-    kind: IdentityKind = IdentityKind.SURFACE,
-) -> ScopeIdentity:
-    return ScopeIdentity(kind=kind, owner=owner, name=name)
-
-
-SPECIALIZATION = identity("madre.execution", "language-inference", IdentityKind.SPECIALIZATION)
-MODALITY = identity("madre.execution", "structured-text", IdentityKind.MODALITY)
-
-
-def contract(owner: str, name: str) -> MaterialContract:
-    return MaterialContract(
-        identity=identity(owner, name, IdentityKind.MATERIAL_CONTRACT),
-        media_type="application/json",
-    )
-
-
-def material(
-    owner: str,
-    name: str,
-    payload: JsonValue,
-    sensitivity: Sensitivity,
-) -> Material[JsonValue]:
-    material_identity = identity(owner, name, IdentityKind.MATERIAL)
-    return Material[JsonValue](
-        identity=material_identity,
-        contract=contract(owner, "structured-content"),
-        payload=payload,
-        security=SecurityScope(
-            identity=material_identity,
-            sensitivity=sensitivity,
-        ),
-    )
-
-
-def capability(
-    name: str,
-    privacy: Privacy,
-    boundary: ExecutionBoundary,
-) -> CapabilityDefinition:
-    capability_identity = identity("physical", name, IdentityKind.CAPABILITY)
-    return CapabilityDefinition(
-        identity=capability_identity,
-        properties=CapabilityProperties(
-            specialization=SPECIALIZATION,
-            modality=MODALITY,
-            boundary=boundary,
-        ),
-        security=SecuritySurface.compose(
-            SecurityScope(
-                identity=capability_identity,
-                privacy=privacy,
-            )
-        ),
-    )
-
-
-class InterpretPhysicalResult:
-    def __init__(self, final_identity: ScopeIdentity) -> None:
-        self.final_identity = final_identity
-        self.seen_physical_identity: ScopeIdentity | None = None
-
-    def interpret(
+class _FixtureModule:
+    def __init__(
         self,
-        source: Material[JsonValue],
-        result: Material[JsonValue],
-    ) -> Material[JsonValue]:
-        self.seen_physical_identity = result.identity
-        return Material[JsonValue](
-            identity=self.final_identity,
-            contract=source.contract,
-            payload={
-                "module_interpretation": result.payload,
-                "source": source.identity.name,
-            },
-            security=SecurityScope(
-                identity=self.final_identity,
-                sensitivity=Sensitivity.S2,
-            ),
-        )
+        identity: ModuleId,
+        prompt_type: MaterialType[str],
+        result_type: MaterialType[str],
+        computation: ComputationContract[str],
+        kernel: Kernel,
+    ) -> None:
+        self.identity = identity
+        self.prompt_type = prompt_type
+        self.result_type = result_type
+        self.computation = computation
+        self.kernel = kernel
 
-
-def test_ordinary_module_owns_interpretation_after_capability_execution() -> None:
-    module_identity = identity("module", "module", IdentityKind.MODULE)
-    module_definition = ModuleDefinition(
-        identity=module_identity,
-        description="Ordinary first-party Module",
-        managed_scopes=(
-            SecurityScope(
-                identity=identity("module", "managed-context", IdentityKind.MATERIAL),
-                sensitivity=Sensitivity.S3,
-            ),
-        ),
-    )
-    input_material = material(
-        "module",
-        "input",
-        {"prompt": "bounded input"},
-        Sensitivity.S3,
-    )
-    raw_identity = identity("module", "physical-output", IdentityKind.MATERIAL)
-    final_identity = identity("module", "interpreted-output", IdentityKind.MATERIAL)
-    raw_output = MaterialSpecification(
-        identity=raw_identity,
-        contract=contract("module", "physical-response"),
-        security=SecurityScope(
-            identity=raw_identity,
-            sensitivity=Sensitivity.S3,
-        ),
-    )
-    mechanism = capability(
-        "deterministic",
-        Privacy.MODULE_PRIVATE,
-        ExecutionBoundary.LOCAL,
-    )
-    calls: list[JsonValue] = []
-    registry = CapabilityRegistry()
-    registry.register(
-        FunctionCapability(
-            mechanism,
-            lambda payload: (
-                calls.append(payload) or {"text": "physical output", "operation": "not executable"}
-            ),
-        )
-    )
-    kernel = Kernel(registry)
-    interpreter = InterpretPhysicalResult(final_identity)
-    behavior = InteractionBehavior(
-        module=module_definition,
-        capability=CapabilityQuery(
-            specialization=SPECIALIZATION,
-            modality=MODALITY,
-        ),
-        physical_output=raw_output,
-        interpreter=interpreter,
-    )
-    runtime = ModuleRuntime(
-        definition=module_definition,
-        behavior=behavior,
-        services=kernel,
-    )
-
-    result = asyncio.run(runtime.receive(input_material))
-
-    assert calls == [input_material.payload]
-    assert interpreter.seen_physical_identity == raw_identity
-    assert result.identity == final_identity
-    assert result.payload == {
-        "module_interpretation": {
-            "text": "physical output",
-            "operation": "not executable",
-        },
-        "source": "input",
-    }
-    assert result.security.sensitivity is Sensitivity.S2
-
-
-def test_incompatible_capability_addition_ends_request_without_execution() -> None:
-    calls = 0
-
-    def should_not_execute(payload: JsonValue) -> JsonValue:
-        nonlocal calls
-        calls += 1
-        return payload
-
-    registry = CapabilityRegistry()
-    registry.register(
-        FunctionCapability(
-            capability("public-remote", Privacy.PUBLIC, ExecutionBoundary.REMOTE),
-            should_not_execute,
-        )
-    )
-    kernel = Kernel(registry)
-    source = material("module", "secret", {"secret": True}, Sensitivity.S5)
-    output_identity = identity("module", "uncreated-output", IdentityKind.MATERIAL)
-
-    with pytest.raises(SecurityMismatch, match="S5 exceeds PUBLIC"):
-        asyncio.run(
-            kernel.execute(
-                ExecutionRequest(
-                    requester=identity("module", "module", IdentityKind.MODULE),
-                    material=source,
-                    capability=CapabilityQuery(
-                        specialization=SPECIALIZATION,
-                        modality=MODALITY,
-                    ),
-                    output=MaterialSpecification(
-                        identity=output_identity,
-                        contract=contract("module", "physical-response"),
-                        security=SecurityScope(
-                            identity=output_identity,
-                            sensitivity=Sensitivity.S5,
-                        ),
-                    ),
-                )
+    async def run(self, prompt: Material[str]) -> Material[str]:
+        first = await self.kernel.submit(
+            WorkRequest(
+                module=self.identity,
+                materials=MaterialSet.of(prompt),
+                computation=self.computation,
             )
         )
+        interpreted = Material(
+            MaterialId(self.identity, "interpreted-first-result"),
+            self.result_type,
+            first.output,
+            Sensitivity.S3,
+        )
+        if interpreted.payload != "continue":
+            return interpreted
 
-    assert calls == 0
+        second = await self.kernel.submit(
+            WorkRequest(
+                module=self.identity,
+                materials=MaterialSet.of(interpreted),
+                computation=self.computation,
+            )
+        )
+        return Material(
+            MaterialId(self.identity, "final-result"),
+            self.result_type,
+            second.output,
+            Sensitivity.S2,
+        )
 
 
-def test_execution_boundary_does_not_infer_privacy() -> None:
-    local = capability("local", Privacy.UNKNOWN, ExecutionBoundary.LOCAL)
-    remote = capability("remote", Privacy.UNKNOWN, ExecutionBoundary.REMOTE)
+def _capability(
+    *,
+    identity: str,
+    computation: ComputationContract[str],
+    prompt_type: MaterialType[str],
+    result_type: MaterialType[str],
+    privacy: Privacy,
+    location: ExecutionLocation,
+    invoke: Callable[[tuple[object, ...]], object],
+) -> FunctionCapability:
+    return FunctionCapability(
+        CapabilityDefinition(
+            identity=CapabilityId(identity),
+            computation=computation.identity,
+            output_type=result_type,
+            inputs=CapabilityInputs(
+                (
+                    CapabilityInput(prompt_type.identity, privacy),
+                    CapabilityInput(result_type.identity, privacy),
+                )
+            ),
+            properties=PhysicalProperties(location, LatencyClass.INTERACTIVE),
+        ),
+        invoke,
+    )
 
-    assert local.security.privacy is Privacy.UNKNOWN
-    assert remote.security.privacy is Privacy.UNKNOWN
+
+def _contracts() -> tuple[
+    ModuleId,
+    MaterialType[str],
+    MaterialType[str],
+    ComputationContract[str],
+]:
+    module = ModuleId("fixture-module")
+    prompt_type = MaterialType[str](MaterialTypeId(module, "prompt"), "text/plain")
+    result_type = MaterialType[str](MaterialTypeId(module, "result"), "text/plain")
+    computation = ComputationContract[str](
+        ComputationId("madre.fixture", "deterministic-text"),
+        frozenset((prompt_type.identity, result_type.identity)),
+        result_type,
+    )
+    return module, prompt_type, result_type, computation
+
+
+def test_module_owns_interpretation_and_second_physical_request() -> None:
+    module, prompt_type, result_type, computation = _contracts()
+    calls: list[tuple[object, ...]] = []
+
+    def mechanism(payloads: tuple[object, ...]) -> object:
+        calls.append(payloads)
+        return "continue" if len(calls) == 1 else "complete"
+
+    registry = CapabilityRegistry()
+    registry.register(
+        _capability(
+            identity="fixture-mechanism",
+            computation=computation,
+            prompt_type=prompt_type,
+            result_type=result_type,
+            privacy=Privacy.P5,
+            location=ExecutionLocation.OWNER_DEVICE,
+            invoke=mechanism,
+        )
+    )
+    fixture_module = _FixtureModule(module, prompt_type, result_type, computation, Kernel(registry))
+    source = Material(
+        MaterialId(module, "source"),
+        prompt_type,
+        "begin",
+        Sensitivity.S5,
+    )
+
+    result = asyncio.run(fixture_module.run(source))
+
+    assert calls == [("begin",), ("continue",)]
+    assert result.payload == "complete"
+    assert result.identity == MaterialId(module, "final-result")
+    assert result.sensitivity is Sensitivity.S2
+
+
+def test_noncomposing_capability_is_absent_and_never_invoked() -> None:
+    module, prompt_type, result_type, computation = _contracts()
+    invoked: list[str] = []
+    registry = CapabilityRegistry()
+    registry.register(
+        _capability(
+            identity="third-party",
+            computation=computation,
+            prompt_type=prompt_type,
+            result_type=result_type,
+            privacy=Privacy.UNKNOWN,
+            location=ExecutionLocation.EXTERNAL,
+            invoke=lambda _: invoked.append("third-party"),
+        )
+    )
+    registry.register(
+        _capability(
+            identity="owner-private",
+            computation=computation,
+            prompt_type=prompt_type,
+            result_type=result_type,
+            privacy=Privacy.P5,
+            location=ExecutionLocation.OWNER_DEVICE,
+            invoke=lambda _: "private-result",
+        )
+    )
+    request = WorkRequest(
+        module=module,
+        materials=MaterialSet.of(
+            Material(MaterialId(module, "secret"), prompt_type, "secret", Sensitivity.S5)
+        ),
+        computation=computation,
+        preferences=(LatencyPreference((LatencyClass.INTERACTIVE, LatencyClass.STANDARD)),),
+    )
+
+    result = asyncio.run(Kernel(registry).submit(request))
+
+    assert result.output == "private-result"
+    assert invoked == []
+    assert not hasattr(registry, "rejections")
+
+
+def test_no_currently_usable_capability_is_ordinary_unavailability() -> None:
+    module, prompt_type, result_type, computation = _contracts()
+    registry = CapabilityRegistry()
+    registry.register(
+        _capability(
+            identity="external",
+            computation=computation,
+            prompt_type=prompt_type,
+            result_type=result_type,
+            privacy=Privacy.UNKNOWN,
+            location=ExecutionLocation.EXTERNAL,
+            invoke=lambda _: "unused",
+        )
+    )
+    request = WorkRequest(
+        module=module,
+        materials=MaterialSet.of(
+            Material(MaterialId(module, "secret"), prompt_type, "secret", Sensitivity.S5)
+        ),
+        computation=computation,
+    )
+
+    with pytest.raises(CapabilityUnavailable):
+        asyncio.run(Kernel(registry).submit(request))

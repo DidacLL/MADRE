@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Generic, TypeVar, cast
 
-from madre_sdk.algebra import Sensitivity
+from madre_sdk.algebra import Privacy, Sensitivity
 from madre_sdk.identity import MaterialId, MaterialTypeId, ModuleId
+
+PayloadT_co = TypeVar("PayloadT_co", covariant=True)
 
 
 @dataclass(frozen=True, slots=True)
-class MaterialType[PayloadT]:
+class MaterialType(Generic[PayloadT_co]):  # noqa: UP046
     identity: MaterialTypeId
     media_type: str
 
@@ -54,13 +57,22 @@ class MaterialSet:
             raise ValueError("MaterialSet cannot repeat a Material identity")
 
     @classmethod
-    def of(cls, first: Material[object], *rest: Material[object]) -> MaterialSet:
-        return cls((first, *rest))
+    def of[PayloadT](cls, first: Material[PayloadT], *rest: Material[PayloadT]) -> MaterialSet:
+        materials = cast(tuple[Material[object], ...], (first, *rest))
+        return cls(materials)
 
     @property
     def sensitivity(self) -> Sensitivity:
         first, *rest = (material.sensitivity for material in self.materials)
         return Sensitivity.maximum(first, *rest)
 
-    def including(self, material: Material[object]) -> MaterialSet:
-        return type(self)((*self.materials, material))
+    def including[PayloadT](self, material: Material[PayloadT]) -> MaterialSet:
+        value = cast(Material[object], material)
+        return type(self)((*self.materials, value))
+
+    def compose_with(self, privacy: Privacy) -> MaterialSet:
+        if not isinstance(privacy, Privacy):
+            raise TypeError("MaterialSet composes only with Privacy")
+        if self.sensitivity.rank > privacy.rank:
+            raise ValueError("Material Sensitivity exceeds receiving Privacy")
+        return self

@@ -1,23 +1,39 @@
-"""MADRE Kernel implementation."""
+"""MADRE Kernel physical execution boundary."""
 
 from madre.capabilities import (
     CapabilityAdapter,
+    CapabilityDefinition,
     CapabilityError,
+    CapabilityId,
+    CapabilityInput,
+    CapabilityInputs,
     CapabilityRegistry,
     CapabilitySelection,
+    CapabilityUnavailable,
+    CapacityResourceCoordinator,
+    DeterministicCapabilitySelection,
     FunctionCapability,
-    RankedCapabilitySelection,
+    ResourceClaim,
+    ResourceCoordinator,
+    ResourceId,
 )
-from madre.catalog import ModuleCatalog
 from madre.runtime import Kernel
 
 __all__ = [
+    "CapacityResourceCoordinator",
     "CapabilityAdapter",
+    "CapabilityDefinition",
     "CapabilityError",
+    "CapabilityId",
+    "CapabilityInput",
+    "CapabilityInputs",
     "CapabilityRegistry",
     "CapabilitySelection",
+    "CapabilityUnavailable",
+    "DeterministicCapabilitySelection",
     "FunctionCapability",
-    "ModuleCatalog",
     "Kernel",
-    "RankedCapabilitySelection",
+    "ResourceClaim",
+    "ResourceCoordinator",
+    "ResourceId",
 ]

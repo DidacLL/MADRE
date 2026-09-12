@@ -42,6 +42,20 @@ The public `madre_sdk` package now provides:
 - a versioned JSON codec separate from the domain inheritance model;
 - narrow physical execution, Operation implementation, and Module-directory ports.
 
-Focused SDK tests and strict type checking pass. Kernel consumers still target the
-superseded SDK at this checkpoint and are the next replacement slice; no complete
-runtime claim is made yet.
+Kernel's immediate physical path now uses that SDK:
+
+- installed Capability identities and definitions remain in the Kernel extension
+  package and never enter `WorkRequest` or `PhysicalResult`;
+- Capability inputs own their explicit Privacy independently of physical location;
+- registry selection first requires computation and Material contracts, then direct
+  immutable value composition, physical requirements, availability, and preferences;
+- resource coordination operates on typed resource claims rather than mechanism or
+  locality cases;
+- Kernel forwards payloads through a typed physical invocation and returns raw
+  `PhysicalResult` without constructing Material;
+- a private fixture Module interprets a first result, constructs independent Material,
+  and makes a second ordinary work request as its own continuation.
+
+Focused SDK and immediate-Kernel tests, Ruff, and strict type checking pass. Durable
+storage, HTTP transport, the live Module registry, and the existing adapter still
+target superseded contracts at this checkpoint and are the next replacement slices.
