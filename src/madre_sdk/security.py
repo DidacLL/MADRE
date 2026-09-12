@@ -99,6 +99,17 @@ class SecuritySurface(FrozenValue):
                 raise ValueError(f"conflicting facts for scope {scope.identity.name}")
         if len(identities) != len(self.scopes):
             raise ValueError("a SecuritySurface cannot repeat a scope")
+        canonical = tuple(
+            sorted(
+                self.scopes,
+                key=lambda scope: (
+                    scope.identity.owner,
+                    scope.identity.name,
+                    scope.identity.revision,
+                ),
+            )
+        )
+        object.__setattr__(self, "scopes", canonical)
         return self
 
     @classmethod
@@ -147,6 +158,12 @@ class EffectProfile(FrozenValue):
     operation: ScopeIdentity
     risk: Risk
     autonomy: Autonomy
+
+    @model_validator(mode="after")
+    def belongs_to_operation(self) -> Self:
+        if self.identity.owner != self.operation.owner:
+            raise ValueError("EffectProfile and Operation must have the same owner")
+        return self
 
 
 class SecurityMismatch(RuntimeError):

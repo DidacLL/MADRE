@@ -9,7 +9,7 @@ from pydantic import JsonValue
 from madre_sdk.execution import CapabilityQuery, ExecutionRequest
 from madre_sdk.material import Material, MaterialSpecification
 from madre_sdk.security import ScopeIdentity
-from madre_sdk.semantic import ExecutionServices
+from madre_sdk.services import ExecutionService
 
 
 class ResultInterpreter(Protocol):
@@ -40,7 +40,7 @@ class InteractionBehavior:
     async def receive(
         self,
         material: Material[JsonValue],
-        services: ExecutionServices,
+        services: ExecutionService,
     ) -> Material[JsonValue]:
         result = await services.execute(
             ExecutionRequest(

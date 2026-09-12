@@ -66,6 +66,10 @@ class Material[PayloadT](FrozenValue):
     def digest(self) -> str:
         return hashlib.sha256(_canonical_payload(self.payload)).hexdigest()  # type: ignore[arg-type]
 
+    @property
+    def size(self) -> int:
+        return len(_canonical_payload(self.payload))  # type: ignore[arg-type]
+
     def handle(self) -> MaterialHandle:
         return MaterialHandle(
             identity=self.identity,

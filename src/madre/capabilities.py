@@ -14,6 +14,7 @@ from madre_sdk.execution import (
     CapabilityQuery,
     ExecutionConstraints,
 )
+from madre_sdk.security import ScopeIdentity
 
 
 class CapabilityError(RuntimeError):
@@ -56,7 +57,7 @@ class RankedCapabilitySelection:
 
 class CapabilityRegistry:
     def __init__(self, selection: CapabilitySelection | None = None) -> None:
-        self._adapters: dict[object, CapabilityAdapter] = {}
+        self._adapters: dict[ScopeIdentity, CapabilityAdapter] = {}
         self._selection = selection or RankedCapabilitySelection()
 
     def register(self, adapter: CapabilityAdapter) -> None:

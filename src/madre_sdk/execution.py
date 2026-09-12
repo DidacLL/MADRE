@@ -134,3 +134,11 @@ class ExecutionRequest(FrozenValue):
     capability: CapabilityQuery
     output: MaterialSpecification
     constraints: ExecutionConstraints = Field(default_factory=ExecutionConstraints)
+
+    @model_validator(mode="after")
+    def creates_new_module_owned_material(self) -> Self:
+        if self.output.identity == self.material.identity:
+            raise ValueError("physical output must be a new Material identity")
+        if self.output.identity.owner != self.requester.owner:
+            raise ValueError("physical output must be owned by the requesting Module")
+        return self

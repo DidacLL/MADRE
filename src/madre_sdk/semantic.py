@@ -7,7 +7,6 @@ from typing import Protocol, Self
 
 from pydantic import Field, JsonValue, model_validator
 
-from madre_sdk.execution import ExecutionRequest
 from madre_sdk.material import Material, MaterialContract
 from madre_sdk.security import (
     EffectProfile,
@@ -16,6 +15,7 @@ from madre_sdk.security import (
     SecurityScope,
     SecuritySurface,
 )
+from madre_sdk.services import ExecutionService
 
 
 class Repeatability(Enum):
@@ -191,15 +191,11 @@ class ModuleDefinition(FrozenValue):
         return SecuritySurface.compose(*members)
 
 
-class ExecutionServices(Protocol):
-    async def execute(self, request: ExecutionRequest) -> Material[JsonValue]: ...
-
-
 class ModuleBehavior(Protocol):
     async def receive(
         self,
         material: Material[JsonValue],
-        services: ExecutionServices,
+        services: ExecutionService,
     ) -> Material[JsonValue]: ...
 
 
@@ -208,7 +204,7 @@ class AgentBehavior(Protocol):
         self,
         definition: AgentDefinition,
         material: Material[JsonValue],
-        services: ExecutionServices,
+        services: ExecutionService,
     ) -> Material[JsonValue]: ...
 
 
@@ -228,7 +224,7 @@ class ModuleRuntime:
         self,
         definition: ModuleDefinition,
         behavior: ModuleBehavior,
-        services: ExecutionServices,
+        services: ExecutionService,
     ) -> None:
         self.definition = definition
         self._behavior = behavior

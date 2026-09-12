@@ -12,8 +12,7 @@ from typing import Literal
 from urllib.parse import urlsplit
 
 import httpx
-from pydantic import ConfigDict, Field, JsonValue, TypeAdapter
-from pydantic.main import BaseModel
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, TypeAdapter
 
 from madre.capabilities import CapabilityError
 from madre_sdk.execution import (

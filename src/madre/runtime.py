@@ -265,7 +265,7 @@ class Kernel:
             work_id,
             attempt,
             result.digest,
-            len(str(result.payload).encode()),
+            result.size,
             self._clock(),
         )
         return self._require(work_id)
