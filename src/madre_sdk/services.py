@@ -17,7 +17,6 @@ from madre.contracts import (
     InferenceRequirement,
     TransientInferenceRequest,
     TransientInferenceResult,
-    TransientMaterial,
     WorkRecord,
     WorkRetryRequest,
     WorkSubmission,
@@ -32,7 +31,13 @@ from madre.interfaces import (
     WorkResultAccess,
 )
 from madre.registry import AgentDescriptor, OperationDescriptor, SkillDescriptor, WorkflowDescriptor
-from madre.security import InvocationContext, OperationUse, SecurityEvidence, SecurityObject
+from madre.security import (
+    DirectUserAction,
+    InvocationContext,
+    OperationUse,
+    SecurityEvidence,
+    SecurityObject,
+)
 from madre_sdk.material import Material, MaterialRepository
 
 
@@ -54,7 +59,6 @@ class _ExecutionBinding:
 
 
 class _ExecutionClient:
-    # Configured clients are inert. Only Module entry makes per-execution copies.
     _binding: _ExecutionBinding | None = None
 
     def _bind(self, binding: _ExecutionBinding) -> Self:
@@ -94,7 +98,6 @@ class InferenceClient(_ExecutionClient):
                 inference=requirement,
                 material=material.transient(),
                 constraints=constraints or ExecutionConstraints(),
-                direct_interaction=invocation.direct_interaction,
             )
         )
 
@@ -195,7 +198,7 @@ class AgentBrokerClient(_ExecutionClient):
         material: Material,
         *,
         evidence: SecurityEvidence | None = None,
-    ) -> TransientMaterial:
+    ):
         invocation = self._active_invocation()
         return await self._broker.invoke_agent(
             invocation,
@@ -220,8 +223,9 @@ class OperationBrokerClient(_ExecutionClient):
         *,
         controllers: tuple[SecurityObject, ...] = (),
         observers: tuple[SecurityObject, ...] = (),
+        direct_user_action: DirectUserAction | None = None,
         evidence: SecurityEvidence | None = None,
-    ) -> TransientMaterial:
+    ):
         invocation = self._active_invocation()
         carried = (evidence or self._evidence).extend(
             objects=(*controllers, *observers, *invocation.objects)
@@ -235,7 +239,7 @@ class OperationBrokerClient(_ExecutionClient):
                 profile_id=profile_id,
                 disclosure_observers=observers,
                 controllers=controllers,
-                direct_interaction=invocation.direct_interaction,
+                direct_user_action=direct_user_action,
             ),
             material.transient(),
         )
@@ -258,7 +262,7 @@ class CoreDelegate:
     def selection(self) -> CoreSelection:
         return self._selection
 
-    async def interact(self, material: Material) -> TransientMaterial:
+    async def interact(self, material: Material):
         return await self._broker.invoke(
             self._selection.module_id,
             self._selection.interaction_agent_id,
