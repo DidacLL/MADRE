@@ -1,4 +1,4 @@
-"""Module-owned material with exact scope facts and separate derivation evidence."""
+"""Module-owned immutable material with exact security facts."""
 
 from __future__ import annotations
 
@@ -6,16 +6,14 @@ import hashlib
 import json
 from typing import Literal
 
-from pydantic import Field, JsonValue, model_validator
+from pydantic import JsonValue, model_validator
 
 from madre.contracts import MaterialHandle, TransientInferenceResult, TransientMaterial, WorkRecord
 from madre.interfaces import MaterialResolver
 from madre.security import (
-    DerivationEvidence,
     FrozenModel,
     Identifier,
     Integrity,
-    InvocationContext,
     ScopeBinding,
     SecurityEvidence,
     SecurityObject,
@@ -39,7 +37,6 @@ def _material_security(
     sensitivity: Sensitivity,
     publication_revision: str,
     representation_revision: str,
-    sources: tuple[SecurityObject, ...] = (),
     integrity: Integrity | None = None,
 ) -> SecurityObject:
     return SecurityObject.issue(
@@ -51,27 +48,12 @@ def _material_security(
         ),
         sensitivity=sensitivity,
         integrity=integrity,
-        sensitivity_sources=sources,
         binding=ScopeBinding(content_digest=content_digest(payload)),
     )
 
 
-def _evidence_of(source: Material | TransientMaterial) -> SecurityEvidence:
-    return source.evidence
-
-
-def _sources(
-    source: Material | TransientMaterial,
-    additional: tuple[Material | TransientMaterial, ...],
-    evidence: SecurityEvidence | None,
-) -> tuple[SecurityEvidence, tuple[SecurityObject, ...]]:
-    values = (source, *additional)
-    merged = SecurityEvidence()
-    for item in values:
-        merged = merged.merge(_evidence_of(item)).extend(objects=(item.security,))
-    if evidence is not None:
-        merged = merged.merge(evidence)
-    return merged, tuple(item.security for item in values)
+def _material_evidence(security: SecurityObject) -> SecurityEvidence:
+    return SecurityEvidence(objects=(security,))
 
 
 def _validate_material(
@@ -82,7 +64,7 @@ def _validate_material(
     if not security.verify_binding() or security.binding.content_digest != content_digest(payload):
         raise ValueError("material SecurityObject does not bind its representation")
     if evidence.resolve(security.security_id) != security:
-        raise ValueError("material evidence must contain its exact SecurityObject")
+        raise ValueError("material facts must contain its exact SecurityObject")
 
 
 class Artifact(FrozenModel):
@@ -108,7 +90,6 @@ class Artifact(FrozenModel):
         sensitivity: Sensitivity,
         publication_revision: str = "1",
         representation_revision: str = "1",
-        evidence: SecurityEvidence | None = None,
     ) -> Artifact:
         security = _material_security(
             owner_module_id=owner_module_id,
@@ -118,54 +99,19 @@ class Artifact(FrozenModel):
             publication_revision=publication_revision,
             representation_revision=representation_revision,
         )
-        carried = (evidence or SecurityEvidence()).extend(objects=(security,))
-        return cls(id=artifact_id, payload=payload, security=security, evidence=carried)
-
-    @classmethod
-    def derive_from(
-        cls,
-        *,
-        invocation: InvocationContext,
-        source: Material | TransientMaterial,
-        owner_module_id: str,
-        artifact_id: str,
-        payload: JsonValue,
-        sensitivity: Sensitivity,
-        additional_sources: tuple[Material | TransientMaterial, ...] = (),
-        publication_revision: str = "1",
-        representation_revision: str = "1",
-        evidence: SecurityEvidence | None = None,
-        transform: SecurityScopeRef | None = None,
-    ) -> Artifact:
-        carried, source_objects = _sources(source, additional_sources, evidence)
-        ordinary_sources = () if transform is not None else source_objects
-        security = _material_security(
-            owner_module_id=owner_module_id,
-            reference=artifact_id,
+        return cls(
+            id=artifact_id,
             payload=payload,
-            sensitivity=sensitivity,
-            publication_revision=publication_revision,
-            representation_revision=representation_revision,
-            sources=ordinary_sources,
+            security=security,
+            evidence=_material_evidence(security),
         )
-        derivation = DerivationEvidence.issue(
-            kind="transform" if transform is not None else "ordinary",
-            procedure=transform,
-            output_security_id=security.security_id,
-            source_security_ids=tuple(item.security_id for item in source_objects),
-            producer_security_ids=tuple(item.security_id for item in invocation.producers),
-        )
-        carried = carried.extend(objects=(*invocation.objects, security), derivations=(derivation,))
-        return cls(id=artifact_id, payload=payload, security=security, evidence=carried)
 
     @classmethod
     def from_inference_result(
         cls,
         *,
-        invocation: InvocationContext,
         owner_module_id: str,
         artifact_id: str,
-        source: Material,
         result: TransientInferenceResult,
         sensitivity: Sensitivity,
         publication_revision: str = "1",
@@ -173,52 +119,22 @@ class Artifact(FrozenModel):
     ) -> Artifact:
         if result.output_digest != content_digest(result.payload):
             raise ValueError("inference result digest mismatch")
-        source_objects = tuple(result.evidence.resolve(item) for item in result.source_security_ids)
-        producer_objects = tuple(
-            result.evidence.resolve(item) for item in result.producer_security_ids
-        )
-        if (
-            any(item is None for item in (*source_objects, *producer_objects))
-            or source.security.security_id not in result.source_security_ids
-        ):
-            raise ValueError("inference result has unresolved production evidence")
-        typed_sources = tuple(item for item in source_objects if item is not None)
-        security = _material_security(
+        return cls.create(
             owner_module_id=owner_module_id,
-            reference=artifact_id,
+            artifact_id=artifact_id,
             payload=result.payload,
             sensitivity=sensitivity,
             publication_revision=publication_revision,
             representation_revision=representation_revision,
-            sources=typed_sources,
         )
-        derivation = DerivationEvidence.issue(
-            kind="ordinary",
-            output_security_id=security.security_id,
-            source_security_ids=result.source_security_ids,
-            producer_security_ids=tuple(
-                sorted(
-                    {
-                        *result.producer_security_ids,
-                        *(item.security_id for item in invocation.producers),
-                    }
-                )
-            ),
-        )
-        evidence = source.evidence.merge(result.evidence).extend(
-            objects=(*invocation.objects, security), derivations=(derivation,)
-        )
-        return cls(id=artifact_id, payload=result.payload, security=security, evidence=evidence)
 
     @classmethod
     def from_work_result(
         cls,
         *,
-        invocation: InvocationContext,
         owner_module_id: str,
         artifact_id: str,
         payload: JsonValue,
-        source: Material,
         record: WorkRecord,
         sensitivity: Sensitivity,
         publication_revision: str = "1",
@@ -226,66 +142,14 @@ class Artifact(FrozenModel):
     ) -> Artifact:
         result = record.result
         if result is None or result.digest != content_digest(payload):
-            raise ValueError("work result evidence does not match payload")
-        source_objects = tuple(
-            record.spec.evidence.resolve(item) for item in result.source_security_ids
-        )
-        producer_objects = tuple(
-            record.spec.evidence.resolve(item) for item in result.producer_security_ids
-        )
-        if (
-            any(item is None for item in (*source_objects, *producer_objects))
-            or source.security.security_id not in result.source_security_ids
-        ):
-            raise ValueError("work result has unresolved production evidence")
-        security = _material_security(
+            raise ValueError("work result does not match payload")
+        return cls.create(
             owner_module_id=owner_module_id,
-            reference=artifact_id,
+            artifact_id=artifact_id,
             payload=payload,
             sensitivity=sensitivity,
             publication_revision=publication_revision,
             representation_revision=representation_revision,
-            sources=tuple(item for item in source_objects if item is not None),
-        )
-        derivation = DerivationEvidence.issue(
-            kind="ordinary",
-            output_security_id=security.security_id,
-            source_security_ids=result.source_security_ids,
-            producer_security_ids=tuple(
-                sorted(
-                    {
-                        *result.producer_security_ids,
-                        *(item.security_id for item in invocation.producers),
-                    }
-                )
-            ),
-        )
-        evidence = source.evidence.merge(record.spec.evidence).extend(
-            objects=(*invocation.objects, security), derivations=(derivation,)
-        )
-        return cls(id=artifact_id, payload=payload, security=security, evidence=evidence)
-
-    def derive(
-        self,
-        *,
-        invocation: InvocationContext,
-        artifact_id: str,
-        payload: JsonValue,
-        sensitivity: Sensitivity | None = None,
-        representation_revision: str = "1",
-        transform: SecurityScopeRef | None = None,
-    ) -> Artifact:
-        assert self.security.sensitivity is not None
-        return Artifact.derive_from(
-            invocation=invocation,
-            source=self,
-            owner_module_id=self.security.scope.owner_module_id,
-            artifact_id=artifact_id,
-            payload=payload,
-            sensitivity=sensitivity or self.security.sensitivity,
-            publication_revision=self.security.scope.publication_revision,
-            representation_revision=representation_revision,
-            transform=transform,
         )
 
     def validated(
@@ -300,33 +164,28 @@ class Artifact(FrozenModel):
         representation_revision: str = "1",
     ) -> Artifact:
         if not validators or any(item.integrity is None for item in validators):
-            raise ValueError("validation requires actual Integrity-bearing validators")
+            raise ValueError("validation requires Integrity-bearing validators")
         bound = min(item.integrity.value for item in validators if item.integrity is not None)
         if integrity.value > bound:
-            raise ValueError("validated projection exceeds validator Integrity")
-        assert self.security.sensitivity is not None
+            raise ValueError("validated material exceeds validator Integrity")
+        if any(not item.verify_binding() for item in validators):
+            raise ValueError("validator SecurityObject binding is invalid")
+        current = self.security.sensitivity
+        assert current is not None
         output_security = _material_security(
             owner_module_id=procedure.owner_module_id,
             reference=artifact_id,
             payload=payload,
-            sensitivity=sensitivity or self.security.sensitivity,
+            sensitivity=sensitivity or current,
             integrity=integrity,
             publication_revision=procedure.publication_revision,
             representation_revision=representation_revision,
-            sources=(self.security,),
-        )
-        derivation = DerivationEvidence.issue(
-            kind="validation",
-            procedure=procedure,
-            output_security_id=output_security.security_id,
-            source_security_ids=(self.security.security_id,),
-            validator_security_ids=tuple(item.security_id for item in validators),
-        )
-        evidence = self.evidence.extend(
-            objects=(*validators, output_security), derivations=(derivation,)
         )
         return Artifact(
-            id=artifact_id, payload=payload, security=output_security, evidence=evidence
+            id=artifact_id,
+            payload=payload,
+            security=output_security,
+            evidence=_material_evidence(output_security),
         )
 
     def transient(self) -> TransientMaterial:
@@ -344,13 +203,15 @@ class Artifact(FrozenModel):
 
 class ContextBundle(FrozenModel):
     id: Identifier
-    purpose: str = Field(min_length=1)
+    purpose: str
     payload: JsonValue
     security: SecurityObject
     evidence: SecurityEvidence
 
     @model_validator(mode="after")
     def validate_security(self) -> ContextBundle:
+        if not self.purpose:
+            raise ValueError("ContextBundle purpose must not be empty")
         _validate_material(
             security=self.security, reference=self.id, payload=self.payload, evidence=self.evidence
         )
@@ -367,7 +228,6 @@ class ContextBundle(FrozenModel):
         sensitivity: Sensitivity,
         publication_revision: str = "1",
         representation_revision: str = "1",
-        evidence: SecurityEvidence | None = None,
     ) -> ContextBundle:
         security = _material_security(
             owner_module_id=owner_module_id,
@@ -377,57 +237,12 @@ class ContextBundle(FrozenModel):
             publication_revision=publication_revision,
             representation_revision=representation_revision,
         )
-        carried = (evidence or SecurityEvidence()).extend(objects=(security,))
         return cls(
             id=bundle_id,
             purpose=purpose,
             payload=payload,
             security=security,
-            evidence=carried,
-        )
-
-    @classmethod
-    def derive_from(
-        cls,
-        *,
-        invocation: InvocationContext,
-        source: Material | TransientMaterial,
-        owner_module_id: str,
-        bundle_id: str,
-        purpose: str,
-        payload: JsonValue,
-        sensitivity: Sensitivity,
-        additional_sources: tuple[Material | TransientMaterial, ...] = (),
-        publication_revision: str = "1",
-        representation_revision: str = "1",
-        evidence: SecurityEvidence | None = None,
-        transform: SecurityScopeRef | None = None,
-    ) -> ContextBundle:
-        carried, source_objects = _sources(source, additional_sources, evidence)
-        ordinary_sources = () if transform is not None else source_objects
-        security = _material_security(
-            owner_module_id=owner_module_id,
-            reference=bundle_id,
-            payload=payload,
-            sensitivity=sensitivity,
-            publication_revision=publication_revision,
-            representation_revision=representation_revision,
-            sources=ordinary_sources,
-        )
-        derivation = DerivationEvidence.issue(
-            kind="transform" if transform is not None else "ordinary",
-            procedure=transform,
-            output_security_id=security.security_id,
-            source_security_ids=tuple(item.security_id for item in source_objects),
-            producer_security_ids=tuple(item.security_id for item in invocation.producers),
-        )
-        carried = carried.extend(objects=(*invocation.objects, security), derivations=(derivation,))
-        return cls(
-            id=bundle_id,
-            purpose=purpose,
-            payload=payload,
-            security=security,
-            evidence=carried,
+            evidence=_material_evidence(security),
         )
 
     @classmethod
@@ -445,55 +260,17 @@ class ContextBundle(FrozenModel):
             raise ValueError("selection requires nonempty uniquely named members")
         if any(item.security.sensitivity is None for item in members):
             raise ValueError("selected members require Sensitivity")
-        evidence = SecurityEvidence().merge(*(item.evidence for item in members))
         sensitivity = Sensitivity(
             max(item.security.sensitivity.value for item in members if item.security.sensitivity)
         )
-        security = _material_security(
+        return cls.create(
             owner_module_id=owner_module_id,
-            reference=bundle_id,
+            bundle_id=bundle_id,
+            purpose=purpose,
             payload={item.id: item.payload for item in members},
             sensitivity=sensitivity,
             publication_revision=publication_revision,
             representation_revision=representation_revision,
-            sources=tuple(item.security for item in members),
-        )
-        derivation = DerivationEvidence.issue(
-            kind="selection",
-            output_security_id=security.security_id,
-            source_security_ids=tuple(item.security.security_id for item in members),
-        )
-        return cls(
-            id=bundle_id,
-            purpose=purpose,
-            payload={item.id: item.payload for item in members},
-            security=security,
-            evidence=evidence.extend(objects=(security,), derivations=(derivation,)),
-        )
-
-    def derive(
-        self,
-        *,
-        invocation: InvocationContext,
-        bundle_id: str,
-        purpose: str,
-        payload: JsonValue,
-        sensitivity: Sensitivity | None = None,
-        representation_revision: str = "1",
-        transform: SecurityScopeRef | None = None,
-    ) -> ContextBundle:
-        assert self.security.sensitivity is not None
-        return ContextBundle.derive_from(
-            invocation=invocation,
-            source=self,
-            owner_module_id=self.security.scope.owner_module_id,
-            bundle_id=bundle_id,
-            purpose=purpose,
-            payload=payload,
-            sensitivity=sensitivity or self.security.sensitivity,
-            publication_revision=self.security.scope.publication_revision,
-            representation_revision=representation_revision,
-            transform=transform,
         )
 
     def transient(self) -> TransientMaterial:
