@@ -23,7 +23,7 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.Objects;
 
-/** Real connector for a configured running llama-server native completion endpoint. */
+/** Real connector for a configured running llama-server chat-completions endpoint. */
 public final class LlamaCppCapability implements Capability<TextInferenceCommand, TextInferenceResult> {
     private static final ObjectMapper JSON = new ObjectMapper();
     private final LlamaCppConfiguration configuration;
@@ -57,22 +57,36 @@ public final class LlamaCppCapability implements Capability<TextInferenceCommand
     @Override public TextInferenceResult execute(TextInferenceCommand command, ExecutionContext context) throws CapabilityException {
         context.requireActive();
         ObjectNode payload = JSON.createObjectNode();
-        payload.put("prompt", command.prompt()); payload.put("n_predict", command.maximumGeneratedTokens());
-        var stops = payload.putArray("stop"); command.stopSequences().forEach(stops::add); payload.put("model", configuration.modelAlias());
+        payload.put("model", configuration.modelAlias());
+        ObjectNode message = payload.putArray("messages").addObject();
+        message.put("role", "user");
+        message.put("content", command.prompt());
+        payload.put("max_tokens", command.maximumGeneratedTokens());
+        var stops = payload.putArray("stop");
+        command.stopSequences().forEach(stops::add);
         try {
-            HttpRequest request = HttpRequest.newBuilder(resolve("completion"))
+            HttpRequest request = HttpRequest.newBuilder(resolve("v1/chat/completions"))
                     .timeout(remaining(context)).header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofByteArray(JSON.writeValueAsBytes(payload))).build();
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
             context.requireActive();
             if (response.statusCode() < 200 || response.statusCode() >= 300)
                 throw new CapabilityException(PhysicalFailureCategory.REMOTE_FAILURE, "llama.cpp HTTP " + response.statusCode());
-            JsonNode root = JSON.readTree(response.body()); JsonNode content = root.get("content");
-            if (content == null || !content.isTextual()) throw new CapabilityException(PhysicalFailureCategory.PROTOCOL, "llama.cpp response has no textual content");
-            boolean stopped = root.path("stopped_eos").asBoolean(false) || root.path("stopped_word").asBoolean(false);
-            int generated = root.path("tokens_predicted").asInt(-1); int prompt = root.path("tokens_evaluated").asInt(-1);
-            TextInferenceResult.CompletionReason reason = stopped ? TextInferenceResult.CompletionReason.STOP
-                    : generated >= command.maximumGeneratedTokens() ? TextInferenceResult.CompletionReason.LENGTH : TextInferenceResult.CompletionReason.OTHER;
+            JsonNode root = JSON.readTree(response.body());
+            JsonNode choice = root.path("choices").path(0);
+            JsonNode content = choice.path("message").path("content");
+            if (!content.isTextual()) {
+                throw new CapabilityException(PhysicalFailureCategory.PROTOCOL,
+                        "llama.cpp response has no textual choice");
+            }
+            String finish = choice.path("finish_reason").asText("");
+            TextInferenceResult.CompletionReason reason = "stop".equals(finish)
+                    ? TextInferenceResult.CompletionReason.STOP
+                    : "length".equals(finish)
+                            ? TextInferenceResult.CompletionReason.LENGTH
+                            : TextInferenceResult.CompletionReason.OTHER;
+            int prompt = root.path("usage").path("prompt_tokens").asInt(-1);
+            int generated = root.path("usage").path("completion_tokens").asInt(-1);
             return new TextInferenceResult(content.textValue(), reason, prompt, generated);
         } catch (java.net.http.HttpTimeoutException exception) { throw new CapabilityException(PhysicalFailureCategory.TIMEOUT, "llama.cpp request timed out", exception); }
         catch (ConnectException exception) { throw new CapabilityException(PhysicalFailureCategory.CONNECTION, "cannot connect to llama.cpp", exception); }

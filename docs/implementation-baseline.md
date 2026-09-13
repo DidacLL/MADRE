@@ -8,7 +8,7 @@ the intended artifact boundaries:
   Operation construction and responsibility-specific ports;
 - `madre-kernel`, the live Module boundary, physical Capability SPI, deterministic
   selection, resources, immediate/durable dispatcher, SQLite lifecycle,
-  configuration and loopback transport;
+  configuration and in-process public ports;
 - `madre-text-inference`, the first physical command/result contract and codec;
 - `madre-adapter-llamacpp`, the real llama-server connector;
 - `madre-adapter-openai-compatible`, a real chat-completions connector accepting an
@@ -39,7 +39,7 @@ state, originating Module identity, and accumulated physical values. CORE assign
 resolves the Module's normal identity only after ordinary live registration.
 
 The application supports explicit llama.cpp and optional OpenAI-compatible connector
-facts, quantitative resources, CORE assignment, runtime paths and loopback binding.
+facts, quantitative resources, CORE assignment, and runtime paths.
 Its console maps `/standard <prompt>` to standard prompt and ordinary text to fast
 lane, surfaces useful background completion independently, and preserves physical
 failure categories. The generated distribution contains startup scripts and an
@@ -52,8 +52,20 @@ and an isolated SDK-only consumer. The acceptance helper starts an owner-supplie
 llama-server and model, builds the distribution, then guides standard, fast-lane,
 restart, and SQLite inspection evidence.
 
-No llama-server executable or model is bundled. Real-model acceptance must not be
-reported until that exact journey obtains real text through the installed Kernel path
-and demonstrates durable background recovery. The OpenAI-compatible implementation
-is real, but an externally authenticated provider remains unexercised unless the
-Owner supplies its prepared transport/session.
+No llama-server executable or model is bundled. On 2026-09-13 the installed
+distribution was exercised against llama.cpp build `10016 (32b741c33)` and
+`qwen2.5-3b-instruct-q4_k_m.gguf`. The real run produced a standard response, returned
+fast-lane foreground text before durable background completion, interrupted an active
+background attempt, restarted the application, retried the physical work, and
+delivered the Module-interpreted background result. Repeating the run after changing
+the local adapter from raw completion to chat completion produced clean
+instruction-following text and completed a no-follow-up background path with empty
+Module pending state. The OpenAI-compatible implementation is real, but an externally
+prepared provider session remains unexercised unless the Owner supplies it.
+
+The first useful installation is one process and injects the SDK ports directly into
+the owner-interaction Module. No socket transport is currently implemented. A second
+real Module running outside that process will require a concrete local transport.
+The current application assembly installs only the owner-interaction Module and maps
+CORE to its ordinary identity. Loading a replacement Module and verifying the
+minimum public behavior required by CORE are not implemented yet.

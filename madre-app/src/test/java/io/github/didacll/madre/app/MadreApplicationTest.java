@@ -15,7 +15,7 @@ final class MadreApplicationTest {
     @Test void assemblesShippedOrdinaryModuleAndResolvesCoreRole() {
         try (MadreApplication application = MadreApplication.start(properties())) {
             assertEquals(OwnerInteractionModule.ID,
-                    application.kernel().transport().core().orElseThrow());
+                    application.kernel().modules().resolvedCore().orElseThrow());
             assertEquals(OwnerInteractionModule.ID,
                     application.interaction().definition().id());
         }
@@ -30,7 +30,6 @@ final class MadreApplicationTest {
     private Properties properties() {
         Properties properties = new Properties();
         properties.setProperty("roles.core", OwnerInteractionModule.ID.value());
-        properties.setProperty("kernel.bind", "127.0.0.1");
         properties.setProperty("kernel.database", temporary.resolve("kernel.sqlite").toString());
         properties.setProperty("kernel.result-retention-seconds", "3600");
         properties.setProperty("module.owner-interaction.state",

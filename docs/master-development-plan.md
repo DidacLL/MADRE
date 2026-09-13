@@ -52,17 +52,17 @@ The modules are dependency boundaries, not one-class packages:
 
 - `madre-algebra` is a small dependency-free public value library.
 - `madre-sdk` is the public Module programming model and codecs.
-- `madre-kernel` owns registries, physical work, routing, scheduling, storage and
-  local transport.
+- `madre-kernel` owns registries, physical work, routing, scheduling and storage.
 - `madre-text-inference` defines the first physical Capability command and result.
 - each adapter binds that physical contract to one connector family;
 - `madre-module-owner-interaction` is the shipped ordinary Module implementation;
 - `madre-app` assembles an installable local environment and assigns CORE.
 
 Prefer the JDK, Jackson for explicit JSON codecs, SQLite JDBC for the physical work
-queue, and SLF4J with a small local backend for runtime logs. Use a minimal local HTTP
-server or another small concrete transport; do not introduce Spring, dependency
-injection frameworks, workflow engines, actor systems, or plugin frameworks.
+queue, and SLF4J with a small local backend for runtime logs. Add a concrete local
+transport only with the first external-process Module that uses it; do not represent
+direct in-process calls as transport. Do not introduce Spring, dependency injection
+frameworks, workflow engines, actor systems, or plugin frameworks.
 
 Public domain classes never inherit from JSON, HTTP, SQLite, or framework types.
 
@@ -342,10 +342,11 @@ The current foundation does not invent a universal Module invocation contract. T
 first real cross-Module behavior will add the smallest transport its bounded
 Operation requires, without moving Material interpretation into Kernel.
 
-### Local transport
+### Future local transport
 
-Bind the Owner-facing runtime to loopback by default. Provide endpoints or an
-equivalent local transport for:
+The first useful installation injects SDK ports directly because its Module shares
+the application process. The first external-process Module must add an actual local
+transport, bound to loopback by default, for the exact boundaries it uses:
 
 - Module registration and removal;
 - reachable Module directory queries;

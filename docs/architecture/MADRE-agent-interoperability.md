@@ -92,7 +92,7 @@ CORE class and no CORE behavior appears in Kernel's physical execution path.
 
 ## Codecs
 
-Explicit versioned codecs map definitions and transport messages to JSON. Domain
+Explicit versioned codecs map definitions to JSON boundary representations. Domain
 classes do not inherit from codec or HTTP framework classes and expose no
 `Map<String, Object>` extension bag.
 

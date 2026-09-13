@@ -88,9 +88,10 @@ public final class MadreApplication implements AutoCloseable {
             }
             OwnerInteractionModule interaction = new OwnerInteractionModule(
                     kernel.execution(), interactionState);
-            ModuleRegistration.Registration registration = kernel.transport().register(
+            ModuleRegistration.Registration registration = kernel.modules().register(
                     interaction.definition());
-            if (!kernel.transport().core().filter(OwnerInteractionModule.ID::equals).isPresent()) {
+            if (!kernel.modules().resolvedCore()
+                    .filter(OwnerInteractionModule.ID::equals).isPresent()) {
                 registration.close();
                 throw new IllegalStateException("configured CORE Module did not resolve after registration");
             }

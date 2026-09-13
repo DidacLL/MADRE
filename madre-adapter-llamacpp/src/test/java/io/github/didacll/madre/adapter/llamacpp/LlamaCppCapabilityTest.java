@@ -19,14 +19,15 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
 
 final class LlamaCppCapabilityTest {
-    @Test void executesNativeProtocolAndClassifiesMalformedResponse() throws Exception {
+    @Test void executesChatProtocolAndClassifiesMalformedResponse() throws Exception {
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         AtomicBoolean malformed = new AtomicBoolean();
         server.createContext("/health", exchange -> { exchange.sendResponseHeaders(200, -1); exchange.close(); });
-        server.createContext("/completion", exchange -> {
+        server.createContext("/v1/chat/completions", exchange -> {
             String request = new String(exchange.getRequestBody().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
             String body = !malformed.get() && request.contains("installed-model")
-                    ? "{\"content\":\"real protocol text\",\"tokens_predicted\":3,\"stopped_eos\":true}" : "{}";
+                    ? "{\"choices\":[{\"message\":{\"content\":\"real protocol text\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":2,\"completion_tokens\":3}}"
+                    : "{}";
             byte[] bytes = body.getBytes(java.nio.charset.StandardCharsets.UTF_8); exchange.sendResponseHeaders(200, bytes.length);
             exchange.getResponseBody().write(bytes); exchange.close();
         });
