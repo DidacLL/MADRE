@@ -32,8 +32,22 @@ tasks.register("architectureCheck") {
         }
         val python = fileTree(rootDir) { include("**/*.py"); exclude(".git/**", "build/**", "**/build/**") }
         python.forEach { violations += "${it.relativeTo(rootDir)}: active Python source" }
+        fileTree(rootDir) { include("madre-kernel/src/main/java/**/capability/*.java") }.forEach { source ->
+            val text = source.readText()
+            Regex("\\b(Material(Type)?|Module|Agent|Operation|Skill|Workflow)(Id)?\\b").find(text)?.let {
+                violations += "${source.relativeTo(rootDir)}: semantic concept inside Capability SPI"
+            }
+        }
+        fileTree(rootDir) { include("madre-kernel/src/main/**/*.java") }.forEach { source ->
+            if (Regex("new\\s+Material\\s*[<(]").containsMatchIn(source.readText())) {
+                violations += "${source.relativeTo(rootDir)}: Kernel-created Material"
+            }
+        }
         if (violations.isNotEmpty()) throw GradleException(violations.joinToString("\n", "Architecture violations:\n"))
     }
 }
 
-tasks.named("check") { dependsOn("architectureCheck") }
+tasks.named("check") {
+    dependsOn("architectureCheck")
+    dependsOn(subprojects.map { "${it.path}:check" })
+}

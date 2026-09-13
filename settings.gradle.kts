@@ -1,3 +1,10 @@
 rootProject.name = "madre"
 
-include("madre-algebra", "madre-sdk", "madre-kernel")
+include(
+    "madre-algebra",
+    "madre-sdk",
+    "madre-kernel",
+    "madre-text-inference",
+    "madre-adapter-llamacpp",
+    "madre-adapter-openai-compatible"
+)

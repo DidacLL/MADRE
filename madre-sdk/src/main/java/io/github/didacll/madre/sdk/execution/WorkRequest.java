@@ -12,7 +12,7 @@ import java.util.Optional;
 public record WorkRequest<C, R>(ModuleId originatingModule, C command, Class<R> resultType,
         Sensitivity carriedSensitivity, Optional<Risk> physicalRisk, ExecutionMode mode,
         int priority, Instant eligibleAt, Duration timeout, PhysicalRetryPolicy retryPolicy,
-        Optional<CancellationKey> cancellationKey) {
+        Optional<CancellationKey> cancellationKey, PhysicalPreferences preferences) {
     public WorkRequest {
         Objects.requireNonNull(originatingModule, "originatingModule");
         Objects.requireNonNull(command, "command");
@@ -24,6 +24,7 @@ public record WorkRequest<C, R>(ModuleId originatingModule, C command, Class<R> 
         Objects.requireNonNull(timeout, "timeout");
         Objects.requireNonNull(retryPolicy, "retryPolicy");
         cancellationKey = Objects.requireNonNull(cancellationKey, "cancellationKey");
+        Objects.requireNonNull(preferences, "preferences");
         if (priority < 0) throw new IllegalArgumentException("priority must not be negative");
         if (timeout.isZero() || timeout.isNegative()) throw new IllegalArgumentException("timeout must be positive");
     }
