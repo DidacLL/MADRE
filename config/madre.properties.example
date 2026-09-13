@@ -6,6 +6,7 @@ module.owner-interaction.state=var/owner-interaction-background.state
 
 # Explicit physical capacity and llama.cpp claims.
 resources.model-slot=1
+resources.network-slot=4
 connector.llamacpp.enabled=true
 connector.llamacpp.id=local-llama
 connector.llamacpp.endpoint=http://127.0.0.1:8080/
@@ -26,3 +27,14 @@ connector.openai-compatible.integrity=I5
 connector.openai-compatible.location=LOCAL
 connector.openai-compatible.expected-latency-ms=30000
 connector.openai-compatible.preference=50
+
+# Optional SearXNG JSON search endpoint. The receiving Privacy and Integrity are
+# installation facts; endpoint locality never derives either value.
+connector.searxng.enabled=false
+connector.searxng.id=web-search
+connector.searxng.endpoint=http://127.0.0.1:8888/search
+connector.searxng.privacy=P2
+connector.searxng.integrity=I2
+connector.searxng.expected-latency-ms=5000
+connector.searxng.preference=100
+connector.searxng.resource.network-slot=1

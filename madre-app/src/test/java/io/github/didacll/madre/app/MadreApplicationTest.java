@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.github.didacll.madre.interaction.OwnerInteractionModule;
+import io.github.didacll.madre.websearch.WebSearchModule;
 import java.nio.file.Path;
 import java.util.Properties;
 import org.junit.jupiter.api.Test;
@@ -12,19 +13,25 @@ import org.junit.jupiter.api.io.TempDir;
 final class MadreApplicationTest {
     @TempDir Path temporary;
 
-    @Test void assemblesShippedOrdinaryModuleAndResolvesCoreRole() {
+    @Test void assemblesTwoOrdinaryModulesAndResolvesQualifiedCoreRole() {
         try (MadreApplication application = MadreApplication.start(properties())) {
             assertEquals(OwnerInteractionModule.ID,
                     application.kernel().modules().resolvedCore().orElseThrow());
-            assertEquals(OwnerInteractionModule.ID,
-                    application.interaction().definition().id());
+            assertEquals(OwnerInteractionModule.ID, application.interaction().definition().id());
+            assertEquals(WebSearchModule.ID, application.webSearch().definition().id());
         }
     }
 
-    @Test void rejectsACoreAssignmentMissingFromThisInstallationAssembly() {
+    @Test void rejectsRegisteredModuleThatDoesNotProvideCoreInteractionBehavior() {
+        Properties properties = properties();
+        properties.setProperty("roles.core", WebSearchModule.ID.value());
+        assertThrows(IllegalArgumentException.class, () -> MadreApplication.start(properties));
+    }
+
+    @Test void rejectsCoreAssignmentThatIsNotARegisteredInstalledModule() {
         Properties properties = properties();
         properties.setProperty("roles.core", "another.module");
-        assertThrows(IllegalArgumentException.class, () -> MadreApplication.start(properties));
+        assertThrows(IllegalStateException.class, () -> MadreApplication.start(properties));
     }
 
     private Properties properties() {

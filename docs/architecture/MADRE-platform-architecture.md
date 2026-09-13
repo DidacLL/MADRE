@@ -57,6 +57,13 @@ service. When a Workflow invokes multiple Operations, every Operation composes f
 the actual Material entering that Operation and every resulting physical request is
 selected independently by Kernel.
 
+The WebSearch Module is the first concrete stress case. Its researcher Agent owns a
+`deep-search` Workflow whose minimal sequence is two `single-search` Operation
+invocations followed by one private review Operation. The two searches independently
+cross the web-search physical boundary; their Module-interpreted Material is then
+joined and the review independently crosses the text-inference boundary. The Workflow
+has no combined security state and no privileged execution path.
+
 ## Kernel boundary
 
 Kernel owns mechanisms shared across Modules:
@@ -95,11 +102,20 @@ installed mechanism:
 The adapter accepts the physical command and returns physical output. It contains no
 Material, Module, Agent, Workflow, Skill, or Operation reference.
 
-The first physical contract is text inference. llama.cpp and OpenAI-compatible
-adapters implement that same physical contract without exposing their private
-protocol payloads to Modules. New physical contracts are introduced only when a real
-connector requires them; they extend the Capability SPI rather than expanding one
-generic dictionary.
+MADRE currently has two typed physical contracts:
+
+- text inference: llama.cpp and OpenAI-compatible adapters accept
+  `TextInferenceCommand` and return `TextInferenceResult`;
+- web search: the SearXNG adapter accepts `WebSearchCommand` and returns
+  `WebSearchResult`.
+
+SearXNG HTTP/JSON details stay inside the adapter. The WebSearch Module sees only the
+typed physical search contract and interprets its returned hits into Module-owned
+research Material. Search endpoint, Privacy, Integrity, latency and resource claims
+are installation facts. Locality or provider identity never derives algebraic values.
+
+New physical contracts are introduced only when a real connector requires them; they
+extend the Capability SPI rather than expanding one generic dictionary.
 
 ## CORE installation role
 
@@ -108,14 +124,17 @@ resolves that identity in the live registry. The surrounding application sends
 default owner interaction to that Module.
 
 A CORE candidate must expose the ordinary public behavior required by the role. The
-shipped candidate provides standard-prompt and fast-lane Operations through its
-ordinary interaction Agent. No CORE subtype, privileged path, special algebra, or
-Kernel scheduling lane exists.
+current minimum qualification is the public `standard-prompt` and `fast-lane`
+Operations exposed through one Agent, matching the existing product contract. The
+shipped owner-interaction Module qualifies. The WebSearch Module does not. No CORE
+subtype, privileged path, special algebra, or Kernel scheduling lane exists.
 
 A CORE interaction Agent may detect that another installed Agent/Operation/Workflow is
 better suited to an owner request, or the owner may choose that behavior directly in
 a UI. That trigger is user-experience behavior. It does not make the target Workflow
-a CORE or Kernel concept.
+a CORE or Kernel concept. The current console directly exposes WebSearch operations as
+the first exercised UI path; automatic conversational routing is not implied by this
+slice.
 
 ## Storage
 
@@ -132,6 +151,7 @@ Module registry is rebuilt when Modules start.
 
 ## Provider environment
 
-MADRE configuration describes the connector endpoint and physical behavior. Account
-sessions, credentials, authentication flows, and provider permissions are supplied
-outside the MADRE model. They do not alter Capability Privacy or Integrity.
+MADRE configuration describes connector endpoints and physical behavior. Account
+sessions, credentials, authentication flows, authorization, permissions, and provider
+roles are supplied outside the MADRE model. They do not alter Capability Privacy or
+Integrity.
