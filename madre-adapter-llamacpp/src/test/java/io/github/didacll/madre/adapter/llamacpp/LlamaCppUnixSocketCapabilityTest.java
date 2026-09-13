@@ -121,8 +121,8 @@ final class LlamaCppUnixSocketCapabilityTest {
     }
 
     private static boolean unixDomainSocketsSupported() {
-        try (ServerSocketChannel ignored = ServerSocketChannel.open(StandardProtocolFamily.UNIX)) {
-            return true;
+        try (ServerSocketChannel probe = ServerSocketChannel.open(StandardProtocolFamily.UNIX)) {
+            return probe.isOpen();
         } catch (IOException | UnsupportedOperationException exception) {
             return false;
         }
