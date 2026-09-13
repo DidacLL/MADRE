@@ -27,6 +27,26 @@ Development proceeds in the large coherent slices below. Each slice is committed
 pushed only after its complete boundary works. Pull-request merging remains an Owner
 action.
 
+## Execution status
+
+The three delivery slices in this document have been executed on PR #47. They are a
+record of the requirements used to construct the current system, not a queue to
+replay. The implementation through `c4d8cc7` includes the Java SDK and algebra,
+physical Kernel, live Module registry, both connectors, the ordinary
+owner-interaction Module, the installable application, and real llama.cpp acceptance.
+`docs/implementation-baseline.md` is the concise authority for what runs now.
+
+The current implementation deliberately leaves three later behaviors open:
+
+- loading another ordinary Module into the installed application;
+- an actual local transport when the first external-process Module requires it, plus
+  qualification of the configured Module against the role's required public behavior
+  without introducing a CORE subtype;
+- acceptance against an externally prepared OpenAI-compatible provider session.
+
+These are product-development continuations, not permission to redesign the algebra,
+restore a generic invocation framework, or replay the completed foundation slices.
+
 ## Technology baseline
 
 Use Java 21 for the complete implementation. Do not retain or translate the removed
@@ -66,7 +86,7 @@ frameworks, workflow engines, actor systems, or plugin frameworks.
 
 Public domain classes never inherit from JSON, HTTP, SQLite, or framework types.
 
-## Public model to implement
+## Implemented public model
 
 ### Algebra
 
@@ -458,9 +478,9 @@ Provide a simple local console interface in `madre-app`:
 The interface is replaceable Module/application presentation, not a universal SDK
 chat abstraction.
 
-## Large development slices
+## Executed development slices
 
-### Slice 1 — Java public foundation and live Module boundary
+### Slice 1 — Java public foundation and live Module boundary (complete)
 
 Deliver together:
 
@@ -479,7 +499,7 @@ product implementation.
 
 Commit and push one coherent foundation checkpoint.
 
-### Slice 2 — Complete Kernel, durable work and real Capabilities
+### Slice 2 — Complete Kernel, durable work and real Capabilities (complete)
 
 Deliver together:
 
@@ -500,7 +520,7 @@ restart.
 
 Commit and push one coherent runtime checkpoint.
 
-### Slice 3 — Shipped CORE Module and usable distribution
+### Slice 3 — Shipped CORE Module and usable distribution (complete)
 
 Deliver together:
 
@@ -589,17 +609,17 @@ Run at the exact release head:
 Record exact commands, model, connector versions, outputs, unexercised external
 provider behavior, and the final pushed commit.
 
-## Delegation protocol
+## Next orchestration boundary
 
-Once the clean architecture checkpoint is pushed, delegate the three slices in order.
-Each implementation agent receives this whole plan and `MADRE.md`, works on PR #47,
-commits and pushes its complete slice, and does not merge.
+Do not delegate or reimplement the completed slices. Begin from the pushed head and
+the implementation baseline. Select the next real Module behavior—preferably the
+Owner's PhD Module—and implement it against the published SDK. Introduce cross-process
+transport or broader installation loading only when that real Module needs it, then
+qualify the configured CORE assignment through ordinary public Module behavior. Keep
+external-provider acceptance separate unless the Owner supplies the prepared
+provider environment.
 
-An agent must not create a narrower substitute plan. If it cannot complete its slice,
-it commits only a coherent usable boundary and reports the exact missing acceptance
-step; it must not add placeholders, fake Modules, or tests claiming the missing
-behavior.
-
-Before starting a later slice, the implementing agent verifies the previous slice at
-the pushed head. The final integration agent reviews the complete active tree rather
-than trusting earlier test claims.
+Each implementation task must complete a usable behavior, validate the actual path,
+commit and push its coherent result, and leave merging to the Owner. Fixtures may
+falsify mechanics but cannot substitute for the Module or connector behavior being
+claimed.
