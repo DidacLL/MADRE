@@ -23,14 +23,17 @@ standard-prompt and fast-lane Operations with explicit accepted Privacy, promise
 output Sensitivity, and inference EffectProfiles. Behavior and prompt text are not
 serialized.
 
-Standard prompt creates one immediate `TextInferenceCommand`, submits it through the
-public `ExecutionService`, interprets physical text, and creates independent
+Standard prompt derives one immediate work request from its valid Operation call,
+submits its `TextInferenceCommand` through the public `ExecutionService`, interprets
+physical text, and creates independent
 Module-owned answer Material. Fast lane submits ordinary-priority foreground and
 lower-priority durable background requests through that same service. It returns
 foreground Material without awaiting background work. The Module later interprets
 collected text into background-analysis Material and either creates separate visible
 follow-up Material or stops on explicit `NO_FOLLOW_UP`. Model text has no execution
-path.
+path. Public work construction cannot independently replace the originating Module,
+carried Sensitivity, or EffectProfile Risk, and Operation invocation keeps returned
+Material within its declared output contract.
 
 The Module persists pending background associations in its own state file
 so a restarted application can collect a durable Kernel result. Kernel's SQLite
@@ -46,9 +49,9 @@ failure categories. The generated distribution contains startup scripts and an
 example configuration.
 
 The build covers algebra/SDK/registry invariants, Capability selection/resources,
-SQLite recovery/retry/cancellation/delivery, connector protocols, shipped CORE
-behavior, application assembly, architecture source checks, SDK sources/Javadocs,
-and an isolated SDK-only consumer. The acceptance helper starts an owner-supplied
+SQLite recovery/retry/cancellation/delivery, connector protocols, shipped
+owner-interaction behavior, application assembly, architecture source checks, SDK
+sources/Javadocs, and an isolated SDK-only consumer. The acceptance helper starts an owner-supplied
 llama-server and model, builds the distribution, then guides standard, fast-lane,
 restart, and SQLite inspection evidence.
 
@@ -60,7 +63,10 @@ background attempt, restarted the application, retried the physical work, and
 delivered the Module-interpreted background result. Repeating the run after changing
 the local adapter from raw completion to chat completion produced clean
 instruction-following text and completed a no-follow-up background path with empty
-Module pending state. The OpenAI-compatible implementation is real, but an externally
+Module pending state. After work-request construction was made derivable only from a
+valid Operation call, the exact built distribution again returned `FINAL_SDK_OK`
+through standard prompt and completed fast lane with empty pending Module state. The
+OpenAI-compatible implementation is real, but an externally
 prepared provider session remains unexercised unless the Owner supplies it.
 
 The first useful installation is one process and injects the SDK ports directly into

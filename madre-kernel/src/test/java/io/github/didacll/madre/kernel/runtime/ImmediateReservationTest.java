@@ -16,16 +16,13 @@ import io.github.didacll.madre.kernel.capability.PhysicalCodec;
 import io.github.didacll.madre.kernel.capability.PhysicalContract;
 import io.github.didacll.madre.kernel.capability.ResourceClaim;
 import io.github.didacll.madre.kernel.capability.ResourceId;
-import io.github.didacll.madre.sdk.execution.ExecutionMode;
 import io.github.didacll.madre.sdk.execution.PhysicalLocation;
 import io.github.didacll.madre.sdk.execution.PhysicalPreferences;
 import io.github.didacll.madre.sdk.execution.PhysicalRetryPolicy;
 import io.github.didacll.madre.sdk.execution.WorkRequest;
-import io.github.didacll.madre.sdk.identity.ModuleId;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -105,9 +102,8 @@ final class ImmediateReservationTest {
     }
 
     private static WorkRequest<String, String> request() {
-        return new WorkRequest<>(new ModuleId("interaction"), "prompt", String.class,
-                Sensitivity.S5, Optional.empty(), ExecutionMode.IMMEDIATE, 100,
-                Instant.now(), Duration.ofSeconds(5), PhysicalRetryPolicy.none(),
-                Optional.empty(), PhysicalPreferences.unconstrained());
+        return TestWorkRequests.immediate("prompt", String.class, Sensitivity.S5,
+                Optional.empty(), 100, Duration.ofSeconds(5), PhysicalRetryPolicy.none(),
+                PhysicalPreferences.unconstrained());
     }
 }

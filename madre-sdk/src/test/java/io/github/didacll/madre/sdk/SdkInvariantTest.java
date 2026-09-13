@@ -10,6 +10,9 @@ import io.github.didacll.madre.algebra.Risk;
 import io.github.didacll.madre.algebra.Sensitivity;
 import io.github.didacll.madre.sdk.codec.CodecException;
 import io.github.didacll.madre.sdk.codec.ModuleDefinitionJsonCodec;
+import io.github.didacll.madre.sdk.execution.PhysicalPreferences;
+import io.github.didacll.madre.sdk.execution.PhysicalRetryPolicy;
+import io.github.didacll.madre.sdk.execution.WorkRequest;
 import io.github.didacll.madre.sdk.identity.AgentId;
 import io.github.didacll.madre.sdk.identity.EffectProfileId;
 import io.github.didacll.madre.sdk.identity.MaterialId;
@@ -26,8 +29,10 @@ import io.github.didacll.madre.sdk.module.OperationDefinition;
 import io.github.didacll.madre.sdk.module.OperationVisibility;
 import io.github.didacll.madre.sdk.operation.OperationCall;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
@@ -54,9 +59,34 @@ final class SdkInvariantTest {
         EffectProfile profile = new EffectProfile(new EffectProfileId(operationId, "bounded"), Risk.R3, Autonomy.A2);
         OperationDefinition<String, String> operation = new OperationDefinition<>(operationId, "Run bounded behavior",
                 OperationVisibility.PUBLIC, Map.of(type.id(), Privacy.P3), Map.of(type.id(), Sensitivity.S3), Map.of(profile.id(), profile));
-        new OperationCall<>(operation, profile, input, List.of(Integrity.I2));
+        OperationCall<String, String> call = OperationCall.withEffect(
+                operation, profile, input, List.of(Integrity.I2));
         assertThrows(IllegalArgumentException.class, () ->
-                new OperationCall<>(operation, profile, input, List.of(Integrity.I1)));
+                OperationCall.withEffect(operation, profile, input, List.of(Integrity.I1)));
+        Material<String> undeclaredSensitivity = new Material<>(
+                new MaterialId(owner, "output"), type, "result", Sensitivity.S4);
+        assertThrows(IllegalArgumentException.class,
+                () -> call.acceptOutput(undeclaredSensitivity));
+    }
+
+    @Test void workRequestDerivesItsCarriedValuesFromTheBoundedOperationCall() {
+        ModuleId owner = new ModuleId("owner.module");
+        MaterialType<String> type = new MaterialType<>(new MaterialTypeId(owner, "text"),
+                String.class, "text/plain", STRINGS);
+        Material<String> input = new Material<>(new MaterialId(owner, "input"), type,
+                "hello", Sensitivity.S3);
+        OperationDefinition<String, String> operation = new OperationDefinition<>(
+                new OperationId(owner, "read"), "Read text", OperationVisibility.PRIVATE,
+                Map.of(type.id(), Privacy.P3), Map.of(type.id(), Sensitivity.S3), Map.of());
+        OperationCall<String, String> call = OperationCall.withoutEffect(operation, input);
+
+        WorkRequest<String, String> request = WorkRequest.immediate(call, "physical",
+                String.class, 1, Duration.ofSeconds(1), PhysicalRetryPolicy.none(),
+                Optional.empty(), PhysicalPreferences.unconstrained());
+
+        assertEquals(owner, request.originatingModule());
+        assertEquals(Sensitivity.S3, request.carriedSensitivity());
+        assertEquals(Optional.empty(), request.effectRisk());
     }
 
     @Test void definitionsDeriveValuesValidateReferencesAndRoundTrip() {

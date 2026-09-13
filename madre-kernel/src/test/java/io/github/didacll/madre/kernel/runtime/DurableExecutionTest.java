@@ -16,14 +16,12 @@ import io.github.didacll.madre.kernel.capability.CapabilityManifest;
 import io.github.didacll.madre.kernel.capability.ExecutionContext;
 import io.github.didacll.madre.kernel.capability.PhysicalCodec;
 import io.github.didacll.madre.kernel.capability.PhysicalContract;
-import io.github.didacll.madre.sdk.execution.ExecutionMode;
 import io.github.didacll.madre.sdk.execution.PhysicalLocation;
 import io.github.didacll.madre.sdk.execution.PhysicalPreferences;
 import io.github.didacll.madre.sdk.execution.PhysicalRetryPolicy;
 import io.github.didacll.madre.sdk.execution.WorkId;
 import io.github.didacll.madre.sdk.execution.WorkRequest;
 import io.github.didacll.madre.sdk.execution.WorkState;
-import io.github.didacll.madre.sdk.identity.ModuleId;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -66,9 +64,10 @@ final class DurableExecutionTest {
                 KernelExecutionService service = new KernelExecutionService(registry(CapabilityAvailability.AVAILABLE, calls), store, Duration.ofHours(1))) {
             WorkId retry = service.submit(request("retry", 2)); await(service, retry, WorkState.SUCCEEDED);
             assertEquals(2, service.inspect(retry).orElseThrow().attempts());
-            WorkId cancelled = service.submit(new WorkRequest<>(new ModuleId("test.owner"), "later", String.class, Sensitivity.S1,
-                    Optional.empty(), ExecutionMode.DURABLE, 0, Instant.now().plusSeconds(60), Duration.ofSeconds(2),
-                    PhysicalRetryPolicy.none(), Optional.empty(), PhysicalPreferences.unconstrained()));
+            WorkId cancelled = service.submit(TestWorkRequests.durable("later", String.class,
+                    Sensitivity.S1, Optional.empty(), 0, Instant.now().plusSeconds(60),
+                    Duration.ofSeconds(2), PhysicalRetryPolicy.none(), Optional.empty(),
+                    PhysicalPreferences.unconstrained()));
             assertTrue(service.cancel(cancelled)); assertEquals(WorkState.CANCELLED, service.inspect(cancelled).orElseThrow().state());
             assertFalse(service.collect(cancelled, String.class).isPresent());
         }
@@ -78,10 +77,21 @@ final class DurableExecutionTest {
         AtomicInteger calls = new AtomicInteger();
         try (SQLiteWorkStore store = new SQLiteWorkStore(directory.resolve("immediate.sqlite"));
                 KernelExecutionService service = new KernelExecutionService(registry(CapabilityAvailability.AVAILABLE, calls), store, Duration.ofHours(1))) {
-            WorkRequest<String, String> request = new WorkRequest<>(new ModuleId("test.owner"), "retry", String.class, Sensitivity.S1,
-                    Optional.empty(), ExecutionMode.IMMEDIATE, 1, Instant.now(), Duration.ofSeconds(2),
-                    new PhysicalRetryPolicy(2, Duration.ZERO), Optional.empty(), PhysicalPreferences.unconstrained());
-            assertEquals("RETRY", service.execute(request).toCompletableFuture().get()); assertEquals(2, calls.get());
+            WorkRequest<String, String> request = TestWorkRequests.immediate("retry",
+                    String.class, Sensitivity.S1, Optional.empty(), 1,
+                    Duration.ofSeconds(2), new PhysicalRetryPolicy(2, Duration.ZERO),
+                    PhysicalPreferences.unconstrained());
+            assertEquals("RETRY", service.execute(request).toCompletableFuture().get());
+            assertEquals(2, calls.get());
+
+            calls.set(0);
+            WorkRequest<String, String> unavailable = TestWorkRequests.immediate(
+                    "unavailable", String.class, Sensitivity.S1, Optional.empty(), 1,
+                    Duration.ofSeconds(2), new PhysicalRetryPolicy(2, Duration.ZERO),
+                    PhysicalPreferences.unconstrained());
+            assertEquals("UNAVAILABLE",
+                    service.execute(unavailable).toCompletableFuture().get());
+            assertEquals(2, calls.get());
         }
     }
 
@@ -93,8 +103,14 @@ final class DurableExecutionTest {
             @Override public CapabilityManifest<String, String> manifest() { return manifest; }
             @Override public CapabilityAvailability availability() { return availability; }
             @Override public String execute(String command, ExecutionContext context) throws CapabilityException {
-                if (calls.incrementAndGet() == 1 && command.equals("retry"))
-                    throw new CapabilityException(PhysicalFailureCategory.CONNECTION, "transient fixture failure");
+                if (calls.incrementAndGet() == 1 && command.equals("retry")) {
+                    throw new CapabilityException(PhysicalFailureCategory.CONNECTION,
+                            "transient fixture failure");
+                }
+                if (calls.get() == 1 && command.equals("unavailable")) {
+                    throw new CapabilityException(PhysicalFailureCategory.UNAVAILABLE,
+                            "transient physical unavailability");
+                }
                 return command.toUpperCase(java.util.Locale.ROOT);
             }
         }, 0);
@@ -102,8 +118,10 @@ final class DurableExecutionTest {
     }
 
     private static WorkRequest<String, String> request(String command, int attempts) {
-        return new WorkRequest<>(new ModuleId("test.owner"), command, String.class, Sensitivity.S1, Optional.empty(), ExecutionMode.DURABLE,
-                1, Instant.now(), Duration.ofSeconds(2), new PhysicalRetryPolicy(attempts, Duration.ofMillis(10)), Optional.empty(), PhysicalPreferences.unconstrained());
+        return TestWorkRequests.durable(command, String.class, Sensitivity.S1,
+                Optional.empty(), 1, Instant.now(), Duration.ofSeconds(2),
+                new PhysicalRetryPolicy(attempts, Duration.ofMillis(10)), Optional.empty(),
+                PhysicalPreferences.unconstrained());
     }
     private static void await(KernelExecutionService service, WorkId id, WorkState state) throws InterruptedException {
         Instant deadline = Instant.now().plusSeconds(5);

@@ -8,7 +8,6 @@ import io.github.didacll.madre.sdk.execution.ExecutionService;
 import io.github.didacll.madre.sdk.execution.PhysicalPreferences;
 import io.github.didacll.madre.sdk.execution.PhysicalFailureCategory;
 import io.github.didacll.madre.sdk.execution.PhysicalExecutionException;
-import io.github.didacll.madre.sdk.execution.PhysicalRetryPolicy;
 import io.github.didacll.madre.sdk.execution.WorkId;
 import io.github.didacll.madre.sdk.execution.WorkRequest;
 import io.github.didacll.madre.sdk.execution.WorkState;
@@ -66,11 +65,11 @@ public final class KernelExecutionService implements ExecutionService, AutoClose
         for (int attempt = 1; attempt <= request.retryPolicy().maximumAttempts(); attempt++) {
             CapabilityRegistry.Selection<C, R> current = selected;
             try (current) {
-                return invokeSelected(current, request, attempt, () -> false);
+                return invokeSelected(current, request.command(), request.timeout(), attempt,
+                        () -> false);
             } catch (CapabilityException exception) {
                 last = exception;
-                if (exception.category() == PhysicalFailureCategory.UNAVAILABLE
-                        || attempt == request.retryPolicy().maximumAttempts()) break;
+                if (attempt == request.retryPolicy().maximumAttempts()) break;
                 try { Thread.sleep(request.retryPolicy().delay().toMillis()); }
                 catch (InterruptedException interrupted) {
                     Thread.currentThread().interrupt();
@@ -97,7 +96,7 @@ public final class KernelExecutionService implements ExecutionService, AutoClose
         PhysicalContract<C, R> contract = contractFor(request);
         WorkId id = WorkId.create();
         store.insert(new StoredWork(id, request.originatingModule(), contract.id(), contract.commandCodec().encode(request.command()),
-                request.carriedSensitivity(), request.physicalRisk(), request.priority(), request.eligibleAt(), request.timeout(),
+                request.carriedSensitivity(), request.effectRisk(), request.priority(), request.eligibleAt(), request.timeout(),
                 request.retryPolicy().maximumAttempts(), request.retryPolicy().delay(), request.cancellationKey(),
                 request.preferences().location(), request.preferences().maximumLatency(), WorkState.QUEUED, 0,
                 Optional.empty(), Optional.empty(), Optional.empty()));
@@ -135,11 +134,9 @@ public final class KernelExecutionService implements ExecutionService, AutoClose
 
     private <C, R> void runDecoded(StoredWork stored, PhysicalContract<C, R> contract) {
         C command = contract.commandCodec().decode(stored.command());
-        WorkRequest<C, R> request = new WorkRequest<>(stored.module(), command, contract.resultType(), stored.sensitivity(), stored.risk(),
-                ExecutionMode.DURABLE, stored.priority(), stored.eligibleAt(), stored.timeout(),
-                new PhysicalRetryPolicy(stored.maximumAttempts(), stored.retryDelay()), stored.cancellationKey(),
-                new PhysicalPreferences(stored.location(), stored.maximumLatency()));
-        CapabilityRegistry.Selection<C, R> selection = capabilities.select(request).orElse(null);
+        CapabilityRegistry.Selection<C, R> selection = capabilities.select(command,
+                contract.resultType(), stored.sensitivity(), stored.risk(),
+                new PhysicalPreferences(stored.location(), stored.maximumLatency())).orElse(null);
         if (selection == null) return;
         try (selection) {
             Instant now = Instant.now();
@@ -147,7 +144,8 @@ public final class KernelExecutionService implements ExecutionService, AutoClose
             LOG.debug("Physical work {} attempt {} selected Capability {}", stored.id().value(), stored.attempts() + 1,
                     selection.capability().manifest().id().value());
             try {
-                R result = invokeSelected(selection, request, stored.attempts() + 1,
+                R result = invokeSelected(selection, command, stored.timeout(),
+                        stored.attempts() + 1,
                         () -> store.find(stored.id()).map(value -> value.state() == WorkState.CANCELLED).orElse(true));
                 store.succeed(stored.id(), stored.attempts() + 1, contract.resultCodec().encode(result), Instant.now());
             } catch (CapabilityException exception) {
@@ -158,11 +156,13 @@ public final class KernelExecutionService implements ExecutionService, AutoClose
         }
     }
 
-    private <C, R> R invokeSelected(CapabilityRegistry.Selection<C, R> selection, WorkRequest<C, R> request,
-            int attempt, java.util.function.BooleanSupplier cancelled) throws CapabilityException {
-        Instant deadline = Instant.now().plus(request.timeout());
-        Future<R> future = executions.submit(() -> selection.capability().execute(request.command(), new ExecutionContext(deadline, cancelled, attempt)));
-        try { return future.get(request.timeout().toMillis(), TimeUnit.MILLISECONDS); }
+    private <C, R> R invokeSelected(CapabilityRegistry.Selection<C, R> selection,
+            C command, Duration timeout, int attempt,
+            java.util.function.BooleanSupplier cancelled) throws CapabilityException {
+        Instant deadline = Instant.now().plus(timeout);
+        Future<R> future = executions.submit(() -> selection.capability().execute(command,
+                new ExecutionContext(deadline, cancelled, attempt)));
+        try { return future.get(timeout.toMillis(), TimeUnit.MILLISECONDS); }
         catch (TimeoutException exception) { future.cancel(true); throw new CapabilityException(PhysicalFailureCategory.TIMEOUT, "physical execution timed out", exception); }
         catch (InterruptedException exception) { Thread.currentThread().interrupt(); future.cancel(true); throw new CapabilityException(PhysicalFailureCategory.CANCELLED, "physical execution interrupted", exception); }
         catch (java.util.concurrent.ExecutionException exception) {

@@ -5,7 +5,6 @@ import io.github.didacll.madre.algebra.Integrity;
 import io.github.didacll.madre.algebra.Privacy;
 import io.github.didacll.madre.algebra.Risk;
 import io.github.didacll.madre.algebra.Sensitivity;
-import io.github.didacll.madre.sdk.execution.ExecutionMode;
 import io.github.didacll.madre.sdk.execution.ExecutionService;
 import io.github.didacll.madre.sdk.execution.PhysicalRetryPolicy;
 import io.github.didacll.madre.sdk.execution.WorkId;
@@ -69,8 +68,18 @@ public final class OwnerInteractionModule {
     private final ExecutionService execution;
     private final OwnerInteractionSettings settings;
     private final OwnerInteractionStateStore state;
-    private final Operation<String, String> standardOperation = this::executeStandardPrompt;
-    private final Operation<String, String> fastOperation = this::executeFastLane;
+    private final Operation<String, String> standardOperation = new Operation<>() {
+        @Override protected CompletionStage<Material<String>> execute(
+                OperationCall<String, String> call) {
+            return executeStandardPrompt(call);
+        }
+    };
+    private final Operation<String, String> fastOperation = new Operation<>() {
+        @Override protected CompletionStage<Material<String>> execute(
+                OperationCall<String, String> call) {
+            return executeFastLane(call);
+        }
+    };
 
     public OwnerInteractionModule(ExecutionService execution, Path stateFile) {
         this(execution, stateFile, OwnerInteractionSettings.defaults());
@@ -100,10 +109,8 @@ public final class OwnerInteractionModule {
         Material<String> prompt = call.input();
         TextInferenceCommand command = new TextInferenceCommand(prompt.payload(),
                 settings.foregroundMaximumTokens(), List.of());
-        WorkRequest<TextInferenceCommand, TextInferenceResult> request = new WorkRequest<>(ID,
-                command, TextInferenceResult.class, prompt.sensitivity(),
-                Optional.of(call.effectProfile().risk()),
-                ExecutionMode.IMMEDIATE, 50, Instant.now(), settings.foregroundTimeout(),
+        WorkRequest<TextInferenceCommand, TextInferenceResult> request = WorkRequest.immediate(
+                call, command, TextInferenceResult.class, 50, settings.foregroundTimeout(),
                 PhysicalRetryPolicy.none(), Optional.empty(), settings.foregroundPreferences());
         return execution.execute(request).thenApply(result ->
                 material(IMMEDIATE_ANSWER, requireGeneratedText(result), prompt.sensitivity()));
@@ -118,19 +125,17 @@ public final class OwnerInteractionModule {
         Material<String> prompt = call.input();
         TextInferenceCommand foregroundCommand = new TextInferenceCommand(prompt.payload(),
                 settings.foregroundMaximumTokens(), List.of());
-        WorkRequest<TextInferenceCommand, TextInferenceResult> foreground = new WorkRequest<>(ID,
-                foregroundCommand, TextInferenceResult.class, prompt.sensitivity(),
-                Optional.of(call.effectProfile().risk()),
-                ExecutionMode.IMMEDIATE, 100, Instant.now(), settings.foregroundTimeout(),
+        WorkRequest<TextInferenceCommand, TextInferenceResult> foreground = WorkRequest.immediate(
+                call, foregroundCommand, TextInferenceResult.class, 100,
+                settings.foregroundTimeout(),
                 PhysicalRetryPolicy.none(), Optional.empty(), settings.foregroundPreferences());
         CompletionStage<TextInferenceResult> foregroundResult = execution.execute(foreground);
 
         TextInferenceCommand analysisCommand = new TextInferenceCommand(backgroundPrompt(prompt.payload()),
                 settings.backgroundMaximumTokens(), List.of());
-        WorkRequest<TextInferenceCommand, TextInferenceResult> background = new WorkRequest<>(ID,
-                analysisCommand, TextInferenceResult.class, prompt.sensitivity(),
-                Optional.of(call.effectProfile().risk()),
-                ExecutionMode.DURABLE, 10, Instant.now(), settings.backgroundTimeout(),
+        WorkRequest<TextInferenceCommand, TextInferenceResult> background = WorkRequest.durable(
+                call, analysisCommand, TextInferenceResult.class, 10, Instant.now(),
+                settings.backgroundTimeout(),
                 settings.backgroundRetry(), Optional.empty(), settings.backgroundPreferences());
         submitBackground(background, prompt.sensitivity());
         return foregroundResult.thenApply(result ->
@@ -210,7 +215,7 @@ public final class OwnerInteractionModule {
             EffectProfile profile, Material<String> input) {
         OperationDefinition<String, String> operation =
                 (OperationDefinition<String, String>) DEFINITION.operations().get(operationId);
-        return new OperationCall<>(operation, profile, input, List.of());
+        return OperationCall.withEffect(operation, profile, input, List.of());
     }
 
     private static Material<String> material(MaterialType<String> type, String text,

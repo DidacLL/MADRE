@@ -5,6 +5,8 @@ import io.github.didacll.madre.kernel.capability.CapabilityAvailability;
 import io.github.didacll.madre.kernel.capability.CapabilityId;
 import io.github.didacll.madre.kernel.capability.CapabilityManifest;
 import io.github.didacll.madre.kernel.capability.PhysicalContract;
+import io.github.didacll.madre.algebra.Risk;
+import io.github.didacll.madre.algebra.Sensitivity;
 import io.github.didacll.madre.sdk.execution.PhysicalPreferences;
 import io.github.didacll.madre.sdk.execution.WorkRequest;
 import java.util.Comparator;
@@ -20,9 +22,20 @@ public final class CapabilityRegistry {
 
     public CapabilityRegistry(ResourceCoordinator resources) { this.resources = Objects.requireNonNull(resources, "resources"); }
 
-    public <C, R> Registration register(Capability<C, R> capability, int installationPreference) {
+    public synchronized <C, R> Registration register(Capability<C, R> capability,
+            int installationPreference) {
         Objects.requireNonNull(capability, "capability");
         if (installationPreference < 0) throw new IllegalArgumentException("installationPreference must not be negative");
+        PhysicalContract<C, R> contract = capability.manifest().contract();
+        for (Installed<?, ?> existing : installed.values()) {
+            PhysicalContract<?, ?> registered = existing.capability().manifest().contract();
+            boolean sameTypes = registered.commandType().equals(contract.commandType())
+                    && registered.resultType().equals(contract.resultType());
+            if (sameTypes != registered.id().equals(contract.id())) {
+                throw new IllegalArgumentException(
+                        "physical contract identity and command/result types disagree");
+            }
+        }
         Installed<C, R> entry = new Installed<>(capability, installationPreference);
         if (installed.putIfAbsent(capability.manifest().id(), entry) != null) throw new IllegalStateException("Capability already registered");
         return () -> installed.remove(capability.manifest().id(), entry);
@@ -48,37 +61,56 @@ public final class CapabilityRegistry {
 
     public <C, R> Optional<Selection<C, R>> select(WorkRequest<C, R> request) {
         Objects.requireNonNull(request, "request");
-        return installed.values().stream()
-                .filter(entry -> compatible(entry, request))
-                .sorted(Comparator.comparingInt((Installed<?, ?> value) -> value.preference()).reversed()
-                        .thenComparing(value -> value.capability().manifest().id()))
-                .map(entry -> reserve(entry, request))
-                .flatMap(Optional::stream).findFirst().map(selection -> cast(selection, request));
+        return select(request.command(), request.resultType(), request.carriedSensitivity(),
+                request.effectRisk(), request.preferences());
     }
 
-    private boolean compatible(Installed<?, ?> entry, WorkRequest<?, ?> request) {
+    <C, R> Optional<Selection<C, R>> select(C command, Class<R> resultType,
+            Sensitivity carriedSensitivity, Optional<Risk> effectRisk,
+            PhysicalPreferences preferences) {
+        Objects.requireNonNull(command, "command");
+        Objects.requireNonNull(resultType, "resultType");
+        Objects.requireNonNull(carriedSensitivity, "carriedSensitivity");
+        Objects.requireNonNull(effectRisk, "effectRisk");
+        Objects.requireNonNull(preferences, "preferences");
+        return installed.values().stream()
+                .filter(entry -> compatible(entry, command, resultType, carriedSensitivity,
+                        effectRisk, preferences))
+                .sorted(Comparator.comparingInt((Installed<?, ?> value) -> value.preference()).reversed()
+                        .thenComparing(value -> value.capability().manifest().id()))
+                .map(this::reserve)
+                .flatMap(Optional::stream).findFirst()
+                .map(selection -> cast(selection, command, resultType));
+    }
+
+    private boolean compatible(Installed<?, ?> entry, Object command, Class<?> resultType,
+            Sensitivity carriedSensitivity, Optional<Risk> effectRisk,
+            PhysicalPreferences preferences) {
         CapabilityManifest<?, ?> manifest = entry.capability().manifest();
-        if (!manifest.contract().commandType().equals(request.command().getClass())
-                || !manifest.contract().resultType().equals(request.resultType())) return false;
-        if (!request.carriedSensitivity().canReach(manifest.receivingPrivacy())) return false;
-        if (request.physicalRisk().isPresent() && (manifest.physicalIntegrity().isEmpty()
-                || request.physicalRisk().orElseThrow().rank() > manifest.physicalIntegrity().orElseThrow().rank())) return false;
+        if (!manifest.contract().commandType().equals(command.getClass())
+                || !manifest.contract().resultType().equals(resultType)) return false;
+        if (!carriedSensitivity.canReach(manifest.receivingPrivacy())) return false;
+        if (effectRisk.isPresent() && (manifest.physicalIntegrity().isEmpty()
+                || !effectRisk.orElseThrow()
+                        .isSupportedBy(manifest.physicalIntegrity().orElseThrow()))) return false;
         if (entry.capability().availability() != CapabilityAvailability.AVAILABLE) return false;
-        PhysicalPreferences preferences = request.preferences();
         if (preferences.location().isPresent() && preferences.location().orElseThrow() != manifest.location()) return false;
         if (preferences.maximumLatency().isPresent() && manifest.expectedLatency().compareTo(preferences.maximumLatency().orElseThrow()) > 0) return false;
         return resources.canReserve(manifest.resources());
     }
 
-    private Optional<Selection<?, ?>> reserve(Installed<?, ?> entry, WorkRequest<?, ?> request) {
+    private Optional<Selection<?, ?>> reserve(Installed<?, ?> entry) {
         return resources.tryReserve(entry.capability().manifest().resources()).map(lease -> new Selection<>(entry.capability(), lease));
     }
 
     @SuppressWarnings("unchecked")
-    private static <C, R> Selection<C, R> cast(Selection<?, ?> selection, WorkRequest<C, R> request) {
+    private static <C, R> Selection<C, R> cast(Selection<?, ?> selection, C command,
+            Class<R> resultType) {
         Capability<?, ?> raw = selection.capability();
-        if (!raw.manifest().contract().commandType().isInstance(request.command())
-                || !raw.manifest().contract().resultType().equals(request.resultType())) throw new IllegalStateException("contract changed during selection");
+        if (!raw.manifest().contract().commandType().isInstance(command)
+                || !raw.manifest().contract().resultType().equals(resultType)) {
+            throw new IllegalStateException("contract changed during selection");
+        }
         return (Selection<C, R>) selection;
     }
 

@@ -75,9 +75,9 @@ ordinary Operations:
   Module-interpreted result as new Material;
 - **fast lane** starts a low-latency foreground inference for a prompt response while
   also submitting the same owner request for durable background inference that looks
-  for harder work. The foreground result can be presented immediately. CORE alone
-  interprets the background result and decides what Module-owned continuation, if
-  any, is useful.
+  for harder work. The foreground result can be presented immediately. The same
+  owner-interaction Module interprets the background result and decides what
+  Module-owned continuation, if any, is useful.
 
 Fast lane is Module behavior. It is not a Kernel lane, scheduler privilege, model
 command, or special Capability.
@@ -175,7 +175,9 @@ policy object or security authority is involved.
 ## Physical execution
 
 A Module converts its Material into the bounded physical input required by its
-Operation and submits a work request containing:
+Operation. The SDK derives a work request from that already-composed Operation call;
+Module code cannot separately substitute its identity, carried Sensitivity, or the
+selected EffectProfile's Risk. The request contains:
 
 - the originating Module identity;
 - opaque physical input;

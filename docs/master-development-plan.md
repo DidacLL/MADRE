@@ -163,17 +163,23 @@ provide a universal Agent loop, assistant turn, planner, or workflow interpreter
 
 ### Operation construction
 
-A bounded Operation call binds:
+A bounded consequential Operation call binds:
 
 - one exact Operation;
 - one of that Operation's EffectProfiles;
 - actual input Material;
 - the Integrity values of actual non-user causal participants.
 
-The constructor applies information reach and non-user causal composition. A later
-WorkRequest carries that same profile's Risk so Kernel selection can compose it with
-the physical Capability selected at that later boundary. The Module cannot name or
-pretend to know that physical realizer in advance.
+An Operation without a consequential EffectProfile uses the same call abstraction
+without dummy values. Construction applies information reach and, when a profile is
+present, non-user causal composition. Operation invocation also keeps returned
+Material inside the declared output type, owner, and maximum Sensitivity.
+
+A later WorkRequest derives the originating Module, carried Sensitivity, and that
+same profile's Risk directly from the valid call so Module code cannot replace those
+values. Kernel selection composes them with the physical Capability selected at that
+later boundary. The Module cannot name or pretend to know that physical realizer in
+advance.
 
 Operations without consequential EffectProfiles do not receive dummy Risk, Autonomy,
 or Integrity values.
@@ -262,8 +268,9 @@ interface rather than expanding a universal property dictionary.
 It contains no Material, MaterialType, Agent, Operation, Capability identity, output
 Material declaration, or semantic continuation.
 
-Module-side builders may accept Material to construct prompt text and accumulated
-Sensitivity, but their output is the physical WorkRequest above.
+Module-side factories require a valid bounded Operation call and derive the first
+three identity/algebra fields above. Their output is the physical WorkRequest above;
+the Operation and Material objects do not cross into Kernel.
 
 ### Selection
 
@@ -426,12 +433,13 @@ Its behavior is bound privately and is absent from serialized definitions.
 4. Submit both through the same ordinary Kernel execution service.
 5. Present the foreground answer as soon as it returns, without waiting for the
    background request.
-6. Interpret the background result inside CORE when it becomes available.
+6. Interpret the background result inside the same owner-interaction Module when it
+   becomes available.
 7. Construct independent background-result Material.
-8. Present a useful improvement or start another explicit CORE-owned bounded
+8. Present a useful improvement or start another explicit Module-owned bounded
    Operation; otherwise stop.
 
-No model response contains an executable command. CORE behavior parses and interprets
+No model response contains an executable command. Module behavior parses and interprets
 text only inside its own bounded implementation.
 
 Fast lane receives no Kernel priority privilege beyond the explicit ordinary priority
@@ -481,7 +489,7 @@ Deliver together:
 - resource coordination;
 - immediate and SQLite-backed durable execution;
 - scheduling, cancellation, restart recovery, physical retry, and result delivery;
-- loopback runtime transport;
+- direct SDK-port assembly for the first same-process Module;
 - real llama.cpp adapter;
 - OpenAI-compatible adapter;
 - installation configuration with explicit algebraic values and no credential model.
@@ -529,9 +537,9 @@ Keep tests that can falsify stable public behavior:
 - live registry reset and reachability;
 - CORE assignment to an ordinary Module.
 
-Tests do not contain a substitute product Module. CORE tests exercise the shipped
-CORE artifact. Connector protocol tests may use a controlled server for failure
-edges, but real acceptance additionally uses llama.cpp.
+Tests do not contain a substitute product Module. Tests of Module behavior exercise
+the shipped owner-interaction artifact. Connector protocol tests may use a controlled
+server for failure edges, but real acceptance additionally uses llama.cpp.
 
 ### Architecture checks
 

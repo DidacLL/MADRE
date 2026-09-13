@@ -21,9 +21,11 @@ The Module submits a work request containing:
 It contains no Material, Material type, Agent, Operation, concrete Capability
 identity, future Material identity, output Sensitivity, or semantic continuation.
 
-The SDK work builder accepts Material as a Module-side convenience only while
-constructing the accumulated values and physical input. The resulting Kernel request
-contains neither Material identity nor Module payload semantics.
+The SDK work factory accepts an already-composed Operation call and derives the
+originating Module, accumulated Sensitivity, and applicable EffectProfile Risk from
+it. Module code supplies only the physical command and ordinary execution controls;
+it cannot copy or replace those carried values. The resulting Kernel request contains
+neither Material identity nor Module payload semantics.
 
 ## Capability selection
 

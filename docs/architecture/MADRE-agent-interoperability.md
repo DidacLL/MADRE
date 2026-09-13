@@ -34,7 +34,8 @@ provider payloads, or arbitrary metadata.
 
 Runtime behavior is bound through responsibility-specific Java interfaces:
 
-- an Operation implementation receives an already-composed typed Operation call;
+- an Operation implementation receives an already-composed typed Operation call and
+  its returned Material is kept inside the Operation's declared output contract;
 - the Module-facing execution service accepts a typed physical work request;
 - the Module directory exposes currently reachable public definitions.
 
@@ -74,6 +75,10 @@ returns only currently reachable:
 
 The query does not expose Capability identities. It does not persist a result or
 change either Module.
+
+Physical work requests derive their originating Module, carried Sensitivity, and
+applicable EffectProfile Risk from that call. Module code cannot inject copies of
+those values into Kernel work.
 
 Cross-Module execution is intentionally not generalized by the current foundation.
 The first concrete Module that needs it will define the smallest transport needed by
