@@ -17,6 +17,13 @@ A concept that would fit an ordinary hosted AI platform, agent harness, enterpri
 security system, or generic tool-calling framework needs a concrete MADRE
 responsibility before it enters this repository.
 
+Third-party libraries, protocols, providers, models, and runtimes may constrain an
+adapter implementation, but they do not define MADRE's architecture. Keep their
+transport, session, wire-format, lifecycle, and naming concepts behind the relevant
+Capability boundary. Change Kernel, SDK, Module, Agent, Material, Workflow, Operation,
+or Security Algebra contracts only for a real MADRE responsibility, never because an
+external project happens to expose a convenient abstraction.
+
 ## Product boundary
 
 - A Module owns meaning, state, persistence, Material, transformations, Agents, the
@@ -38,11 +45,6 @@ responsibility before it enters this repository.
 Kernel may transport opaque data that originated in Material. That never transfers
 Material ownership. Capability selection uses physical request values and Capability
 manifest values, never Material identity or semantic type.
-
-A runtime fact must never be invented merely to let execution continue. In particular,
-Capabilities must not hardcode a favorable availability state when reachability has
-not actually been established. Represent unobserved state explicitly and let Kernel
-exclude it until the connector can establish that it is available.
 
 ## Algebra
 
@@ -89,10 +91,14 @@ cohesive type with meaningful behavior over collections of descriptor fragments.
 Tests establish mathematical invariants, public contracts, failure mechanics, and
 real integrations. A fixture may replace an external physical mechanism for a
 deterministic test, but it cannot stand in for a claimed Module or product behavior.
-A green test suite proves the exercised contracts, not that an external integration
-has been exercised in reality. Keep fixture evidence and live acceptance evidence
-explicitly separate. Product acceptance must execute the shipped CORE-capable Module
-against real llama.cpp inference.
+Product acceptance must execute the shipped CORE-capable Module against real
+llama.cpp inference.
+
+No production adapter may invent a favorable physical state to keep development
+moving. If availability, reachability, or another physical fact has not been observed,
+represent that uncertainty explicitly or leave the mechanism unreachable. A fixture
+may exercise the state transition, but it may not justify a production constant that
+claims the mechanism is healthy.
 
 ## Delivery discipline
 

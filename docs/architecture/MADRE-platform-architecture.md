@@ -123,18 +123,24 @@ research Material. Search endpoint, Privacy, Integrity, latency and resource cla
 are installation facts. Locality or provider identity never derives algebraic values.
 
 A physical contract does not imply one transport. Multiple adapters may implement the
-same contract through different mechanisms and coexist in one installation. In
-particular, same-host llama.cpp inference does not conceptually require a TCP listener.
-The current llama.cpp adapter uses the server protocol for compatibility, but MADRE may
-also provide adapters using local IPC such as a Unix-domain socket where supported, or
-a direct native `libllama` binding. For owner-local inference, a non-network local
-boundary is preferred when it provides the required lifecycle, performance and
-platform support; loopback HTTP remains a compatibility option rather than the
-architectural default. Whatever transport is used, Privacy and Integrity remain
-explicit installation facts and are never inferred from locality.
+same contract through different physical mechanisms and coexist in one installation.
+Same-host llama.cpp now has both a Unix-domain-socket adapter and a loopback-HTTP
+compatibility adapter under the same text-inference contract. Kernel sees ordinary
+Capabilities and selects using their manifests and request values; it has no concept of
+llama.cpp, HTTP, AF_UNIX, model-server routes, or native APIs. The Unix adapter keeps
+the server in a separate process without creating a TCP listener; the HTTP adapter is
+retained for platforms/environments where that compatibility route is needed.
 
-New physical contracts are introduced only when a real connector requires them; they
-extend the Capability SPI rather than expanding one generic dictionary.
+Third-party libraries and protocols constrain only their adapter implementation. They
+must not redefine MADRE objects or move their transport/session/lifecycle concepts into
+Kernel, SDK, Modules, Agents, Workflows, Operations, Material, or the Security Algebra.
+If a future direct `libllama` adapter is implemented, its native ABI and model lifetime
+remain private physical mechanics behind the same contract unless a genuinely new
+MADRE responsibility proves otherwise.
+
+New physical contracts are introduced only when a real connector requires different
+physical command/result semantics; they extend the Capability SPI rather than expanding
+one generic dictionary.
 
 ## CORE installation role
 

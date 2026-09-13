@@ -2,6 +2,8 @@ package io.github.didacll.madre.app;
 
 import io.github.didacll.madre.adapter.llamacpp.LlamaCppCapability;
 import io.github.didacll.madre.adapter.llamacpp.LlamaCppConfiguration;
+import io.github.didacll.madre.adapter.llamacpp.LlamaCppUnixSocketCapability;
+import io.github.didacll.madre.adapter.llamacpp.LlamaCppUnixSocketConfiguration;
 import io.github.didacll.madre.adapter.openai.OpenAiCompatibleCapability;
 import io.github.didacll.madre.adapter.openai.OpenAiCompatibleConfiguration;
 import io.github.didacll.madre.adapter.searxng.SearxngCapability;
@@ -93,6 +95,19 @@ public final class MadreApplication implements AutoCloseable {
 
     private static void registerCapabilities(Properties properties, KernelRuntime kernel,
             List<CapabilityRegistry.Registration> capabilities) {
+        if (enabled(properties, "connector.llamacpp-unix.enabled")) {
+            LlamaCppUnixSocketConfiguration configuration = new LlamaCppUnixSocketConfiguration(
+                    new CapabilityId(required(properties, "connector.llamacpp-unix.id")),
+                    Path.of(required(properties, "connector.llamacpp-unix.socket")),
+                    required(properties, "connector.llamacpp-unix.model"),
+                    Privacy.valueOf(required(properties, "connector.llamacpp-unix.privacy")),
+                    Integrity.valueOf(required(properties, "connector.llamacpp-unix.integrity")),
+                    duration(properties, "connector.llamacpp-unix.expected-latency-ms"),
+                    resources(properties, "connector.llamacpp-unix.resource."));
+            capabilities.add(kernel.capabilities().register(
+                    new LlamaCppUnixSocketCapability(configuration),
+                    integer(properties, "connector.llamacpp-unix.preference")));
+        }
         if (enabled(properties, "connector.llamacpp.enabled")) {
             LlamaCppConfiguration configuration = new LlamaCppConfiguration(
                     new CapabilityId(required(properties, "connector.llamacpp.id")),

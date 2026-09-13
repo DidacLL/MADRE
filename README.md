@@ -31,21 +31,53 @@ artifacts. `publish` writes `madre-algebra` and `madre-sdk` to
 `build/isolated-repository`; the independent consumer compiles only from those
 published coordinates.
 
-## Start the local installation
+## Start local inference
 
-Start a separately installed llama.cpp server with an owner-selected GGUF model when
-using the current text-inference compatibility adapter:
+The text-inference physical contract is transport-neutral. For same-host llama.cpp,
+MADRE now has two adapters which can coexist under that same contract.
+
+### Preferred: Unix-domain socket
+
+On a system where both llama-server and the Java runtime support Unix-domain sockets,
+create an owner-only runtime directory and start llama-server on an absolute `.sock`
+path:
 
 ```text
-llama-server -m /absolute/path/model.gguf --host 127.0.0.1 --port 8080
+mkdir -p /absolute/path/madre-runtime
+chmod 700 /absolute/path/madre-runtime
+umask 077
+llama-server -m /absolute/path/model.gguf \
+  --alias local-model \
+  --host /absolute/path/madre-runtime/llama-server.sock
 ```
 
-The current llama.cpp adapter deliberately accepts only loopback IP literals. Keep the
-server bound to loopback as well; MADRE cannot prove the bind address of an externally
-started process merely from its client endpoint. Loopback HTTP is a compatibility
-transport, not a requirement of the text-inference contract. Upstream llama.cpp also
-supports Unix-domain-socket server binding and exposes the native `libllama` API;
-MADRE does not yet claim either transport as an implemented adapter.
+Then enable `connector.llamacpp-unix.*` in the installation properties, set its socket
+path to that exact absolute path, and normally disable the HTTP compatibility adapter.
+The Unix-socket Capability still speaks llama-server's physical HTTP protocol inside
+the adapter, but it creates no TCP/IP listener. Filesystem/socket access remains an
+operating-system concern; MADRE does not derive Privacy or Integrity from locality.
+
+### Compatibility: loopback HTTP
+
+The existing compatibility adapter uses llama-server over TCP loopback:
+
+```text
+llama-server -m /absolute/path/model.gguf \
+  --alias local-model \
+  --host 127.0.0.1 --port 8080
+```
+
+That adapter deliberately accepts only explicit loopback IP literals. Keep the server
+bound to loopback as well. A client endpoint cannot prove how an externally started
+server was bound, so loopback HTTP is retained for compatibility rather than treated
+as the preferred local-security boundary.
+
+Both adapters accept `TextInferenceCommand` and return `TextInferenceResult`; neither
+Kernel nor a Module knows which llama.cpp transport realized the work. Installation
+preference selects among otherwise reachable available Capabilities. Third-party
+transport details do not change MADRE's public architecture.
+
+## Start the installation
 
 For live web search, configure an installed SearXNG instance whose JSON search format
 is enabled. The example configuration expects a search endpoint such as:
@@ -62,9 +94,9 @@ cp config/madre.properties.example /absolute/path/madre.properties
 madre-app/build/install/madre/bin/madre /absolute/path/madre.properties
 ```
 
-Review every connector's explicit Privacy, Integrity, resource claims, endpoint and
-other physical facts before starting. Locality or provider identity supplies none of
-those algebraic values.
+Review every connector's explicit Privacy, Integrity, resource claims, endpoint or
+socket path, and other physical facts before starting. Locality or provider identity
+supplies none of those algebraic values.
 
 At the console:
 
@@ -118,6 +150,24 @@ continue when a reachable SearXNG installation with JSON output enabled is avail
 Full `deep-search` acceptance additionally requires a real available text-inference
 Capability in the same run.
 
+## Real local acceptance
+
+The Unix acceptance helper starts an owner-supplied llama-server on an owner-only Unix
+socket, builds the distribution, and opens the actual MADRE console:
+
+```text
+scripts/acceptance-local.sh \
+  /absolute/path/llama-server \
+  /absolute/path/model.gguf \
+  /absolute/path/madre-acceptance
+```
+
+The helper requires `curl` with `--unix-socket` support and a platform where
+llama-server and Java 21 support AF_UNIX. It configures the installed application to
+use the Unix-socket Capability rather than the HTTP fallback. This repository does not
+bundle llama.cpp or a model. Running deterministic fixture tests is not real-model
+acceptance.
+
 ## CORE qualification
 
 `roles.core` is still only an ordinary Module identity. After live registration the
@@ -134,8 +184,8 @@ remain outside MADRE.
 
 This repository does not bundle llama.cpp, a model, or SearXNG. Deterministic tests use
 fixtures to exercise protocols and failure mechanics. Claims about a live external
-search require an actually prepared SearXNG environment; none is implied by the
-fixture tests.
+search require an actually prepared SearXNG environment; none is implied by fixture
+tests.
 
 ## Use the public SDK
 

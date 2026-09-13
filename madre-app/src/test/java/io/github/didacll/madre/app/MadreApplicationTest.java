@@ -2,8 +2,11 @@ package io.github.didacll.madre.app;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.github.didacll.madre.interaction.OwnerInteractionModule;
+import io.github.didacll.madre.text.TextInferenceCommand;
+import io.github.didacll.madre.text.TextInferenceResult;
 import io.github.didacll.madre.websearch.WebSearchModule;
 import java.nio.file.Path;
 import java.util.Properties;
@@ -19,6 +22,26 @@ final class MadreApplicationTest {
                     application.kernel().modules().resolvedCore().orElseThrow());
             assertEquals(OwnerInteractionModule.ID, application.interaction().definition().id());
             assertEquals(WebSearchModule.ID, application.webSearch().definition().id());
+        }
+    }
+
+    @Test void acceptsUnixSocketAndLoopbackHttpAsCoexistingTextInferenceCapabilities() {
+        Properties properties = properties();
+        properties.setProperty("connector.llamacpp-unix.enabled", "true");
+        properties.setProperty("connector.llamacpp-unix.id", "test-llama-uds");
+        properties.setProperty("connector.llamacpp-unix.socket",
+                temporary.resolve("llama.sock").toAbsolutePath().toString());
+        properties.setProperty("connector.llamacpp-unix.model", "test-model");
+        properties.setProperty("connector.llamacpp-unix.privacy", "P5");
+        properties.setProperty("connector.llamacpp-unix.integrity", "I5");
+        properties.setProperty("connector.llamacpp-unix.expected-latency-ms", "100");
+        properties.setProperty("connector.llamacpp-unix.preference", "200");
+        properties.setProperty("connector.llamacpp-unix.resource.model-slot", "1");
+
+        try (MadreApplication application = MadreApplication.start(properties)) {
+            assertTrue(application.kernel().capabilities()
+                    .contractForCommand(TextInferenceCommand.class, TextInferenceResult.class)
+                    .isPresent());
         }
     }
 

@@ -4,14 +4,27 @@ kernel.database=var/kernel-work.sqlite
 kernel.result-retention-seconds=86400
 module.owner-interaction.state=var/owner-interaction-background.state
 
-# Explicit physical capacity and llama.cpp claims.
+# Explicit physical capacity and connector claims.
 resources.model-slot=1
 resources.network-slot=4
-# Current llama.cpp compatibility adapter is loopback HTTP only. Keep llama-server
-# bound to a loopback interface; do not expose the owner-local inference server via
-# 0.0.0.0 or another externally reachable interface merely to simplify integration.
+
+# Preferred same-host llama-server transport on systems with Unix-domain sockets.
+# Start llama-server with an owner-only absolute socket path ending in .sock. This
+# adapter creates no TCP listener and has higher preference than the HTTP fallback.
+connector.llamacpp-unix.enabled=false
+connector.llamacpp-unix.id=local-llama-uds
+connector.llamacpp-unix.socket=/absolute/path/madre-runtime/llama-server.sock
+connector.llamacpp-unix.model=local-model
+connector.llamacpp-unix.privacy=P5
+connector.llamacpp-unix.integrity=I5
+connector.llamacpp-unix.expected-latency-ms=30000
+connector.llamacpp-unix.preference=200
+connector.llamacpp-unix.resource.model-slot=1
+
+# Loopback HTTP compatibility adapter. Keep llama-server bound to a loopback
+# interface; never expose owner-local inference via 0.0.0.0 merely for integration.
 connector.llamacpp.enabled=true
-connector.llamacpp.id=local-llama
+connector.llamacpp.id=local-llama-http
 connector.llamacpp.endpoint=http://127.0.0.1:8080/
 connector.llamacpp.model=local-model
 connector.llamacpp.privacy=P5
