@@ -1,63 +1,101 @@
 # MADRE Physical Execution Contract
 
-## Work request
+## Module-created work
 
-A Module submits a typed `WorkRequest` containing:
+A Module Operation converts its Material into a bounded physical command. For the
+initial implementation that command is text inference: text input plus a small,
+strongly typed set of generation options required by the real llama.cpp and
+OpenAI-compatible connectors.
 
-- its nominal `ModuleId`;
-- the actual nonempty `MaterialSet` to be forwarded;
-- a typed computation contract and expected physical result type;
-- typed physical requirements and preferences;
-- timing, timeout, priority, and physical retry policy.
+The Module submits a work request containing:
 
-The request contains no concrete Capability identity and no future Material identity,
-classification, Operation, Agent instruction, or semantic continuation.
+- originating `ModuleId`;
+- the physical command and opaque input;
+- accumulated Sensitivity of the information present in that input;
+- other algebraic demand only when the concrete physical connection genuinely uses
+  it;
+- immediate or durable timing;
+- priority, timeout, and physical retry configuration;
+- typed physical preferences supported by the current Kernel contract.
 
-## Selection and invocation
+It contains no Material, Material type, Agent, Operation, concrete Capability
+identity, future Material identity, output Sensitivity, or semantic continuation.
 
-Kernel considers only installed Capabilities that implement the computation and
-material contracts. It attempts immutable composition of the request's carried
-Sensitivity with each Capability's explicit receiving Privacy. Capabilities that
-cannot join simply do not enter the selectable set.
+The SDK work builder accepts Material as a Module-side convenience only while
+constructing the accumulated values and physical input. The resulting Kernel request
+contains neither Material identity nor Module payload semantics.
 
-Kernel then applies physical requirements, availability, resource state, and typed
-preferences through injected selection and coordination strategies. If no mechanism
-can currently satisfy the work, the outcome is ordinary Capability unavailability.
-Durable work may try later according to its physical retry policy.
+## Capability selection
 
-For the selected mechanism Kernel records ordinary attempt telemetry, reserves its
-typed resources, and forwards the Material payload opaquely. The adapter returns a
-typed `PhysicalResult` containing physical output and mechanical metadata.
+Kernel begins with the registered adapters that accept the request's physical command
+type. For each installed manifest, the request's carried values either compose with
+the manifest values or that Capability is unreachable.
 
-## Result ownership
+Kernel then applies:
 
-Kernel returns or buffers `PhysicalResult`; it never returns Material. The requesting
-Module interprets the output and decides whether to construct independent new
-Material, submit another request, invoke a bounded Operation, present a result, or
-stop.
+- current availability;
+- resource capacity;
+- installation rules;
+- the request's typed physical preferences;
+- deterministic tie-breaking.
 
-Physical output has no execution interface. Text or structured data resembling an
-Operation cannot invoke anything.
+No rejected candidate is created. If no Capability is currently reachable, immediate
+work returns ordinary unavailability. Durable work remains governed by its scheduling
+and physical retry configuration; algebra creates no separate state.
 
-## Durable work
+Modules do not need a Capability name for normal work. Advanced owner-directed
+preferences may be added as typed physical constraints when a real use requires
+them. They must not become a generic property map.
 
-The queue serializes an opaque snapshot of the submitted payload together with the
-typed work contract and carried values required to reproduce physical dispatch after
-restart. A completed raw result remains in a delivery buffer until retrieved or
-acknowledged.
+## Invocation
 
-Retention and cleanup remove input and output bytes according to work lifecycle and
-delivery policy. Compact scheduling and physical attempt telemetry may remain. Queue
-storage cannot query, reinterpret, transform, or reuse payload bytes as Module domain
-knowledge.
+Kernel reserves physical resources and invokes the selected adapter with only:
 
-Immediate and durable execution share one dispatch path. Idempotent submission,
-cancellation, eligibility, priority, timeout, restart recovery, resource waiting,
-transport interruption, and physical failure are runtime mechanics.
+- the physical command/input;
+- connector options already bounded by the command contract;
+- timeout and cancellation mechanics needed for execution.
 
-## Adapter contract
+The adapter cannot inspect MADRE domain objects. Provider-specific requests and
+responses stay inside the adapter.
 
-An adapter receives a typed invocation fixed by the selected Capability definition.
-Submitted payload cannot override configured endpoint, model, computation contract,
-or other immutable mechanism properties. Provider-specific dictionaries and response
-DTOs stay private to the adapter. Connection setup is supplied by its environment.
+llama.cpp and OpenAI-compatible text inference both return a physical text result.
+Kernel records which installed Capability actually ran as ordinary attempt telemetry
+and delivers the text result to the originating Module.
+
+## Module-owned result
+
+Physical output is not Material. The Module Operation:
+
+1. receives the physical result;
+2. interprets it according to its own behavior;
+3. constructs new Material with a new identity and explicit Sensitivity when the
+   result has semantic value;
+4. updates its own state or UI;
+5. submits another work request, invokes another bounded Operation, or stops.
+
+No physical result type has an execution method or a reference to Kernel.
+
+## Immediate and durable work
+
+Immediate work returns its physical result to the waiting Module.
+
+Durable work stores an opaque serialized request until physical execution and stores
+an opaque physical result until the Module collects it. Kernel persists only
+scheduling, attempts, delivery state, and those temporary bytes. Restart recovery
+continues eligible work.
+
+Physical failure may be retried according to the submitted policy. Lack of a currently
+reachable Capability may wait when the work was deliberately submitted as durable.
+Neither creates Module-domain state.
+
+## Connector environment
+
+The initial adapters are:
+
+- a llama.cpp text-inference connector, optimized for the owner's local path;
+- an OpenAI-compatible text-inference connector for an endpoint configured by the
+  installation.
+
+MADRE owns neither connector authentication nor provider accounts. An externally
+prepared transport may supply the provider's own connection session. The local
+llama.cpp path requires no account mechanism.

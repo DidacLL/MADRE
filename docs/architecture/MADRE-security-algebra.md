@@ -1,90 +1,117 @@
 # MADRE Security Algebra
 
-## Purpose
+## Algebraic carriers
 
-The algebra is the reusable value system through which MADRE objects describe their
-actual information, receiving, causal, and physical-realization roles. Values are
-immutable and combine structurally as participants are assembled.
-
-No runtime component owns the algebra. A Module author uses its SDK objects while
-constructing a Module, Material, public surface, or bounded Operation call. Kernel
-extension code uses the same values while assembling installed Capability surfaces.
-
-## Typed carriers
-
-`Sensitivity`, `Privacy`, `Integrity`, `Risk`, and `Autonomy` are different ordered
-types with ranks 1 through 5. They cannot be substituted for one another.
-
-- Sensitivity accumulates by maximum.
-- Privacy accumulates by minimum.
-- Integrity accumulates by minimum.
-- Risk and Autonomy remain paired on one EffectProfile.
-
-Applicability is represented by the type of surface being built. An `InputSurface`
-has Privacy. An `OutputSurface` has Sensitivity. A `ResponsibilitySurface` has
-Integrity. An `EffectProfile` has Risk and Autonomy. There is no universal container
-with empty facet slots.
-
-`Privacy.UNKNOWN` is P2: an explicit receiving boundary outside the owner's control
-that is not declared fully public. It is not missing information. Installation must
-supply Privacy explicitly. Physical location and provider identity do not derive it.
-
-Integrity means only bounded causal or physical-realization responsibility.
-
-## Information composition
-
-An immutable carried-information value owns the actual nonempty Material or outbound
-surfaces being exposed. An immutable receiving value owns the actual nonempty input
-surfaces being reached.
+MADRE defines five nominally different ordered carriers with ranks 1 through 5:
 
 ```text
-S = maximum Sensitivity of carried information
-P = minimum Privacy of receiving surfaces
-composition exists while S <= P
+Sensitivity  S1 ... S5
+Privacy      P1 ... P5
+Integrity    I1 ... I5
+Risk         R1 ... R5
+Autonomy     A1 ... A5
 ```
 
-Adding another member returns a newly composed value. If the inequality would not
-hold, construction raises ordinary `ValueError`; no new value is returned and the
-prior immutable objects remain unchanged.
-
-## Bounded Operation composition
-
-An `OperationCall` binds one exact Operation, one of its own EffectProfiles, its exact
-input Material, the actual non-user causal participants, and the actual physical
-realizers.
-
-For profile Risk `R` and Autonomy `A`:
+A carrier accepts only values of its own type. Its combination returns a new value of
+that same type:
 
 ```text
-min(R, A) <= minimum Integrity of actual non-user causal participants
-             or I5 when that set is empty
-
-R <= minimum Integrity of actual physical realizers
-the physical-realizer set is nonempty
+S₁ + S₂ = max(S₁, S₂)
+P₁ + P₂ = min(P₁, P₂)
+I₁ + I₂ = min(I₁, I₂)
 ```
 
-Only the values of that one profile participate. Construction returns a valid
-`OperationCall` or raises ordinary `ValueError` without producing one.
+The plus sign denotes structural accumulation, not arithmetic. Values are immutable.
 
-Autonomy describes the execution variant. User presence does not change information
-composition.
+Risk and Autonomy do not form general aggregates. They remain paired on one exact
+EffectProfile.
 
-## Structural aggregates
+## Applicability
 
-Collections of the same role derive their carrier from their members. An aggregate
-cannot declare a separate summary rank.
+Algebraic values belong directly to the MADRE object or declared contract where their
+meaning applies:
 
-Module Sensitivity is the maximum of its actual current owned/reachable Material and
-the output surfaces owned by its definitions. Agent Privacy is the minimum of the exact Operation input
-surfaces that Agent exposes. Narrowing those members changes the derived value without
-special Module or Agent rules.
+- Material has Sensitivity.
+- An Operation's accepted Material boundary has Privacy.
+- An Operation's promised Material result has Sensitivity.
+- An Agent derives Privacy from the Operations it exposes.
+- A Module derives Sensitivity from Material and outputs actually reachable through
+  it.
+- A Capability manifest has receiving Privacy and, where applicable, physical
+  Integrity.
+- An actual non-user causal participant has Integrity.
+- An EffectProfile has Risk and Autonomy.
 
-## Independent Material
+An object without one of those responsibilities has no field for that carrier. No
+generic all-facets container or separately identified surface is part of the model.
 
-Every semantic adaptation constructs new `Material` with its own nominal identity,
-type, payload, owner, and explicit Sensitivity. The source Material is unchanged.
-Historical metadata, if a Module wants it, remains ordinary Module metadata and has
-no algebraic effect.
+`Privacy.UNKNOWN` is P2. It explicitly represents applicable handling outside the
+owner's control that is not declared public. It is not a missing value. P1 is public.
+An installation supplies the receiving value as a fact. Locality, endpoint, provider,
+model, or adapter never derives it.
 
-Execution attempts and diagnostics likewise have no algebraic effect. Only the exact
-members of the value being constructed participate.
+## Reachability of information
+
+For the exact information and receiver being connected:
+
+```text
+S = maximum Sensitivity carried into the connection
+P = minimum Privacy of the receiver
+
+connection exists iff S <= P
+```
+
+The comparison belongs to the values being composed. Existing accumulated values are
+unchanged when the next value cannot join, and no new aggregate exists.
+
+Examples:
+
+```text
+S2 + S5 -> S5
+P5 + P3 -> P3
+S2 reaches P2
+S5 does not reach P2
+```
+
+A Module may own S5 Material and publish an Operation that actually tokenizes it into
+new S4 Material, another that anonymizes it into new S3 Material, and another that
+minimizes it into new S2 Material. Each result is a new Material chosen and justified
+by Module behavior. The source remains S5.
+
+An Agent that exposes Operations accepting P5 and P3 has effective P3. Removing the
+P3 Operation changes the Agent's effective value to P5. A Module's current value
+likewise changes with the Material and outputs currently reachable through it.
+
+## Bounded Operation execution
+
+For one Operation EffectProfile:
+
+```text
+D = min(profile Risk, profile Autonomy)
+
+D <= minimum Integrity of actual non-user causal participants
+     or I5 when no such participant exists
+
+profile Risk <= minimum Integrity of actual physical realizers
+physical realizers are nonempty
+```
+
+Only that EffectProfile contributes Risk and Autonomy. Another profile is an
+independent construction.
+
+Owner participation is represented by the profile's actual Autonomy. It never changes
+information reach.
+
+## Use in Modules and Kernel extensions
+
+Module authors construct Material, Operations, EffectProfiles, and accumulated values
+through the SDK. Kernel extension code constructs Capability manifests through the
+same carrier types.
+
+A work request carries the already accumulated values applicable to its physical
+input. Kernel can only select a Capability whose manifest values compose with that
+request. The selected Capability receives only physical input; algebraic values do
+not cross into the connector invocation.
+
+Composition creates values, not observations about values. Logging, scheduling,
+attempts, physical retry, and diagnostics are ordinary runtime concerns.

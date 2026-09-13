@@ -1,1 +1,0 @@
-"""Concrete physical Capability adapters."""

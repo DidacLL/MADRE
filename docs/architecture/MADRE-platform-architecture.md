@@ -1,84 +1,124 @@
 # MADRE Platform Architecture
 
-## Ownership
+## Responsibility map
 
 ```text
-Module-owned domain
-  Material, meaning, state, Agents, Skills, Workflows, Operations
-            |
-            | typed physical work request
-            v
-Kernel runtime
-  live registries, selection, resources, queue, scheduling, delivery
-            |
-            | typed Capability invocation
-            v
-Physical mechanism
-  inference or deterministic computation
-            |
-            | physical result
-            v
-Module-owned domain
-  interpretation, new Material, continuation or stop
+Owner
+  |
+  v
+ordinary Module assigned to CORE role or another Module
+  | owns Material, meaning, Agents, Operations and continuation
+  | creates an opaque physical work request
+  v
+Kernel
+  | live Module and Capability registries
+  | selection, routing, resources, scheduling, queue and delivery
+  v
+Capability adapter
+  | invokes one installed physical mechanism
+  v
+physical output
+  | delivered opaquely
+  v
+originating Module
+  | interprets output, creates new Material and continues or stops
 ```
 
-The SDK supplies the shared domain values and narrow ports. The algebra is behavior of
-those values, not a box in this runtime diagram.
+The algebra is behavior of the values carried by these objects. It is not a runtime
+component in the diagram.
 
 ## Module boundary
 
-A Module owns all decisions requiring semantic understanding. It constructs and
-classifies Material, defines its public surfaces, implements its Agents and bounded
-Operations, interprets physical output, and decides whether to continue.
+A Module is the semantic and application boundary. It owns:
 
-Module definitions canonically own their Agent, Skill, Workflow, and Operation
-definitions. Public references use nominal identities and constructors verify
-ownership and resolution. None of these building blocks imposes a default behavior.
+- its domain state and persistence;
+- Material identities, types, payloads and Sensitivity;
+- Agents, Skills and Workflows;
+- public and private Operations;
+- conversion from Material to physical connector input;
+- interpretation of physical output;
+- creation of new Material;
+- continuation and user presentation.
+
+An Operation is the bounded entry to Module behavior. It declares the Material it can
+accept, the receiving Privacy that applies, the Material it may produce, and its
+EffectProfiles when it has consequential variants. Those declarations are direct
+parts of the Operation; they are not separately identified surface objects.
+
+Module behavior calls the SDK directly while composing its actual values. Correct
+construction is the implementation model, not a voluntary call to a separate
+service.
 
 ## Kernel boundary
 
-Kernel maintains two live registries:
+Kernel owns mechanisms shared across Modules:
 
-- running Module definitions available for public discovery;
-- installed physical Capability definitions and their adapter bindings.
+- an in-memory registry of running Module definitions;
+- an installation registry of physical Capability manifests and adapter bindings;
+- resolution of the configured CORE Module identity;
+- Capability selection from request values, installed manifest values, current
+  availability, resources, and deterministic configuration;
+- immediate and durable physical work;
+- timing, priority, timeout, cancellation, resource coordination, and retry after
+  physical failure;
+- opaque result delivery;
+- ordinary runtime logging.
 
-Kernel selects a physical mechanism from the computation contract, actual carried
-values, physical requirements, current availability, resource state, and request
-preferences. Modules neither name nor inspect installed Capabilities.
+Kernel does not own Module definitions after restart, Module state, Material,
+semantic workflows, or Operation behavior. It does not create or classify output.
 
-Kernel may queue Material payload bytes as opaque work input and buffer raw physical
-results for delivery. It may inspect typed request metadata and algebraic values
-needed for selection. It does not inspect semantic payload meaning, create Material,
-choose output classification, or interpret results.
+The live Module registry makes exact public Agents and Operations reachable to other
+Modules. Kernel does not interpret them. Invocation enters the target Module's
+ordinary bounded Operation interface.
 
-The durable store contains work lifecycle snapshots, scheduling data, physical
-attempt telemetry, and pending result delivery. Module definitions are never stored
-there; the Module registry starts empty after restart.
+## Capability boundary
 
-## Capability extension boundary
+A Capability is a connector registered in Kernel. Its manifest describes only the
+installed mechanism:
 
-A Capability definition belongs to Kernel. It declares nominal identity, supported
-computation and material contracts, explicit receiving Privacy, physical location
-and latency properties, and typed resource claims. Its adapter performs one
-physical invocation and returns the declared result.
+- Kernel identity;
+- physical command/input and output contract;
+- explicit receiving Privacy;
+- Integrity where the connector is an actual physical realizer;
+- availability and physical properties;
+- required resources;
+- connector configuration and supported bounded options.
 
-Physical requirements and preferences are segregated value objects with matching or
-ranking behavior. Resource coordination operates on generic `ResourceClaim` values.
-Adding a new mechanism, property, or resource must not require provider-specific
-Kernel branches.
+The adapter accepts the physical command and returns physical output. It contains no
+Material, Module, Agent, Workflow, Skill, or Operation reference.
 
-Provider payload DTOs and protocol details remain private to adapters. Installation
-supplies algebraic facts independently of provider and locality.
+The first physical contract is text inference. llama.cpp and OpenAI-compatible
+adapters implement that same physical contract without exposing their private
+protocol payloads to Modules. New physical contracts are introduced only when a real
+connector requires them; they extend the Capability SPI rather than expanding one
+generic dictionary.
 
-## Public Module directory
+## CORE installation role
 
-Starting Modules register their immutable definitions in memory. The public directory
-returns only Module, Agent, and Operation surfaces reachable from the caller's exact
-current carried values. The returned definitions describe options; invoking another
-Module will be introduced only with a concrete behavior that establishes the required
-port.
+Installation configuration assigns `CORE` to one ordinary `ModuleId`. Kernel
+resolves that identity in the live registry. The surrounding application sends
+default owner interaction to that Module.
 
-## Installation configuration
+A CORE candidate must expose the ordinary public behavior required by the role. The
+shipped candidate provides standard-prompt and fast-lane Operations through its
+ordinary interaction Agent. No CORE subtype, privileged path, special algebra, or
+Kernel scheduling lane exists.
 
-Installation may assign an ordinary Module to a default interaction role. Kernel and
-the SDK neither inspect nor change behavior for that assignment.
+## Storage
+
+Module persistence stays inside each Module.
+
+Kernel persists only physical work that must survive restart:
+
+- opaque queued input;
+- scheduling and attempt state;
+- pending physical output until delivery.
+
+Runtime cleanup removes payload bytes according to delivery and retention. The live
+Module registry is rebuilt when Modules start.
+
+## Provider environment
+
+MADRE configuration describes the connector endpoint and physical behavior. Account
+sessions, credentials, authentication flows, and provider permissions are supplied
+outside the MADRE model. They do not alter Capability Privacy or Integrity.

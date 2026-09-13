@@ -1,1 +1,0 @@
-"""MADRE test package."""

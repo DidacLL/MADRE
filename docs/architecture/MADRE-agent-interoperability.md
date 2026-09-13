@@ -1,77 +1,101 @@
-# MADRE Module Interoperability
+# MADRE Module SDK and Interoperability
 
-## Declarative public definitions
+## Public object model
 
-The SDK represents Module interoperability through immutable domain objects:
+The SDK is a public Java 21 library under the Owner's namespace. It contains immutable
+objects with nominal identities and constructor-enforced invariants.
 
-- `ModuleDefinition` canonically owns its child definitions and public surfaces;
-- `AgentDefinition` identifies its typed inputs and outputs and references the exact
-  Skills, Workflows, and Operations it exposes;
-- `SkillDefinition` identifies reusable Module-owned capability or knowledge;
-- `WorkflowDefinition` identifies a reusable Module-owned semantic recipe;
-- `OperationDefinition` identifies one bounded callable consequence and owns its
-  input surfaces, output surfaces, repeatability, and EffectProfiles.
+The core Module model is:
 
-Every identity is nominal. Child identities structurally contain their `ModuleId`, so
-an identity from another category or owner cannot be substituted by matching strings.
-Constructors enforce uniqueness, ownership, and reference resolution.
+- `ModuleDefinition`: identity, version, declared Material types, Agents, Skills,
+  Workflows, Operations, and public references;
+- `AgentDefinition`: identity, purpose, and references to the Skills, Workflows, and
+  Operations that form its repertoire;
+- `SkillDefinition`: reusable Module-owned ability, knowledge, or instruction;
+- `WorkflowDefinition`: reusable Module-owned semantic behavior;
+- `OperationDefinition`: one bounded callable Module behavior, its accepted Material
+  kinds and Privacy, produced Material kinds and Sensitivity promises, and applicable
+  EffectProfiles;
+- `EffectProfile`: one Operation variant with Risk and Autonomy;
+- `MaterialType<T>` and `Material<T>`: the Module-owned semantic value model.
 
-Definitions describe public structure only. Agent reasoning, state, memory,
-interpretation, semantic orchestration, and Operation implementations remain private
-Module code.
+Module, Agent, Operation, Skill, Workflow, EffectProfile, Material, and MaterialType
+have nominal identity types where real identity is needed. Algebraic application
+points do not acquire separate identities.
 
-## Role-specific surfaces
+A Module definition rejects unknown or conflicting references. The same Skill,
+Workflow, or Operation may be referenced wherever its Module intentionally reuses it.
+Serialization layout does not create an ownership rule.
 
-`InputSurface` identifies an accepted `MaterialType` and explicit Privacy.
-`OutputSurface` identifies a produced or reachable `MaterialType` and Sensitivity.
-`ResponsibilitySurface` carries Integrity for one actual causal or physical role.
+## Behavior binding
 
-Each definition owns only the input or output surfaces applicable to its actual
-reach. Actual non-user participants and physical realizers are represented by
-responsibility surfaces when one bounded Operation call is constructed. Definitions
-do not receive irrelevant algebra fields, and collections derive their aggregate
-ranks from members.
+Definitions contain no executable class names, import paths, scripts, prompts,
+provider payloads, or arbitrary metadata.
 
-Module Sensitivity is derived for an exact current `MaterialSet` and the output
-surfaces owned by its definitions. Agent Privacy is derived from the exact Operation input
-surfaces the Agent exposes. Public directory filtering therefore works at the
-published surface, not at an unrelated whole-Module summary.
+Runtime behavior is bound through responsibility-specific Java interfaces:
 
-## Material
+- an Operation implementation receives its declared typed Material input;
+- the Module-facing execution service accepts a typed physical work request;
+- the Module directory exposes currently reachable public definitions;
+- a Module invocation port enters a selected target Operation.
 
-`MaterialType[T]` defines nominal content-contract identity and media representation.
-`Material[T]` binds its own identity, owning Module, type, payload, and Sensitivity.
-`MaterialSet` is a nonempty immutable collection whose Sensitivity is the maximum of
-its members.
+There is no universal `receive` method, Agent loop, assistant turn, planner, or
+workflow engine. A concrete Module implements only its own behavior.
 
-Module transformations always construct independent Material. No historical member
-is needed to use it.
+The shipped CORE-capable Module is the first real reference implementation. No
+separate demonstration Module or test-only substitute is treated as product proof.
 
-## Runtime ports
+## Structural algebra in definitions
 
-Only responsibilities shared across implementations receive public ports:
+An Operation directly declares the Material kinds it accepts and the Privacy applying
+to that input. It directly declares the Material kinds it promises to produce and
+their maximum Sensitivity. This information is part of the Operation contract, not an
+autonomous input/output surface object.
 
-- `ExecutionService.submit(WorkRequest) -> PhysicalResult`;
-- a typed Operation implementation port for one declared Operation;
-- read access to the live Module directory.
+An Agent derives its effective Privacy from its exposed Operations. A Module derives
+its effective Sensitivity for an exact state from its reachable Material and declared
+outputs. Directory results include only definitions whose exact current values
+compose.
 
-Private Module and Agent behavior is ordinary Module code. The SDK imposes no common
-receive method, turn type, loop, planner, or semantic runtime.
+The SDK provides immutable collection and builder behavior where it protects these
+invariants, but it does not create a separate class for every field or every
+mathematical intermediate.
 
-## Serialization
+## Module registry and invocation
 
-Explicit versioned codecs map the object graph to boundary DTOs and back. DTOs do not
-belong to the domain inheritance hierarchy. Wire data contains no executable objects,
-import paths, arbitrary property dictionaries, or duplicated derived ranks. The same
-domain graph can later receive an XML codec without redesign.
+A running Module registers its definition and ordinary invocation endpoint in
+Kernel's live registry. Restart empties that registry; Modules register again.
 
-## Directory behavior
+A Module directory query supplies the caller's accumulated applicable values and
+returns only currently reachable:
 
-Registration adds or replaces a running Module definition in Kernel's in-memory
-directory. Removal occurs when that Module leaves. Restart begins with an empty
-directory.
+- Module identities and descriptive information;
+- Agents and their reachable Operation references;
+- public Operations and their declared contracts.
 
-A reachability query supplies the caller's exact current carried values. Each
-published input surface composes itself with those values; only the matching Module,
-Agent, and Operation definitions are returned. The query result is transient and does
-not change either Module.
+The query does not expose Capability identities. It does not persist a result or
+change either Module.
+
+Invoking another Module identifies one returned Operation and sends the declared
+Material input to the target running Module. Kernel routes the invocation but does not
+interpret its Material or behavior. The target Module constructs and executes its own
+bounded Operation invocation through the SDK.
+
+## CORE assignment
+
+Installation configuration maps the CORE role to one ordinary Module identity. A
+candidate is eligible when its ordinary public definition supplies the role's
+required behavior. The shipped candidate provides an interaction Agent exposing
+standard-prompt and fast-lane Operations.
+
+The mapping does not alter the Module definition. Module authors do not inherit from a
+CORE class and no CORE behavior appears in Kernel's physical execution path.
+
+## Codecs
+
+Explicit versioned codecs map definitions and transport messages to JSON. Domain
+classes do not inherit from codec or HTTP framework classes and expose no
+`Map<String, Object>` extension bag.
+
+A future XML codec maps the same object model. Executable behavior is never
+serialized.

@@ -1,14 +1,21 @@
-# Private/local inputs
+# Private installation inputs
 .env
 .env.*
 *.local.*
 /dev/
 /docs/raw/
 
-# Python and local storage
-.venv/
-__pycache__/
-*.py[cod]
+# Java and Gradle
+.gradle/
+/build/
+**/build/
+out/
+*.class
+*.jar
+!.mvn/wrapper/*.jar
+!gradle/wrapper/gradle-wrapper.jar
+
+# Runtime data
 *.sqlite
 *.sqlite3
 *.db
@@ -18,8 +25,10 @@ __pycache__/
 *.sqlite3-shm
 *.sqlite-wal
 *.sqlite-shm
-dist/
-.pytest_cache/
-.ruff_cache/
-.mypy_cache/
-*.egg-info/
+
+# Editors and operating systems
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
