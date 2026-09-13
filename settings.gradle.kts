@@ -6,5 +6,7 @@ include(
     "madre-kernel",
     "madre-text-inference",
     "madre-adapter-llamacpp",
-    "madre-adapter-openai-compatible"
+    "madre-adapter-openai-compatible",
+    "madre-module-core",
+    "madre-app"
 )

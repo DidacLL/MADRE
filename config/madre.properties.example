@@ -1,0 +1,29 @@
+# The CORE role is an ordinary registered Module identity.
+roles.core=io.github.didacll.madre.core
+kernel.bind=127.0.0.1
+kernel.database=var/kernel-work.sqlite
+kernel.result-retention-seconds=86400
+core.state=var/core-background.state
+
+# Explicit physical capacity and llama.cpp claims.
+resources.model-slot=1
+connector.llamacpp.enabled=true
+connector.llamacpp.id=local-llama
+connector.llamacpp.endpoint=http://127.0.0.1:8080/
+connector.llamacpp.model=local-model
+connector.llamacpp.privacy=P5
+connector.llamacpp.integrity=I5
+connector.llamacpp.expected-latency-ms=30000
+connector.llamacpp.preference=100
+connector.llamacpp.resource.model-slot=1
+
+# Optional unauthenticated OpenAI-compatible endpoint. Account/session mechanics are external.
+connector.openai-compatible.enabled=false
+connector.openai-compatible.id=compatible-text
+connector.openai-compatible.endpoint=http://127.0.0.1:8081/v1/
+connector.openai-compatible.model=compatible-model
+connector.openai-compatible.privacy=P5
+connector.openai-compatible.integrity=I5
+connector.openai-compatible.location=LOCAL
+connector.openai-compatible.expected-latency-ms=30000
+connector.openai-compatible.preference=50

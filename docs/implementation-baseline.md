@@ -1,50 +1,59 @@
 # Implementation Baseline
 
-The active implementation is a Java 21 Gradle Kotlin DSL multi-project system. It
-contains six artifacts at this checkpoint:
+The active implementation is a Java 21 Gradle Kotlin DSL multi-project system with
+the intended artifact boundaries:
 
 - `madre-algebra`, the dependency-free nominal algebra carriers;
-- `madre-sdk`, the immutable public Module programming model, version-one JSON
-  definition codec, bounded Operation construction and responsibility-specific ports;
-- `madre-kernel`, the live Module boundary plus the generic physical Capability SPI,
-  deterministic selection, quantified resource coordination, shared immediate and
-  durable dispatcher, SQLite physical-work store, recovery/retry/cancellation/result
-  lifecycle, explicit Kernel configuration and loopback-only local transport;
-- `madre-text-inference`, the first physical command/result contract and its stable
-  durable codec;
-- `madre-adapter-llamacpp`, a real llama-server health and native-completion protocol
-  connector;
+- `madre-sdk`, the immutable Module model, versioned definition codec, bounded
+  Operation construction and responsibility-specific ports;
+- `madre-kernel`, the live Module boundary, physical Capability SPI, deterministic
+  selection, resources, immediate/durable dispatcher, SQLite lifecycle,
+  configuration and loopback transport;
+- `madre-text-inference`, the first physical command/result contract and codec;
+- `madre-adapter-llamacpp`, the real llama-server connector;
 - `madre-adapter-openai-compatible`, a real chat-completions connector accepting an
-  externally prepared HTTP transport.
+  externally prepared HTTP transport;
+- `madre-module-core`, the shipped ordinary CORE-capable Module;
+- `madre-app`, the installable assembly and replaceable local console.
 
-The SDK owns nominal Module-domain identities, typed Material and MaterialType,
-canonical Module/Agent/Skill/Workflow/Operation/EffectProfile declarations, and the
-physical WorkRequest accepted by the Module-facing ExecutionService. A WorkRequest
-contains a physical command, accumulated applicable values and ordinary Kernel
-controls; it cannot contain Material or a selected Capability.
+The shipped Module owns owner-prompt, immediate-answer, background-analysis, and
+visible-follow-up text Material types. Its public definition declares one interaction
+Agent, the two Skills and two Workflows its behavior uses, and ordinary public
+standard-prompt and fast-lane Operations with explicit accepted Privacy, promised
+output Sensitivity, and inference EffectProfiles. Behavior and prompt text are not
+serialized.
 
-Definitions reject unresolved ownership and repertoire references. JSON decoding is
-explicitly versioned, rejects unknown or missing fields, resolves typed Material
-declarations through a caller-supplied resolver, and never serializes executable
-behavior. Consequential Operation construction directly enforces information reach,
-non-user causal demand and nonempty physical-realizer support.
+Standard prompt creates one immediate `TextInferenceCommand`, submits it through the
+public `ExecutionService`, interprets physical text, and creates independent
+Module-owned answer Material. Fast lane submits ordinary-priority foreground and
+lower-priority durable background requests through that same service. It returns
+foreground Material without awaiting background work. CORE later interprets
+collected text into background-analysis Material and either creates separate visible
+follow-up Material or stops on explicit `NO_FOLLOW_UP`. Model text has no execution
+path.
 
-Capability code receives only its physical command and execution mechanics. Manifests
-carry explicit Privacy and optional physical-realizer Integrity; neither locality nor
-connector identity supplies those values. Work requests contain no Material identity,
-Material type, semantic continuation, or selected Capability. SQLite stores opaque
-command/result bytes and physical runtime state only; successful input is removed and
-retained output remains collectable across restart until acknowledgement or expiry.
+CORE persists pending background associations in a separate Module-owned state file
+so a restarted application can collect a durable Kernel result. Kernel's SQLite
+database remains restricted to opaque physical bytes, scheduling, attempts, delivery
+state, originating Module identity, and accumulated physical values. CORE assignment
+resolves the Module's normal identity only after ordinary live registration.
 
-The build defines algebra/SDK/registry invariants, Capability selection and resource
-tests, SQLite restart/retry/cancellation/delivery tests, connector protocol tests, an
-architecture source check, publication of SDK sources and Javadocs, and an isolated
-consumer project that depends only on published `madre-sdk` coordinates. CI provisions
-Java 21 and Gradle 8.12 to run those checks.
+The application supports explicit llama.cpp and optional OpenAI-compatible connector
+facts, quantitative resources, CORE assignment, runtime paths and loopback binding.
+Its console maps `/standard <prompt>` to standard prompt and ordinary text to fast
+lane, surfaces useful background completion independently, and preserves physical
+failure categories. The generated distribution contains startup scripts and an
+example configuration.
 
-No shipped CORE-capable Module or installable application exists yet; that is the
-remaining master-plan slice. The llama.cpp connector is a real product path, but no
-llama-server executable or model is bundled and real-model acceptance has not yet
-been exercised at this checkpoint. The external-provider path likewise requires an
-available externally prepared connection environment. No removed Python
-implementation or fabricated product Module is active.
+The build covers algebra/SDK/registry invariants, Capability selection/resources,
+SQLite recovery/retry/cancellation/delivery, connector protocols, shipped CORE
+behavior, application assembly, architecture source checks, SDK sources/Javadocs,
+and an isolated SDK-only consumer. The acceptance helper starts an owner-supplied
+llama-server and model, builds the distribution, then guides standard, fast-lane,
+restart, and SQLite inspection evidence.
+
+No llama-server executable or model is bundled. Real-model acceptance must not be
+reported until that exact journey obtains real text through the installed Kernel path
+and demonstrates durable background recovery. The OpenAI-compatible implementation
+is real, but an externally authenticated provider remains unexercised unless the
+Owner supplies its prepared transport/session.
