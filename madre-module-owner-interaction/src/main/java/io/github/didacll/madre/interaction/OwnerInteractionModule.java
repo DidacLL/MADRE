@@ -41,7 +41,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
 /** Shipped ordinary Module that can be assigned to the installation's CORE role. */
@@ -57,8 +56,10 @@ public final class OwnerInteractionModule {
     private static final AgentId INTERACTION_AGENT = new AgentId(ID, "interaction");
     private static final SkillId PROMPTING_SKILL = new SkillId(ID, "bounded-prompting");
     private static final SkillId ANALYSIS_SKILL = new SkillId(ID, "background-interpretation");
-    private static final WorkflowId STANDARD_WORKFLOW = new WorkflowId(ID, "standard-response");
-    private static final WorkflowId FAST_WORKFLOW = new WorkflowId(ID, "fast-response-with-analysis");
+    private static final WorkflowId STANDARD_WORKFLOW = new WorkflowId(
+            INTERACTION_AGENT, "standard-response");
+    private static final WorkflowId FAST_WORKFLOW = new WorkflowId(
+            INTERACTION_AGENT, "fast-response-with-analysis");
     private static final EffectProfile STANDARD_PROFILE = new EffectProfile(
             new EffectProfileId(STANDARD_PROMPT, "standard-inference"), Risk.R1, Autonomy.A1);
     private static final EffectProfile FAST_PROFILE = new EffectProfile(
@@ -95,7 +96,9 @@ public final class OwnerInteractionModule {
     public ModuleDefinition definition() { return DEFINITION; }
 
     public Material<String> ownerPrompt(String text, Sensitivity sensitivity) {
-        if (text == null || text.isBlank()) throw new IllegalArgumentException("prompt must not be blank");
+        if (text == null || text.isBlank()) {
+            throw new IllegalArgumentException("prompt must not be blank");
+        }
         return material(OWNER_PROMPT, text.strip(), sensitivity);
     }
 
@@ -127,16 +130,16 @@ public final class OwnerInteractionModule {
                 settings.foregroundMaximumTokens(), List.of());
         WorkRequest<TextInferenceCommand, TextInferenceResult> foreground = WorkRequest.immediate(
                 call, foregroundCommand, TextInferenceResult.class, 100,
-                settings.foregroundTimeout(),
-                PhysicalRetryPolicy.none(), Optional.empty(), settings.foregroundPreferences());
+                settings.foregroundTimeout(), PhysicalRetryPolicy.none(), Optional.empty(),
+                settings.foregroundPreferences());
         CompletionStage<TextInferenceResult> foregroundResult = execution.execute(foreground);
 
-        TextInferenceCommand analysisCommand = new TextInferenceCommand(backgroundPrompt(prompt.payload()),
-                settings.backgroundMaximumTokens(), List.of());
+        TextInferenceCommand analysisCommand = new TextInferenceCommand(
+                backgroundPrompt(prompt.payload()), settings.backgroundMaximumTokens(), List.of());
         WorkRequest<TextInferenceCommand, TextInferenceResult> background = WorkRequest.durable(
                 call, analysisCommand, TextInferenceResult.class, 10, Instant.now(),
-                settings.backgroundTimeout(),
-                settings.backgroundRetry(), Optional.empty(), settings.backgroundPreferences());
+                settings.backgroundTimeout(), settings.backgroundRetry(), Optional.empty(),
+                settings.backgroundPreferences());
         submitBackground(background, prompt.sensitivity());
         return foregroundResult.thenApply(result ->
                 material(IMMEDIATE_ANSWER, requireGeneratedText(result), prompt.sensitivity()));
@@ -169,7 +172,8 @@ public final class OwnerInteractionModule {
                 state.remove(id);
                 updates.add(new BackgroundUpdate(id, status.state(), Optional.of(analysis),
                         followUp, Optional.empty()));
-            } else if (status.state() == WorkState.FAILED || status.state() == WorkState.CANCELLED) {
+            } else if (status.state() == WorkState.FAILED
+                    || status.state() == WorkState.CANCELLED) {
                 state.remove(id);
                 updates.add(new BackgroundUpdate(id, status.state(), Optional.empty(),
                         Optional.empty(), status.lastFailureCategory()));
@@ -193,12 +197,15 @@ public final class OwnerInteractionModule {
     private static boolean usefulFollowUp(String text) {
         String normalized = text.strip();
         return !normalized.isEmpty() && !normalized.equalsIgnoreCase("NO_FOLLOW_UP")
-                && !normalized.regionMatches(true, 0, "NO_FOLLOW_UP\n", 0, "NO_FOLLOW_UP\n".length());
+                && !normalized.regionMatches(true, 0, "NO_FOLLOW_UP\n", 0,
+                        "NO_FOLLOW_UP\n".length());
     }
 
     private static String requireGeneratedText(TextInferenceResult result) {
         String text = java.util.Objects.requireNonNull(result, "result").text().strip();
-        if (text.isEmpty()) throw new IllegalStateException("physical inference returned empty text");
+        if (text.isEmpty()) {
+            throw new IllegalStateException("physical inference returned empty text");
+        }
         return text;
     }
 
@@ -225,8 +232,8 @@ public final class OwnerInteractionModule {
     }
 
     private static MaterialType<String> textType(String name) {
-        return new MaterialType<>(new MaterialTypeId(ID, name), String.class, "text/plain; charset=utf-8",
-                new MaterialCodec<>() {
+        return new MaterialType<>(new MaterialTypeId(ID, name), String.class,
+                "text/plain; charset=utf-8", new MaterialCodec<>() {
                     @Override public byte[] encode(String value) {
                         return value.getBytes(StandardCharsets.UTF_8);
                     }
@@ -238,8 +245,8 @@ public final class OwnerInteractionModule {
 
     private static ModuleDefinition createDefinition() {
         OperationDefinition<String, String> standard = new OperationDefinition<>(STANDARD_PROMPT,
-                "Produce one interpreted response to owner prompt Material", OperationVisibility.PUBLIC,
-                Map.of(OWNER_PROMPT.id(), Privacy.P5),
+                "Produce one interpreted response to owner prompt Material",
+                OperationVisibility.PUBLIC, Map.of(OWNER_PROMPT.id(), Privacy.P5),
                 Map.of(IMMEDIATE_ANSWER.id(), Sensitivity.S5),
                 Map.of(STANDARD_PROFILE.id(), STANDARD_PROFILE));
         OperationDefinition<String, String> fast = new OperationDefinition<>(FAST_LANE,
@@ -255,15 +262,15 @@ public final class OwnerInteractionModule {
                 "Interpret physical background text as analysis and an optional visible follow-up");
         WorkflowDefinition standardWorkflow = new WorkflowDefinition(STANDARD_WORKFLOW,
                 "Convert an owner prompt into one physical request and interpret its result",
-                Set.of(PROMPTING_SKILL), Set.of(STANDARD_PROMPT));
+                List.of(STANDARD_PROMPT));
         WorkflowDefinition fastWorkflow = new WorkflowDefinition(FAST_WORKFLOW,
                 "Return foreground inference while durable analysis proceeds independently",
-                Set.of(PROMPTING_SKILL, ANALYSIS_SKILL), Set.of(FAST_LANE));
+                List.of(FAST_LANE));
         AgentDefinition interaction = new AgentDefinition(INTERACTION_AGENT,
                 "Owner-facing interaction through bounded standard and fast-lane behavior",
-                Integrity.I5,
-                Set.of(PROMPTING_SKILL, ANALYSIS_SKILL),
-                Set.of(STANDARD_WORKFLOW, FAST_WORKFLOW), Set.of(STANDARD_PROMPT, FAST_LANE));
+                Integrity.I5, Set.of(PROMPTING_SKILL, ANALYSIS_SKILL),
+                Map.of(STANDARD_WORKFLOW, standardWorkflow, FAST_WORKFLOW, fastWorkflow),
+                Set.of(STANDARD_PROMPT, FAST_LANE));
         return new ModuleDefinition(ID, "1.0.0",
                 "Owner interaction and fallback behavior",
                 Map.of(OWNER_PROMPT.id(), OWNER_PROMPT, IMMEDIATE_ANSWER.id(), IMMEDIATE_ANSWER,
@@ -271,7 +278,6 @@ public final class OwnerInteractionModule {
                         VISIBLE_FOLLOW_UP.id(), VISIBLE_FOLLOW_UP),
                 Set.of(), Map.of(INTERACTION_AGENT, interaction),
                 Map.of(PROMPTING_SKILL, prompting, ANALYSIS_SKILL, interpretation),
-                Map.of(STANDARD_WORKFLOW, standardWorkflow, FAST_WORKFLOW, fastWorkflow),
                 Map.of(STANDARD_PROMPT, standard, FAST_LANE, fast));
     }
 }

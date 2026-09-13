@@ -19,8 +19,10 @@ responsibility before it enters this repository.
 
 ## Product boundary
 
-- A Module owns meaning, state, persistence, Material, transformations, Agents,
-  Skills, Workflows, interpretation, continuation, UI, and bounded Operations.
+- A Module owns meaning, state, persistence, Material, transformations, Agents, the
+  Skills it provides, interpretation, continuation, UI, and bounded Operations.
+  Workflows are owned by Agents; learning a Module-provided Skill may materialize as
+  one or more Workflows for that Agent.
 - An Operation is bounded Module behavior. It creates physical work when it needs a
   Capability and creates new Material when it interprets physical output.
 - Kernel owns live registries, physical Capability selection, routing, resources,

@@ -14,16 +14,20 @@ The owner can install, replace, configure, or remove every Module and Capability
 ## Building blocks
 
 A **Module** is an owner-installed application or integration. It owns meaning,
-domain state, persistence, Material, transformations, Agents, Skills, Workflows,
+domain state, persistence, Material, transformations, Agents, the Skills it provides,
 interpretation, continuation, user experience, and bounded Operations.
 
 An **Agent** is a Module-owned intelligent actor. It has no universal loop or
-assistant behavior. Its available behavior comes from the Skills, Workflows, and
-Operations its Module gives it.
+assistant behavior. Its available behavior comes from learned Skills, Agent-owned
+Workflows, and Operations its Module gives it.
 
-A **Skill** is reusable Module-owned ability, knowledge, or instruction. A
-**Workflow** is reusable Module-owned semantic behavior. Neither is a Kernel
-execution language.
+A **Skill** is reusable Module-provided ability, knowledge, or instruction. Learning a
+Skill may materialize as one or more Workflows for a particular Agent.
+
+A **Workflow** is reusable Agent-owned semantic behavior. In the current minimal
+model, a Workflow is an ordered sequence of Operations triggered together. A later
+model may add conditional flow when real behavior requires it. A Workflow is not a
+Kernel execution language or scheduler program.
 
 An **Operation** is one explicitly bounded piece of Module behavior. It accepts
 declared Material, may transform it into physical input, may request one or more
@@ -210,6 +214,11 @@ Kernel never assigns Material identity, chooses Sensitivity, interprets output,
 selects an Operation, or decides semantic continuation. Physical output has no path
 that can execute an Operation or submit further work.
 
+An Agent-owned Workflow does not weaken these boundaries. Each Operation in a
+Workflow receives its own actual Material and, when physical work is needed, creates
+its own work request through the same bounded Operation-call path. Workflow
+coordination stays semantic behavior outside Kernel.
+
 ## Live Module reachability
 
 Starting Modules register their definitions in Kernel's in-memory Module registry.
@@ -224,6 +233,10 @@ Definitions describe ordinary MADRE objects and references. Executable behavior 
 inside the running Module. A later Module invocation uses the target Module's bounded
 Operation entrypoint; Kernel provides reachability and transport but never interprets
 the Operation.
+
+User experience may trigger an Agent Workflow because the interaction Agent detects a
+need for that behavior or because the owner selects it directly in a Module or CORE
+UI. That trigger belongs to user-experience and Module behavior, not Kernel.
 
 ## Persistence and external mechanics
 

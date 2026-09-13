@@ -8,6 +8,7 @@ Owner
   v
 ordinary Module assigned to CORE role or another Module
   | owns Material, meaning, Agents, Operations and continuation
+  | Agents own Workflows over their Operation repertoires
   | creates an opaque physical work request
   v
 Kernel
@@ -33,12 +34,17 @@ A Module is the semantic and application boundary. It owns:
 
 - its domain state and persistence;
 - Material identities, types, payloads and Sensitivity;
-- Agents, Skills and Workflows;
+- Agents and the Skills it provides;
 - public and private Operations;
 - conversion from Material to physical connector input;
 - interpretation of physical output;
 - creation of new Material;
 - continuation and user presentation.
+
+Each Agent owns the Workflows in its learned repertoire. A Module-provided Skill may
+materialize as one or more Workflows for an Agent. The current minimal Workflow is an
+ordered sequence of Operations triggered together as one semantic behavior. That is
+Module/Agent behavior, not a Kernel workflow language.
 
 An Operation is the bounded entry to Module behavior. It declares the Material it can
 accept, the receiving Privacy that applies, the Material it may produce, and its
@@ -47,7 +53,9 @@ parts of the Operation; they are not separately identified surface objects.
 
 Module behavior calls the SDK directly while composing its actual values. Correct
 construction is the implementation model, not a voluntary call to a separate
-service.
+service. When a Workflow invokes multiple Operations, every Operation composes from
+the actual Material entering that Operation and every resulting physical request is
+selected independently by Kernel.
 
 ## Kernel boundary
 
@@ -103,6 +111,11 @@ A CORE candidate must expose the ordinary public behavior required by the role. 
 shipped candidate provides standard-prompt and fast-lane Operations through its
 ordinary interaction Agent. No CORE subtype, privileged path, special algebra, or
 Kernel scheduling lane exists.
+
+A CORE interaction Agent may detect that another installed Agent/Operation/Workflow is
+better suited to an owner request, or the owner may choose that behavior directly in
+a UI. That trigger is user-experience behavior. It does not make the target Workflow
+a CORE or Kernel concept.
 
 ## Storage
 
