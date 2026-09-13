@@ -1,25 +1,31 @@
 # Implementation Baseline
 
-The active branch currently contains no executable MADRE implementation.
+The active implementation is a Java 21 Gradle Kotlin DSL multi-project foundation.
+It contains three artifacts:
 
-This is deliberate. The removed Python implementation coupled Capability selection to
-Module Material types, represented algebraic application points as autonomous surface
-objects, obscured CORE, and used a fabricated Module as its end-to-end product claim.
-Keeping that code runnable would make the repository less truthful and would give
-later development a contaminated starting point.
+- `madre-algebra`, the dependency-free nominal algebra carriers;
+- `madre-sdk`, the immutable public Module programming model, version-one JSON
+  definition codec, bounded Operation construction and responsibility-specific ports;
+- `madre-kernel`, currently limited to the in-memory live Module registry,
+  information-reach directory, invocation routing and resolution of the configured
+  CORE identity as an ordinary registered Module.
 
-The surviving repository establishes:
+The SDK owns nominal Module-domain identities, typed Material and MaterialType,
+canonical Module/Agent/Skill/Workflow/Operation/EffectProfile declarations, and the
+physical WorkRequest accepted by the Module-facing ExecutionService. A WorkRequest
+contains a physical command, accumulated applicable values and ordinary Kernel
+controls; it cannot contain Material or a selected Capability.
 
-- the Owner's product model in `MADRE.md`;
-- the exact algebra in `docs/architecture/MADRE-security-algebra.md`;
-- Module, Kernel, Capability, CORE, execution, and interoperability boundaries in the
-  focused architecture documents;
-- the complete implementation sequence and acceptance path in
-  `docs/master-development-plan.md`.
+Definitions reject unresolved ownership and repertoire references. JSON decoding is
+explicitly versioned, rejects unknown or missing fields, resolves typed Material
+declarations through a caller-supplied resolver, and never serializes executable
+behavior. Consequential Operation construction directly enforces information reach,
+non-user causal demand and nonempty physical-realizer support.
 
-The implementation target is Java 21. The first implementation checkpoint must create
-the public SDK and Kernel foundation described by the master plan. No Python package,
-runtime, test fixture, wheel, or runnable service remains active.
+The build defines invariant tests, an architecture source check, publication of SDK
+sources and Javadocs, and an isolated consumer project that depends only on published
+`madre-sdk` coordinates. CI provisions Java 21 and Gradle 8.12 to run those checks.
 
-This document must be rewritten after each development slice to describe only behavior
-that actually runs at the current head.
+No Capability SPI, physical runtime, persistence, connector, shipped CORE-capable
+Module or installable application exists yet; those are the next two master-plan
+slices. No removed Python implementation or fabricated product Module is active.
