@@ -39,6 +39,11 @@ Kernel may transport opaque data that originated in Material. That never transfe
 Material ownership. Capability selection uses physical request values and Capability
 manifest values, never Material identity or semantic type.
 
+A runtime fact must never be invented merely to let execution continue. In particular,
+Capabilities must not hardcode a favorable availability state when reachability has
+not actually been established. Represent unobserved state explicitly and let Kernel
+exclude it until the connector can establish that it is available.
+
 ## Algebra
 
 Sensitivity, Privacy, Integrity, Risk, and Autonomy are distinct ordered public
@@ -84,8 +89,10 @@ cohesive type with meaningful behavior over collections of descriptor fragments.
 Tests establish mathematical invariants, public contracts, failure mechanics, and
 real integrations. A fixture may replace an external physical mechanism for a
 deterministic test, but it cannot stand in for a claimed Module or product behavior.
-Product acceptance must execute the shipped CORE-capable Module against real
-llama.cpp inference.
+A green test suite proves the exercised contracts, not that an external integration
+has been exercised in reality. Keep fixture evidence and live acceptance evidence
+explicitly separate. Product acceptance must execute the shipped CORE-capable Module
+against real llama.cpp inference.
 
 ## Delivery discipline
 

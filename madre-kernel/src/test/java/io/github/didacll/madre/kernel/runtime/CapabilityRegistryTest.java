@@ -38,6 +38,10 @@ final class CapabilityRegistryTest {
 
     @Test void selectsOnlyComposableAndAvailablePhysicalMechanismsDeterministically() {
         CapabilityRegistry registry = new CapabilityRegistry(new ResourceCoordinator(Map.of(SLOT, 1L)));
+        registry.register(capability("unknown", Privacy.P5, Integrity.I5,
+                CapabilityAvailability.UNKNOWN), 100);
+        registry.register(capability("unavailable", Privacy.P5, Integrity.I5,
+                CapabilityAvailability.UNAVAILABLE), 100);
         registry.register(capability("z", Privacy.P5, Integrity.I5, CapabilityAvailability.AVAILABLE), 1);
         registry.register(capability("a", Privacy.P3, Integrity.I3, CapabilityAvailability.AVAILABLE), 1);
         WorkRequest<String, String> request = request(Sensitivity.S4, Optional.of(Risk.R4));

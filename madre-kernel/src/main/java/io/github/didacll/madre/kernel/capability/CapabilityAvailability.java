@@ -1,3 +1,8 @@
 package io.github.didacll.madre.kernel.capability;
 
-public enum CapabilityAvailability { AVAILABLE, UNAVAILABLE }
+/** Observed physical reachability of a Capability. UNKNOWN is never selectable. */
+public enum CapabilityAvailability {
+    UNKNOWN,
+    AVAILABLE,
+    UNAVAILABLE
+}

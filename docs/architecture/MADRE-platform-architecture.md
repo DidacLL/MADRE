@@ -102,6 +102,14 @@ installed mechanism:
 The adapter accepts the physical command and returns physical output. It contains no
 Material, Module, Agent, Workflow, Skill, or Operation reference.
 
+Capability availability is an observed physical fact, not a favorable default. An
+adapter may report `AVAILABLE` only after its own mechanism-specific reachability
+check establishes that state. A failed check reports `UNAVAILABLE`; an interrupted or
+otherwise unestablished check is `UNKNOWN`. Kernel selects only explicitly
+`AVAILABLE` Capabilities. Test fixtures may inject explicit states to exercise Kernel
+logic, but production adapters must not hardcode success merely to keep execution
+moving.
+
 MADRE currently has two typed physical contracts:
 
 - text inference: llama.cpp and OpenAI-compatible adapters accept
@@ -113,6 +121,17 @@ SearXNG HTTP/JSON details stay inside the adapter. The WebSearch Module sees onl
 typed physical search contract and interprets its returned hits into Module-owned
 research Material. Search endpoint, Privacy, Integrity, latency and resource claims
 are installation facts. Locality or provider identity never derives algebraic values.
+
+A physical contract does not imply one transport. Multiple adapters may implement the
+same contract through different mechanisms and coexist in one installation. In
+particular, same-host llama.cpp inference does not conceptually require a TCP listener.
+The current llama.cpp adapter uses the server protocol for compatibility, but MADRE may
+also provide adapters using local IPC such as a Unix-domain socket where supported, or
+a direct native `libllama` binding. For owner-local inference, a non-network local
+boundary is preferred when it provides the required lifecycle, performance and
+platform support; loopback HTTP remains a compatibility option rather than the
+architectural default. Whatever transport is used, Privacy and Integrity remain
+explicit installation facts and are never inferred from locality.
 
 New physical contracts are introduced only when a real connector requires them; they
 extend the Capability SPI rather than expanding one generic dictionary.

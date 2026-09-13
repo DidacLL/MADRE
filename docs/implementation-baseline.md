@@ -69,19 +69,40 @@ research need is not claimed by this slice.
 
 The SearXNG adapter implements the documented JSON search endpoint as a physical-only
 Capability. Its endpoint, receiving Privacy, physical Integrity, expected latency,
-preference and resource claims are installation configuration. SearXNG protocol
-payloads do not enter Module definitions or Material. Provider authentication/session
-mechanics remain outside MADRE.
+preference and resource claims are installation configuration. Its availability is no
+longer assumed: the adapter probes the SearXNG `/healthz` endpoint, reports
+`AVAILABLE` only for a successful HTTP response, reports `UNAVAILABLE` for failed
+reachability, and leaves interrupted/unestablished observation as `UNKNOWN`. Kernel
+selects only explicitly `AVAILABLE` Capabilities. SearXNG protocol payloads do not
+enter Module definitions or Material. Provider authentication/session mechanics remain
+outside MADRE.
 
-Deterministic verification covers the SearXNG wire protocol with a local HTTP fixture,
-the WebSearch Module's real Kernel path, two-search-plus-review Workflow ordering, and
-algebraic exclusion of an S3 query from a P2 search Capability before the physical
-connector executes. These are fixture-backed protocol/runtime tests, not evidence that
-a live external search service was contacted. No prepared SearXNG installation was
-supplied in this session, so live-web acceptance remains unexercised. The historical
-real llama.cpp acceptance of the owner-interaction Module remains valid evidence for
-the text-inference connector; the new deep-search review has not been re-exercised
-against a real local model in this session.
+Deterministic verification covers the SearXNG health and wire protocol with a local
+HTTP fixture, the WebSearch Module's real Kernel path, two-search-plus-review Workflow
+ordering, algebraic exclusion of an S3 query from a P2 search Capability before the
+physical connector executes, and exclusion of both `UNKNOWN` and `UNAVAILABLE`
+Capabilities even when they have higher installation preference. These are
+fixture-backed protocol/runtime tests, not evidence that a live external search
+service was contacted.
+
+Live WebSearch acceptance is still incomplete. It can continue as soon as a reachable
+SearXNG installation is supplied or started with JSON search output enabled. At that
+point `single-search` must be exercised against real web results through the installed
+application. Complete `deep-search` acceptance additionally requires an actually
+available text-inference Capability whose Privacy composes with the joined research
+Material; the intended local route is real llama.cpp inference. Until both physical
+mechanisms participate in the same run, the end-to-end WebSearch feature is not
+claimed complete.
+
+The historical real llama.cpp acceptance of the owner-interaction Module remains valid
+evidence for the current text-inference contract. The existing llama.cpp adapter uses
+loopback HTTP because it targets `llama-server`, not because MADRE requires HTTP for
+local inference. Current llama.cpp also supports Unix-domain socket server binding on
+Unix-like systems and exposes `libllama` as its native library interface. The
+architecture now treats loopback HTTP as a compatibility adapter and permits multiple
+text-inference adapters to coexist. A non-network local llama.cpp adapter remains to be
+implemented and accepted before it can replace HTTP as the preferred same-host route;
+no such adapter is claimed by this baseline yet.
 
 Kernel SQLite remains restricted to opaque physical bytes, scheduling, attempts,
 delivery state, originating Module identity, and accumulated physical values. Semantic

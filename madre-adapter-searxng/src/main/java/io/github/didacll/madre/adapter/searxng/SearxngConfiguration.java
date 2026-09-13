@@ -18,6 +18,14 @@ public record SearxngConfiguration(CapabilityId id, URI endpoint, Privacy privac
         Objects.requireNonNull(privacy, "privacy");
         Objects.requireNonNull(integrity, "integrity");
         Objects.requireNonNull(expectedLatency, "expectedLatency");
+        if (!endpoint.isAbsolute() || endpoint.getHost() == null
+                || !("http".equalsIgnoreCase(endpoint.getScheme())
+                        || "https".equalsIgnoreCase(endpoint.getScheme()))) {
+            throw new IllegalArgumentException("endpoint must be an absolute HTTP(S) URI");
+        }
+        if (endpoint.getFragment() != null) {
+            throw new IllegalArgumentException("endpoint must not contain a fragment");
+        }
         if (expectedLatency.isZero() || expectedLatency.isNegative()) {
             throw new IllegalArgumentException("expectedLatency must be positive");
         }

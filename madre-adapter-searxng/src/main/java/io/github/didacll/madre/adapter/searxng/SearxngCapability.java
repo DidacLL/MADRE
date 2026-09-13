@@ -32,6 +32,7 @@ import java.util.Optional;
 /** Physical SearXNG JSON-search connector. */
 public final class SearxngCapability implements Capability<WebSearchCommand, WebSearchResult> {
     private static final ObjectMapper JSON = new ObjectMapper();
+    private static final Duration MAXIMUM_PROBE_TIMEOUT = Duration.ofSeconds(3);
     private static final PhysicalContract<WebSearchCommand, WebSearchResult> CONTRACT =
             new PhysicalContract<>(WebSearchCodecs.CONTRACT_ID, WebSearchCommand.class,
                     WebSearchResult.class, new PhysicalCodec<>() {
@@ -73,7 +74,21 @@ public final class SearxngCapability implements Capability<WebSearchCommand, Web
     }
 
     @Override public CapabilityAvailability availability() {
-        return CapabilityAvailability.AVAILABLE;
+        Duration timeout = configuration.expectedLatency().compareTo(MAXIMUM_PROBE_TIMEOUT) < 0
+                ? configuration.expectedLatency() : MAXIMUM_PROBE_TIMEOUT;
+        HttpRequest request = HttpRequest.newBuilder(healthUri())
+                .timeout(timeout).header("Accept", "text/plain").GET().build();
+        try {
+            HttpResponse<Void> response = client.send(request, HttpResponse.BodyHandlers.discarding());
+            return response.statusCode() >= 200 && response.statusCode() < 300
+                    ? CapabilityAvailability.AVAILABLE
+                    : CapabilityAvailability.UNAVAILABLE;
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            return CapabilityAvailability.UNKNOWN;
+        } catch (IOException exception) {
+            return CapabilityAvailability.UNAVAILABLE;
+        }
     }
 
     @Override public WebSearchResult execute(WebSearchCommand command, ExecutionContext context)
@@ -116,6 +131,25 @@ public final class SearxngCapability implements Capability<WebSearchCommand, Web
         String separator = base.contains("?") ? "&" : "?";
         return URI.create(base + separator + "q="
                 + URLEncoder.encode(query, StandardCharsets.UTF_8) + "&format=json");
+    }
+
+    private URI healthUri() {
+        URI endpoint = configuration.endpoint();
+        String path = endpoint.getPath();
+        String parent;
+        if (path == null || path.isBlank() || "/".equals(path)) {
+            parent = "/";
+        } else {
+            int slash = path.lastIndexOf('/');
+            parent = path.substring(0, slash + 1);
+        }
+        try {
+            return new URI(endpoint.getScheme(), endpoint.getUserInfo(), endpoint.getHost(),
+                    endpoint.getPort(), parent + "healthz", null, null);
+        } catch (java.net.URISyntaxException exception) {
+            throw new IllegalStateException("validated SearXNG endpoint cannot form health URI",
+                    exception);
+        }
     }
 
     private static WebSearchResult parse(String body, int maximumResults)
