@@ -21,22 +21,25 @@ public record AgentDefinition(AgentId id, String purpose, Integrity integrity, S
         }
         purpose = purpose.strip();
         Objects.requireNonNull(integrity, "integrity");
-        skills = Set.copyOf(skills);
-        workflows = Map.copyOf(workflows);
-        operations = Set.copyOf(operations);
-        if (operations.isEmpty()) {
+        Set<SkillId> copiedSkills = Set.copyOf(skills);
+        Map<WorkflowId, WorkflowDefinition> copiedWorkflows = Map.copyOf(workflows);
+        Set<OperationId> copiedOperations = Set.copyOf(operations);
+        if (copiedOperations.isEmpty()) {
             throw new IllegalArgumentException("an Agent must expose at least one Operation");
         }
-        if (!workflows.entrySet().stream().allMatch(entry ->
+        if (!copiedWorkflows.entrySet().stream().allMatch(entry ->
                 entry.getKey().equals(entry.getValue().id())
                         && entry.getKey().agentId().equals(id))) {
             throw new IllegalArgumentException("Workflow declarations must be owned by this Agent");
         }
-        if (workflows.values().stream()
+        if (copiedWorkflows.values().stream()
                 .flatMap(workflow -> workflow.operations().stream())
-                .anyMatch(operation -> !operations.contains(operation))) {
+                .anyMatch(operation -> !copiedOperations.contains(operation))) {
             throw new IllegalArgumentException("Workflow Operations must belong to the Agent repertoire");
         }
+        skills = copiedSkills;
+        workflows = copiedWorkflows;
+        operations = copiedOperations;
     }
 
     public Privacy effectivePrivacy(Map<OperationId, OperationDefinition<?, ?>> definitions) {
