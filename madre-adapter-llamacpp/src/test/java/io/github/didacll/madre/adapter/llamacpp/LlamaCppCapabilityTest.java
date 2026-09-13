@@ -6,10 +6,11 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import com.sun.net.httpserver.HttpServer;
 import io.github.didacll.madre.algebra.Integrity;
 import io.github.didacll.madre.algebra.Privacy;
+import io.github.didacll.madre.kernel.capability.CapabilityAvailability;
 import io.github.didacll.madre.kernel.capability.CapabilityException;
-import io.github.didacll.madre.sdk.execution.PhysicalFailureCategory;
 import io.github.didacll.madre.kernel.capability.CapabilityId;
 import io.github.didacll.madre.kernel.capability.ExecutionContext;
+import io.github.didacll.madre.sdk.execution.PhysicalFailureCategory;
 import io.github.didacll.madre.text.TextInferenceCommand;
 import io.github.didacll.madre.text.TextInferenceResult;
 import java.net.InetSocketAddress;
@@ -36,6 +37,7 @@ final class LlamaCppCapabilityTest {
             LlamaCppCapability capability = new LlamaCppCapability(new LlamaCppConfiguration(new CapabilityId("llama"),
                     java.net.URI.create("http://127.0.0.1:" + server.getAddress().getPort()), "installed-model",
                     Privacy.P5, Integrity.I5, java.time.Duration.ofMillis(10), List.of()));
+            assertEquals(CapabilityAvailability.AVAILABLE, capability.availability());
             TextInferenceResult result = capability.execute(new TextInferenceCommand("hello", 16, List.of()),
                     new ExecutionContext(Instant.now().plusSeconds(2), () -> false, 1));
             assertEquals("real protocol text", result.text());
@@ -50,5 +52,15 @@ final class LlamaCppCapabilityTest {
         CapabilityException failure = assertThrows(CapabilityException.class, () -> unavailable.execute(
                 new TextInferenceCommand("hello", 1, List.of()), new ExecutionContext(Instant.now().plusSeconds(1), () -> false, 1)));
         assertEquals(PhysicalFailureCategory.CONNECTION, failure.category());
+        assertEquals(CapabilityAvailability.UNAVAILABLE, unavailable.availability());
+    }
+
+    @Test void localHttpAdapterRejectsRemoteEndpoints() {
+        assertThrows(IllegalArgumentException.class, () -> new LlamaCppConfiguration(
+                new CapabilityId("remote"), java.net.URI.create("http://192.0.2.10:8080"),
+                "model", Privacy.P5, Integrity.I5, java.time.Duration.ofMillis(10), List.of()));
+        assertThrows(IllegalArgumentException.class, () -> new LlamaCppConfiguration(
+                new CapabilityId("hostname"), java.net.URI.create("http://localhost:8080"),
+                "model", Privacy.P5, Integrity.I5, java.time.Duration.ofMillis(10), List.of()));
     }
 }

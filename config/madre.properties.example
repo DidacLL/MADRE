@@ -7,6 +7,9 @@ module.owner-interaction.state=var/owner-interaction-background.state
 # Explicit physical capacity and llama.cpp claims.
 resources.model-slot=1
 resources.network-slot=4
+# Current llama.cpp compatibility adapter is loopback HTTP only. Keep llama-server
+# bound to a loopback interface; do not expose the owner-local inference server via
+# 0.0.0.0 or another externally reachable interface merely to simplify integration.
 connector.llamacpp.enabled=true
 connector.llamacpp.id=local-llama
 connector.llamacpp.endpoint=http://127.0.0.1:8080/

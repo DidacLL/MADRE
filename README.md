@@ -34,11 +34,18 @@ published coordinates.
 ## Start the local installation
 
 Start a separately installed llama.cpp server with an owner-selected GGUF model when
-using the default text-inference configuration:
+using the current text-inference compatibility adapter:
 
 ```text
 llama-server -m /absolute/path/model.gguf --host 127.0.0.1 --port 8080
 ```
+
+The current llama.cpp adapter deliberately accepts only loopback IP literals. Keep the
+server bound to loopback as well; MADRE cannot prove the bind address of an externally
+started process merely from its client endpoint. Loopback HTTP is a compatibility
+transport, not a requirement of the text-inference contract. Upstream llama.cpp also
+supports Unix-domain-socket server binding and exposes the native `libllama` API;
+MADRE does not yet claim either transport as an implemented adapter.
 
 For live web search, configure an installed SearXNG instance whose JSON search format
 is enabled. The example configuration expects a search endpoint such as:
@@ -91,6 +98,11 @@ workflow engine.
 alone knows the HTTP/JSON protocol and returns a typed physical `WebSearchResult`.
 The Module interprets those physical hits into Module-owned research Material.
 
+The SearXNG adapter probes `/healthz` before Kernel can select it. A failed health
+probe is unavailable; an interrupted/unestablished probe is unknown. Neither state is
+selectable. No production adapter is allowed to claim availability merely to let a
+workflow continue.
+
 `deep-search` triggers two `single-search` Operations, joins their interpreted Material
 with normal Sensitivity composition, then invokes a private review Operation. That
 review sends an ordinary `TextInferenceCommand` through Kernel. Web search and review
@@ -100,6 +112,11 @@ subject to the same Security Algebra.
 The current console exposes direct UI invocation. Automatic conversational detection
 by CORE of when research is needed is a later UX behavior, not a hidden feature of
 Kernel or the Workflow definition.
+
+Live WebSearch acceptance remains separate from deterministic protocol tests. It can
+continue when a reachable SearXNG installation with JSON output enabled is available.
+Full `deep-search` acceptance additionally requires a real available text-inference
+Capability in the same run.
 
 ## CORE qualification
 
