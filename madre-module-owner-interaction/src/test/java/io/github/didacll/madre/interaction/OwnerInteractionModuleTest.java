@@ -1,4 +1,4 @@
-package io.github.didacll.madre.core;
+package io.github.didacll.madre.interaction;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -29,13 +29,14 @@ import java.util.concurrent.CompletionStage;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-final class CoreModuleTest {
+final class OwnerInteractionModuleTest {
     @TempDir Path temporary;
 
     @Test void standardPromptUsesPhysicalPortAndCreatesIndependentMaterial() {
         RecordingExecution execution = new RecordingExecution();
         execution.immediate.complete(result("A bounded answer"));
-        CoreModule module = new CoreModule(execution, temporary.resolve("state"));
+        OwnerInteractionModule module = new OwnerInteractionModule(execution,
+                temporary.resolve("state"));
         Material<String> prompt = module.ownerPrompt("Explain the invariant", Sensitivity.S4);
 
         Material<String> answer = module.standardPrompt(prompt).toCompletableFuture().join();
@@ -43,14 +44,15 @@ final class CoreModuleTest {
         assertEquals(ExecutionMode.IMMEDIATE, execution.immediateRequest.mode());
         assertEquals("Explain the invariant",
                 ((TextInferenceCommand) execution.immediateRequest.command()).prompt());
-        assertEquals(CoreModule.IMMEDIATE_ANSWER, answer.type());
+        assertEquals(OwnerInteractionModule.IMMEDIATE_ANSWER, answer.type());
         assertEquals(Sensitivity.S4, answer.sensitivity());
         assertNotEquals(prompt.id(), answer.id());
     }
 
     @Test void fastLaneReturnsForegroundWithoutWaitingForDurableAnalysis() {
         RecordingExecution execution = new RecordingExecution();
-        CoreModule module = new CoreModule(execution, temporary.resolve("state"));
+        OwnerInteractionModule module = new OwnerInteractionModule(execution,
+                temporary.resolve("state"));
         CompletionStage<Material<String>> foreground = module.fastLane(
                 module.ownerPrompt("Find the hard part", Sensitivity.S3));
 
@@ -69,18 +71,18 @@ final class CoreModuleTest {
         RecordingExecution execution = new RecordingExecution();
         execution.immediate.complete(result("Immediate"));
         Path state = temporary.resolve("core-state");
-        CoreModule first = new CoreModule(execution, state);
+        OwnerInteractionModule first = new OwnerInteractionModule(execution, state);
         first.fastLane(first.ownerPrompt("Continue this", Sensitivity.S5)).toCompletableFuture().join();
         WorkId work = execution.lastSubmitted;
         execution.complete(work, result("A useful correction"));
 
-        CoreModule restarted = new CoreModule(execution, state);
+        OwnerInteractionModule restarted = new OwnerInteractionModule(execution, state);
         List<BackgroundUpdate> updates = restarted.collectBackground();
 
         assertEquals(1, updates.size());
-        assertEquals(CoreModule.BACKGROUND_ANALYSIS,
+        assertEquals(OwnerInteractionModule.BACKGROUND_ANALYSIS,
                 updates.get(0).backgroundAnalysis().orElseThrow().type());
-        assertEquals(CoreModule.VISIBLE_FOLLOW_UP,
+        assertEquals(OwnerInteractionModule.VISIBLE_FOLLOW_UP,
                 updates.get(0).visibleFollowUp().orElseThrow().type());
         assertEquals(Sensitivity.S5,
                 updates.get(0).visibleFollowUp().orElseThrow().sensitivity());
@@ -91,7 +93,8 @@ final class CoreModuleTest {
     @Test void noFollowUpStopsSemanticContinuation() {
         RecordingExecution execution = new RecordingExecution();
         execution.immediate.complete(result("Immediate"));
-        CoreModule module = new CoreModule(execution, temporary.resolve("state"));
+        OwnerInteractionModule module = new OwnerInteractionModule(execution,
+                temporary.resolve("state"));
         module.fastLane(module.ownerPrompt("Simple", Sensitivity.S2)).toCompletableFuture().join();
         execution.complete(execution.lastSubmitted, result("NO_FOLLOW_UP"));
 
@@ -101,16 +104,17 @@ final class CoreModuleTest {
     }
 
     @Test void publicDefinitionRoundTripsWithoutBehavior() {
-        CoreModule module = new CoreModule(new RecordingExecution(), temporary.resolve("state"));
+        OwnerInteractionModule module = new OwnerInteractionModule(
+                new RecordingExecution(), temporary.resolve("state"));
         ModuleDefinitionJsonCodec codec = new ModuleDefinitionJsonCodec((id, contentType) ->
                 module.definition().materialTypes().get(id));
         String encoded = codec.encode(module.definition());
         var decoded = codec.decode(encoded);
 
-        assertEquals(CoreModule.ID, decoded.id());
+        assertEquals(OwnerInteractionModule.ID, decoded.id());
         assertEquals(2, decoded.operations().size());
         assertEquals(1, decoded.agents().size());
-        assertFalse(encoded.contains("CoreModule"));
+        assertFalse(encoded.contains("OwnerInteractionModule"));
         assertFalse(encoded.contains("NO_FOLLOW_UP"));
     }
 

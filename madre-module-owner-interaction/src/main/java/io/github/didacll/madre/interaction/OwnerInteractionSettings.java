@@ -1,4 +1,4 @@
-package io.github.didacll.madre.core;
+package io.github.didacll.madre.interaction;
 
 import io.github.didacll.madre.sdk.execution.PhysicalPreferences;
 import io.github.didacll.madre.sdk.execution.PhysicalRetryPolicy;
@@ -6,11 +6,12 @@ import java.time.Duration;
 import java.util.Objects;
 
 /** Ordinary physical controls chosen by the shipped Module's bounded behavior. */
-public record CoreModuleSettings(int foregroundMaximumTokens, int backgroundMaximumTokens,
+public record OwnerInteractionSettings(int foregroundMaximumTokens,
+        int backgroundMaximumTokens,
         Duration foregroundTimeout, Duration backgroundTimeout,
         PhysicalRetryPolicy backgroundRetry, PhysicalPreferences foregroundPreferences,
         PhysicalPreferences backgroundPreferences) {
-    public CoreModuleSettings {
+    public OwnerInteractionSettings {
         if (foregroundMaximumTokens < 1 || backgroundMaximumTokens < 1) {
             throw new IllegalArgumentException("generation limits must be positive");
         }
@@ -25,8 +26,9 @@ public record CoreModuleSettings(int foregroundMaximumTokens, int backgroundMaxi
         Objects.requireNonNull(backgroundPreferences, "backgroundPreferences");
     }
 
-    public static CoreModuleSettings defaults() {
-        return new CoreModuleSettings(256, 512, Duration.ofSeconds(90), Duration.ofMinutes(5),
+    public static OwnerInteractionSettings defaults() {
+        return new OwnerInteractionSettings(256, 512, Duration.ofSeconds(90),
+                Duration.ofMinutes(5),
                 new PhysicalRetryPolicy(3, Duration.ofSeconds(5)),
                 PhysicalPreferences.unconstrained(), PhysicalPreferences.unconstrained());
     }

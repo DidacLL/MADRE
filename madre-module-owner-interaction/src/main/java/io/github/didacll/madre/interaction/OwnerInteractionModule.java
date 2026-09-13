@@ -1,6 +1,7 @@
-package io.github.didacll.madre.core;
+package io.github.didacll.madre.interaction;
 
 import io.github.didacll.madre.algebra.Autonomy;
+import io.github.didacll.madre.algebra.Integrity;
 import io.github.didacll.madre.algebra.Privacy;
 import io.github.didacll.madre.algebra.Risk;
 import io.github.didacll.madre.algebra.Sensitivity;
@@ -18,7 +19,6 @@ import io.github.didacll.madre.sdk.identity.ModuleId;
 import io.github.didacll.madre.sdk.identity.OperationId;
 import io.github.didacll.madre.sdk.identity.SkillId;
 import io.github.didacll.madre.sdk.identity.WorkflowId;
-import io.github.didacll.madre.sdk.invocation.ModuleEndpoint;
 import io.github.didacll.madre.sdk.material.Material;
 import io.github.didacll.madre.sdk.material.MaterialCodec;
 import io.github.didacll.madre.sdk.material.MaterialType;
@@ -30,6 +30,7 @@ import io.github.didacll.madre.sdk.module.OperationVisibility;
 import io.github.didacll.madre.sdk.module.SkillDefinition;
 import io.github.didacll.madre.sdk.module.WorkflowDefinition;
 import io.github.didacll.madre.sdk.operation.Operation;
+import io.github.didacll.madre.sdk.operation.OperationCall;
 import io.github.didacll.madre.text.TextInferenceCommand;
 import io.github.didacll.madre.text.TextInferenceResult;
 import java.nio.charset.StandardCharsets;
@@ -45,8 +46,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
 /** Shipped ordinary Module that can be assigned to the installation's CORE role. */
-public final class CoreModule {
-    public static final ModuleId ID = new ModuleId("io.github.didacll.madre.core");
+public final class OwnerInteractionModule {
+    public static final ModuleId ID = new ModuleId("io.github.didacll.madre.owner-interaction");
     public static final MaterialType<String> OWNER_PROMPT = textType("owner-prompt");
     public static final MaterialType<String> IMMEDIATE_ANSWER = textType("immediate-answer");
     public static final MaterialType<String> BACKGROUND_ANALYSIS = textType("background-analysis");
@@ -60,42 +61,29 @@ public final class CoreModule {
     private static final WorkflowId STANDARD_WORKFLOW = new WorkflowId(ID, "standard-response");
     private static final WorkflowId FAST_WORKFLOW = new WorkflowId(ID, "fast-response-with-analysis");
     private static final EffectProfile STANDARD_PROFILE = new EffectProfile(
-            new EffectProfileId(ID, "standard-inference"), Risk.R1, Autonomy.A5);
+            new EffectProfileId(STANDARD_PROMPT, "standard-inference"), Risk.R1, Autonomy.A1);
     private static final EffectProfile FAST_PROFILE = new EffectProfile(
-            new EffectProfileId(ID, "fast-inference"), Risk.R1, Autonomy.A5);
-    private static final ModuleDefinition DEFINITION = definition();
+            new EffectProfileId(FAST_LANE, "fast-inference"), Risk.R1, Autonomy.A1);
+    private static final ModuleDefinition DEFINITION = createDefinition();
 
     private final ExecutionService execution;
-    private final CoreModuleSettings settings;
-    private final CoreStateStore state;
-    private final Operation<String, String> standardOperation = this::standardPrompt;
-    private final Operation<String, String> fastOperation = this::fastLane;
+    private final OwnerInteractionSettings settings;
+    private final OwnerInteractionStateStore state;
+    private final Operation<String, String> standardOperation = this::executeStandardPrompt;
+    private final Operation<String, String> fastOperation = this::executeFastLane;
 
-    public CoreModule(ExecutionService execution, Path stateFile) {
-        this(execution, stateFile, CoreModuleSettings.defaults());
+    public OwnerInteractionModule(ExecutionService execution, Path stateFile) {
+        this(execution, stateFile, OwnerInteractionSettings.defaults());
     }
 
-    public CoreModule(ExecutionService execution, Path stateFile, CoreModuleSettings settings) {
+    public OwnerInteractionModule(ExecutionService execution, Path stateFile,
+            OwnerInteractionSettings settings) {
         this.execution = java.util.Objects.requireNonNull(execution, "execution");
-        this.state = new CoreStateStore(stateFile);
+        this.state = new OwnerInteractionStateStore(stateFile);
         this.settings = java.util.Objects.requireNonNull(settings, "settings");
     }
 
     public ModuleDefinition definition() { return DEFINITION; }
-
-    public ModuleEndpoint endpoint() {
-        return (operation, input) -> {
-            if (!OWNER_PROMPT.equals(input.type()) || !String.class.isInstance(input.payload())) {
-                return CompletableFuture.failedFuture(new IllegalArgumentException(
-                        "CORE Operations require owner-prompt Material"));
-            }
-            @SuppressWarnings("unchecked") Material<String> prompt = (Material<String>) input;
-            if (STANDARD_PROMPT.equals(operation)) return standardOperation.invoke(prompt);
-            if (FAST_LANE.equals(operation)) return fastOperation.invoke(prompt);
-            return CompletableFuture.failedFuture(new IllegalArgumentException(
-                    "unknown CORE Operation: " + operation));
-        };
-    }
 
     public Material<String> ownerPrompt(String text, Sensitivity sensitivity) {
         if (text == null || text.isBlank()) throw new IllegalArgumentException("prompt must not be blank");
@@ -104,10 +92,17 @@ public final class CoreModule {
 
     public CompletionStage<Material<String>> standardPrompt(Material<String> prompt) {
         requirePrompt(prompt);
+        return standardOperation.invoke(call(STANDARD_PROMPT, STANDARD_PROFILE, prompt));
+    }
+
+    private CompletionStage<Material<String>> executeStandardPrompt(
+            OperationCall<String, String> call) {
+        Material<String> prompt = call.input();
         TextInferenceCommand command = new TextInferenceCommand(prompt.payload(),
                 settings.foregroundMaximumTokens(), List.of());
         WorkRequest<TextInferenceCommand, TextInferenceResult> request = new WorkRequest<>(ID,
-                command, TextInferenceResult.class, prompt.sensitivity(), Optional.of(Risk.R1),
+                command, TextInferenceResult.class, prompt.sensitivity(),
+                Optional.of(call.effectProfile().risk()),
                 ExecutionMode.IMMEDIATE, 50, Instant.now(), settings.foregroundTimeout(),
                 PhysicalRetryPolicy.none(), Optional.empty(), settings.foregroundPreferences());
         return execution.execute(request).thenApply(result ->
@@ -116,10 +111,16 @@ public final class CoreModule {
 
     public CompletionStage<Material<String>> fastLane(Material<String> prompt) {
         requirePrompt(prompt);
+        return fastOperation.invoke(call(FAST_LANE, FAST_PROFILE, prompt));
+    }
+
+    private CompletionStage<Material<String>> executeFastLane(OperationCall<String, String> call) {
+        Material<String> prompt = call.input();
         TextInferenceCommand foregroundCommand = new TextInferenceCommand(prompt.payload(),
                 settings.foregroundMaximumTokens(), List.of());
         WorkRequest<TextInferenceCommand, TextInferenceResult> foreground = new WorkRequest<>(ID,
-                foregroundCommand, TextInferenceResult.class, prompt.sensitivity(), Optional.of(Risk.R1),
+                foregroundCommand, TextInferenceResult.class, prompt.sensitivity(),
+                Optional.of(call.effectProfile().risk()),
                 ExecutionMode.IMMEDIATE, 100, Instant.now(), settings.foregroundTimeout(),
                 PhysicalRetryPolicy.none(), Optional.empty(), settings.foregroundPreferences());
         CompletionStage<TextInferenceResult> foregroundResult = execution.execute(foreground);
@@ -127,7 +128,8 @@ public final class CoreModule {
         TextInferenceCommand analysisCommand = new TextInferenceCommand(backgroundPrompt(prompt.payload()),
                 settings.backgroundMaximumTokens(), List.of());
         WorkRequest<TextInferenceCommand, TextInferenceResult> background = new WorkRequest<>(ID,
-                analysisCommand, TextInferenceResult.class, prompt.sensitivity(), Optional.of(Risk.R1),
+                analysisCommand, TextInferenceResult.class, prompt.sensitivity(),
+                Optional.of(call.effectProfile().risk()),
                 ExecutionMode.DURABLE, 10, Instant.now(), settings.backgroundTimeout(),
                 settings.backgroundRetry(), Optional.empty(), settings.backgroundPreferences());
         submitBackground(background, prompt.sensitivity());
@@ -198,8 +200,17 @@ public final class CoreModule {
     private static void requirePrompt(Material<String> prompt) {
         java.util.Objects.requireNonNull(prompt, "prompt");
         if (!prompt.id().moduleId().equals(ID) || !prompt.type().equals(OWNER_PROMPT)) {
-            throw new IllegalArgumentException("prompt must be CORE-owned owner-prompt Material");
+            throw new IllegalArgumentException(
+                    "prompt must be owner-interaction Module Material");
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static OperationCall<String, String> call(OperationId operationId,
+            EffectProfile profile, Material<String> input) {
+        OperationDefinition<String, String> operation =
+                (OperationDefinition<String, String>) DEFINITION.operations().get(operationId);
+        return new OperationCall<>(operation, profile, input, List.of());
     }
 
     private static Material<String> material(MaterialType<String> type, String text,
@@ -220,7 +231,7 @@ public final class CoreModule {
                 });
     }
 
-    private static ModuleDefinition definition() {
+    private static ModuleDefinition createDefinition() {
         OperationDefinition<String, String> standard = new OperationDefinition<>(STANDARD_PROMPT,
                 "Produce one interpreted response to owner prompt Material", OperationVisibility.PUBLIC,
                 Map.of(OWNER_PROMPT.id(), Privacy.P5),
@@ -245,9 +256,11 @@ public final class CoreModule {
                 Set.of(PROMPTING_SKILL, ANALYSIS_SKILL), Set.of(FAST_LANE));
         AgentDefinition interaction = new AgentDefinition(INTERACTION_AGENT,
                 "Owner-facing interaction through bounded standard and fast-lane behavior",
+                Integrity.I5,
                 Set.of(PROMPTING_SKILL, ANALYSIS_SKILL),
                 Set.of(STANDARD_WORKFLOW, FAST_WORKFLOW), Set.of(STANDARD_PROMPT, FAST_LANE));
-        return new ModuleDefinition(ID, "1.0.0", "Default owner interaction and fallback behavior",
+        return new ModuleDefinition(ID, "1.0.0",
+                "Owner interaction and fallback behavior",
                 Map.of(OWNER_PROMPT.id(), OWNER_PROMPT, IMMEDIATE_ANSWER.id(), IMMEDIATE_ANSWER,
                         BACKGROUND_ANALYSIS.id(), BACKGROUND_ANALYSIS,
                         VISIBLE_FOLLOW_UP.id(), VISIBLE_FOLLOW_UP),

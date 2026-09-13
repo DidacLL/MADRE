@@ -14,7 +14,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.Optional;
-import java.util.HashSet;
 
 /** Canonical immutable declaration of one owner-installed Module. */
 public final class ModuleDefinition {
@@ -77,18 +76,15 @@ public final class ModuleDefinition {
     }
 
     private void validateReferences() {
-        var usedProfiles = new HashSet<io.github.didacll.madre.sdk.identity.EffectProfileId>();
         for (OperationDefinition<?, ?> operation : operations.values()) {
             if (!operation.acceptedMaterial().keySet().stream()
                     .allMatch(type -> materialTypes.containsKey(type) || publicMaterialReferences.contains(type))
                     || !materialTypes.keySet().containsAll(operation.producedMaterial().keySet())) {
                 throw new IllegalArgumentException("Operation contains an unresolved Material type reference: " + operation.id());
             }
-            if (!operation.effectProfiles().keySet().stream().allMatch(key -> key.moduleId().equals(id))) {
+            if (!operation.effectProfiles().keySet().stream()
+                    .allMatch(key -> key.operationId().equals(operation.id()))) {
                 throw new IllegalArgumentException("Operation contains a foreign EffectProfile: " + operation.id());
-            }
-            if (!operation.effectProfiles().keySet().stream().allMatch(usedProfiles::add)) {
-                throw new IllegalArgumentException("an EffectProfile belongs to exactly one Operation");
             }
         }
         for (WorkflowDefinition workflow : workflows.values()) {

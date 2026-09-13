@@ -50,23 +50,45 @@ public final class KernelExecutionService implements ExecutionService, AutoClose
     @Override public <C, R> CompletableFuture<R> execute(WorkRequest<C, R> request) {
         Objects.requireNonNull(request, "request");
         if (request.mode() != ExecutionMode.IMMEDIATE) return CompletableFuture.failedFuture(new IllegalArgumentException("execute requires IMMEDIATE mode"));
-        return CompletableFuture.supplyAsync(() -> {
-            CapabilityException last = null;
-            for (int attempt = 1; attempt <= request.retryPolicy().maximumAttempts(); attempt++) {
-                try { return dispatch(request, attempt, () -> false); }
-                catch (CapabilityException exception) {
-                    last = exception;
-                    if (exception.category() == PhysicalFailureCategory.UNAVAILABLE || attempt == request.retryPolicy().maximumAttempts()) break;
-                    try { Thread.sleep(request.retryPolicy().delay().toMillis()); }
-                    catch (InterruptedException interrupted) {
-                        Thread.currentThread().interrupt();
-                        throw new CompletionException(new PhysicalExecutionException(PhysicalFailureCategory.CANCELLED, "physical retry interrupted", interrupted));
-                    }
+        CapabilityRegistry.Selection<C, R> initial = capabilities.select(request).orElse(null);
+        if (initial == null) {
+            return CompletableFuture.failedFuture(new PhysicalExecutionException(
+                    PhysicalFailureCategory.UNAVAILABLE,
+                    "no reachable physical Capability is currently available", null));
+        }
+        return CompletableFuture.supplyAsync(() -> executeImmediate(request, initial), executions);
+    }
+
+    private <C, R> R executeImmediate(WorkRequest<C, R> request,
+            CapabilityRegistry.Selection<C, R> initial) {
+        CapabilityException last = null;
+        CapabilityRegistry.Selection<C, R> selected = initial;
+        for (int attempt = 1; attempt <= request.retryPolicy().maximumAttempts(); attempt++) {
+            CapabilityRegistry.Selection<C, R> current = selected;
+            try (current) {
+                return invokeSelected(current, request, attempt, () -> false);
+            } catch (CapabilityException exception) {
+                last = exception;
+                if (exception.category() == PhysicalFailureCategory.UNAVAILABLE
+                        || attempt == request.retryPolicy().maximumAttempts()) break;
+                try { Thread.sleep(request.retryPolicy().delay().toMillis()); }
+                catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new CompletionException(new PhysicalExecutionException(
+                            PhysicalFailureCategory.CANCELLED,
+                            "physical retry interrupted", interrupted));
+                }
+                selected = capabilities.select(request).orElse(null);
+                if (selected == null) {
+                    last = new CapabilityException(PhysicalFailureCategory.UNAVAILABLE,
+                            "no reachable physical Capability is currently available");
+                    break;
                 }
             }
-            CapabilityException failure = Objects.requireNonNull(last);
-            throw new CompletionException(new PhysicalExecutionException(failure.category(), failure.getMessage(), failure));
-        }, executions);
+        }
+        CapabilityException failure = Objects.requireNonNull(last);
+        throw new CompletionException(new PhysicalExecutionException(
+                failure.category(), failure.getMessage(), failure));
     }
 
     @Override public <C, R> WorkId submit(WorkRequest<C, R> request) {
@@ -133,15 +155,6 @@ public final class KernelExecutionService implements ExecutionService, AutoClose
                         exception.category());
                 store.failAttempt(stored, exception.category(), Instant.now());
             }
-        }
-    }
-
-    private <C, R> R dispatch(WorkRequest<C, R> request, int attempt, java.util.function.BooleanSupplier cancelled) throws CapabilityException {
-        CapabilityRegistry.Selection<C, R> selection = capabilities.select(request).orElseThrow(() ->
-                new CapabilityException(PhysicalFailureCategory.UNAVAILABLE, "no reachable physical Capability is currently available"));
-        try (selection) {
-            LOG.debug("Immediate physical attempt {} selected Capability {}", attempt, selection.capability().manifest().id().value());
-            return invokeSelected(selection, request, attempt, cancelled);
         }
     }
 

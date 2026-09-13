@@ -9,8 +9,8 @@ The core Module model is:
 
 - `ModuleDefinition`: identity, version, declared Material types, Agents, Skills,
   Workflows, Operations, and public references;
-- `AgentDefinition`: identity, purpose, and references to the Skills, Workflows, and
-  Operations that form its repertoire;
+- `AgentDefinition`: identity, purpose, applicable Integrity, and references to the
+  Skills, Workflows, and Operations that form its repertoire;
 - `SkillDefinition`: reusable Module-owned ability, knowledge, or instruction;
 - `WorkflowDefinition`: reusable Module-owned semantic behavior;
 - `OperationDefinition`: one bounded callable Module behavior, its accepted Material
@@ -34,10 +34,9 @@ provider payloads, or arbitrary metadata.
 
 Runtime behavior is bound through responsibility-specific Java interfaces:
 
-- an Operation implementation receives its declared typed Material input;
+- an Operation implementation receives an already-composed typed Operation call;
 - the Module-facing execution service accepts a typed physical work request;
-- the Module directory exposes currently reachable public definitions;
-- a Module invocation port enters a selected target Operation.
+- the Module directory exposes currently reachable public definitions.
 
 There is no universal `receive` method, Agent loop, assistant turn, planner, or
 workflow engine. A concrete Module implements only its own behavior.
@@ -61,10 +60,10 @@ The SDK provides immutable collection and builder behavior where it protects the
 invariants, but it does not create a separate class for every field or every
 mathematical intermediate.
 
-## Module registry and invocation
+## Module registry
 
-A running Module registers its definition and ordinary invocation endpoint in
-Kernel's live registry. Restart empties that registry; Modules register again.
+A running Module registers its definition in Kernel's live registry. Restart empties
+that registry; Modules register again.
 
 A Module directory query supplies the caller's accumulated applicable values and
 returns only currently reachable:
@@ -76,17 +75,17 @@ returns only currently reachable:
 The query does not expose Capability identities. It does not persist a result or
 change either Module.
 
-Invoking another Module identifies one returned Operation and sends the declared
-Material input to the target running Module. Kernel routes the invocation but does not
-interpret its Material or behavior. The target Module constructs and executes its own
-bounded Operation invocation through the SDK.
+Cross-Module execution is intentionally not generalized by the current foundation.
+The first concrete Module that needs it will define the smallest transport needed by
+its actual bounded Operation. Directory discovery does not silently create an
+invocation engine.
 
 ## CORE assignment
 
 Installation configuration maps the CORE role to one ordinary Module identity. A
 candidate is eligible when its ordinary public definition supplies the role's
-required behavior. The shipped candidate provides an interaction Agent exposing
-standard-prompt and fast-lane Operations.
+required behavior. The shipped owner-interaction Module is the default candidate and
+provides an interaction Agent exposing standard-prompt and fast-lane Operations.
 
 The mapping does not alter the Module definition. Module authors do not inherit from a
 CORE class and no CORE behavior appears in Kernel's physical execution path.

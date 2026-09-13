@@ -44,7 +44,7 @@ artifacts:
   madre-text-inference
   madre-adapter-llamacpp
   madre-adapter-openai-compatible
-  madre-module-core
+  madre-module-owner-interaction
   madre-app
 ```
 
@@ -56,7 +56,7 @@ The modules are dependency boundaries, not one-class packages:
   local transport.
 - `madre-text-inference` defines the first physical Capability command and result.
 - each adapter binds that physical contract to one connector family;
-- `madre-module-core` is the shipped ordinary Module implementation;
+- `madre-module-owner-interaction` is the shipped ordinary Module implementation;
 - `madre-app` assembles an installable local environment and assigns CORE.
 
 Prefer the JDK, Jackson for explicit JSON codecs, SQLite JDBC for the physical work
@@ -152,26 +152,28 @@ Expose only ports exercised by real behavior:
 - `ExecutionService` accepts physical work from Module behavior;
 - `Operation<I, O>` implements one declared bounded Operation;
 - `ModuleDirectory` lists exact currently reachable Module behavior;
-- `ModuleInvoker` invokes one already-reachable target Operation;
-- `ModuleRegistration` registers the running Module definition and invocation
-  endpoint.
+- `ModuleRegistration` registers the running Module definition.
+
+A later concrete cross-Module behavior defines the smallest invocation port required
+by that exact Operation. The first useful installation does not invent a generic
+Module invocation engine.
 
 Agents, Skills, and Workflows remain Module-owned behavior and data. The SDK does not
 provide a universal Agent loop, assistant turn, planner, or workflow interpreter.
 
 ### Operation construction
 
-A consequential Operation invocation binds:
+A bounded Operation call binds:
 
 - one exact Operation;
 - one of that Operation's EffectProfiles;
 - actual input Material;
-- actual non-user causal participants and their Integrity;
-- actual nonempty physical realizers and their Integrity.
+- the Integrity values of actual non-user causal participants.
 
-The constructor applies the exact laws in the Security Algebra document. Participant
-identity is the identity of the real participant; there is no separately invented
-responsibility-surface identity.
+The constructor applies information reach and non-user causal composition. A later
+WorkRequest carries that same profile's Risk so Kernel selection can compose it with
+the physical Capability selected at that later boundary. The Module cannot name or
+pretend to know that physical realizer in advance.
 
 Operations without consequential EffectProfiles do not receive dummy Risk, Autonomy,
 or Integrity values.
@@ -317,8 +319,8 @@ the actual resources it uses.
 
 ### Module registry and CORE resolution
 
-The live registry stores running Module definitions and their invocation endpoints in
-memory. It is empty after restart and repopulates as Modules start.
+The live registry stores running Module definitions in memory. It is empty after
+restart and repopulates as Modules start.
 
 Directory queries provide accumulated current values and return only reachable
 Modules, Agents, and Operations. The response excludes unrelated internal Module
@@ -334,14 +336,11 @@ Kernel resolves that identity when the Module registers and exposes it to the lo
 application as the default interaction Module. CORE assignment does not change the
 definition.
 
-### Module invocation
+### Future Module invocation
 
-A caller may invoke only a public Operation returned by the live directory for its
-current values. Kernel routes the typed Material input to the registered target
-Module endpoint. The target Module constructs and runs its own Operation.
-
-Kernel does not execute the Operation, interpret Material, or infer a continuation.
-Module invocation records ordinary transport/work diagnostics only.
+The current foundation does not invent a universal Module invocation contract. The
+first real cross-Module behavior will add the smallest transport its bounded
+Operation requires, without moving Material interpretation into Kernel.
 
 ### Local transport
 
@@ -350,7 +349,6 @@ equivalent local transport for:
 
 - Module registration and removal;
 - reachable Module directory queries;
-- Module Operation invocation routing;
 - immediate physical work;
 - durable submission, inspection, cancellation, and result delivery;
 - CORE role resolution and health.
@@ -395,7 +393,8 @@ external transport/session; missing provider access does not block local accepta
 
 ## Shipped CORE-capable Module
 
-`madre-module-core` is an ordinary Module artifact. Its public definition contains:
+`madre-module-owner-interaction` is an ordinary Module artifact. Its public
+definition contains:
 
 - one interaction Agent;
 - standard-prompt Operation;
@@ -461,7 +460,7 @@ Deliver together:
 - nominal identities, Material, EffectProfile and Module definitions;
 - JSON codecs;
 - Operation construction;
-- live Module registry, reachability, invocation interfaces, and CORE role resolution;
+- live Module registry, reachability, and CORE role resolution;
 - SDK publication metadata and generated API documentation.
 
 This slice is complete only when an independently compiled consumer project can use

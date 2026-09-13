@@ -1,4 +1,4 @@
-package io.github.didacll.madre.core;
+package io.github.didacll.madre.interaction;
 
 import io.github.didacll.madre.sdk.execution.PhysicalFailureCategory;
 import io.github.didacll.madre.sdk.execution.WorkId;
@@ -7,7 +7,7 @@ import io.github.didacll.madre.sdk.material.Material;
 import java.util.Objects;
 import java.util.Optional;
 
-/** Terminal interpretation of one durable background request by the CORE Module. */
+/** Terminal interpretation of one durable owner-interaction background request. */
 public record BackgroundUpdate(WorkId workId, WorkState physicalState,
         Optional<Material<String>> backgroundAnalysis,
         Optional<Material<String>> visibleFollowUp,

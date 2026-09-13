@@ -7,7 +7,7 @@ tasks.withType<JavaCompile>().configureEach {
 }
 
 dependencies {
-    implementation(project(":madre-module-core"))
+    implementation(project(":madre-module-owner-interaction"))
     implementation(project(":madre-kernel"))
     implementation(project(":madre-adapter-llamacpp"))
     implementation(project(":madre-adapter-openai-compatible"))

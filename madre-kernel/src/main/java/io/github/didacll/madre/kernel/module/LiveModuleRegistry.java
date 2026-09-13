@@ -1,7 +1,6 @@
 package io.github.didacll.madre.kernel.module;
 
 import io.github.didacll.madre.algebra.Privacy;
-import io.github.didacll.madre.sdk.core.CoreRoleResolver;
 import io.github.didacll.madre.sdk.directory.ModuleDirectory;
 import io.github.didacll.madre.sdk.directory.ReachabilityQuery;
 import io.github.didacll.madre.sdk.directory.ReachableAgent;
@@ -9,10 +8,6 @@ import io.github.didacll.madre.sdk.directory.ReachableModule;
 import io.github.didacll.madre.sdk.identity.AgentId;
 import io.github.didacll.madre.sdk.identity.ModuleId;
 import io.github.didacll.madre.sdk.identity.OperationId;
-import io.github.didacll.madre.sdk.invocation.ModuleEndpoint;
-import io.github.didacll.madre.sdk.invocation.ModuleInvocation;
-import io.github.didacll.madre.sdk.invocation.ModuleInvoker;
-import io.github.didacll.madre.sdk.material.Material;
 import io.github.didacll.madre.sdk.module.AgentDefinition;
 import io.github.didacll.madre.sdk.module.ModuleDefinition;
 import io.github.didacll.madre.sdk.module.OperationDefinition;
@@ -24,11 +19,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
 /** In-memory registry for currently running Modules; it deliberately has no persistence. */
-public final class LiveModuleRegistry implements ModuleRegistration, ModuleDirectory, ModuleInvoker, CoreRoleResolver {
+public final class LiveModuleRegistry implements ModuleRegistration, ModuleDirectory {
     private final ModuleId configuredCore;
     private final ConcurrentHashMap<ModuleId, Entry> entries = new ConcurrentHashMap<>();
 
@@ -36,9 +30,9 @@ public final class LiveModuleRegistry implements ModuleRegistration, ModuleDirec
         this.configuredCore = Objects.requireNonNull(configuredCore, "configuredCore");
     }
 
-    @Override public Registration register(ModuleDefinition definition, ModuleEndpoint endpoint) {
-        Objects.requireNonNull(definition, "definition"); Objects.requireNonNull(endpoint, "endpoint");
-        Entry entry = new Entry(definition, endpoint);
+    @Override public Registration register(ModuleDefinition definition) {
+        Objects.requireNonNull(definition, "definition");
+        Entry entry = new Entry(definition);
         if (entries.putIfAbsent(definition.id(), entry) != null) {
             throw new IllegalStateException("Module is already registered: " + definition.id());
         }
@@ -72,25 +66,9 @@ public final class LiveModuleRegistry implements ModuleRegistration, ModuleDirec
         return List.copyOf(result);
     }
 
-    @Override public CompletableFuture<Material<?>> invoke(ModuleInvocation invocation) {
-        Objects.requireNonNull(invocation, "invocation");
-        if (!invocation.input().id().moduleId().equals(invocation.caller())) {
-            return CompletableFuture.failedFuture(new IllegalArgumentException("caller must own invocation Material"));
-        }
-        Entry target = entries.get(invocation.targetOperation().moduleId());
-        if (target == null) return CompletableFuture.failedFuture(new IllegalStateException("target Module is not registered"));
-        OperationDefinition<?, ?> operation = target.definition().operations().get(invocation.targetOperation());
-        Privacy privacy = operation == null ? null : operation.acceptedMaterial().get(invocation.input().type().id());
-        if (operation == null || operation.visibility() != OperationVisibility.PUBLIC || privacy == null
-                || !invocation.input().sensitivity().canReach(privacy)) {
-            return CompletableFuture.failedFuture(new IllegalArgumentException("target Operation is not reachable for this Material"));
-        }
-        return target.endpoint().invoke(invocation.targetOperation(), invocation.input()).toCompletableFuture();
-    }
-
-    @Override public Optional<ModuleId> resolvedCore() {
+    public Optional<ModuleId> resolvedCore() {
         return entries.containsKey(configuredCore) ? Optional.of(configuredCore) : Optional.empty();
     }
 
-    private record Entry(ModuleDefinition definition, ModuleEndpoint endpoint) { }
+    private record Entry(ModuleDefinition definition) { }
 }

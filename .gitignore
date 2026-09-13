@@ -7,6 +7,7 @@
 
 # Java and Gradle
 .gradle/
+.gradle-tooling/
 /build/
 **/build/
 out/

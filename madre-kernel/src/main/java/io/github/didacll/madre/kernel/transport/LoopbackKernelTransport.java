@@ -8,9 +8,6 @@ import io.github.didacll.madre.sdk.execution.WorkId;
 import io.github.didacll.madre.sdk.execution.WorkRequest;
 import io.github.didacll.madre.sdk.execution.WorkStatus;
 import io.github.didacll.madre.sdk.identity.ModuleId;
-import io.github.didacll.madre.sdk.invocation.ModuleEndpoint;
-import io.github.didacll.madre.sdk.invocation.ModuleInvocation;
-import io.github.didacll.madre.sdk.material.Material;
 import io.github.didacll.madre.sdk.module.ModuleDefinition;
 import io.github.didacll.madre.sdk.registration.ModuleRegistration;
 import java.net.InetAddress;
@@ -32,9 +29,10 @@ public final class LoopbackKernelTransport {
     }
 
     public Health health() { return new Health(binding.getHostAddress(), true); }
-    public ModuleRegistration.Registration register(ModuleDefinition definition, ModuleEndpoint endpoint) { return modules.register(definition, endpoint); }
+    public ModuleRegistration.Registration register(ModuleDefinition definition) {
+        return modules.register(definition);
+    }
     public List<ReachableModule> reachable(ReachabilityQuery query) { return modules.reachable(query); }
-    public CompletionStage<Material<?>> invoke(ModuleInvocation invocation) { return modules.invoke(invocation); }
     public Optional<ModuleId> core() { return modules.resolvedCore(); }
     public <C, R> CompletionStage<R> execute(WorkRequest<C, R> request) { return execution.execute(request); }
     public <C, R> WorkId submit(WorkRequest<C, R> request) { return execution.submit(request); }

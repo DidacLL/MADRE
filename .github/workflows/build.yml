@@ -19,5 +19,5 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.12'
-      - run: gradle clean check javadoc publish
-      - run: gradle --no-daemon -p verification/sdk-consumer clean compileJava
+      - run: ./gradlew --no-daemon clean check javadoc publish
+      - run: ./gradlew --no-daemon -p verification/sdk-consumer clean compileJava

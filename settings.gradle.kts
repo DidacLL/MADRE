@@ -7,6 +7,6 @@ include(
     "madre-text-inference",
     "madre-adapter-llamacpp",
     "madre-adapter-openai-compatible",
-    "madre-module-core",
+    "madre-module-owner-interaction",
     "madre-app"
 )

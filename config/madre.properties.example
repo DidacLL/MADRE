@@ -1,9 +1,9 @@
 # The CORE role is an ordinary registered Module identity.
-roles.core=io.github.didacll.madre.core
+roles.core=io.github.didacll.madre.owner-interaction
 kernel.bind=127.0.0.1
 kernel.database=var/kernel-work.sqlite
 kernel.result-retention-seconds=86400
-core.state=var/core-background.state
+module.owner-interaction.state=var/owner-interaction-background.state
 
 # Explicit physical capacity and llama.cpp claims.
 resources.model-slot=1

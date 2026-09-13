@@ -1,4 +1,4 @@
-package io.github.didacll.madre.core;
+package io.github.didacll.madre.interaction;
 
 import io.github.didacll.madre.algebra.Sensitivity;
 import io.github.didacll.madre.sdk.execution.WorkId;
@@ -13,11 +13,11 @@ import java.util.Map;
 import java.util.Objects;
 
 /** Small Module-owned persistence for its outstanding semantic background requests. */
-final class CoreStateStore {
+final class OwnerInteractionStateStore {
     private final Path file;
     private final Map<WorkId, Sensitivity> pending = new LinkedHashMap<>();
 
-    CoreStateStore(Path file) {
+    OwnerInteractionStateStore(Path file) {
         this.file = Objects.requireNonNull(file, "file").toAbsolutePath();
         load();
     }
@@ -39,11 +39,14 @@ final class CoreStateStore {
             for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
                 if (line.isBlank()) continue;
                 String[] fields = line.split("\\t", -1);
-                if (fields.length != 2) throw new IllegalStateException("invalid CORE state entry");
+                if (fields.length != 2) {
+                    throw new IllegalStateException("invalid owner-interaction state entry");
+                }
                 pending.put(new WorkId(fields[0]), Sensitivity.valueOf(fields[1]));
             }
         } catch (IOException | IllegalArgumentException exception) {
-            throw new IllegalStateException("cannot read CORE Module state " + file, exception);
+            throw new IllegalStateException(
+                    "cannot read owner-interaction Module state " + file, exception);
         }
     }
 
@@ -62,7 +65,8 @@ final class CoreStateStore {
                 Files.move(temporary, file, StandardCopyOption.REPLACE_EXISTING);
             }
         } catch (IOException exception) {
-            throw new IllegalStateException("cannot persist CORE Module state " + file, exception);
+            throw new IllegalStateException(
+                    "cannot persist owner-interaction Module state " + file, exception);
         }
     }
 }

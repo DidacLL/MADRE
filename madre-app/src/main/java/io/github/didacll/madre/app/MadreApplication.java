@@ -6,7 +6,7 @@ import io.github.didacll.madre.adapter.openai.OpenAiCompatibleCapability;
 import io.github.didacll.madre.adapter.openai.OpenAiCompatibleConfiguration;
 import io.github.didacll.madre.algebra.Integrity;
 import io.github.didacll.madre.algebra.Privacy;
-import io.github.didacll.madre.core.CoreModule;
+import io.github.didacll.madre.interaction.OwnerInteractionModule;
 import io.github.didacll.madre.kernel.capability.CapabilityId;
 import io.github.didacll.madre.kernel.capability.ResourceClaim;
 import io.github.didacll.madre.kernel.capability.ResourceId;
@@ -28,29 +28,31 @@ import java.util.Properties;
 /** Running installation assembly with one ordinary Module assigned to CORE. */
 public final class MadreApplication implements AutoCloseable {
     private final KernelRuntime kernel;
-    private final CoreModule core;
+    private final OwnerInteractionModule interaction;
     private final ModuleRegistration.Registration moduleRegistration;
     private final List<CapabilityRegistry.Registration> capabilityRegistrations;
 
-    private MadreApplication(KernelRuntime kernel, CoreModule core,
+    private MadreApplication(KernelRuntime kernel, OwnerInteractionModule interaction,
             ModuleRegistration.Registration moduleRegistration,
             List<CapabilityRegistry.Registration> capabilityRegistrations) {
         this.kernel = kernel;
-        this.core = core;
+        this.interaction = interaction;
         this.moduleRegistration = moduleRegistration;
         this.capabilityRegistrations = List.copyOf(capabilityRegistrations);
     }
 
     public static MadreApplication start(Properties properties) {
         Objects.requireNonNull(properties, "properties");
-        if (!CoreModule.ID.value().equals(required(properties, "roles.core"))) {
-            throw new IllegalArgumentException("the shipped application requires roles.core="
-                    + CoreModule.ID.value());
+        if (!OwnerInteractionModule.ID.value().equals(required(properties, "roles.core"))) {
+            throw new IllegalArgumentException(
+                    "this assembly installs only " + OwnerInteractionModule.ID.value()
+                            + "; another CORE assignment requires another installation assembly");
         }
         Path database = Path.of(required(properties, "kernel.database")).toAbsolutePath();
-        Path coreState = Path.of(required(properties, "core.state")).toAbsolutePath();
+        Path interactionState = Path.of(
+                required(properties, "module.owner-interaction.state")).toAbsolutePath();
         createParent(database);
-        createParent(coreState);
+        createParent(interactionState);
         KernelRuntime kernel = new KernelRuntime(KernelConfiguration.from(properties));
         List<CapabilityRegistry.Registration> capabilities = new ArrayList<>();
         try {
@@ -84,14 +86,15 @@ public final class MadreApplication implements AutoCloseable {
             if (capabilities.isEmpty()) {
                 throw new IllegalArgumentException("at least one physical connector must be enabled");
             }
-            CoreModule core = new CoreModule(kernel.execution(), coreState);
+            OwnerInteractionModule interaction = new OwnerInteractionModule(
+                    kernel.execution(), interactionState);
             ModuleRegistration.Registration registration = kernel.transport().register(
-                    core.definition(), core.endpoint());
-            if (!kernel.transport().core().filter(CoreModule.ID::equals).isPresent()) {
+                    interaction.definition());
+            if (!kernel.transport().core().filter(OwnerInteractionModule.ID::equals).isPresent()) {
                 registration.close();
                 throw new IllegalStateException("configured CORE Module did not resolve after registration");
             }
-            return new MadreApplication(kernel, core, registration, capabilities);
+            return new MadreApplication(kernel, interaction, registration, capabilities);
         } catch (RuntimeException exception) {
             capabilities.forEach(CapabilityRegistry.Registration::close);
             kernel.close();
@@ -99,7 +102,7 @@ public final class MadreApplication implements AutoCloseable {
         }
     }
 
-    public CoreModule core() { return core; }
+    public OwnerInteractionModule interaction() { return interaction; }
     public KernelRuntime kernel() { return kernel; }
 
     @Override public void close() {

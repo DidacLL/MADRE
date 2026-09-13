@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.github.didacll.madre.algebra.Autonomy;
+import io.github.didacll.madre.algebra.Integrity;
 import io.github.didacll.madre.algebra.Privacy;
 import io.github.didacll.madre.algebra.Risk;
 import io.github.didacll.madre.algebra.Sensitivity;
@@ -65,8 +66,11 @@ public final class ModuleDefinitionJsonCodec {
             if (previous != null && !previous.equals(profile)) throw new CodecException("conflicting EffectProfile declaration: " + id);
         }));
         ArrayNode profiles = root.putArray("effectProfiles");
-        canonicalProfiles.values().stream().sorted(java.util.Comparator.comparing(p -> p.id().name())).forEach(profile -> {
+        canonicalProfiles.values().stream().sorted(java.util.Comparator
+                .comparing((EffectProfile p) -> p.id().operationId().name())
+                .thenComparing(p -> p.id().name())).forEach(profile -> {
             ObjectNode node = profiles.addObject();
+            node.put("operation", profile.id().operationId().name());
             node.put("name", profile.id().name()); node.put("risk", profile.risk().name()); node.put("autonomy", profile.autonomy().name());
         });
 
@@ -89,6 +93,7 @@ public final class ModuleDefinitionJsonCodec {
         ArrayNode agents = root.putArray("agents");
         definition.agents().values().stream().sorted(java.util.Comparator.comparing(a -> a.id().name())).forEach(agent -> {
             ObjectNode node = agents.addObject(); node.put("name", agent.id().name()); node.put("purpose", agent.purpose());
+            node.put("integrity", agent.integrity().name());
             writeNames(node.putArray("skills"), agent.skills().stream().map(SkillId::name).collect(java.util.stream.Collectors.toSet()));
             writeNames(node.putArray("workflows"), agent.workflows().stream().map(WorkflowId::name).collect(java.util.stream.Collectors.toSet()));
             writeNames(node.putArray("operations"), agent.operations().stream().map(OperationId::name).collect(java.util.stream.Collectors.toSet()));
@@ -146,8 +151,9 @@ public final class ModuleDefinitionJsonCodec {
     private static Map<EffectProfileId, EffectProfile> decodeProfiles(ObjectNode root, ModuleId module) {
         Map<EffectProfileId, EffectProfile> values = new HashMap<>();
         for (JsonNode raw : requiredArray(root, "effectProfiles")) {
-            ObjectNode node = object(raw, "effect profile"); exactFields(node, Set.of("name", "risk", "autonomy"));
-            EffectProfileId id = new EffectProfileId(module, requiredText(node, "name"));
+            ObjectNode node = object(raw, "effect profile"); exactFields(node, Set.of("operation", "name", "risk", "autonomy"));
+            EffectProfileId id = new EffectProfileId(
+                    new OperationId(module, requiredText(node, "operation")), requiredText(node, "name"));
             putUnique(values, id, new EffectProfile(id, Risk.valueOf(requiredText(node, "risk")), Autonomy.valueOf(requiredText(node, "autonomy"))));
         }
         return values;
@@ -162,7 +168,7 @@ public final class ModuleDefinitionJsonCodec {
             OperationId id = new OperationId(module, requiredText(node, "name"));
             Map<EffectProfileId, EffectProfile> selected = new HashMap<>();
             for (JsonNode profileNode : requiredArray(node, "effectProfiles")) {
-                EffectProfileId profileId = new EffectProfileId(module, requiredTextNode(profileNode));
+                EffectProfileId profileId = new EffectProfileId(id, requiredTextNode(profileNode));
                 EffectProfile profile = profiles.get(profileId);
                 if (profile == null || !usedProfiles.add(profileId)) throw new CodecException("unresolved or multiply owned EffectProfile: " + profileId);
                 selected.put(profileId, profile);
@@ -188,10 +194,12 @@ public final class ModuleDefinitionJsonCodec {
     private static Map<AgentId, AgentDefinition> decodeAgents(ObjectNode root, ModuleId module) {
         Map<AgentId, AgentDefinition> values = new HashMap<>();
         for (JsonNode raw : requiredArray(root, "agents")) {
-            ObjectNode node = object(raw, "agent"); exactFields(node, Set.of("name", "purpose", "skills", "workflows", "operations"));
+            ObjectNode node = object(raw, "agent"); exactFields(node, Set.of("name", "purpose", "integrity", "skills", "workflows", "operations"));
             AgentId id = new AgentId(module, requiredText(node, "name"));
             Set<WorkflowId> workflowIds = new HashSet<>(); for (JsonNode name : requiredArray(node, "workflows")) workflowIds.add(new WorkflowId(module, requiredTextNode(name)));
-            putUnique(values, id, new AgentDefinition(id, requiredText(node, "purpose"), skillIds(node, module), workflowIds, operationIds(node, module)));
+            putUnique(values, id, new AgentDefinition(id, requiredText(node, "purpose"),
+                    Integrity.valueOf(requiredText(node, "integrity")), skillIds(node, module),
+                    workflowIds, operationIds(node, module)));
         }
         return values;
     }

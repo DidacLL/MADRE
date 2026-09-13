@@ -13,7 +13,7 @@ the intended artifact boundaries:
 - `madre-adapter-llamacpp`, the real llama-server connector;
 - `madre-adapter-openai-compatible`, a real chat-completions connector accepting an
   externally prepared HTTP transport;
-- `madre-module-core`, the shipped ordinary CORE-capable Module;
+- `madre-module-owner-interaction`, the shipped ordinary owner-interaction Module;
 - `madre-app`, the installable assembly and replaceable local console.
 
 The shipped Module owns owner-prompt, immediate-answer, background-analysis, and
@@ -27,12 +27,12 @@ Standard prompt creates one immediate `TextInferenceCommand`, submits it through
 public `ExecutionService`, interprets physical text, and creates independent
 Module-owned answer Material. Fast lane submits ordinary-priority foreground and
 lower-priority durable background requests through that same service. It returns
-foreground Material without awaiting background work. CORE later interprets
+foreground Material without awaiting background work. The Module later interprets
 collected text into background-analysis Material and either creates separate visible
 follow-up Material or stops on explicit `NO_FOLLOW_UP`. Model text has no execution
 path.
 
-CORE persists pending background associations in a separate Module-owned state file
+The Module persists pending background associations in its own state file
 so a restarted application can collect a durable Kernel result. Kernel's SQLite
 database remains restricted to opaque physical bytes, scheduling, attempts, delivery
 state, originating Module identity, and accumulated physical values. CORE assignment

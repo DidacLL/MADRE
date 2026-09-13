@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import io.github.didacll.madre.algebra.Privacy;
 import io.github.didacll.madre.algebra.Sensitivity;
+import io.github.didacll.madre.algebra.Integrity;
 import io.github.didacll.madre.sdk.directory.ReachabilityQuery;
 import io.github.didacll.madre.sdk.identity.AgentId;
 import io.github.didacll.madre.sdk.identity.MaterialTypeId;
@@ -17,7 +18,6 @@ import io.github.didacll.madre.sdk.module.OperationDefinition;
 import io.github.didacll.madre.sdk.module.OperationVisibility;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.Test;
 
 final class LiveModuleRegistryTest {
@@ -29,10 +29,11 @@ final class LiveModuleRegistryTest {
                 Map.of(externalType, Privacy.UNKNOWN), Map.of(), Map.of());
         AgentId agentId = new AgentId(target, "interaction");
         ModuleDefinition definition = new ModuleDefinition(target, "1", "Ordinary module", Map.of(), Set.of(externalType),
-                Map.of(agentId, new AgentDefinition(agentId, "Interaction", Set.of(), Set.of(), Set.of(operationId))),
+                Map.of(agentId, new AgentDefinition(agentId, "Interaction", Integrity.I5,
+                        Set.of(), Set.of(), Set.of(operationId))),
                 Map.of(), Map.of(), Map.of(operationId, operation));
         LiveModuleRegistry registry = new LiveModuleRegistry(target);
-        var registration = registry.register(definition, (ignoredOperation, ignoredInput) -> CompletableFuture.failedFuture(new AssertionError("not invoked")));
+        var registration = registry.register(definition);
         assertEquals(1, registry.reachable(new ReachabilityQuery(new ModuleId("caller.module"), externalType, Sensitivity.S2)).size());
         assertTrue(registry.reachable(new ReachabilityQuery(new ModuleId("caller.module"), externalType, Sensitivity.S3)).isEmpty());
         assertEquals(target, registry.resolvedCore().orElseThrow());

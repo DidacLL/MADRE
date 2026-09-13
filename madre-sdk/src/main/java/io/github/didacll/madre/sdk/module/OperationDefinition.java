@@ -29,8 +29,11 @@ public final class OperationDefinition<I, O> {
         this.producedMaterial = Map.copyOf(producedMaterial);
         this.effectProfiles = Map.copyOf(effectProfiles);
         if (this.acceptedMaterial.isEmpty()) throw new IllegalArgumentException("an Operation must accept Material");
-        if (!this.effectProfiles.entrySet().stream().allMatch(entry -> entry.getKey().equals(entry.getValue().id()))) {
-            throw new IllegalArgumentException("effect-profile map keys must match their values");
+        if (!this.effectProfiles.entrySet().stream().allMatch(entry ->
+                entry.getKey().equals(entry.getValue().id())
+                        && entry.getKey().operationId().equals(this.id))) {
+            throw new IllegalArgumentException(
+                    "EffectProfiles must be identified by and owned by this Operation");
         }
     }
 

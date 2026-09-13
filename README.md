@@ -2,9 +2,9 @@
 
 MADRE is an owner-sovereign modular environment for using local and external
 inference or deterministic mechanisms while controlling which information can reach
-them. The active implementation is Java 21 and ships an ordinary Module assigned to
-the installation's CORE role; neither CORE nor fast lane has a privileged Kernel
-path.
+them. The active implementation is Java 21 and ships an ordinary owner-interaction
+Module assigned to the installation's CORE role; neither CORE nor fast lane has a
+privileged Kernel path.
 
 Start with:
 
@@ -18,11 +18,11 @@ Start with:
 
 ## Build and package
 
-Use JDK 21 and Gradle 8.12 or newer:
+Use JDK 21. The checked-in Gradle wrapper supplies the build tool:
 
 ```text
-gradle --no-daemon clean check javadoc publish installDist distZip
-gradle --no-daemon -p verification/sdk-consumer clean compileJava
+./gradlew --no-daemon clean check javadoc publish installDist distZip
+./gradlew --no-daemon -p verification/sdk-consumer clean compileJava
 ```
 
 This creates the installation under `madre-app/build/install/madre`, the distribution
@@ -42,7 +42,7 @@ llama-server -m /absolute/path/model.gguf --host 127.0.0.1 --port 8080
 Build the installation, copy and review its configuration, then start MADRE:
 
 ```text
-gradle --no-daemon installDist
+./gradlew --no-daemon installDist
 cp config/madre.properties.example /absolute/path/madre.properties
 madre-app/build/install/madre/bin/madre /absolute/path/madre.properties
 ```
@@ -58,12 +58,13 @@ At the console:
 - ordinary text starts fast lane, returns its foreground answer without waiting for
   durable background analysis, and later prints a useful `background>` follow-up;
 - `/exit`, `/quit`, or Ctrl-C stops the application. Restart it with the same
-  properties file to recover physical work and CORE's pending background associations.
+properties file to recover physical work and the Module's pending background
+associations.
 
 Physical failures are printed as physical failures rather than model dialogue. The
 Kernel SQLite database contains only physical work, attempt telemetry, and retained
-opaque payloads. CORE's separate state file is Module-owned and retains pending work
-identities and applicable result Sensitivity.
+opaque payloads. The owner-interaction Module's separate state file retains pending
+work identities and applicable result Sensitivity.
 
 ## Real local acceptance
 
@@ -97,6 +98,6 @@ io.github.didacll:madre-sdk:0.1.0-SNAPSHOT
 ```
 
 The SDK contains algebra, typed Material, declarative Module definitions, codecs,
-bounded Operation construction, and Module-facing physical/live invocation ports. It
-has no dependency on Kernel or the shipped CORE Module. See
+bounded Operation construction, and Module-facing physical/directory ports. It has
+no dependency on Kernel or the shipped owner-interaction Module. See
 `verification/sdk-consumer` for the independently compiled example.

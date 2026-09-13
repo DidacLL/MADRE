@@ -24,8 +24,7 @@ import io.github.didacll.madre.sdk.module.EffectProfile;
 import io.github.didacll.madre.sdk.module.ModuleDefinition;
 import io.github.didacll.madre.sdk.module.OperationDefinition;
 import io.github.didacll.madre.sdk.module.OperationVisibility;
-import io.github.didacll.madre.sdk.operation.ActualParticipant;
-import io.github.didacll.madre.sdk.operation.ConsequentialOperationInvocation;
+import io.github.didacll.madre.sdk.operation.OperationCall;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
@@ -51,15 +50,13 @@ final class SdkInvariantTest {
         ModuleId owner = new ModuleId("owner.module");
         MaterialType<String> type = new MaterialType<>(new MaterialTypeId(owner, "text"), String.class, "text/plain", STRINGS);
         Material<String> input = new Material<>(new MaterialId(owner, "input"), type, "hello", Sensitivity.S2);
-        EffectProfile profile = new EffectProfile(new EffectProfileId(owner, "bounded"), Risk.R3, Autonomy.A2);
-        OperationDefinition<String, String> operation = new OperationDefinition<>(new OperationId(owner, "run"), "Run bounded behavior",
+        OperationId operationId = new OperationId(owner, "run");
+        EffectProfile profile = new EffectProfile(new EffectProfileId(operationId, "bounded"), Risk.R3, Autonomy.A2);
+        OperationDefinition<String, String> operation = new OperationDefinition<>(operationId, "Run bounded behavior",
                 OperationVisibility.PUBLIC, Map.of(type.id(), Privacy.P3), Map.of(type.id(), Sensitivity.S3), Map.of(profile.id(), profile));
-        new ConsequentialOperationInvocation<>(operation, profile, input,
-                List.of(new ActualParticipant<>(new AgentId(owner, "actor"), Integrity.I2)),
-                List.of(new ActualParticipant<>("physical-adapter", Integrity.I3)));
-        assertThrows(IllegalArgumentException.class, () -> new ConsequentialOperationInvocation<>(operation, profile, input,
-                List.of(new ActualParticipant<>(new AgentId(owner, "actor"), Integrity.I1)),
-                List.of(new ActualParticipant<>("physical-adapter", Integrity.I3))));
+        new OperationCall<>(operation, profile, input, List.of(Integrity.I2));
+        assertThrows(IllegalArgumentException.class, () ->
+                new OperationCall<>(operation, profile, input, List.of(Integrity.I1)));
     }
 
     @Test void definitionsDeriveValuesValidateReferencesAndRoundTrip() {
@@ -81,7 +78,8 @@ final class SdkInvariantTest {
         OperationDefinition<String, String> operation = new OperationDefinition<>(operationId, "Answer text", OperationVisibility.PUBLIC,
                 Map.of(type.id(), Privacy.P3), Map.of(type.id(), Sensitivity.S4), Map.of());
         AgentId agentId = new AgentId(owner, "interaction");
-        AgentDefinition agent = new AgentDefinition(agentId, "Interact", Set.of(), Set.of(), Set.of(operationId));
+        AgentDefinition agent = new AgentDefinition(agentId, "Interact", Integrity.I4,
+                Set.of(), Set.of(), Set.of(operationId));
         return new ModuleDefinition(owner, "1.0.0", "Owner module", Map.of(type.id(), type), Set.of(),
                 Map.of(agentId, agent), Map.of(), Map.of(), Map.of(operationId, operation));
     }

@@ -1,8 +1,8 @@
 package io.github.didacll.madre.app;
 
 import io.github.didacll.madre.algebra.Sensitivity;
-import io.github.didacll.madre.core.BackgroundUpdate;
-import io.github.didacll.madre.core.CoreModule;
+import io.github.didacll.madre.interaction.BackgroundUpdate;
+import io.github.didacll.madre.interaction.OwnerInteractionModule;
 import io.github.didacll.madre.sdk.execution.PhysicalExecutionException;
 import io.github.didacll.madre.sdk.material.Material;
 import java.io.BufferedReader;
@@ -28,18 +28,20 @@ public final class MadreMain {
         Properties properties = new Properties();
         try (var input = Files.newInputStream(Path.of(arguments[0]))) { properties.load(input); }
         try (MadreApplication application = MadreApplication.start(properties)) {
-            runConsole(application.core());
+            runConsole(application.interaction());
         }
     }
 
-    static void runConsole(CoreModule core) throws IOException {
+    static void runConsole(OwnerInteractionModule interaction) throws IOException {
         Object outputLock = new Object();
         ScheduledExecutorService background = Executors.newSingleThreadScheduledExecutor();
-        background.scheduleWithFixedDelay(() -> printBackground(core, outputLock), 250, 250,
+        background.scheduleWithFixedDelay(() -> printBackground(interaction, outputLock),
+                250, 250,
                 TimeUnit.MILLISECONDS);
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(System.in))) {
             synchronized (outputLock) {
-                System.out.println("MADRE CORE ready — ordinary text uses fast lane; /standard <prompt>; /exit");
+                System.out.println(
+                        "MADRE ready — ordinary text uses fast lane; /standard <prompt>; /exit");
             }
             String line;
             while ((line = reader.readLine()) != null) {
@@ -49,10 +51,14 @@ public final class MadreMain {
                 String prompt = standard ? input.substring("/standard ".length()).strip() : input;
                 if (prompt.isBlank()) continue;
                 try {
-                    Material<String> ownerPrompt = core.ownerPrompt(prompt, Sensitivity.S5);
-                    Material<String> answer = (standard ? core.standardPrompt(ownerPrompt)
-                            : core.fastLane(ownerPrompt)).toCompletableFuture().join();
-                    synchronized (outputLock) { System.out.println("core> " + answer.payload()); }
+                    Material<String> ownerPrompt = interaction.ownerPrompt(prompt,
+                            Sensitivity.S5);
+                    Material<String> answer = (standard
+                            ? interaction.standardPrompt(ownerPrompt)
+                            : interaction.fastLane(ownerPrompt)).toCompletableFuture().join();
+                    synchronized (outputLock) {
+                        System.out.println("madre> " + answer.payload());
+                    }
                 } catch (CompletionException exception) {
                     printPhysicalFailure(exception.getCause(), outputLock);
                 } catch (RuntimeException exception) {
@@ -61,13 +67,14 @@ public final class MadreMain {
             }
         } finally {
             background.shutdownNow();
-            printBackground(core, outputLock);
+            printBackground(interaction, outputLock);
         }
     }
 
-    private static void printBackground(CoreModule core, Object outputLock) {
+    private static void printBackground(OwnerInteractionModule interaction,
+            Object outputLock) {
         try {
-            for (BackgroundUpdate update : core.collectBackground()) {
+            for (BackgroundUpdate update : interaction.collectBackground()) {
                 synchronized (outputLock) {
                     if (update.visibleFollowUp().isPresent()) {
                         System.out.println("background> " + update.visibleFollowUp().orElseThrow().payload());
