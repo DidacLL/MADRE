@@ -17,6 +17,7 @@ import io.github.didacll.madre.sdk.module.OperationDefinition;
 import io.github.didacll.madre.sdk.module.OperationVisibility;
 import io.github.didacll.madre.sdk.operation.ModuleInvoker;
 import io.github.didacll.madre.sdk.operation.OperationCall;
+import io.github.didacll.madre.sdk.operation.OwnerModuleInvoker;
 import io.github.didacll.madre.sdk.registration.ModuleRegistration;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -30,7 +31,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /** In-memory registry for currently running executable Modules; it deliberately has no persistence. */
 public final class LiveModuleRegistry
-        implements ModuleRegistration, ModuleDirectory, ModuleInvoker {
+        implements ModuleRegistration, ModuleDirectory, ModuleInvoker, OwnerModuleInvoker {
     private final Optional<ModuleId> configuredCore;
     private final ConcurrentHashMap<ModuleId, Entry> entries = new ConcurrentHashMap<>();
 
@@ -101,6 +102,21 @@ public final class LiveModuleRegistry
 
     @Override public <I, O> CompletionStage<Material<O>> invokePublic(OperationCall<I, O> call) {
         OperationCall<I, O> requested = Objects.requireNonNull(call, "call");
+        OperationBinding<?, ?> binding = exactBinding(requested);
+        return invokePublicExact(binding, requested);
+    }
+
+    @Override public <I, O> CompletionStage<Material<O>> invokeOwner(OperationCall<I, O> call) {
+        OperationCall<I, O> requested = Objects.requireNonNull(call, "call");
+        OperationBinding<?, ?> binding = exactBinding(requested);
+        if (binding.definition().visibility() != OperationVisibility.PUBLIC) {
+            throw new IllegalArgumentException("Operation is not owner-callable: "
+                    + requested.operation().id());
+        }
+        return invokeOwnerExact(binding, requested);
+    }
+
+    private OperationBinding<?, ?> exactBinding(OperationCall<?, ?> requested) {
         Entry entry = entries.get(requested.operation().id().moduleId());
         if (entry == null) {
             throw new IllegalArgumentException(
@@ -112,13 +128,19 @@ public final class LiveModuleRegistry
             throw new IllegalArgumentException(
                     "OperationCall does not identify the exact installed Operation binding");
         }
-        return invokeExact(binding, requested);
+        return binding;
     }
 
     @SuppressWarnings("unchecked")
-    private static <I, O> CompletionStage<Material<O>> invokeExact(
+    private static <I, O> CompletionStage<Material<O>> invokePublicExact(
             OperationBinding<?, ?> binding, OperationCall<I, O> call) {
         return ((OperationBinding<I, O>) binding).invokePublic(call);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <I, O> CompletionStage<Material<O>> invokeOwnerExact(
+            OperationBinding<?, ?> binding, OperationCall<I, O> call) {
+        return ((OperationBinding<I, O>) binding).invoke(call);
     }
 
     /** Returns the installed canonical definition for application-level discovery by identity. */

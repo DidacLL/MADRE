@@ -12,7 +12,7 @@ import java.util.Locale;
 import java.util.Properties;
 import java.util.concurrent.CompletionException;
 
-/** Replaceable local console over installed Module discovery and PUBLIC invocation. */
+/** Replaceable local console over installed Module discovery and distinct invocation boundaries. */
 public final class MadreMain {
     private MadreMain() { }
 
@@ -32,8 +32,12 @@ public final class MadreMain {
                 printModules(application);
             } else if (arguments.length == 7
                     && arguments[1].equals("--invoke-public")) {
-                invoke(application, arguments[2], arguments[3], arguments[4], arguments[5],
-                        arguments[6]);
+                invoke(application, Invocation.PUBLIC, arguments[2], arguments[3], arguments[4],
+                        arguments[5], arguments[6]);
+            } else if (arguments.length == 7
+                    && arguments[1].equals("--invoke-owner")) {
+                invoke(application, Invocation.OWNER_LOCAL, arguments[2], arguments[3],
+                        arguments[4], arguments[5], arguments[6]);
             } else {
                 usage();
                 System.exit(2);
@@ -43,7 +47,8 @@ public final class MadreMain {
 
     private static void runConsole(MadreApplication application) throws IOException {
         System.out.println("MADRE ready — /modules; "
-                + "/invoke <module> <operation> <material-type> <S1..S5> <payload>; /exit");
+                + "/invoke-public <module> <operation> <material-type> <S1..S5> <payload>; "
+                + "/invoke-owner <module> <operation> <material-type> <S1..S5> <payload>; /exit");
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(System.in))) {
             String line;
             while ((line = reader.readLine()) != null) {
@@ -53,17 +58,33 @@ public final class MadreMain {
                     printModules(application);
                     continue;
                 }
+                if (input.startsWith("/invoke-public ")) {
+                    invokeConsole(application, Invocation.PUBLIC,
+                            input.substring("/invoke-public ".length()));
+                    continue;
+                }
+                if (input.startsWith("/invoke-owner ")) {
+                    invokeConsole(application, Invocation.OWNER_LOCAL,
+                            input.substring("/invoke-owner ".length()));
+                    continue;
+                }
                 if (input.startsWith("/invoke ")) {
-                    String[] fields = input.substring("/invoke ".length()).split("\\s+", 5);
-                    if (fields.length != 5) {
-                        System.err.println("invoke requires <module> <operation> <material-type> "
-                                + "<S1..S5> <payload>");
-                        continue;
-                    }
-                    invoke(application, fields[0], fields[1], fields[2], fields[3], fields[4]);
+                    invokeConsole(application, Invocation.PUBLIC,
+                            input.substring("/invoke ".length()));
                 }
             }
         }
+    }
+
+    private static void invokeConsole(MadreApplication application, Invocation invocation,
+            String arguments) {
+        String[] fields = arguments.split("\\s+", 5);
+        if (fields.length != 5) {
+            System.err.println("invoke requires <module> <operation> <material-type> "
+                    + "<S1..S5> <payload>");
+            return;
+        }
+        invoke(application, invocation, fields[0], fields[1], fields[2], fields[3], fields[4]);
     }
 
     private static void printModules(MadreApplication application) {
@@ -79,17 +100,25 @@ public final class MadreMain {
         });
     }
 
-    private static void invoke(MadreApplication application, String module, String operation,
-            String materialType, String sensitivityValue, String payload) {
+    private static void invoke(MadreApplication application, Invocation invocation, String module,
+            String operation, String materialType, String sensitivityValue, String payload) {
         try {
             Sensitivity sensitivity = Sensitivity.valueOf(
                     sensitivityValue.toUpperCase(Locale.ROOT));
             if (sensitivity == Sensitivity.SYSTEM_RESERVED) {
                 throw new IllegalArgumentException("SYSTEM_RESERVED is not owner Material");
             }
-            Material<?> result = application.invokePublicText(new ModuleId(module), operation,
-                    materialType, sensitivity, payload).toCompletableFuture().join();
-            System.out.println(result.payload());
+            Material<?> result = switch (invocation) {
+                case PUBLIC -> application.invokePublicText(new ModuleId(module), operation,
+                        materialType, sensitivity, payload).toCompletableFuture().join();
+                case OWNER_LOCAL -> application.invokeOwnerText(new ModuleId(module), operation,
+                        materialType, sensitivity, payload).toCompletableFuture().join();
+            };
+            if (invocation == Invocation.OWNER_LOCAL) {
+                System.out.println(result.sensitivity().name() + "\t" + result.payload());
+            } else {
+                System.out.println(result.payload());
+            }
         } catch (CompletionException exception) {
             Throwable cause = exception.getCause() == null ? exception : exception.getCause();
             System.err.println("operation failure: " + cause.getMessage());
@@ -103,6 +132,9 @@ public final class MadreMain {
     private static void usage() {
         System.err.println("usage: madre <path-to-madre.properties> "
                 + "[--list-modules | --invoke-public <module> <operation> "
+                + "<material-type> <S1..S5> <payload> | --invoke-owner <module> <operation> "
                 + "<material-type> <S1..S5> <payload>]");
     }
+
+    private enum Invocation { PUBLIC, OWNER_LOCAL }
 }

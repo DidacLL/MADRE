@@ -48,14 +48,14 @@ public final class OperationBinding<I, O> {
 
     public OperationDefinition<I, O> definition() { return definition; }
 
-    /** Executes inside the owning Module without crossing the public result boundary. */
+    /** Executes inside the owning Module and validates the Module-created output contract. */
     public CompletionStage<Material<O>> invoke(OperationCall<I, O> call) {
         OperationCall<I, O> exactCall = Objects.requireNonNull(call, "call");
         if (exactCall.operation() != definition) {
             throw new IllegalArgumentException(
                     "OperationCall must use the exact installed Operation declaration");
         }
-        return implementation.invoke(exactCall);
+        return implementation.invoke(exactCall).thenApply(exactCall::acceptOutput);
     }
 
     /**

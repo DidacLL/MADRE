@@ -43,17 +43,23 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
 /** Shipped ordinary Module that can optionally be assigned to the installation's CORE role. */
 public final class OwnerInteractionModule {
     public static final ModuleId ID = new ModuleId("io.github.didacll.madre.owner-interaction");
     public static final MaterialType<String> OWNER_PROMPT = textType("owner-prompt");
+    public static final MaterialType<String> BACKGROUND_COLLECTION_REQUEST =
+            textType("background-collection-request");
     public static final MaterialType<String> IMMEDIATE_ANSWER = textType("immediate-answer");
     public static final MaterialType<String> BACKGROUND_ANALYSIS = textType("background-analysis");
     public static final MaterialType<String> VISIBLE_FOLLOW_UP = textType("visible-follow-up");
+    public static final MaterialType<String> BACKGROUND_UPDATES = textType("background-updates");
     public static final OperationId STANDARD_PROMPT = new OperationId(ID, "standard-prompt");
     public static final OperationId FAST_LANE = new OperationId(ID, "fast-lane");
+    public static final OperationId COLLECT_BACKGROUND =
+            new OperationId(ID, "collect-background");
 
     private static final AgentId INTERACTION_AGENT = new AgentId(ID, "interaction");
     private static final SkillId PROMPTING_SKILL = new SkillId(ID, "bounded-prompting");
@@ -62,11 +68,11 @@ public final class OwnerInteractionModule {
             INTERACTION_AGENT, "standard-response");
     private static final WorkflowId FAST_WORKFLOW = new WorkflowId(
             INTERACTION_AGENT, "fast-response-with-analysis");
-    private static final EffectProfile STANDARD_PROFILE = new EffectProfile(
-            new EffectProfileId(STANDARD_PROMPT, "standard-inference"), Risk.READ,
-            Autonomy.LIVE_INTERACTION);
     private static final EffectProfile FAST_PROFILE = new EffectProfile(
-            new EffectProfileId(FAST_LANE, "fast-inference"), Risk.READ,
+            new EffectProfileId(FAST_LANE, "durable-background-write"), Risk.WRITE,
+            Autonomy.AUTONOMOUS);
+    private static final EffectProfile COLLECT_PROFILE = new EffectProfile(
+            new EffectProfileId(COLLECT_BACKGROUND, "acknowledge-completed-background"), Risk.DELETE,
             Autonomy.LIVE_INTERACTION);
     private static final ModuleDefinition DEFINITION = createDefinition();
 
@@ -83,6 +89,12 @@ public final class OwnerInteractionModule {
         @Override protected CompletionStage<Material<String>> execute(
                 OperationCall<String, String> call) {
             return executeFastLane(call);
+        }
+    };
+    private final Operation<String, String> collectOperation = new Operation<>() {
+        @Override protected CompletionStage<Material<String>> execute(
+                OperationCall<String, String> call) {
+            return CompletableFuture.completedFuture(executeCollectBackground(call));
         }
     };
 
@@ -102,9 +114,12 @@ public final class OwnerInteractionModule {
     public ModuleInstance instance() {
         return new ModuleInstance(DEFINITION, Map.of(
                 STANDARD_PROMPT, OperationBinding.publicOperation(
-                        operation(STANDARD_PROMPT), standardOperation, this::minimizePublicAnswer),
+                        operation(STANDARD_PROMPT), standardOperation, this::minimizePublicResult),
                 FAST_LANE, OperationBinding.publicOperation(
-                        operation(FAST_LANE), fastOperation, this::minimizePublicAnswer)));
+                        operation(FAST_LANE), fastOperation, this::minimizePublicResult),
+                COLLECT_BACKGROUND, OperationBinding.publicOperation(
+                        operation(COLLECT_BACKGROUND), collectOperation,
+                        this::minimizePublicResult)));
     }
 
     public Material<String> ownerPrompt(String text, Sensitivity sensitivity) {
@@ -114,9 +129,14 @@ public final class OwnerInteractionModule {
         return material(OWNER_PROMPT, text.strip(), sensitivity);
     }
 
+    public Material<String> backgroundCollectionRequest() {
+        return material(BACKGROUND_COLLECTION_REQUEST, "collect", Sensitivity.S1);
+    }
+
     public CompletionStage<Material<String>> standardPrompt(Material<String> prompt) {
         requirePrompt(prompt);
-        return standardOperation.invoke(call(STANDARD_PROMPT, STANDARD_PROFILE, prompt));
+        return standardOperation.invoke(OperationCall.withoutEffect(
+                operation(STANDARD_PROMPT), prompt));
     }
 
     private CompletionStage<Material<String>> executeStandardPrompt(
@@ -134,7 +154,8 @@ public final class OwnerInteractionModule {
 
     public CompletionStage<Material<String>> fastLane(Material<String> prompt) {
         requirePrompt(prompt);
-        return fastOperation.invoke(call(FAST_LANE, FAST_PROFILE, prompt));
+        return fastOperation.invoke(OperationCall.withEffect(
+                operation(FAST_LANE), FAST_PROFILE, prompt, List.of()));
     }
 
     private CompletionStage<Material<String>> executeFastLane(OperationCall<String, String> call) {
@@ -170,6 +191,18 @@ public final class OwnerInteractionModule {
         }
     }
 
+    private Material<String> executeCollectBackground(OperationCall<String, String> call) {
+        if (!call.input().type().equals(BACKGROUND_COLLECTION_REQUEST)) {
+            throw new IllegalArgumentException("collection request has the wrong Material type");
+        }
+        List<BackgroundUpdate> updates = collectBackground();
+        Sensitivity sensitivity = updates.stream().flatMap(update -> java.util.stream.Stream.concat(
+                        update.backgroundAnalysis().stream(), update.visibleFollowUp().stream()))
+                .map(Material::sensitivity)
+                .reduce(Sensitivity.S1, Sensitivity::combine);
+        return material(BACKGROUND_UPDATES, renderBackgroundUpdates(updates), sensitivity);
+    }
+
     /** Interprets terminal reasoning results and removes acknowledged Module state. */
     public List<BackgroundUpdate> collectBackground() {
         List<BackgroundUpdate> updates = new ArrayList<>();
@@ -197,6 +230,20 @@ public final class OwnerInteractionModule {
     }
 
     public int pendingBackgroundCount() { return state.snapshot().size(); }
+
+    private static String renderBackgroundUpdates(List<BackgroundUpdate> updates) {
+        if (updates.isEmpty()) return "no completed background updates";
+        return updates.stream().map(update -> {
+            if (update.visibleFollowUp().isPresent()) {
+                return update.workId().value() + "\t" + update.visibleFollowUp().orElseThrow().payload();
+            }
+            if (update.backgroundAnalysis().isPresent()) {
+                return update.workId().value() + "\tNO_FOLLOW_UP";
+            }
+            return update.workId().value() + "\t" + update.reasoningState()
+                    + update.reasoningFailure().map(value -> ":" + value).orElse("");
+        }).collect(java.util.stream.Collectors.joining("\n"));
+    }
 
     private static String backgroundPrompt(String ownerPrompt) {
         return """
@@ -231,16 +278,11 @@ public final class OwnerInteractionModule {
         }
     }
 
-    private Material<String> minimizePublicAnswer(Material<String> internal) {
+    private Material<String> minimizePublicResult(Material<String> internal) {
         String publicText = internal.sensitivity().canReach(Privacy.PUBLIC)
                 ? internal.payload()
                 : "owner-interaction result withheld at public boundary";
-        return material(IMMEDIATE_ANSWER, publicText, Sensitivity.S1);
-    }
-
-    private static OperationCall<String, String> call(OperationId operationId,
-            EffectProfile profile, Material<String> input) {
-        return OperationCall.withEffect(operation(operationId), profile, input, List.of());
+        return material(internal.type(), publicText, Sensitivity.S1);
     }
 
     @SuppressWarnings("unchecked")
@@ -270,15 +312,19 @@ public final class OwnerInteractionModule {
         OperationDefinition<String, String> standard = new OperationDefinition<>(STANDARD_PROMPT,
                 "Produce one interpreted response to owner prompt Material",
                 OperationVisibility.PUBLIC, Map.of(OWNER_PROMPT.id(), Privacy.SECRET),
-                Map.of(IMMEDIATE_ANSWER.id(), Sensitivity.S5),
-                Map.of(STANDARD_PROFILE.id(), STANDARD_PROFILE));
+                Map.of(IMMEDIATE_ANSWER.id(), Sensitivity.S5), Map.of());
         OperationDefinition<String, String> fast = new OperationDefinition<>(FAST_LANE,
-                "Return a foreground response and independently analyze durable background work",
+                "Return a foreground response and persist independently continuing background reasoning",
                 OperationVisibility.PUBLIC, Map.of(OWNER_PROMPT.id(), Privacy.SECRET),
-                Map.of(IMMEDIATE_ANSWER.id(), Sensitivity.S5,
-                        BACKGROUND_ANALYSIS.id(), Sensitivity.S5,
-                        VISIBLE_FOLLOW_UP.id(), Sensitivity.S5),
+                Map.of(IMMEDIATE_ANSWER.id(), Sensitivity.S5),
                 Map.of(FAST_PROFILE.id(), FAST_PROFILE));
+        OperationDefinition<String, String> collect = new OperationDefinition<>(
+                COLLECT_BACKGROUND,
+                "Interpret completed durable reasoning, acknowledge it, and return Module updates",
+                OperationVisibility.PUBLIC,
+                Map.of(BACKGROUND_COLLECTION_REQUEST.id(), Privacy.SECRET),
+                Map.of(BACKGROUND_UPDATES.id(), Sensitivity.S5),
+                Map.of(COLLECT_PROFILE.id(), COLLECT_PROFILE));
         SkillDefinition prompting = new SkillDefinition(PROMPTING_SKILL,
                 "Construct bounded text-inference prompts from owner prompt Material");
         SkillDefinition interpretation = new SkillDefinition(ANALYSIS_SKILL,
@@ -287,19 +333,23 @@ public final class OwnerInteractionModule {
                 "Convert an owner prompt into one reasoning request and interpret its result",
                 List.of(STANDARD_PROMPT));
         WorkflowDefinition fastWorkflow = new WorkflowDefinition(FAST_WORKFLOW,
-                "Return foreground inference while durable reasoning proceeds independently",
-                List.of(FAST_LANE));
+                "Return foreground inference, then collect independently durable reasoning",
+                List.of(FAST_LANE, COLLECT_BACKGROUND));
         AgentDefinition interaction = new AgentDefinition(INTERACTION_AGENT,
                 "Owner-facing interaction through bounded standard and fast-lane behavior",
                 Integrity.I5, Set.of(PROMPTING_SKILL, ANALYSIS_SKILL),
                 Map.of(STANDARD_WORKFLOW, standardWorkflow, FAST_WORKFLOW, fastWorkflow),
-                Set.of(STANDARD_PROMPT, FAST_LANE));
-        return new ModuleDefinition(ID, "1.0.0", "Owner interaction and fallback behavior",
-                Map.of(OWNER_PROMPT.id(), OWNER_PROMPT, IMMEDIATE_ANSWER.id(), IMMEDIATE_ANSWER,
+                Set.of(STANDARD_PROMPT, FAST_LANE, COLLECT_BACKGROUND));
+        return new ModuleDefinition(ID, "1.1.0", "Owner interaction and fallback behavior",
+                Map.of(OWNER_PROMPT.id(), OWNER_PROMPT,
+                        BACKGROUND_COLLECTION_REQUEST.id(), BACKGROUND_COLLECTION_REQUEST,
+                        IMMEDIATE_ANSWER.id(), IMMEDIATE_ANSWER,
                         BACKGROUND_ANALYSIS.id(), BACKGROUND_ANALYSIS,
-                        VISIBLE_FOLLOW_UP.id(), VISIBLE_FOLLOW_UP),
+                        VISIBLE_FOLLOW_UP.id(), VISIBLE_FOLLOW_UP,
+                        BACKGROUND_UPDATES.id(), BACKGROUND_UPDATES),
                 Set.of(), Map.of(INTERACTION_AGENT, interaction),
                 Map.of(PROMPTING_SKILL, prompting, ANALYSIS_SKILL, interpretation),
-                Map.of(STANDARD_PROMPT, standard, FAST_LANE, fast));
+                Map.of(STANDARD_PROMPT, standard, FAST_LANE, fast,
+                        COLLECT_BACKGROUND, collect));
     }
 }

@@ -71,7 +71,23 @@ final class LiveModuleRegistryTest {
         assertNotEquals("internal-result", result.id().value());
     }
 
-    @Test void coreDesignationDoesNotChangeInvocationAuthority() {
+    @Test void ownerInvocationReturnsValidatedModuleMaterialWithoutPublicTransformation() {
+        Fixture fixture = fixture();
+        LiveModuleRegistry registry = new LiveModuleRegistry();
+        registry.register(fixture.instance());
+        Material<String> input = new Material<>(new MaterialId(fixture.moduleId(), "input"),
+                fixture.input(), "hello", Sensitivity.S2);
+        OperationCall<String, String> call = OperationCall.withoutEffect(
+                fixture.publicOperation(), input);
+
+        Material<String> result = registry.invokeOwner(call).toCompletableFuture().join();
+
+        assertEquals("internal:hello", result.payload());
+        assertEquals(Sensitivity.S4, result.sensitivity());
+        assertEquals("internal-result", result.id().value());
+    }
+
+    @Test void coreDesignationDoesNotChangeEitherInvocationBoundary() {
         Fixture fixture = fixture();
         Material<String> input = new Material<>(new MaterialId(fixture.moduleId(), "input"),
                 fixture.input(), "same", Sensitivity.S2);
@@ -84,6 +100,10 @@ final class LiveModuleRegistryTest {
 
         assertEquals(ordinary.invokePublic(call).toCompletableFuture().join().payload(),
                 coreAssigned.invokePublic(call).toCompletableFuture().join().payload());
+        Material<String> ordinaryOwner = ordinary.invokeOwner(call).toCompletableFuture().join();
+        Material<String> coreOwner = coreAssigned.invokeOwner(call).toCompletableFuture().join();
+        assertEquals(ordinaryOwner.payload(), coreOwner.payload());
+        assertEquals(ordinaryOwner.sensitivity(), coreOwner.sensitivity());
     }
 
     @Test void registrationRejectsMissingUndeclaredAndMismatchedBindings() {
@@ -112,7 +132,7 @@ final class LiveModuleRegistryTest {
                 new ModuleInstance(fixture.definition(), Map.of(undeclaredId, undeclaredBinding))));
     }
 
-    @Test void invocationRejectsPrivateAndForgedCalls() {
+    @Test void invocationRejectsPrivateAndForgedCallsAtBothHostBoundaries() {
         Fixture fixture = fixtureWithPrivateOperation();
         LiveModuleRegistry registry = new LiveModuleRegistry();
         registry.register(fixture.instance());
@@ -122,6 +142,7 @@ final class LiveModuleRegistryTest {
         OperationCall<String, String> privateCall = OperationCall.withoutEffect(
                 fixture.privateOperation(), input);
         assertThrows(IllegalArgumentException.class, () -> registry.invokePublic(privateCall));
+        assertThrows(IllegalArgumentException.class, () -> registry.invokeOwner(privateCall));
 
         OperationDefinition<String, String> forged = new OperationDefinition<>(
                 fixture.publicOperation().id(), "Forged call", OperationVisibility.PUBLIC,
@@ -129,6 +150,7 @@ final class LiveModuleRegistryTest {
                 fixture.publicOperation().producedMaterial(), Map.of());
         OperationCall<String, String> forgedCall = OperationCall.withoutEffect(forged, input);
         assertThrows(IllegalArgumentException.class, () -> registry.invokePublic(forgedCall));
+        assertThrows(IllegalArgumentException.class, () -> registry.invokeOwner(forgedCall));
     }
 
     @Test void publicBoundaryRejectsTransformerThatReturnsRawOrNonPublicMaterial() {

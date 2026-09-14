@@ -7,11 +7,13 @@ import io.github.didacll.madre.reasoning.installation.ReasoningMechanism;
 import io.github.didacll.madre.reasoning.installation.ReasoningMechanismProvider;
 import io.github.didacll.madre.reasoning.installation.ReasoningProviderConfiguration;
 import io.github.didacll.madre.sdk.execution.ReasoningLocation;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 
 /** Independent provider proving ordinary ServiceLoader installation outside MADRE's build graph. */
 public final class IndependentTextReasoningProvider implements ReasoningMechanismProvider {
@@ -30,7 +32,9 @@ public final class IndependentTextReasoningProvider implements ReasoningMechanis
                             location(configuration, prefix + ".location"),
                             Duration.ofMillis(positiveLong(configuration,
                                     prefix + ".expected-latency-ms")),
-                            availability(configuration, prefix + ".availability"));
+                            availability(configuration, prefix + ".availability"),
+                            optionalPath(configuration, prefix + ".background-gate-file"),
+                            optionalPath(configuration, prefix + ".background-completion-file"));
             mechanisms.add(new ReasoningMechanism<>(capability,
                     nonnegativeInt(configuration, prefix + ".preference")));
         }
@@ -65,6 +69,12 @@ public final class IndependentTextReasoningProvider implements ReasoningMechanis
                 () -> new IllegalArgumentException("missing property " + key));
         if (value.isBlank()) throw new IllegalArgumentException("missing property " + key);
         return value.strip();
+    }
+
+    private static Optional<Path> optionalPath(ReasoningProviderConfiguration configuration,
+            String key) {
+        return configuration.value(key).map(String::strip).filter(value -> !value.isEmpty())
+                .map(Path::of);
     }
 
     private static Privacy privacy(ReasoningProviderConfiguration configuration, String key) {

@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import io.github.didacll.madre.algebra.Autonomy;
+import io.github.didacll.madre.algebra.Risk;
 import io.github.didacll.madre.algebra.Sensitivity;
 import io.github.didacll.madre.sdk.codec.ModuleDefinitionJsonCodec;
 import io.github.didacll.madre.sdk.execution.ExecutionMode;
@@ -48,6 +50,22 @@ final class OwnerInteractionModuleTest {
         assertEquals(OwnerInteractionModule.IMMEDIATE_ANSWER, answer.type());
         assertEquals(Sensitivity.S4, answer.sensitivity());
         assertNotEquals(prompt.id(), answer.id());
+    }
+
+    @Test void effectProfilesDescribeConsequencesRatherThanReasoning() {
+        OwnerInteractionModule module = new OwnerInteractionModule(new RecordingReasoning(),
+                temporary.resolve("state"));
+        var standard = module.definition().operations().get(OwnerInteractionModule.STANDARD_PROMPT);
+        var fast = module.definition().operations().get(OwnerInteractionModule.FAST_LANE);
+        var collect = module.definition().operations().get(OwnerInteractionModule.COLLECT_BACKGROUND);
+
+        assertTrue(standard.effectProfiles().isEmpty());
+        var fastProfile = fast.effectProfiles().values().iterator().next();
+        assertEquals(Risk.WRITE, fastProfile.risk());
+        assertEquals(Autonomy.AUTONOMOUS, fastProfile.autonomy());
+        var collectProfile = collect.effectProfiles().values().iterator().next();
+        assertEquals(Risk.DELETE, collectProfile.risk());
+        assertEquals(Autonomy.LIVE_INTERACTION, collectProfile.autonomy());
     }
 
     @Test void fastLaneReturnsForegroundWithoutWaitingForDurableAnalysis() {
@@ -115,7 +133,7 @@ final class OwnerInteractionModuleTest {
         var decoded = codec.decode(encoded);
 
         assertEquals(OwnerInteractionModule.ID, decoded.id());
-        assertEquals(2, decoded.operations().size());
+        assertEquals(3, decoded.operations().size());
         assertEquals(1, decoded.agents().size());
         assertFalse(encoded.contains("OwnerInteractionModule"));
         assertFalse(encoded.contains("NO_FOLLOW_UP"));
