@@ -62,11 +62,41 @@ Owner-local invocation does not create a third Operation visibility. Both host r
 
 The owner-local port is not supplied through `ModuleContext`. Installed Modules receive only a facade implementing the public cross-Module `ModuleInvoker`, plus the ordinary public directory and reasoning port. The concrete live registry is not leaked through those context objects. Therefore installing two Modules in the same process does not give either one the ability to invoke the other's owner-local boundary.
 
+## Local interaction presentation
+
+The local text console is a replaceable `madre-app` presentation adapter, not a universal interaction SDK, assistant loop, conversation protocol, router or Kernel abstraction.
+
+An installation may configure the console against one ordinary installed Module through `interaction.*`. The application resolves those nominal identities only after normal Module discovery and validates the exact canonical declarations it will rely on: the Module and configured Operations exist; configured Operations are `PUBLIC`; configured input Material types are Module-owned and accepted by those Operations; console input and every declared possible output are text; generic EffectProfile selection is unambiguous; and configured ordinary Sensitivities can reach the corresponding receiving boundaries. Malformed or structurally incompatible interaction configuration is a startup error. With no `interaction.*` configuration the generic console remains valid.
+
+The current shipped example uses:
+
+```text
+interaction.module=io.github.didacll.madre.owner-interaction
+interaction.default-operation=fast-lane
+interaction.standard-operation=standard-prompt
+interaction.prompt-material-type=owner-prompt
+interaction.default-sensitivity=S5
+interaction.updates-operation=collect-background
+interaction.updates-material-type=background-collection-request
+interaction.updates-payload=collect
+interaction.updates-sensitivity=S1
+```
+
+These names are installation policy in the example configuration. `madre-app` Java code does not import the concrete owner-interaction implementation or hard-code its Module, Material, Operation or EffectProfile identities. A different structurally compatible ordinary installed Module can satisfy the same presentation binding without recompiling the application.
+
+When configured, ordinary non-command console text constructs the same exact canonical `OperationCall` used by generic owner invocation and invokes the configured default Operation through the owner-local boundary. `/standard <text>` similarly invokes the configured standard Operation owner-locally. `/updates` invokes only the configured Module-specific collection Operation and renders the returned Module Material; the application does not inspect Kernel reasoning output or own delayed semantic interpretation. No background polling, callback, event bus or destructive availability probe is introduced.
+
+The prompt Sensitivity is explicit installation/session state rather than inferred classification. `interaction.default-sensitivity` supplies the initial ordinary value and `/sensitivity S1..S5` can change it for the current console session. `SYSTEM_RESERVED` is unavailable for owner input. Owner-local output is displayed together with the Sensitivity actually created by the Module; rendering an S5 answer locally does not make it S1 or PUBLIC.
+
+Ordinary text never routes to PUBLIC invocation. `/invoke-public` remains the explicit external/public boundary and the legacy `/invoke` alias remains PUBLIC. `/invoke-owner` and `/modules` remain generic diagnostic/application paths for any installed Module.
+
+The presentation binding is independent of CORE. `interaction.module` does not derive authority from `roles.core`, and CORE does not grant presentation authority. The same binding is valid with CORE absent, assigned to the interaction Module, assigned to another installed Module or unresolved.
+
 ## CORE
 
 CORE is an optional installation role containing one ordinary installed `ModuleId`.
 
-MADRE ships a default CORE-capable owner-interaction Module, but CORE designation changes no type, algebraic value, visibility, invocation authority, class-loader treatment, reasoning selection or scheduling privilege. MADRE can also boot with no CORE assignment or with a configured CORE Module that is not installed.
+MADRE ships a default CORE-capable owner-interaction Module, but CORE designation changes no type, algebraic value, visibility, invocation authority, class-loader treatment, reasoning selection, scheduling privilege or local-presentation authority. MADRE can also boot with no CORE assignment or with a configured CORE Module that is not installed.
 
 The shipped owner-interaction Module owns ordinary interaction behavior. Its current bounded Operations are:
 
@@ -74,7 +104,7 @@ The shipped owner-interaction Module owns ordinary interaction behavior. Its cur
 - `fast-lane`: low-latency foreground reasoning plus durable background reasoning and Module-owned pending-state persistence. Its exact `durable-background-write` EffectProfile is `Risk.WRITE` / `Autonomy.AUTONOMOUS`; the write/persistence consequence, not inference, justifies the profile.
 - `collect-background`: Module-specific interpretation of completed durable reasoning, acknowledgement of the Kernel work and cleanup of completed pending semantic state. Its exact `acknowledge-completed-background` profile is `Risk.DELETE` / `Autonomy.LIVE_INTERACTION`.
 
-Fast lane is Module behavior, not a Kernel lane, model command or privileged scheduler path. The collection Operation is Module-specific and does not generalize semantic continuation into Kernel callbacks or a scheduler language.
+Fast lane is Module behavior, not a Kernel lane, model command or privileged scheduler path. The collection Operation is Module-specific and does not generalize semantic continuation into Kernel callbacks or a scheduler language. The convenient console reaches these behaviors only through the configured generic owner-local invocation machinery.
 
 ## Security Algebra
 
@@ -122,7 +152,7 @@ For one EffectProfile:
 ```text
 D = min(Risk, Autonomy)
 D <= minimum Integrity of actual non-user causal participants
-     or I5 when no such participant exists
+     or I5 when there are none
 ```
 
 Only the exact EffectProfile participates. A host caller never manufactures arbitrary Integrity values to make a call pass; it supplies only actual non-user causal participants. When there are none, the existing algebra uses I5.
@@ -159,7 +189,7 @@ A Module owns semantic/domain persistence.
 
 Kernel SQLite stores only durable reasoning-runtime state: opaque serialized reasoning input, originating Module identity for delivery, stable reasoning-contract identity, scheduling/attempt/cancellation state and opaque result bytes until collection/acknowledgement/retention cleanup. Persisted work does not depend on a concrete adapter implementation class name; after restart it becomes executable when a compatible computation contract/mechanism is registered again.
 
-The owner-interaction Module separately persists only the semantic association it needs for outstanding fast-lane work. On restart, Kernel recovers the opaque reasoning work while the Module reloads its own pending state. The Module later interprets the completed result, creates Module Material, acknowledges the work and cleans up its own state.
+The owner-interaction Module separately persists only the semantic association it needs for outstanding fast-lane work. On restart, Kernel recovers the opaque reasoning work while the Module reloads its own pending state. The Module later interprets the completed result, creates Module Material, acknowledges the work and cleans up its own state. The console's `/updates` command only invokes that configured bounded Module Operation; it never performs interpretation itself.
 
 Kernel does not treat queued bytes as Module knowledge.
 

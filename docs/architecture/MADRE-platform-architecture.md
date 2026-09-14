@@ -82,6 +82,22 @@ The console/non-interactive adapter can invoke both receiver boundaries generica
 
 The console is a replaceable local adapter rather than a workflow/policy/chat framework.
 
+## Optional local text presentation binding
+
+The application may additionally configure a convenient local text presentation through a narrow `interaction.*` namespace. This binding is owned by `madre-app`; it is not an SDK concept, Kernel service, generic role framework or Module privilege.
+
+Binding resolution occurs after normal Module discovery. It resolves the configured `ModuleId`, operation names/profile selectors and Module-owned Material type names against the exact installed canonical `ModuleDefinition`. The configured Operations must be `PUBLIC`, accept the configured input types, have unambiguous EffectProfile selection under the same generic rule as owner-local diagnostics, and expose String/text input and declared outputs suitable for the text console. Configured prompt/update Sensitivities must be ordinary values and able to reach the exact receiving Privacy. The optional updates tuple is validated as one bounded whole, including decoding its configured request payload. Invalid or partial configuration fails startup rather than silently selecting a fallback.
+
+The shipped configuration happens to bind the console to the shipped owner-interaction Module. Those identities live in configuration, not application Java. Architecture checks reject concrete owner-interaction imports, implementation dependencies and shipped owner-interaction identities in `madre-app` production Java. Replacing the configured target with another structurally compatible installed Module therefore requires configuration, not recompilation.
+
+With a valid binding, ordinary non-command text is mapped onto the configured default Operation through the existing owner-local invocation path. `/standard` maps onto the configured standard Operation through that same path. `/updates` invokes the configured Module-specific collection Operation and renders the returned Material; the application never receives or interprets Kernel reasoning output directly. There is no callback, generic continuation, event bus, scheduler or polling thread.
+
+The initial prompt Sensitivity comes from explicit `interaction.default-sensitivity`; `/sensitivity S1..S5` changes that local session value explicitly. No model, keyword rule, reasoning mechanism, endpoint or CORE assignment classifies arbitrary owner text. `SYSTEM_RESERVED` remains unavailable. Owner-local results retain and display their actual Material Sensitivity.
+
+Ordinary text does not alias PUBLIC invocation. `/invoke-public` and legacy `/invoke` remain external/public routes. `/invoke-owner`, `/modules`, `/exit` and `/quit` remain available independently. If `interaction.*` is absent, the same application boots the generic low-level console.
+
+The interaction binding and `roles.core` are independent installation facts. CORE lookup is not consulted while resolving or invoking the local presentation binding. The same configured interaction behavior therefore remains valid with CORE absent, assigned to the interaction target, assigned to a different installed Module or unresolved.
+
 ## Reasoning-mechanism installation and discovery
 
 Reasoning mechanisms are independently installable and architecturally distinct from Modules. Their artifacts live in a separate reasoning installation directory and use a separate service-provider contract.
@@ -111,9 +127,9 @@ Kernel owns only shared runtime responsibilities that presently require central 
 - timeout, cancellation and bounded reasoning retry;
 - opaque reasoning-result delivery and ordinary runtime logging.
 
-Kernel does not own Module state, Material semantics, semantic workflows, artifact meaning, ordinary application I/O, search, model interpretation or continuation. It does not create Module Material.
+Kernel does not own Module state, Material semantics, semantic workflows, artifact meaning, ordinary application I/O, search, model interpretation, continuation or local console presentation binding. It does not create Module Material.
 
-The runtime may boot with zero reasoning mechanisms. A Module Operation that later requests unavailable reasoning fails or waits according to the reasoning execution contract; mechanism absence is not a platform boot failure. A Module that uses no reasoning remains executable with an absent/empty reasoning installation directory.
+The runtime may boot with zero reasoning mechanisms. A Module Operation that later requests unavailable reasoning fails or waits according to the reasoning execution contract; mechanism absence is not a platform boot failure. A Module that uses no reasoning remains executable with an absent/empty reasoning installation directory. A configured presentation binding is likewise allowed at boot with zero mechanisms because it validates Module structure, not reasoning availability.
 
 ## ReasoningCapability boundary
 
@@ -141,7 +157,7 @@ The shipped owner-interaction Module is ordinary installed behavior. It may be C
 
 `collect-background` is the Module-specific bounded path for interpreting terminal durable reasoning, creating Module Material, acknowledging the Kernel work and deleting completed pending semantic state. Its `acknowledge-completed-background` EffectProfile is `DELETE/LIVE_INTERACTION`.
 
-The durable Kernel bytes remain opaque runtime state. The Module-owned pending file carries only semantic association needed to interpret eventual results. On restart those two persistence domains are rebuilt independently and compose through the existing `ReasoningService` work lifecycle.
+The durable Kernel bytes remain opaque runtime state. The Module-owned pending file carries only semantic association needed to interpret eventual results. On restart those two persistence domains are rebuilt independently and compose through the existing `ReasoningService` work lifecycle. `/updates` is only an application presentation shortcut for invoking the configured collection Operation owner-locally.
 
 ## Search placement
 
@@ -155,7 +171,7 @@ A future domain Module that genuinely owns research/search behavior may depend o
 
 `roles.core`, when present, contains one ordinary installed `ModuleId`. CORE is only role lookup. MADRE also supports no CORE assignment, and a configured-but-absent CORE does not prevent boot.
 
-CORE does not alter invocation authority, Operation visibility, Security Algebra, reasoning installation, reasoning selection, scheduling or public-result rules. There is no CORE subtype or privileged registration path. The owner-local port is not a CORE port and is not exposed to a CORE Module.
+CORE does not alter invocation authority, Operation visibility, Security Algebra, local interaction presentation authority, reasoning installation, reasoning selection, scheduling or public-result rules. There is no CORE subtype or privileged registration path. The owner-local port is not a CORE port and is not exposed to a CORE Module.
 
 ## Storage
 
@@ -165,7 +181,7 @@ Kernel SQLite persists only durable reasoning work that must survive restart: op
 
 Persisted durable work does not name a concrete adapter implementation class. The live Module and reasoning registries are rebuilt at application boot; queued work becomes executable again when its compatible reasoning contract/mechanism is registered.
 
-The shipped owner-interaction Module separately reloads its pending semantic state after restart, interprets completed reasoning itself, acknowledges the durable work and removes completed pending state. Kernel never learns the semantic meaning of that work.
+The shipped owner-interaction Module separately reloads its pending semantic state after restart, interprets completed reasoning itself, acknowledges the durable work and removes completed pending state. Kernel never learns the semantic meaning of that work. The application presentation only invokes the Module's bounded collection Operation.
 
 ## Provider environment
 

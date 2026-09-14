@@ -33,7 +33,7 @@ Runtime behavior is bound through responsibility-specific SDK interfaces:
 - `OwnerModuleInvoker` is the host/application owner-local invocation port over an exact installed externally callable Operation;
 - `ReasoningService` is the Module-facing port only for reasoning work.
 
-There is no universal `receive` method, Agent loop, assistant turn, planner, policy engine, workflow interpreter or generic Kernel action dispatcher.
+There is no universal `receive` method, Agent loop, assistant turn, planner, policy engine, workflow interpreter, interaction surface or generic Kernel action dispatcher.
 
 Ordinary application I/O stays inside Module behavior unless a concrete shared-Kernel responsibility is established. In particular, search is not required to route through Kernel.
 
@@ -63,6 +63,22 @@ The owner-local route executes the canonical `OperationCall`, returns the contra
 
 The current application/console generic adapter decodes input through the exact installed `MaterialType` codec and constructs the canonical call. An Operation with no EffectProfile uses `OperationCall.withoutEffect`. A single declared EffectProfile can be selected without extra ceremony; if multiple variants exist the generic selector uses `<operation>@<effect-profile>`. The host supplies only actual non-user causal participants and does not ask a user to invent Integrity values.
 
+## Application-local interaction presentation
+
+Convenient local text interaction is deliberately not part of the SDK contract. `madre-app` owns an optional immutable presentation binding that maps console conventions onto the existing installed canonical Operation machinery.
+
+The binding is configured with nominal installed identities in `interaction.*`. Resolution happens after Module discovery and reuses the generic operation/profile-selection rules. It validates that the configured Module exists; each configured Operation exists and is `PUBLIC`; each configured input Material type is Module-owned, declared and accepted; prompt/update Sensitivities are ordinary and reachable at the exact receiving Privacy; and all input and declared output Material used by the presentation are String/text types. A configured update path also requires its complete operation/material/payload/sensitivity tuple and validates that the payload decodes through the configured Material codec. Invalid bindings fail application startup.
+
+This validation is intentionally local to one presentation binding. It is not Module certification, a role hierarchy or a new SDK base type. `madre-app` production Java contains no concrete owner-interaction implementation reference or hard-coded shipped owner-interaction Module, Operation, Material or EffectProfile identity. The shipped example configuration may name those identities as installation policy.
+
+When configured, ordinary non-command console text passes through the same canonical decode/call path and then `OwnerModuleInvoker`, so it remains owner-local. `/standard` is another configured owner-local mapping. `/updates` invokes only the configured Module-specific Operation; it does not expose Kernel result bytes or move interpretation into the application. The application performs no destructive update polling.
+
+The current prompt Sensitivity is explicit console state initialized from configuration. `/sensitivity S1..S5` changes it explicitly; no automatic classifier is implied and `SYSTEM_RESERVED` remains rejected. Returned owner-local Material is rendered at its actual Sensitivity.
+
+The generic `/invoke-owner` and `/invoke-public` paths remain distinct and available. Ordinary text does not alias PUBLIC. The legacy `/invoke` alias remains PUBLIC. With no configured interaction binding, the generic console remains the complete application surface.
+
+`interaction.module` and `roles.core` are independent. CORE does not supply the owner-local port and is not consulted by binding resolution. A Module's use as the local presentation target therefore creates no Module-facing authority or subtype.
+
 ## PUBLIC Operation boundary
 
 `ModuleInvoker.invokePublic` resolves the installed Module and exact canonical Operation binding. Missing Modules, undeclared bindings, forged/non-canonical calls and private Operations are rejected.
@@ -83,6 +99,8 @@ For one consequential call, `OperationCall.withEffect` binds one exact EffectPro
 
 Reasoning computation alone does not justify an EffectProfile. The shipped owner-interaction Module therefore declares `standard-prompt` as no-effect. `fast-lane` has `WRITE/AUTONOMOUS` because it creates durable work plus Module-owned persistent pending state that continues after foreground interaction. Its Module-specific `collect-background` has `DELETE/LIVE_INTERACTION` because explicit owner collection acknowledges completed durable work and removes completed pending semantic state.
 
+The presentation binding selects these profiles only through the same generic declared-profile rule. It has no EffectProfile identity knowledge of its own.
+
 ## Reasoning port
 
 When bounded Module behavior needs reasoning, it constructs a nominal `ReasoningComputation<R>` and creates a `ReasoningRequest` from an existing valid `OperationCall`.
@@ -99,13 +117,13 @@ Kernel durable reasoning stores opaque runtime bytes and stable reasoning-contra
 
 The shipped owner-interaction fast lane demonstrates the composition: the Module persists WorkId-to-semantic-state association, Kernel persists opaque reasoning work, process restart rebuilds Module/reasoning installations, a compatible independent reasoning mechanism resumes work, and the installed Module's `collect-background` Operation interprets the completed result into Module Material, acknowledges Kernel work and removes its pending state.
 
-There is no generic Kernel callback, continuation object, background result router or scheduler language.
+The application-level `/updates` presentation does not change that ownership. It constructs the configured bounded request, invokes the Module owner-locally and renders returned Material. There is no generic Kernel callback, continuation object, background result router or scheduler language.
 
 ## CORE assignment
 
 CORE is an optional installation role containing one ordinary `ModuleId`. If configured and installed, the live registry resolves it. If absent or unresolved, MADRE still boots.
 
-CORE changes no Module definition, visibility, owner-local/public invocation authority, algebraic value, reasoning privilege, scheduling privilege or class hierarchy.
+CORE changes no Module definition, visibility, owner-local/public invocation authority, local-presentation authority, algebraic value, reasoning privilege, scheduling privilege or class hierarchy.
 
 ## Codecs
 

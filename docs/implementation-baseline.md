@@ -13,7 +13,7 @@ The current artifact boundaries are:
 - `madre-web-search`: reusable typed web-search values;
 - `madre-adapter-searxng`: ordinary SearXNG Java client with no Kernel dependency;
 - `madre-module-owner-interaction`: shipped ordinary CORE-capable Module;
-- `madre-app`: installable assembly, generic Module/reasoning-artifact discovery and replaceable local console. It has no concrete owner-interaction or reasoning-provider implementation dependency and no provider-specific configuration branch.
+- `madre-app`: installable assembly, generic Module/reasoning-artifact discovery and replaceable local console. It has no concrete owner-interaction or reasoning-provider implementation dependency and no provider-specific configuration branch. Its optional `interaction.*` namespace is application-local installation/presentation policy resolved generically against installed Module declarations.
 
 The former generic Kernel `Capability<C,R>` SPI, generic `ExecutionService`/`WorkRequest`, SearXNG Kernel capability and standalone shipped WebSearch Module are removed.
 
@@ -57,6 +57,34 @@ The generic application/console decodes input through the exact installed canoni
 
 `verification/sdk-consumer` is an executable independent Module built outside the root dependency graph against published MADRE artifacts. It retains `phd.module/inspect`, which performs no reasoning, and adds `phd.module/reason`, which submits a real text-inference `ReasoningRequest` through the supplied `ReasoningService`. Both results pass through the same Module-owned PUBLIC semantic transformation.
 
+## Local interaction presentation baseline
+
+`madre-app` owns one small immutable `LocalInteractionBinding`. It is not an SDK type and does not enter Kernel or Module context. The binding is absent unless at least one `interaction.*` property is configured; no-interaction installation is therefore a normal supported state.
+
+The current application-local configuration contract is:
+
+```text
+interaction.module=<installed ModuleId>
+interaction.default-operation=<operation or operation@effect-profile>
+interaction.standard-operation=<operation or operation@effect-profile>
+interaction.prompt-material-type=<Module-owned MaterialType name>
+interaction.default-sensitivity=<S1..S5>
+interaction.updates-operation=<optional operation or operation@effect-profile>
+interaction.updates-material-type=<required with updates-operation>
+interaction.updates-payload=<required with updates-operation>
+interaction.updates-sensitivity=<required with updates-operation, S1..S5>
+```
+
+The shipped example points those identities at the owner-interaction Module, but no concrete owner-interaction identity occurs in `madre-app` production Java. The build architecture check rejects a compile dependency/import on the concrete Module and rejects hard-coded shipped owner-interaction Module, Operation, Material or EffectProfile identities in application Java.
+
+Binding resolution runs after ordinary Module discovery. It requires the configured Module to be installed; resolves each configured operation through the same canonical operation/profile-selection rules used by generic invocation; requires `PUBLIC` visibility; requires the configured Module-owned input Material type to be accepted; requires String/text content for the input and every declared possible output; verifies configured ordinary Sensitivity can reach the exact accepted Privacy; and validates that the bounded updates payload can be decoded by its configured text Material type. Unknown `interaction.*` keys, partial updates configuration, malformed identities, `SYSTEM_RESERVED` Sensitivity and structurally incompatible declarations fail startup instead of choosing a fallback.
+
+When present, ordinary non-command console text invokes the configured default Operation through `invokeOwnerText`, so it is owner-local rather than PUBLIC. `/standard <text>` uses the configured standard Operation through the same owner-local path. `/updates` uses the configured updates Operation and fixed bounded request; the console neither polls it automatically nor interprets reasoning output. `/sensitivity S1..S5` changes only the current prompt classification explicitly. Owner-local results print their actual Material Sensitivity.
+
+The generic `/modules`, `/invoke-owner`, `/invoke-public`, legacy PUBLIC `/invoke`, `/exit` and `/quit` remain additive and independent of the convenient presentation. Interactive operation failures are reported and return control to the console where practical; non-interactive invocation retains fail-fast behavior.
+
+`interaction.module` and `roles.core` are resolved independently. No CORE lookup participates in binding validation or invocation. Acceptance covers CORE absent, interaction Module assigned CORE, another installed Module assigned CORE and unresolved CORE with unchanged interaction behavior.
+
 ## Shipped owner-interaction Module baseline
 
 The shipped owner-interaction Module remains an ordinary installed Module and may optionally be assigned CORE.
@@ -64,14 +92,14 @@ The shipped owner-interaction Module remains an ordinary installed Module and ma
 Its EffectProfile audit is explicit:
 
 - `standard-prompt` has no EffectProfile. Immediate reasoning and Material creation are not themselves consequential external/domain effects.
-- `fast-lane` declares `durable-background-write` with `Risk.WRITE` and `Autonomy.AUTONOMOUS`. The consequential behavior is durable reasoning submission plus Module-owned pending-state persistence that continues beyond the foreground interaction; reasoning itself is not the Risk.
+- `fast-lane` declares `durable-background-write` with `Risk.WRITE` and `Autonomy.AUTONOMOUS`. The consequential behavior is durable reasoning submission plus Module-owned pending-state persistence that continues beyond foreground interaction; reasoning itself is not the Risk.
 - `collect-background` declares `acknowledge-completed-background` with `Risk.DELETE` and `Autonomy.LIVE_INTERACTION`. The owner explicitly requests collection; the Module interprets completed reasoning, acknowledges Kernel durable work and removes completed pending semantic state.
 
 `collect-background` is a Module-specific bounded Operation, not a Kernel callback, generic continuation, background-result router or scheduler language.
 
 Owner-local `standard-prompt` with sensitive prompt Material can return the useful Module-created answer at the same S2-S5 Sensitivity. The same exact installed Operation through PUBLIC still applies the Module's semantic minimizer and cannot expose the private answer unchanged.
 
-Fast lane stores only its semantic pending association in Module-owned state. Kernel SQLite independently stores opaque reasoning runtime state. Across restart the Module reloads its semantic pending state, Kernel recovers the durable work, a compatible independently installed reasoning mechanism resumes it, and `collect-background` performs Module interpretation, acknowledgement and cleanup.
+Fast lane stores only its semantic pending association in Module-owned state. Kernel SQLite independently stores opaque reasoning runtime state. Across restart the Module reloads its semantic pending state, Kernel recovers the durable work, a compatible independently installed reasoning mechanism resumes it, and `collect-background` performs Module interpretation, acknowledgement and cleanup. The convenient `/updates` command only invokes that installed Operation and renders its Material.
 
 ## Public reasoning-adapter SPI baseline
 
@@ -100,7 +128,7 @@ Missing and empty reasoning directories are valid. A provider may materialize ze
 
 `madre-app` passes an immutable read-only view of `reasoning.*` owner configuration to discovered providers and performs only generic registration. Provider-specific parsing, including endpoint/model fields and explicit Privacy, is owned by each adapter. Privacy is not inferred from locality, endpoint or transport.
 
-The shipped llama.cpp AF_UNIX, llama.cpp loopback-HTTP compatibility and OpenAI-compatible artifacts are copied into `reasoning/` and discovered with the same `ReasoningMechanismProvider` path as external adapters. Their explicit-enable behavior remains unchanged in meaning: no configured enabled instance means no registered mechanism.
+The shipped llama.cpp AF_UNIX, explicit llama.cpp loopback-HTTP compatibility and OpenAI-compatible artifacts are copied into `reasoning/` and discovered with the same `ReasoningMechanismProvider` path as external adapters. Their explicit-enable behavior remains unchanged in meaning: no configured enabled instance means no registered mechanism.
 
 Provider/classloader resources are closed at shutdown. Startup failures roll back already-created mechanism registrations and close loaders/providers. Null provider materialization and null mechanism values are rejected.
 
@@ -151,13 +179,13 @@ Search is ordinary application/domain I/O, not Kernel reasoning.
 
 The former `SearxngCapability`, standalone `madre-module-web-search`, service-provider registration and deep-search product path were removed from the active application architecture.
 
-Build-time architecture checks reject SearXNG-to-Kernel coupling, SearXNG implementing `ReasoningCapability`, restoration of the standalone WebSearch Module and restoration of the generic `ExecutionService`/`WorkRequest` production API. They also reject concrete llama.cpp/OpenAI-compatible adapter knowledge or normal concrete-adapter implementation dependencies in `madre-app`, and Kernel-runtime dependencies from the public reasoning SPI/shipped reasoning adapters.
+Build-time architecture checks reject SearXNG-to-Kernel coupling, SearXNG implementing `ReasoningCapability`, restoration of the standalone WebSearch Module and restoration of the generic `ExecutionService`/`WorkRequest` production API. They also reject concrete llama.cpp/OpenAI-compatible adapter knowledge or normal concrete-adapter implementation dependencies in `madre-app`, Kernel-runtime dependencies from the public reasoning SPI/shipped reasoning adapters, and concrete owner-interaction knowledge in `madre-app` production Java.
 
 ## CORE and boot baseline
 
-CORE is optional. `roles.core` may be absent; a configured-but-absent CORE remains unresolved and does not prevent boot. CORE changes no owner-local/public invocation authority, Security Algebra value, visibility, reasoning installation, reasoning selection or scheduling privilege.
+CORE is optional. `roles.core` may be absent; a configured-but-absent CORE remains unresolved and does not prevent boot. CORE changes no owner-local/public invocation authority, Security Algebra value, visibility, local interaction authority, reasoning installation, reasoning selection or scheduling privilege.
 
-The runtime supports an absent reasoning directory, an empty reasoning directory and installed providers that produce zero mechanisms. The independent Module no-reasoning verification demonstrates real installed PUBLIC invocation in that state.
+The runtime supports an absent reasoning directory, an empty reasoning directory and installed providers that produce zero mechanisms. The independent Module no-reasoning verification demonstrates real installed PUBLIC invocation in that state. A configured interaction binding is also validated and bootable with zero reasoning mechanisms; invoking a reasoning-backed Operation reports a reasoning/operation failure while the console remains usable.
 
 ## Cross-platform acceptance matrix
 
@@ -173,10 +201,15 @@ The GitHub Actions matrix runs the same source/distribution acceptance path on `
 - actual reasoning execution through that adapter;
 - Module interpretation plus PUBLIC semantic transformation;
 - shipped owner-interaction discovery from `modules/`;
-- S5 owner-local standard-prompt through the independent reasoning mechanism with retained S5 answer;
+- generic S5 owner-local standard-prompt through the independent reasoning mechanism with retained S5 answer;
 - equivalent PUBLIC standard-prompt with mandatory public minimization and no sensitive answer leakage;
-- owner-local behavior both without CORE and with the same Module assigned CORE;
-- deterministic fast-lane foreground response, pending semantic state, process shutdown, SQLite durable recovery, reasoning-adapter rediscovery, background completion after restart, Module-specific collection/interpretation, Kernel acknowledgement and Module-state cleanup;
+- configured interaction binding validation against installed canonical declarations;
+- actual installed console ordinary text through the configured fast/default owner-local Operation;
+- `/standard`, explicit `/sensitivity`, and owner-local result Sensitivity rendering;
+- convenient interaction with CORE absent, owner-interaction as CORE, a different installed CORE and unresolved CORE;
+- generic console boot with no interaction binding;
+- configured interaction boot with zero reasoning mechanisms plus truthful invocation failure and continued console usability;
+- presentation-level deterministic fast-lane foreground response, process shutdown, SQLite durable recovery, reasoning-adapter rediscovery, `/updates` Module interpretation/acknowledgement/cleanup and a second empty `/updates`;
 - installed-application smoke.
 
 No container runtime, VM layer, orchestration system, hosted provider account or external service is part of the mandatory build/test path.
@@ -187,7 +220,7 @@ Earlier PR #47 acceptance runs exercised real llama.cpp/model inference over the
 
 Earlier live SearXNG evidence demonstrates the ordinary client/provider integration historically, but it is not evidence that search belongs in Kernel or that the removed WebSearch Module remains shipped.
 
-The owner-local invocation and restart acceptance use the deterministic independent adapter; they do not claim new live external-provider/model evidence.
+The local interaction, owner-local invocation and restart acceptance use the deterministic independent adapter; they do not claim new live external-provider/model evidence.
 
 ## Plan status
 
