@@ -2,7 +2,7 @@
 
 MADRE is personal, owner-sovereign software for modular applications that can use bounded reasoning while keeping information reach explicit. The active implementation is Java 21.
 
-Windows and Linux run the same application, Kernel, SDK, Module installation and reasoning-mechanism installation architecture. There is no Windows compatibility product layered over a Unix implementation and no Linux-specific public runtime.
+Windows and Linux run the same application, Kernel, SDK, Module installation/configuration and reasoning-mechanism installation architecture. There is no Windows compatibility product layered over a Unix implementation and no Linux-specific public runtime.
 
 Start with:
 
@@ -58,17 +58,52 @@ through Java's standard service-provider resource:
 META-INF/services/io.github.didacll.madre.sdk.registration.ModuleProvider
 ```
 
-The provider constructs a `ModuleInstance`: one canonical `ModuleDefinition` plus exact executable bindings for every declared Operation. Runtime discovery uses `modules.directory`; installed distributions default to their sibling `modules/` directory.
+The public provider declares one canonical identity and materializes exactly that Module:
+
+```java
+ModuleId moduleId();
+ModuleInstance create(ModuleContext context, ModuleProviderConfiguration configuration);
+```
+
+`ModuleInstance` remains one canonical `ModuleDefinition` plus exact executable bindings for every declared Operation. Runtime discovery uses `modules.directory`; installed distributions default to their sibling `modules/` directory.
 
 The shipped owner-interaction Module is packaged there but `madre-app` does not compile against its concrete class. Independently built Modules use the same discovery/registration path. Bundling, class-loader placement and CORE designation confer no privilege.
 
-`verification/sdk-consumer` demonstrates the independent Module boundary. It depends only on:
+`verification/sdk-consumer` demonstrates the independent Module boundary. It depends on published MADRE artifacts, not `madre-app` or Kernel implementation classes, and produces `independent-module.jar`.
 
-```text
-io.github.didacll:madre-sdk:0.1.0-SNAPSHOT
+## Owner Module configuration
+
+Owner-supplied installation configuration is scoped by the provider's exact canonical `ModuleId`:
+
+```properties
+modules.config[<canonical ModuleId>].<module-owned-key>=<value>
 ```
 
-and produces `independent-module.jar`.
+For example, the independent verification Module owns `result-prefix`:
+
+```properties
+modules.config[phd.module].result-prefix=configured-
+```
+
+With that property omitted, its installed PUBLIC `inspect` path returns the existing result:
+
+```text
+public:hello
+```
+
+With the property present, the same independently compiled provider returns:
+
+```text
+public:configured-hello
+```
+
+`madre-app` does not know what `result-prefix` means. It only associates properties with the exact declared `ModuleId` and supplies immutable `ModuleProviderConfiguration`; the provider owns supported-key validation, parsing, typed settings and defaults.
+
+Square brackets are structural delimiters. Valid Module identities may contain dots, dashes and underscores but cannot contain brackets, so `phd.module`, `phd.module.child` and other valid identities are matched exactly without guessing dot-separated namespace segments. Provider class names, JAR names, discovery order, shipped status and CORE assignment are not configuration identities.
+
+An explicit setting for an uninstalled Module identity is rejected rather than ignored. Duplicate provider identities, provider/materialized-Module identity mismatches, malformed provider configuration and invalid executable bindings fail startup before any Module registration becomes reachable. If registration itself fails, already-created registrations are rolled back.
+
+Module configuration is separate from `interaction.*` presentation policy and from `reasoning.*` adapter configuration.
 
 ## Owner-local and PUBLIC invocation
 
@@ -124,7 +159,7 @@ When the binding is valid, ordinary non-command text invokes `interaction.defaul
 
 Owner-local results are rendered with their actual Sensitivity, for example `S5<TAB>...`. Ordinary text never means PUBLIC invocation. `/invoke-public` and the legacy `/invoke` alias remain explicit external/public disclosure paths. `/invoke-owner`, `/modules`, `/exit` and `/quit` remain available. With no `interaction.*` configuration the same application boots into the generic low-level console.
 
-`roles.core` and `interaction.module` are independent facts. The shipped example happens to name the same ordinary Module for both, but interaction semantics and owner-local authority are unchanged when CORE is absent, assigned to that Module, assigned to another installed Module, or unresolved.
+`roles.core`, `interaction.module` and `modules.config[...]` are independent facts. The shipped example happens to name the same ordinary Module for CORE and interaction, but neither CORE assignment nor presentation binding changes which Module configuration is delivered.
 
 ## Reasoning-adapter installation
 
@@ -170,25 +205,39 @@ Privacy is explicit provider configuration and is never inferred from endpoint, 
 
 `verification/reasoning-consumer` proves independent adapter installation. It depends only on published `madre-reasoning-spi` and `madre-text-inference`, produces `independent-reasoning.jar`, is copied into the built distribution's `reasoning/` directory, and provides deterministic text inference requiring no network/model/GPU/credentials.
 
-## Shipped owner-interaction Module
+## Shipped owner-interaction Module configuration
 
-The shipped owner-interaction Module is ordinary installed Module behavior and may optionally be assigned CORE. Its EffectProfiles describe real consequences, not the fact that reasoning occurred.
+The shipped owner-interaction Module is ordinary installed Module behavior and may optionally be assigned CORE. Its provider consumes the same `ModuleProviderConfiguration` mechanism as any independent Module.
 
-`standard-prompt` has no EffectProfile: it performs immediate reasoning and creates response Material, but does not itself perform persistent domain mutation or an external action.
+Its Module-owned optional settings are:
 
-`fast-lane` retains one `WRITE/AUTONOMOUS` EffectProfile named `durable-background-write`. The consequential variant is the durable reasoning submission plus Module-owned pending-state persistence that continues beyond foreground interaction; reasoning computation itself is not the Risk.
+```properties
+modules.config[io.github.didacll.madre.owner-interaction].foreground-maximum-tokens=256
+modules.config[io.github.didacll.madre.owner-interaction].background-maximum-tokens=512
+modules.config[io.github.didacll.madre.owner-interaction].foreground-timeout-ms=90000
+modules.config[io.github.didacll.madre.owner-interaction].background-timeout-ms=300000
+modules.config[io.github.didacll.madre.owner-interaction].background-retry-attempts=3
+modules.config[io.github.didacll.madre.owner-interaction].background-retry-delay-ms=5000
+# optional selection constraints; omit for unconstrained reasoning
+# modules.config[io.github.didacll.madre.owner-interaction].foreground-location=LOCAL
+# modules.config[io.github.didacll.madre.owner-interaction].foreground-maximum-latency-ms=30000
+# modules.config[io.github.didacll.madre.owner-interaction].background-location=LOCAL
+# modules.config[io.github.didacll.madre.owner-interaction].background-maximum-latency-ms=30000
+```
 
-`collect-background` is a Module-specific owner-facing Operation with a `DELETE/LIVE_INTERACTION` profile named `acknowledge-completed-background`. It interprets completed opaque reasoning output into Module Material, acknowledges durable Kernel work and removes the Module's completed pending semantic state. It does not create a generic callback, continuation or scheduler abstraction.
+All lines are optional. Omitting the owner-interaction scope preserves the existing `OwnerInteractionSettings.defaults()` exactly. The example distribution leaves these lines commented. The Module itself validates unknown/malformed values; `madre-app` contains no concrete knowledge of these fields.
 
-The local presentation binding simply invokes those installed Operations by configured nominal identity through the generic owner-local machinery. It does not import this concrete Module, know its EffectProfile names, or move delayed interpretation into `madre-app`.
+Its EffectProfiles still describe real consequences, not the fact that reasoning occurred. `standard-prompt` has no EffectProfile. `fast-lane` retains `WRITE/AUTONOMOUS` `durable-background-write`. `collect-background` retains `DELETE/LIVE_INTERACTION` `acknowledge-completed-background`.
+
+The installed acceptance configures foreground maximum tokens to `37` and background maximum tokens to `41`. The independently installed deterministic reasoning mechanism reports the `TextInferenceCommand.maximumGeneratedTokens()` it actually executed. This proves the configured values reach the real foreground and durable reasoning paths, while a separate omitted-configuration run proves the foreground default remains `256`.
 
 ## CORE and reasoning independence
 
-`roles.core` is optional. CORE is an ordinary installed Module identity lookup; it creates no subtype, invocation authority, Security Algebra value, scheduling lane or required Operation names. MADRE boots with no CORE configured and tolerates a configured CORE that is not installed.
+`roles.core` is optional. CORE is an ordinary installed Module identity lookup; it creates no subtype, invocation authority, Module configuration authority, Security Algebra value, scheduling lane or required Operation names. MADRE boots with no CORE configured and tolerates a configured CORE that is not installed.
 
 Reasoning mechanisms are also optional at boot. An Operation that later needs reasoning may fail when invoked if no compatible mechanism is available, but mechanism absence is not a startup error. A Module Operation that uses no reasoning remains fully usable with an absent or empty reasoning directory.
 
-CORE designation does not affect owner-local/public invocation semantics, local interaction presentation, reasoning installation, selection or preference.
+CORE designation does not affect owner-local/public invocation semantics, local interaction presentation, Module configuration, reasoning installation, selection or preference.
 
 ## Reasoning execution
 
@@ -201,17 +250,11 @@ Immediate and durable reasoning share the same mechanism registry/selection/reso
 The independent Module fixture contains two PUBLIC Operations used by CI:
 
 ```text
-phd.module/inspect   # no reasoning; proves zero-ReasoningCapability execution
+phd.module/inspect   # no reasoning; proves zero-ReasoningCapability execution/configuration
 phd.module/reason    # real ReasoningRequest through independently installed adapter
 ```
 
-The reasoning-backed path must return a Module-created PUBLIC result such as:
-
-```text
-public:reasoned:independent:hello
-```
-
-and CI rejects leakage of the Module's internal `private:reasoned:` Material.
+The reasoning-backed path still returns Module-created PUBLIC Material and CI rejects leakage of the Module's internal `private:reasoned:` Material.
 
 ## Search
 
@@ -219,11 +262,11 @@ Search is ordinary application/domain I/O, not a Kernel reasoning capability.
 
 `madre-web-search` provides reusable typed search values and `madre-adapter-searxng` provides an ordinary Java `SearxngClient`. The SearXNG adapter has no Kernel dependency and does not implement `ReasoningCapability`.
 
-The former standalone shipped WebSearch Module and generic SearXNG Kernel capability were removed. A future domain Module that genuinely owns research/search behavior may depend on the search library/client directly.
+The former standalone shipped WebSearch Module and generic SearXNG Kernel capability remain removed. A future domain Module that genuinely owns research/search behavior may depend on the search library/client directly.
 
 ## Start MADRE
 
-Build the distribution, copy/review the example configuration and run the single Java application. You may remove `roles.core`, independently remove every `interaction.*` line to use only the generic console, leave all shipped reasoning instances disabled and even point `reasoning.directory` at an empty directory for a bare runtime.
+Build the distribution, copy/review the example configuration and run the single Java application. You may remove `roles.core`, independently remove every `interaction.*` line to use only the generic console, leave all Module configuration omitted to use provider defaults, leave all shipped reasoning instances disabled and even point `reasoning.directory` at an empty directory for a bare runtime.
 
 Windows PowerShell:
 
@@ -241,7 +284,7 @@ cp config/madre.properties.example /absolute/path/madre.properties
 madre-app/build/install/madre/bin/madre /absolute/path/madre.properties
 ```
 
-Additional owner-installed Module JARs belong in the configured Module directory. Additional reasoning adapter JARs belong in the configured reasoning directory. Neither requires adding a concrete application compile-time dependency.
+Additional owner-installed Module JARs belong in the configured Module directory. Configure each through its documented `modules.config[<canonical ModuleId>].*` keys. Additional reasoning adapter JARs belong in the configured reasoning directory and use their provider-owned `reasoning.*` settings. Neither requires adding a concrete application compile-time dependency.
 
 Reasoning failures remain reasoning-runtime failures. With an interaction binding configured, a prompt Operation that requires reasoning reports an operation failure if no compatible mechanism exists; the application itself still boots and its generic commands remain usable. Kernel SQLite stores only durable reasoning work, attempts and retained opaque payloads; semantic interpretation belongs to the originating Module.
 
@@ -249,8 +292,17 @@ Reasoning failures remain reasoning-runtime failures. With an interaction bindin
 
 The mandatory CI matrix exercises `check`, Javadocs/publication/package verification, both isolated fixture builds, built-distribution installation/discovery, no-reasoning Module invocation, independent reasoning execution, PUBLIC semantic transformation and installed-application smoke on Linux and Windows.
 
-It additionally discovers the shipped owner-interaction Module from `modules/` and the independent deterministic reasoning adapter from `reasoning/`, validates the configured local interaction binding against installed declarations, feeds ordinary text to the actual installed console, proves that ordinary text executes the configured `fast-lane` owner-locally with retained non-public Sensitivity, proves `/standard` and explicit session Sensitivity, and preserves separate low-level owner-local and PUBLIC boundary checks. The matrix repeats convenient interaction with CORE absent, with owner-interaction assigned CORE, with a different installed CORE and with an unresolved CORE.
+For Module configuration it additionally proves, through the built distribution and real service-provider path:
 
-The restart proof drives the presentation surface itself: ordinary text starts fast-lane work and returns its foreground result, the process exits with durable Kernel work and Module pending state, the application restarts against the same SQLite/state directories, deterministic fixture completion is used as the barrier, `/updates` returns the Module-interpreted result and performs acknowledgement/cleanup, and a second `/updates` reports no completed updates. The same acceptance also boots the generic console with no interaction binding and proves a configured reasoning-backed interaction reports an invocation failure rather than making reasoning a boot requirement.
+- independent SDK consumer omitted configuration -> `public:hello`;
+- independent SDK consumer non-default `result-prefix` -> `public:configured-hello`;
+- owner-interaction omitted configuration -> actual reasoning execution reports default foreground maximum tokens `256`;
+- owner-interaction non-default foreground setting -> actual installed reasoning execution reports `37` through low-level owner invocation, ordinary console text and `/standard`;
+- owner-interaction non-default background setting -> durable execution reports `41` after restart and `/updates`;
+- malformed explicit Module configuration fails startup;
+- CORE absent/same/different/unresolved leaves Module configuration unchanged;
+- removing `interaction.*` leaves Module configuration unchanged.
 
-Historical PR #47 runs additionally exercised live llama.cpp/model inference over the native AF_UNIX adapter. No new live external provider/model evidence is required for this deterministic local-presentation slice.
+The existing matrix also preserves separate owner-local/PUBLIC boundary checks, convenient interaction, explicit Sensitivity, no-interaction generic console, configured interaction with zero reasoning mechanisms, deterministic durable restart, Module interpretation/acknowledgement/cleanup, clean console shutdown and installed smoke.
+
+Historical PR #47 runs additionally exercised live llama.cpp/model inference over the native AF_UNIX adapter. No new external model, network provider, GPU, credentials or provider account is required for this Module-configuration slice.

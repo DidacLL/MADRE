@@ -17,6 +17,7 @@ Third-party libraries, protocols, providers, models and runtimes may constrain a
 - Kernel owns the live executable Module registry/public invocation boundary, optional CORE-role resolution, and the shared reasoning runtime: reasoning-mechanism registration/selection, resources, immediate/durable reasoning, retries, cancellation, delivery and runtime logging.
 - `ReasoningCapability` is intentionally narrow. It accepts only nominal `ReasoningComputation<R>` values and returns reasoning results. It knows no Module, Agent, Operation, Workflow, Material or semantic continuation.
 - Reasoning adapters are ordinary owner-installable JVM artifacts discovered independently from Modules through the public reasoning-adapter SPI. `madre-app` must not know concrete reasoning-provider types or parse provider-specific configuration.
+- Module providers declare their canonical `ModuleId` before materialization and receive immutable owner configuration scoped to that exact identity through the public Module SDK. `madre-app` may extract/deliver the generic `modules.config[<ModuleId>].*` namespace, but Module-specific keys, parsing, validation and typed settings remain inside the Module artifact.
 - Module installation and reasoning-mechanism installation are distinct. They use separate directories, service-provider contracts and identities; CORE creates no reasoning privilege.
 - CORE is an optional installation role assigned to one ordinary registered Module. It creates no subtype or privilege.
 - Search is not a Kernel capability. SearXNG is an ordinary reusable client for domain Modules or applications that legitimately need web search.
@@ -52,7 +53,7 @@ Windows and Linux are first-class hosts for the same application, Kernel, SDK, M
 
 Platform-specific reasoning transports may have platform-specific adapters. Keep differences below the reasoning adapter boundary. Do not promote one platform's transport into a universal architecture claim.
 
-Reasoning adapter developers may depend on the published reasoning SPI and relevant published computation-contract artifacts, but not on `madre-app` or Kernel runtime implementation classes merely to register a mechanism. Keep registries, SQLite stores, schedulers and application assembly private to their runtime responsibilities.
+Module developers may depend on the published SDK and relevant published computation-contract artifacts, but not on `madre-app` or Kernel runtime implementation classes merely to receive installation configuration or execute bounded Module behavior. Reasoning adapter developers may depend on the published reasoning SPI and relevant published computation-contract artifacts, but not on `madre-app` or Kernel runtime implementation classes merely to register a mechanism. Keep registries, SQLite stores, schedulers and application assembly private to their runtime responsibilities.
 
 Do not add containers, VM layers, orchestration systems, hosted services or provider accounts to the mandatory build/CI/product path without a concrete Owner-accepted requirement. Prefer the JDK, checked-in Gradle wrapper, native host execution and the smallest real dependency required by the behavior under test.
 

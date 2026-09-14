@@ -44,13 +44,31 @@ A Module does not become a Kernel extension merely because one Operation perform
 
 ## Module installation and discovery
 
-Modules are ordinary JVM JARs exposing `ModuleProvider` through Java's service-provider mechanism. The application discovers configured Module JARs with JDK path/class-loader APIs, constructs each Module from `ModuleContext`, and registers its `ModuleInstance`.
+Modules are ordinary JVM JARs exposing `ModuleProvider` through Java's service-provider mechanism. The application discovers configured Module JARs with JDK path/class-loader APIs. Each provider declares its canonical `ModuleId` before materialization, then receives ordinary `ModuleContext` services plus immutable `ModuleProviderConfiguration` scoped to that identity and creates its `ModuleInstance`.
 
 Shipped Modules use the same route as independently built Modules. Bundling, class-loader placement, process placement or CORE assignment grants no authority.
 
 The Module registry is in-memory and rebuilt at boot. `ModuleDirectory` exposes reachable public definitions. `ModuleInvoker` invokes one exact installed `PUBLIC` Operation across the external/public boundary. `OwnerModuleInvoker` is a separate host/application port for owner-local invocation of an exact installed externally callable Operation.
 
 `OwnerModuleInvoker` is not exposed in `ModuleContext`. Application assembly gives Modules separate facade objects for `ModuleDirectory` and `ModuleInvoker`, not the concrete live registry. Thus a Module cannot downcast a context port to obtain owner-local invocation simply because it is installed in the same process.
+
+## Module installation configuration boundary
+
+Owner-supplied Module configuration uses one generic application-owned namespace:
+
+```text
+modules.config[<canonical ModuleId>].<module-owned-key>=<value>
+```
+
+`madre-app` is responsible only for extracting those properties, matching them to an installed provider's exact canonical `ModuleId`, and delivering the resulting immutable string configuration. It does not know schemas or field names for owner-interaction or any independently installed Module.
+
+Brackets are deliberate structural delimiters. The public `ModuleId` grammar permits alphanumeric characters, dots, dashes and underscores but not `[` or `]`. Therefore `fixture.module` and `fixture.module.child` are distinct exact scopes; the application never guesses an identity by splitting a dotted property name or by using provider class/JAR names.
+
+A Module provider owns all interpretation and validation of its scoped keys, including typed settings and defaults. Omitted configuration is an empty configuration for the exact identity. Explicit malformed settings fail materialization; configuration targeting an identity for which no provider is installed fails startup rather than being ignored.
+
+Provider identity is enforced before registration. Duplicate provider identities are rejected before any provider materializes; a provider that returns a `ModuleInstance` with a different canonical identity is rejected. All providers materialize and their executable bindings validate before any Module is registered, so a materialization/configuration failure cannot expose an earlier Module in a startup that will fail. Registration failures close already-created registrations in reverse order, preserving the existing application startup rollback/resource cleanup discipline.
+
+This configuration boundary is independent of `roles.core` and `interaction.*`. CORE does not grant or alter Module configuration, and the application presentation binding neither supplies nor overrides Module-owned settings.
 
 ## Owner-local Material boundary
 
@@ -88,7 +106,7 @@ The application may additionally configure a convenient local text presentation 
 
 Binding resolution occurs after normal Module discovery. It resolves the configured `ModuleId`, operation names/profile selectors and Module-owned Material type names against the exact installed canonical `ModuleDefinition`. The configured Operations must be `PUBLIC`, accept the configured input types, have unambiguous EffectProfile selection under the same generic rule as owner-local diagnostics, and expose String/text input and declared outputs suitable for the text console. Configured prompt/update Sensitivities must be ordinary values and able to reach the exact receiving Privacy. The optional updates tuple is validated as one bounded whole, including decoding its configured request payload. Invalid or partial configuration fails startup rather than silently selecting a fallback.
 
-The shipped configuration happens to bind the console to the shipped owner-interaction Module. Those identities live in configuration, not application Java. Architecture checks reject concrete owner-interaction imports, implementation dependencies and shipped owner-interaction identities in `madre-app` production Java. Replacing the configured target with another structurally compatible installed Module therefore requires configuration, not recompilation.
+The shipped configuration happens to bind the console to the shipped owner-interaction Module. Those identities live in configuration, not application Java. Architecture checks reject concrete owner-interaction imports, implementation dependencies and shipped owner-interaction identities or setting names in `madre-app` production Java. Replacing the configured target with another structurally compatible installed Module therefore requires configuration, not recompilation.
 
 With a valid binding, ordinary non-command text is mapped onto the configured default Operation through the existing owner-local invocation path. `/standard` maps onto the configured standard Operation through that same path. `/updates` invokes the configured Module-specific collection Operation and renders the returned Material; the application never receives or interprets Kernel reasoning output directly. There is no callback, generic continuation, event bus, scheduler or polling thread.
 
@@ -151,6 +169,8 @@ There is no generic Kernel `Capability<C,R>` action-dispatch path.
 
 The shipped owner-interaction Module is ordinary installed behavior. It may be CORE, but its invocation and reasoning behavior must be identical when CORE is absent.
 
+Its provider consumes the same public Module configuration boundary as an independent Module. The Module owns parsing for foreground/background token limits, timeouts, durable retry controls and optional reasoning location/latency preferences. With no scoped configuration it constructs exactly `OwnerInteractionSettings.defaults()`.
+
 `standard-prompt` performs immediate reasoning and creates response Material only, so it is a no-effect Operation.
 
 `fast-lane` creates durable Kernel reasoning work and persists Module-owned pending semantic state that continues beyond the foreground response. Its `durable-background-write` EffectProfile is `WRITE/AUTONOMOUS`.
@@ -171,7 +191,7 @@ A future domain Module that genuinely owns research/search behavior may depend o
 
 `roles.core`, when present, contains one ordinary installed `ModuleId`. CORE is only role lookup. MADRE also supports no CORE assignment, and a configured-but-absent CORE does not prevent boot.
 
-CORE does not alter invocation authority, Operation visibility, Security Algebra, local interaction presentation authority, reasoning installation, reasoning selection, scheduling or public-result rules. There is no CORE subtype or privileged registration path. The owner-local port is not a CORE port and is not exposed to a CORE Module.
+CORE does not alter invocation authority, Operation visibility, Security Algebra, local interaction presentation authority, Module configuration delivery, reasoning installation, reasoning selection, scheduling or public-result rules. There is no CORE subtype or privileged registration path. The owner-local port is not a CORE port and is not exposed to a CORE Module.
 
 ## Storage
 
@@ -185,4 +205,4 @@ The shipped owner-interaction Module separately reloads its pending semantic sta
 
 ## Provider environment
 
-MADRE configuration may describe provider-owned reasoning instances and explicit receiving Privacy/location/resource facts. Provider accounts, credentials, authentication flows, authorization, permissions, roles and sessions remain outside MADRE's domain model and do not become Security Algebra values.
+MADRE configuration may describe Module-owned installation settings and provider-owned reasoning instances. The application generically scopes Module configuration by canonical `ModuleId` and reasoning configuration by the reasoning provider namespace, while each installed artifact owns its own field semantics. Provider accounts, credentials, authentication flows, authorization, permissions, roles and sessions remain outside MADRE's domain model and do not become Security Algebra values.

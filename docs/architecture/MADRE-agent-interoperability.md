@@ -26,7 +26,7 @@ Runtime behavior is bound through responsibility-specific SDK interfaces:
 
 - `Operation<I,O>` implements one bounded declared Operation;
 - `ModuleInstance` associates one `ModuleDefinition` with exact executable bindings;
-- `ModuleProvider` materializes one installable executable Module from `ModuleContext`;
+- `ModuleProvider` declares one canonical installable `ModuleId` and materializes that executable Module from `ModuleContext` plus identity-scoped `ModuleProviderConfiguration`;
 - `ModuleRegistration` registers executable Module behavior;
 - `ModuleDirectory` exposes currently reachable public definitions;
 - `ModuleInvoker` invokes an exact installed `PUBLIC` Operation across the external/public boundary;
@@ -43,7 +43,36 @@ An installable Module is an ordinary JVM JAR containing a Java service provider 
 
 Shipped and independently built Modules use the same provider/registration route. Bundling, process placement, class-loader placement and CORE assignment confer no privilege.
 
-The independent verification Module is built in a separate Gradle build against only the published `madre-sdk` artifact. CI installs its JAR into a built distribution, discovers it and invokes its public Operation on both Windows and Linux.
+The independent verification Module is built in a separate Gradle build against published MADRE artifacts. CI installs its JAR into a built distribution, discovers it and invokes its public Operation on both Windows and Linux.
+
+## Module provider configuration contract
+
+`ModuleProvider` has two installation responsibilities that are deliberately public and small:
+
+```text
+moduleId() -> canonical ModuleId
+create(ModuleContext, ModuleProviderConfiguration) -> ModuleInstance
+```
+
+The declared identity is used before materialization. It is not derived from provider class name, JAR name, service discovery order, bundled/shipped status or CORE assignment. The returned `ModuleInstance.definition().id()` must equal the declared identity.
+
+`ModuleProviderConfiguration` is immutable and carries exactly one `ModuleId` plus read-only string key/value settings. It is not a schema language, secret store, dependency-injection container, account/session model or dynamic configuration service. The SDK imposes no Module-specific key names.
+
+Application properties use the generic form:
+
+```text
+modules.config[<canonical ModuleId>].<module-owned-key>=<value>
+```
+
+The exact identity appears between `[` and `]`. This delimiter is safe for every valid current `ModuleId`: the identity grammar permits letters, digits, dots, dashes and underscores but not square brackets. Consequently dotted identities are never split into guessed namespace segments, and identities that are prefixes of other identities remain independent.
+
+`madre-app` extracts only this generic namespace and hands each installed provider the keys inside its exact identity scope. Each provider owns supported-key validation, value parsing, typed configuration and omitted-value defaults. A key for an uninstalled Module identity is a startup error rather than an ignored typo.
+
+Provider identities are canonicalized before any materialization. Duplicate provider identities fail before provider code runs. Providers are materialized in canonical identity order and every returned instance validates its bindings before registration begins. Materialization/configuration failure therefore leaves no Module registered. If registration later fails, already-created registrations are closed in reverse order.
+
+CORE and local interaction presentation are not inputs to this contract. Changing `roles.core` or adding/removing `interaction.*` cannot change which Module configuration is delivered.
+
+The independently compiled `verification/sdk-consumer` consumes the contract directly and changes its observable `phd.module/inspect` output when `modules.config[phd.module].result-prefix` is present. With that configuration omitted it preserves the previous output exactly. It has no `madre-app` or Kernel implementation dependency.
 
 ## Canonical Operation execution
 
@@ -69,7 +98,7 @@ Convenient local text interaction is deliberately not part of the SDK contract. 
 
 The binding is configured with nominal installed identities in `interaction.*`. Resolution happens after Module discovery and reuses the generic operation/profile-selection rules. It validates that the configured Module exists; each configured Operation exists and is `PUBLIC`; each configured input Material type is Module-owned, declared and accepted; prompt/update Sensitivities are ordinary and reachable at the exact receiving Privacy; and all input and declared output Material used by the presentation are String/text types. A configured update path also requires its complete operation/material/payload/sensitivity tuple and validates that the payload decodes through the configured Material codec. Invalid bindings fail application startup.
 
-This validation is intentionally local to one presentation binding. It is not Module certification, a role hierarchy or a new SDK base type. `madre-app` production Java contains no concrete owner-interaction implementation reference or hard-coded shipped owner-interaction Module, Operation, Material or EffectProfile identity. The shipped example configuration may name those identities as installation policy.
+This validation is intentionally local to one presentation binding. It is not Module certification, a role hierarchy or a new SDK base type. `madre-app` production Java contains no concrete owner-interaction implementation reference or hard-coded shipped owner-interaction Module, Operation, Material, EffectProfile identity or configuration field. The shipped example configuration may name those identities and Module-owned settings as installation policy.
 
 When configured, ordinary non-command console text passes through the same canonical decode/call path and then `OwnerModuleInvoker`, so it remains owner-local. `/standard` is another configured owner-local mapping. `/updates` invokes only the configured Module-specific Operation; it does not expose Kernel result bytes or move interpretation into the application. The application performs no destructive update polling.
 
@@ -77,7 +106,7 @@ The current prompt Sensitivity is explicit console state initialized from config
 
 The generic `/invoke-owner` and `/invoke-public` paths remain distinct and available. Ordinary text does not alias PUBLIC. The legacy `/invoke` alias remains PUBLIC. With no configured interaction binding, the generic console remains the complete application surface.
 
-`interaction.module` and `roles.core` are independent. CORE does not supply the owner-local port and is not consulted by binding resolution. A Module's use as the local presentation target therefore creates no Module-facing authority or subtype.
+`interaction.module` and `roles.core` are independent. CORE does not supply the owner-local port and is not consulted by binding resolution. A Module's use as the local presentation target therefore creates no Module-facing authority or subtype. Neither setting changes the provider configuration delivered to that Module.
 
 ## PUBLIC Operation boundary
 
@@ -123,7 +152,7 @@ The application-level `/updates` presentation does not change that ownership. It
 
 CORE is an optional installation role containing one ordinary `ModuleId`. If configured and installed, the live registry resolves it. If absent or unresolved, MADRE still boots.
 
-CORE changes no Module definition, visibility, owner-local/public invocation authority, local-presentation authority, algebraic value, reasoning privilege, scheduling privilege or class hierarchy.
+CORE changes no Module definition, visibility, owner-local/public invocation authority, local-presentation authority, Module configuration semantics, algebraic value, reasoning privilege, scheduling privilege or class hierarchy.
 
 ## Codecs
 

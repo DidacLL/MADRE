@@ -32,11 +32,31 @@ A **reasoning adapter** is an independently installable JVM artifact that provid
 
 **Kernel** owns the shared runtime pieces that genuinely need central coordination: live executable Module registration and host invocation boundaries, optional CORE-role lookup, reasoning-mechanism selection, reasoning resources, immediate/durable reasoning, reasoning retry/cancellation/result delivery and ordinary runtime logging.
 
-The **SDK** supplies the strongly typed construction model and responsibility-specific ports. Domain objects are programmed as Java objects; JSON is only a boundary representation.
+The **SDK** supplies the strongly typed construction model and responsibility-specific ports, including the public executable Module provider/configuration boundary. Domain objects are programmed as Java objects; JSON is only a boundary representation.
 
 Modules and reasoning mechanisms are distinct installation concepts. A Module owns application/domain semantics. A ReasoningCapability realizes one reasoning computation mechanism. They use separate installation directories, identities and service-provider contracts. CORE designation has no relation to reasoning installation or selection privilege.
 
 Search, files, databases, devices and other application I/O do not become Kernel capabilities merely because they are external. SearXNG is presently a reusable Java client, not a Kernel reasoning mechanism and not a shipped standalone WebSearch Module.
+
+## Module installation configuration
+
+Executable Modules are discovered as ordinary JVM JARs exposing `ModuleProvider`. Each provider declares its canonical `ModuleId` before materialization and receives an immutable `ModuleProviderConfiguration` scoped to that same identity when `create` is called.
+
+The application owns only generic extraction, scoping and delivery. Owner properties use:
+
+```text
+modules.config[<canonical ModuleId>].<module-owned-key>=<value>
+```
+
+The brackets delimit the identity structurally. Valid `ModuleId` values cannot contain `[` or `]`, while dots, dashes and underscores are valid identity characters, so configuration is matched against the exact canonical identity rather than split on punctuation or inferred from provider class names, JAR names, discovery order, shipped status or CORE assignment.
+
+`madre-app` has no table or parser for Module-specific keys. The provider/Module artifact owns interpretation, validation, defaults and conversion to typed settings. Omitted configuration is delivered as an empty configuration for that exact Module. An explicit malformed Module setting is a startup error rather than a fallback. Configuration for an identity that is not installed is also rejected rather than silently ignored.
+
+Provider identity is part of the installation invariant. Duplicate providers for one canonical `ModuleId` are rejected before materialization; a provider that materializes a different Module identity is rejected before registration. All providers are materialized and validated before any Module is registered, and a later registration failure rolls back earlier registrations. A failed startup therefore does not leave an accidentally reachable partial Module installation.
+
+Module configuration is independent of `roles.core` and `interaction.*`. CORE creates no configuration privilege, and the application presentation binding neither supplies nor overrides Module-owned settings.
+
+The shipped owner-interaction Module uses this same public boundary for its existing reasoning limits, timeouts, retry behavior and reasoning preferences. Omitting its `modules.config[...]` entries preserves `OwnerInteractionSettings.defaults()`.
 
 ## Reasoning installation
 
@@ -175,13 +195,13 @@ Kernel invokes the selected mechanism with only the reasoning computation and ex
 
 ## Live Module reachability
 
-Executable Modules are installed as ordinary JVM JARs that provide `ModuleProvider` using Java's service-provider mechanism. A `ModuleProvider` creates a `ModuleInstance`: one canonical `ModuleDefinition` plus exact executable bindings for every declared Operation.
+Executable Modules are installed as ordinary JVM JARs that provide `ModuleProvider` using Java's service-provider mechanism. A provider first declares the canonical `ModuleId` by which installation configuration is scoped, then creates a `ModuleInstance` from `ModuleContext` plus immutable `ModuleProviderConfiguration`: one canonical `ModuleDefinition` plus exact executable bindings for every declared Operation.
 
 The live registry is rebuilt at boot. Public cross-Module callers discover declarations and invoke exact installed `PUBLIC` Operations through `ModuleInvoker` without depending on the concrete Module implementation class. The host/application can additionally use `OwnerModuleInvoker` for owner-local invocation; this port is deliberately not Module-facing.
 
 `OperationBinding.invoke` validates Module-created output against the declared type, owner and maximum Sensitivity before any receiver-specific boundary is applied. `invokePublic` preserves that internal validation and then performs and validates the mandatory semantic public transformation.
 
-Registry membership and CORE assignment confer no privilege.
+Registry membership, Module configuration and CORE assignment confer no privilege.
 
 ## Persistence and external mechanics
 
