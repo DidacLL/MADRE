@@ -1,5 +1,7 @@
-# CORE is optional and is only an ordinary installed Module identity. Remove this line
-# to run with no CORE assignment.
+# CORE identifies the ordinary installed Module intended to lead MADRE's default owner
+# interaction/coordinator semantics. CORE confers no privilege. The current runtime only resolves
+# this optional identity; it does not yet use CORE to drive the console or structurally qualify
+# the Module. Remove this line to run with no CORE assignment.
 roles.core=io.github.didacll.madre.owner-interaction
 kernel.database=var/kernel-work.sqlite
 kernel.result-retention-seconds=86400
@@ -9,11 +11,14 @@ modules.state-directory=var/module-state
 # Reasoning mechanisms are discovered independently from sibling reasoning/ JARs by default.
 # reasoning.directory=/absolute/path/to/madre-reasoning
 
-# Optional owner Module configuration is delivered generically through the public Module-provider
-# installation boundary. The exact syntax is modules.config[<canonical ModuleId>].<module-owned-key>.
+# Current developer-facing Module configuration is delivered generically through the public
+# Module-provider installation boundary. The exact syntax is
+# modules.config[<canonical ModuleId>].<module-owned-key>.
 # Square brackets are structural delimiters; valid ModuleId values cannot contain them, so dotted,
 # dashed and underscored Module identities are scoped exactly rather than parsed by dot segments.
-# madre-app does not know the keys below: the owner-interaction Module owns their validation/defaults.
+# madre-app does not know the keys below: the owner-interaction Module owns validation/defaults.
+# A future generic owner configurator must obtain the minimum provider-owned typed metadata it
+# needs from installed artifacts rather than hard-code these keys. No such metadata API exists yet.
 # Omitting every line for this Module preserves OwnerInteractionSettings.defaults().
 # modules.config[io.github.didacll.madre.owner-interaction].foreground-maximum-tokens=256
 # modules.config[io.github.didacll.madre.owner-interaction].background-maximum-tokens=512
@@ -27,9 +32,10 @@ modules.state-directory=var/module-state
 # modules.config[io.github.didacll.madre.owner-interaction].background-location=LOCAL
 # modules.config[io.github.didacll.madre.owner-interaction].background-maximum-latency-ms=30000
 
-# Optional local text presentation binding. This is madre-app installation policy over one ordinary
-# installed Module and is independent of roles.core. Remove all interaction.* lines for the generic
-# low-level console. The configured default Sensitivity is explicit; it is never inferred from text.
+# Transitional local text presentation binding used by the current MadreMain developer console.
+# Today this application-local wiring is resolved independently of roles.core; that is current
+# executable behavior, not the target product definition of CORE. Remove all interaction.* lines
+# for the generic low-level console. The configured default Sensitivity is explicit.
 interaction.module=io.github.didacll.madre.owner-interaction
 interaction.default-operation=fast-lane
 interaction.standard-operation=standard-prompt
@@ -44,7 +50,8 @@ interaction.updates-sensitivity=S1
 # or empty, and every installed provider may remain disabled; MADRE still boots.
 resources.model-slot=1
 
-# Provider-owned configuration supports multiple named AF_UNIX llama.cpp instances.
+# Current provider-owned developer configuration supports multiple named AF_UNIX llama.cpp
+# instances. A future generic configurator must not hard-code these provider-specific fields.
 # Merely installing the adapter JAR never enables an instance.
 reasoning.llamacpp-unix.instances=primary
 reasoning.llamacpp-unix.primary.enabled=false
