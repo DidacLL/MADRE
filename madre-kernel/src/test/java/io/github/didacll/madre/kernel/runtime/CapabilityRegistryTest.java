@@ -38,12 +38,12 @@ final class CapabilityRegistryTest {
 
     @Test void selectsOnlyComposableAndAvailablePhysicalMechanismsDeterministically() {
         CapabilityRegistry registry = new CapabilityRegistry(new ResourceCoordinator(Map.of(SLOT, 1L)));
-        registry.register(capability("unknown", Privacy.P5, Integrity.I5,
+        registry.register(capability("unknown", Privacy.SECRET, Integrity.I5,
                 CapabilityAvailability.UNKNOWN), 100);
-        registry.register(capability("unavailable", Privacy.P5, Integrity.I5,
+        registry.register(capability("unavailable", Privacy.SECRET, Integrity.I5,
                 CapabilityAvailability.UNAVAILABLE), 100);
-        registry.register(capability("z", Privacy.P5, Integrity.I5, CapabilityAvailability.AVAILABLE), 1);
-        registry.register(capability("a", Privacy.P3, Integrity.I3, CapabilityAvailability.AVAILABLE), 1);
+        registry.register(capability("z", Privacy.SECRET, Integrity.I5, CapabilityAvailability.AVAILABLE), 1);
+        registry.register(capability("a", Privacy.LOCAL, Integrity.I3, CapabilityAvailability.AVAILABLE), 1);
         WorkRequest<String, String> request = request(Sensitivity.S4, Optional.of(Risk.R4));
         try (CapabilityRegistry.Selection<String, String> selection = registry.select(request).orElseThrow()) {
             assertEquals("z", selection.capability().manifest().id().value());
@@ -55,7 +55,7 @@ final class CapabilityRegistryTest {
     @Test void onePhysicalJavaContractCannotDriftAcrossRegisteredCapabilities() {
         CapabilityRegistry registry = new CapabilityRegistry(
                 new ResourceCoordinator(Map.of(SLOT, 1L)));
-        registry.register(capability("first", Privacy.P5, Integrity.I5,
+        registry.register(capability("first", Privacy.SECRET, Integrity.I5,
                 CapabilityAvailability.AVAILABLE), 1);
         PhysicalContract<String, String> conflicting = new PhysicalContract<>(
                 "other.v1", String.class, String.class, CODEC, CODEC);
@@ -73,7 +73,7 @@ final class CapabilityRegistryTest {
     private static Capability<String, String> capability(String id,
             PhysicalContract<String, String> contract) {
         CapabilityManifest<String, String> manifest = new CapabilityManifest<>(
-                new CapabilityId(id), contract, Privacy.P5, Optional.of(Integrity.I5),
+                new CapabilityId(id), contract, Privacy.SECRET, Optional.of(Integrity.I5),
                 PhysicalLocation.LOCAL, Duration.ofMillis(10),
                 List.of(new ResourceClaim(SLOT, 1)));
         return capability(manifest, CapabilityAvailability.AVAILABLE);
