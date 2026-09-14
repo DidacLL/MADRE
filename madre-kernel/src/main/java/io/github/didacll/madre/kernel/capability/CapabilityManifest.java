@@ -15,6 +15,12 @@ public record CapabilityManifest<C, R>(CapabilityId id, PhysicalContract<C, R> c
     public CapabilityManifest {
         Objects.requireNonNull(id, "id"); Objects.requireNonNull(contract, "contract");
         Objects.requireNonNull(receivingPrivacy, "receivingPrivacy"); physicalIntegrity = Objects.requireNonNull(physicalIntegrity, "physicalIntegrity");
+        if (receivingPrivacy == Privacy.SYSTEM_RESERVED) {
+            throw new IllegalArgumentException("SYSTEM_RESERVED Privacy is not an installed Capability fact");
+        }
+        if (physicalIntegrity.filter(value -> value == Integrity.SYSTEM_RESERVED).isPresent()) {
+            throw new IllegalArgumentException("SYSTEM_RESERVED Integrity is not an installed Capability fact");
+        }
         Objects.requireNonNull(location, "location"); Objects.requireNonNull(expectedLatency, "expectedLatency");
         if (expectedLatency.isNegative() || expectedLatency.isZero()) throw new IllegalArgumentException("expectedLatency must be positive");
         resources = List.copyOf(resources);

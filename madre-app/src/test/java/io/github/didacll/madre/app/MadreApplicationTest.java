@@ -34,7 +34,7 @@ final class MadreApplicationTest {
         properties.setProperty("connector.llamacpp-unix.socket",
                 temporary.resolve("llama.sock").toAbsolutePath().toString());
         properties.setProperty("connector.llamacpp-unix.model", "test-model");
-        properties.setProperty("connector.llamacpp-unix.privacy", "P5");
+        properties.setProperty("connector.llamacpp-unix.privacy", "SECRET");
         properties.setProperty("connector.llamacpp-unix.integrity", "I5");
         properties.setProperty("connector.llamacpp-unix.expected-latency-ms", "100");
         properties.setProperty("connector.llamacpp-unix.preference", "200");
@@ -47,9 +47,9 @@ final class MadreApplicationTest {
         }
     }
 
-    @Test void acceptsCanonicalP1AndP2PrivacyConfigurationRanks() {
+    @Test void acceptsSemanticAndRankPrivacyConfigurationNames() {
         Properties properties = properties();
-        properties.setProperty("connector.llamacpp.privacy", "P1");
+        properties.setProperty("connector.llamacpp.privacy", "PUBLIC");
         properties.setProperty("resources.network-slot", "1");
         properties.setProperty("connector.searxng.enabled", "true");
         properties.setProperty("connector.searxng.id", "test-search");
@@ -65,6 +65,12 @@ final class MadreApplicationTest {
                     .contractForCommand(WebSearchCommand.class, WebSearchResult.class)
                     .isPresent());
         }
+    }
+
+    @Test void rejectsSystemReservedPrivacyAsInstalledConnectorFact() {
+        Properties properties = properties();
+        properties.setProperty("connector.llamacpp.privacy", "SYSTEM_RESERVED");
+        assertThrows(IllegalArgumentException.class, () -> MadreApplication.start(properties));
     }
 
     @Test void rejectsRegisteredModuleThatDoesNotProvideCoreInteractionBehavior() {
@@ -91,7 +97,7 @@ final class MadreApplicationTest {
         properties.setProperty("connector.llamacpp.id", "test-llama");
         properties.setProperty("connector.llamacpp.endpoint", "http://127.0.0.1:1/");
         properties.setProperty("connector.llamacpp.model", "test-model");
-        properties.setProperty("connector.llamacpp.privacy", "P5");
+        properties.setProperty("connector.llamacpp.privacy", "SECRET");
         properties.setProperty("connector.llamacpp.integrity", "I5");
         properties.setProperty("connector.llamacpp.expected-latency-ms", "100");
         properties.setProperty("connector.llamacpp.preference", "100");

@@ -21,6 +21,9 @@ public record AgentDefinition(AgentId id, String purpose, Integrity integrity, S
         }
         purpose = purpose.strip();
         Objects.requireNonNull(integrity, "integrity");
+        if (integrity == Integrity.SYSTEM_RESERVED) {
+            throw new IllegalArgumentException("SYSTEM_RESERVED Integrity is not an ordinary Agent value");
+        }
         Set<SkillId> copiedSkills = Set.copyOf(skills);
         Map<WorkflowId, WorkflowDefinition> copiedWorkflows = Map.copyOf(workflows);
         Set<OperationId> copiedOperations = Set.copyOf(operations);
@@ -47,7 +50,7 @@ public record AgentDefinition(AgentId id, String purpose, Integrity integrity, S
                 .map(operationId -> Objects.requireNonNull(definitions.get(operationId),
                         "unresolved Operation " + operationId))
                 .flatMap(operation -> operation.acceptedMaterial().values().stream())
-                .reduce(Privacy.P5, Privacy::combine);
+                .reduce(Privacy.SECRET, Privacy::combine);
     }
 
     public java.util.Optional<Sensitivity> effectiveSensitivity(

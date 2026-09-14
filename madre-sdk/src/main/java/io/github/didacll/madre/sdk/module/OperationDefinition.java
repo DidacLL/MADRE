@@ -29,6 +29,12 @@ public final class OperationDefinition<I, O> {
         this.producedMaterial = Map.copyOf(producedMaterial);
         this.effectProfiles = Map.copyOf(effectProfiles);
         if (this.acceptedMaterial.isEmpty()) throw new IllegalArgumentException("an Operation must accept Material");
+        if (this.acceptedMaterial.containsValue(Privacy.SYSTEM_RESERVED)) {
+            throw new IllegalArgumentException("SYSTEM_RESERVED Privacy is not an ordinary Operation boundary");
+        }
+        if (this.producedMaterial.containsValue(Sensitivity.SYSTEM_RESERVED)) {
+            throw new IllegalArgumentException("SYSTEM_RESERVED Sensitivity is not an ordinary Operation result");
+        }
         if (!this.effectProfiles.entrySet().stream().allMatch(entry ->
                 entry.getKey().equals(entry.getValue().id())
                         && entry.getKey().operationId().equals(this.id))) {

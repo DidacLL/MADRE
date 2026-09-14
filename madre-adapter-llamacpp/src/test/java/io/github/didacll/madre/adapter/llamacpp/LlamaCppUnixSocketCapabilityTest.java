@@ -111,13 +111,13 @@ final class LlamaCppUnixSocketCapabilityTest {
     @Test void configurationRequiresAbsoluteSocketPath() {
         assertThrows(IllegalArgumentException.class,
                 () -> new LlamaCppUnixSocketConfiguration(new CapabilityId("relative"),
-                        Path.of("llama.sock"), "model", Privacy.P5, Integrity.I5,
+                        Path.of("llama.sock"), "model", Privacy.SECRET, Integrity.I5,
                         Duration.ofSeconds(1), List.of()));
     }
 
     private LlamaCppUnixSocketConfiguration configuration(Path socket) {
         return new LlamaCppUnixSocketConfiguration(new CapabilityId("llama-uds"), socket,
-                "installed-model", Privacy.P5, Integrity.I5, Duration.ofSeconds(1), List.of());
+                "installed-model", Privacy.SECRET, Integrity.I5, Duration.ofSeconds(1), List.of());
     }
 
     private static boolean unixDomainSocketsSupported() {

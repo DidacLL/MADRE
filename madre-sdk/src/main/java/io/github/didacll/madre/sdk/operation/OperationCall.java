@@ -23,6 +23,10 @@ public final class OperationCall<I, O> {
         this.effectProfile = Objects.requireNonNull(effectProfile, "effectProfile");
         this.input = Objects.requireNonNull(input, "input");
         List<Integrity> participants = List.copyOf(nonUserCausalParticipants);
+        if (participants.contains(Integrity.SYSTEM_RESERVED)) {
+            throw new IllegalArgumentException(
+                    "SYSTEM_RESERVED Integrity is not an ordinary causal participant value");
+        }
 
         Privacy receiver = operation.acceptedMaterial().get(input.type().id());
         if (receiver == null || !input.sensitivity().canReach(receiver)) {

@@ -21,6 +21,35 @@ The current artifact boundaries are:
 - `madre-module-web-search`: ordinary WebSearch Module;
 - `madre-app`: installable assembly and replaceable local console.
 
+## Security Algebra baseline
+
+All five nominal Security Algebra carriers use ranks 0 through 5. Rank 0 is
+`SYSTEM_RESERVED` for every carrier and is not an ordinary Module, Agent, Operation,
+Material, EffectProfile, causal-participant or installed-Capability value. Ordinary
+Sensitivity, Integrity, Risk and Autonomy retain their rank names `S1..S5`, `I1..I5`,
+`R1..R5` and `A1..A5`.
+
+Privacy uses semantic domain names rather than placeholder rank names:
+
+```text
+0  SYSTEM_RESERVED
+1  PUBLIC
+2  UNKNOWN
+3  LOCAL
+4  MODULE
+5  SECRET
+```
+
+Installation configuration may use `P1..P5` as textual rank notation, mapping to the
+semantic Privacy values above. It may also use the semantic names directly. Rank 0 is
+not accepted as an ordinary connector fact.
+
+The algebraic rules remain intrinsic to the values: Sensitivity combines by maximum,
+Privacy and Integrity by minimum, information reaches a receiver iff
+`Sensitivity <= Privacy`, and one EffectProfile's Risk/Autonomy are checked only
+against its actual causal participants and physical realizers. No policy evaluator,
+security service, decision wrapper or exception path is introduced by this scale.
+
 Modules provide Skills. Agents own Workflows. The current Workflow is an ordered
 sequence of Operations triggered together as semantic behavior; it is not a Kernel
 workflow engine.
@@ -148,7 +177,8 @@ cross-platform transport or execution feature.
 
 Live WebSearch acceptance remains incomplete until a real SearXNG JSON endpoint is
 available. Complete live `deep-search` additionally requires a real available
-text-inference Capability in the same run.
+text-inference Capability in the same run. Any live acceptance conclusion must be
+re-run after this Security Algebra correction before being treated as current evidence.
 
 Kernel SQLite remains restricted to physical work, scheduling, attempts, delivery
 state and opaque payloads. Semantic search results, Material, workflows and

@@ -73,7 +73,7 @@ final class ImmediateReservationTest {
         PhysicalContract<String, String> contract = new PhysicalContract<>("blocking.v1",
                 String.class, String.class, CODEC, CODEC);
         CapabilityManifest<String, String> manifest = new CapabilityManifest<>(
-                new CapabilityId("blocking"), contract, Privacy.P5, Optional.of(Integrity.I5),
+                new CapabilityId("blocking"), contract, Privacy.SECRET, Optional.of(Integrity.I5),
                 PhysicalLocation.LOCAL, Duration.ofMillis(10),
                 List.of(new ResourceClaim(MODEL, 1)));
         return new Capability<>() {

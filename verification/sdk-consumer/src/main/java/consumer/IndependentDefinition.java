@@ -35,7 +35,7 @@ public final class IndependentDefinition {
         OperationId operationId = new OperationId(id, "inspect");
         OperationDefinition<String, Void> operation = new OperationDefinition<>(operationId,
                 "Inspect a note", OperationVisibility.PUBLIC,
-                Map.of(note.id(), Privacy.P5), Map.of(), Map.of());
+                Map.of(note.id(), Privacy.SECRET), Map.of(), Map.of());
         AgentId agentId = new AgentId(id, "researcher");
         AgentDefinition agent = new AgentDefinition(agentId, "Research behavior",
                 Integrity.I4, Set.of(), Map.of(), Set.of(operationId));

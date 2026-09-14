@@ -36,7 +36,7 @@ final class LlamaCppCapabilityTest {
         try {
             LlamaCppCapability capability = new LlamaCppCapability(new LlamaCppConfiguration(new CapabilityId("llama"),
                     java.net.URI.create("http://127.0.0.1:" + server.getAddress().getPort()), "installed-model",
-                    Privacy.P5, Integrity.I5, java.time.Duration.ofMillis(10), List.of()));
+                    Privacy.SECRET, Integrity.I5, java.time.Duration.ofMillis(10), List.of()));
             assertEquals(CapabilityAvailability.AVAILABLE, capability.availability());
             TextInferenceResult result = capability.execute(new TextInferenceCommand("hello", 16, List.of()),
                     new ExecutionContext(Instant.now().plusSeconds(2), () -> false, 1));
@@ -48,7 +48,7 @@ final class LlamaCppCapabilityTest {
         } finally { server.stop(0); }
 
         LlamaCppCapability unavailable = new LlamaCppCapability(new LlamaCppConfiguration(new CapabilityId("closed"),
-                java.net.URI.create("http://127.0.0.1:1"), "model", Privacy.P5, Integrity.I5, java.time.Duration.ofMillis(10), List.of()));
+                java.net.URI.create("http://127.0.0.1:1"), "model", Privacy.SECRET, Integrity.I5, java.time.Duration.ofMillis(10), List.of()));
         CapabilityException failure = assertThrows(CapabilityException.class, () -> unavailable.execute(
                 new TextInferenceCommand("hello", 1, List.of()), new ExecutionContext(Instant.now().plusSeconds(1), () -> false, 1)));
         assertEquals(PhysicalFailureCategory.CONNECTION, failure.category());
@@ -58,9 +58,9 @@ final class LlamaCppCapabilityTest {
     @Test void localHttpAdapterRejectsRemoteEndpoints() {
         assertThrows(IllegalArgumentException.class, () -> new LlamaCppConfiguration(
                 new CapabilityId("remote"), java.net.URI.create("http://192.0.2.10:8080"),
-                "model", Privacy.P5, Integrity.I5, java.time.Duration.ofMillis(10), List.of()));
+                "model", Privacy.SECRET, Integrity.I5, java.time.Duration.ofMillis(10), List.of()));
         assertThrows(IllegalArgumentException.class, () -> new LlamaCppConfiguration(
                 new CapabilityId("hostname"), java.net.URI.create("http://localhost:8080"),
-                "model", Privacy.P5, Integrity.I5, java.time.Duration.ofMillis(10), List.of()));
+                "model", Privacy.SECRET, Integrity.I5, java.time.Duration.ofMillis(10), List.of()));
     }
 }

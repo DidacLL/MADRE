@@ -97,7 +97,7 @@ final class DurableExecutionTest {
 
     private static CapabilityRegistry registry(CapabilityAvailability availability, AtomicInteger calls) {
         CapabilityRegistry registry = new CapabilityRegistry(new ResourceCoordinator(Map.of()));
-        CapabilityManifest<String, String> manifest = new CapabilityManifest<>(new CapabilityId("fixture"), CONTRACT, Privacy.P5, Optional.of(Integrity.I5),
+        CapabilityManifest<String, String> manifest = new CapabilityManifest<>(new CapabilityId("fixture"), CONTRACT, Privacy.SECRET, Optional.of(Integrity.I5),
                 PhysicalLocation.LOCAL, Duration.ofMillis(1), List.of());
         registry.register(new Capability<String, String>() {
             @Override public CapabilityManifest<String, String> manifest() { return manifest; }

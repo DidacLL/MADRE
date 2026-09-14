@@ -16,7 +16,7 @@ connector.llamacpp-unix.enabled=false
 connector.llamacpp-unix.id=local-llama-uds
 connector.llamacpp-unix.socket=/absolute/path/madre-runtime/llama-server.sock
 connector.llamacpp-unix.model=local-model
-connector.llamacpp-unix.privacy=P5
+connector.llamacpp-unix.privacy=SECRET
 connector.llamacpp-unix.integrity=I5
 connector.llamacpp-unix.expected-latency-ms=30000
 connector.llamacpp-unix.preference=200
@@ -28,7 +28,7 @@ connector.llamacpp.enabled=false
 connector.llamacpp.id=local-llama-http
 connector.llamacpp.endpoint=http://127.0.0.1:8080/
 connector.llamacpp.model=local-model
-connector.llamacpp.privacy=P5
+connector.llamacpp.privacy=SECRET
 connector.llamacpp.integrity=I5
 connector.llamacpp.expected-latency-ms=30000
 connector.llamacpp.preference=100
@@ -39,18 +39,19 @@ connector.openai-compatible.enabled=false
 connector.openai-compatible.id=compatible-text
 connector.openai-compatible.endpoint=http://127.0.0.1:8081/v1/
 connector.openai-compatible.model=compatible-model
-connector.openai-compatible.privacy=P5
+connector.openai-compatible.privacy=SECRET
 connector.openai-compatible.integrity=I5
 connector.openai-compatible.location=LOCAL
 connector.openai-compatible.expected-latency-ms=30000
 connector.openai-compatible.preference=50
 
 # Optional SearXNG JSON search endpoint. The receiving Privacy and Integrity are
-# installation facts; endpoint locality never derives either value.
+# installation facts; endpoint locality never derives either value. UNKNOWN means the
+# handling is not public but is outside the owner's stronger local/module/secret boundaries.
 connector.searxng.enabled=false
 connector.searxng.id=web-search
 connector.searxng.endpoint=http://127.0.0.1:8888/search
-connector.searxng.privacy=P2
+connector.searxng.privacy=UNKNOWN
 connector.searxng.integrity=I2
 connector.searxng.expected-latency-ms=5000
 connector.searxng.preference=100

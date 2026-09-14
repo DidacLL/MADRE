@@ -203,11 +203,11 @@ public final class MadreApplication implements AutoCloseable {
         return switch (required(properties, key)) {
             case "P1", "PUBLIC" -> Privacy.PUBLIC;
             case "P2", "UNKNOWN" -> Privacy.UNKNOWN;
-            case "P3" -> Privacy.P3;
-            case "P4" -> Privacy.P4;
-            case "P5" -> Privacy.P5;
+            case "P3", "LOCAL" -> Privacy.LOCAL;
+            case "P4", "MODULE" -> Privacy.MODULE;
+            case "P5", "SECRET" -> Privacy.SECRET;
             default -> throw new IllegalArgumentException(
-                    key + " must be one of P1, P2, P3, P4 or P5");
+                    key + " must be one of PUBLIC/P1, UNKNOWN/P2, LOCAL/P3, MODULE/P4 or SECRET/P5");
         };
     }
 

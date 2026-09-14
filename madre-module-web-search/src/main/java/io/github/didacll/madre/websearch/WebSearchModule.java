@@ -243,12 +243,12 @@ public final class WebSearchModule {
     private static ModuleDefinition createDefinition() {
         OperationDefinition<String, SearchResultSet> search = new OperationDefinition<>(
                 SINGLE_SEARCH, "Search the live web and interpret physical hits as research sources",
-                OperationVisibility.PUBLIC, Map.of(SEARCH_QUERY.id(), Privacy.P5),
+                OperationVisibility.PUBLIC, Map.of(SEARCH_QUERY.id(), Privacy.SECRET),
                 Map.of(SEARCH_RESULTS.id(), Sensitivity.S5),
                 Map.of(SEARCH_PROFILE.id(), SEARCH_PROFILE));
         OperationDefinition<String, String> review = new OperationDefinition<>(
                 REVIEW_SEARCHES, "Review joined search result Material with bounded inference",
-                OperationVisibility.PRIVATE, Map.of(RESEARCH_CORPUS.id(), Privacy.P5),
+                OperationVisibility.PRIVATE, Map.of(RESEARCH_CORPUS.id(), Privacy.SECRET),
                 Map.of(RESEARCH_REVIEW.id(), Sensitivity.S5),
                 Map.of(REVIEW_PROFILE.id(), REVIEW_PROFILE));
         SkillDefinition research = new SkillDefinition(RESEARCH_SKILL,

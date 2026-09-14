@@ -11,6 +11,9 @@ public record Material<T>(MaterialId id, MaterialType<T> type, T payload, Sensit
         Objects.requireNonNull(type, "type");
         Objects.requireNonNull(payload, "payload");
         Objects.requireNonNull(sensitivity, "sensitivity");
+        if (sensitivity == Sensitivity.SYSTEM_RESERVED) {
+            throw new IllegalArgumentException("SYSTEM_RESERVED Sensitivity is not ordinary Material");
+        }
         if (!type.javaType().isInstance(payload)) throw new IllegalArgumentException("payload does not match material type");
     }
 }

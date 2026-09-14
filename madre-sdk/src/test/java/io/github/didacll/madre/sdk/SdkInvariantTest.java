@@ -72,12 +72,15 @@ final class SdkInvariantTest {
                 Risk.R3, Autonomy.A2);
         OperationDefinition<String, String> operation = new OperationDefinition<>(operationId,
                 "Run bounded behavior", OperationVisibility.PUBLIC,
-                Map.of(type.id(), Privacy.P3), Map.of(type.id(), Sensitivity.S3),
+                Map.of(type.id(), Privacy.LOCAL), Map.of(type.id(), Sensitivity.S3),
                 Map.of(profile.id(), profile));
         OperationCall<String, String> call = OperationCall.withEffect(
                 operation, profile, input, List.of(Integrity.I2));
         assertThrows(IllegalArgumentException.class, () ->
                 OperationCall.withEffect(operation, profile, input, List.of(Integrity.I1)));
+        assertThrows(IllegalArgumentException.class, () ->
+                OperationCall.withEffect(operation, profile, input,
+                        List.of(Integrity.SYSTEM_RESERVED)));
         Material<String> undeclaredSensitivity = new Material<>(
                 new MaterialId(owner, "output"), type, "result", Sensitivity.S4);
         assertThrows(IllegalArgumentException.class,
@@ -92,7 +95,7 @@ final class SdkInvariantTest {
                 "hello", Sensitivity.S3);
         OperationDefinition<String, String> operation = new OperationDefinition<>(
                 new OperationId(owner, "read"), "Read text", OperationVisibility.PRIVATE,
-                Map.of(type.id(), Privacy.P3), Map.of(type.id(), Sensitivity.S3), Map.of());
+                Map.of(type.id(), Privacy.LOCAL), Map.of(type.id(), Sensitivity.S3), Map.of());
         OperationCall<String, String> call = OperationCall.withoutEffect(operation, input);
 
         WorkRequest<String, String> request = WorkRequest.immediate(call, "physical",
@@ -111,7 +114,7 @@ final class SdkInvariantTest {
         assertEquals(agent.id(), workflow.id().agentId());
         assertEquals(List.of(workflow.operations().get(0), workflow.operations().get(0)),
                 workflow.operations());
-        assertEquals(Privacy.P3, agent.effectivePrivacy(definition.operations()));
+        assertEquals(Privacy.LOCAL, agent.effectivePrivacy(definition.operations()));
         assertEquals(Sensitivity.S4, definition.effectiveSensitivity(List.of()).orElseThrow());
         ModuleDefinitionJsonCodec codec = new ModuleDefinitionJsonCodec(
                 (id, contentType) -> definition.materialTypes().get(id));
@@ -123,6 +126,30 @@ final class SdkInvariantTest {
                 decodedAgent.workflows().get(workflow.id()).operations());
         assertThrows(CodecException.class, () -> codec.decode(
                 codec.encode(definition).replaceFirst("\\{", "{\"metadata\":{},")));
+    }
+
+    @Test void systemReservedValuesAreRejectedByOrdinarySdkObjects() {
+        ModuleId owner = new ModuleId("owner.module");
+        MaterialType<String> type = new MaterialType<>(new MaterialTypeId(owner, "text"),
+                String.class, "text/plain", STRINGS);
+        OperationId operationId = new OperationId(owner, "run");
+
+        assertThrows(IllegalArgumentException.class, () -> new Material<>(
+                new MaterialId(owner, "system"), type, "value", Sensitivity.SYSTEM_RESERVED));
+        assertThrows(IllegalArgumentException.class, () -> new OperationDefinition<>(operationId,
+                "Reserved input", OperationVisibility.PRIVATE,
+                Map.of(type.id(), Privacy.SYSTEM_RESERVED), Map.of(type.id(), Sensitivity.S1),
+                Map.of()));
+        assertThrows(IllegalArgumentException.class, () -> new OperationDefinition<>(operationId,
+                "Reserved output", OperationVisibility.PRIVATE,
+                Map.of(type.id(), Privacy.PUBLIC),
+                Map.of(type.id(), Sensitivity.SYSTEM_RESERVED), Map.of()));
+        assertThrows(IllegalArgumentException.class, () -> new EffectProfile(
+                new EffectProfileId(operationId, "reserved"),
+                Risk.SYSTEM_RESERVED, Autonomy.A1));
+        assertThrows(IllegalArgumentException.class, () -> new AgentDefinition(
+                new AgentId(owner, "reserved"), "Reserved agent", Integrity.SYSTEM_RESERVED,
+                Set.of(), Map.of(), Set.of(operationId)));
     }
 
     @Test void agentRejectsWorkflowOwnedByAnotherAgent() {
@@ -143,7 +170,7 @@ final class SdkInvariantTest {
                 String.class, "text/plain", STRINGS);
         OperationId operationId = new OperationId(owner, "answer");
         OperationDefinition<String, String> operation = new OperationDefinition<>(operationId,
-                "Answer text", OperationVisibility.PUBLIC, Map.of(type.id(), Privacy.P3),
+                "Answer text", OperationVisibility.PUBLIC, Map.of(type.id(), Privacy.LOCAL),
                 Map.of(type.id(), Sensitivity.S4), Map.of());
         AgentId agentId = new AgentId(owner, "interaction");
         WorkflowId workflowId = new WorkflowId(agentId, "repeat-answer");
