@@ -14,6 +14,7 @@ import java.util.Objects;
 import java.util.Properties;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.function.Function;
 
 /** Generic identity-scoped materialization of owner-installed Module providers. */
 final class ModuleInstaller {
@@ -22,9 +23,10 @@ final class ModuleInstaller {
     private ModuleInstaller() { }
 
     static List<ModuleRegistration.Registration> install(List<ModuleProvider> providers,
-            ModuleContext context, Properties properties, ModuleRegistration registry) {
+            Function<ModuleId, ModuleContext> contextFactory, Properties properties,
+            ModuleRegistration registry) {
         Objects.requireNonNull(providers, "providers");
-        Objects.requireNonNull(context, "context");
+        Objects.requireNonNull(contextFactory, "contextFactory");
         Objects.requireNonNull(properties, "properties");
         Objects.requireNonNull(registry, "registry");
 
@@ -34,6 +36,8 @@ final class ModuleInstaller {
         List<PreparedModule> prepared = new ArrayList<>();
         for (ProviderEntry entry : canonical.values()) {
             ModuleProviderConfiguration configuration = configurations.get(entry.moduleId());
+            ModuleContext context = Objects.requireNonNull(contextFactory.apply(entry.moduleId()),
+                    "ModuleContext factory returned null for " + entry.moduleId());
             ModuleInstance instance;
             try {
                 instance = Objects.requireNonNull(

@@ -32,6 +32,7 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 import org.junit.jupiter.api.Test;
 
 final class ModuleInstallerTest {
@@ -50,12 +51,32 @@ final class ModuleInstallerTest {
         LiveModuleRegistry registry = new LiveModuleRegistry();
 
         List<ModuleRegistration.Registration> registrations = ModuleInstaller.install(
-                List.of(child, parent), context(), properties, registry);
+                List.of(child, parent), contexts(), properties, registry);
         try {
             assertEquals("parent", parentMarker.get());
             assertEquals("child", childMarker.get());
             assertEquals(Set.of(parentId, childId), registry.definitions().stream()
                     .map(ModuleDefinition::id).collect(java.util.stream.Collectors.toSet()));
+        } finally {
+            close(registrations);
+        }
+    }
+
+    @Test void bindsContextFactoryToEachCanonicalProviderIdentity() {
+        ModuleId firstId = new ModuleId("a.module");
+        ModuleId secondId = new ModuleId("b.module");
+        java.util.Set<ModuleId> bound = new java.util.HashSet<>();
+        LiveModuleRegistry registry = new LiveModuleRegistry();
+
+        List<ModuleRegistration.Registration> registrations = ModuleInstaller.install(
+                List.of(provider(secondId, configuration -> { }),
+                        provider(firstId, configuration -> { })),
+                moduleId -> {
+                    bound.add(moduleId);
+                    return context();
+                }, new Properties(), registry);
+        try {
+            assertEquals(Set.of(firstId, secondId), bound);
         } finally {
             close(registrations);
         }
@@ -68,7 +89,7 @@ final class ModuleInstallerTest {
         ModuleProvider second = provider(id, configuration -> materialized.set(true));
 
         IllegalStateException failure = assertThrows(IllegalStateException.class,
-                () -> ModuleInstaller.install(List.of(first, second), context(), new Properties(),
+                () -> ModuleInstaller.install(List.of(first, second), contexts(), new Properties(),
                         new LiveModuleRegistry()));
 
         assertTrue(failure.getMessage().contains("duplicate ModuleProvider identity"));
@@ -90,7 +111,7 @@ final class ModuleInstallerTest {
         };
 
         IllegalStateException failure = assertThrows(IllegalStateException.class,
-                () -> ModuleInstaller.install(List.of(failing, first), context(), new Properties(),
+                () -> ModuleInstaller.install(List.of(failing, first), contexts(), new Properties(),
                         registry));
 
         assertTrue(failure.getMessage().contains("cannot materialize Module z.module"));
@@ -110,7 +131,7 @@ final class ModuleInstallerTest {
         LiveModuleRegistry registry = new LiveModuleRegistry();
 
         IllegalStateException failure = assertThrows(IllegalStateException.class,
-                () -> ModuleInstaller.install(List.of(provider), context(), new Properties(),
+                () -> ModuleInstaller.install(List.of(provider), contexts(), new Properties(),
                         registry));
 
         assertTrue(failure.getMessage().contains("does not match materialized Module identity"));
@@ -126,7 +147,7 @@ final class ModuleInstallerTest {
         LiveModuleRegistry registry = new LiveModuleRegistry();
 
         IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
-                () -> ModuleInstaller.install(List.of(provider), context(), properties, registry));
+                () -> ModuleInstaller.install(List.of(provider), contexts(), properties, registry));
 
         assertTrue(failure.getMessage().contains("does not target an installed canonical Module"));
         assertFalse(materialized.get());
@@ -158,7 +179,7 @@ final class ModuleInstallerTest {
         ModuleProvider second = provider(new ModuleId("b.module"), configuration -> { });
 
         IllegalStateException failure = assertThrows(IllegalStateException.class,
-                () -> ModuleInstaller.install(List.of(first, second), context(), new Properties(),
+                () -> ModuleInstaller.install(List.of(first, second), contexts(), new Properties(),
                         registry));
 
         assertTrue(failure.getMessage().contains("cannot register Module b.module"));
@@ -183,6 +204,10 @@ final class ModuleInstallerTest {
         return new ModuleInstance(definition, Map.of());
     }
 
+    private static Function<ModuleId, ModuleContext> contexts() {
+        return ignored -> context();
+    }
+
     private static ModuleContext context() {
         ReasoningService reasoning = new ReasoningService() {
             @Override public <R, C extends ReasoningComputation<R>> CompletionStage<R> execute(
@@ -201,7 +226,7 @@ final class ModuleInstallerTest {
             @Override public boolean acknowledge(WorkId id) { return false; }
         };
         ModuleInvoker invoker = new ModuleInvoker() {
-            @Override public <I, O> CompletionStage<Material<O>> invokePublic(
+            @Override public <I, O> CompletionStage<Material<O>> invoke(
                     OperationCall<I, O> call) {
                 return CompletableFuture.failedFuture(new UnsupportedOperationException());
             }

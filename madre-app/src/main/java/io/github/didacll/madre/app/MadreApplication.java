@@ -7,7 +7,6 @@ import io.github.didacll.madre.kernel.runtime.KernelRuntime;
 import io.github.didacll.madre.kernel.runtime.ReasoningCapabilityRegistry;
 import io.github.didacll.madre.reasoning.installation.ReasoningMechanism;
 import io.github.didacll.madre.reasoning.installation.ReasoningProviderConfiguration;
-import io.github.didacll.madre.sdk.directory.ModuleDirectory;
 import io.github.didacll.madre.sdk.identity.MaterialId;
 import io.github.didacll.madre.sdk.identity.MaterialTypeId;
 import io.github.didacll.madre.sdk.identity.ModuleId;
@@ -18,7 +17,6 @@ import io.github.didacll.madre.sdk.module.EffectProfile;
 import io.github.didacll.madre.sdk.module.ModuleDefinition;
 import io.github.didacll.madre.sdk.module.OperationDefinition;
 import io.github.didacll.madre.sdk.module.OperationVisibility;
-import io.github.didacll.madre.sdk.operation.ModuleInvoker;
 import io.github.didacll.madre.sdk.operation.OperationCall;
 import io.github.didacll.madre.sdk.registration.ModuleContext;
 import io.github.didacll.madre.sdk.registration.ModuleRegistration;
@@ -79,17 +77,10 @@ public final class MadreApplication implements AutoCloseable {
             Path stateDirectory = stateDirectory(properties, database);
             Files.createDirectories(stateDirectory);
             moduleLoader = new InstalledModuleLoader(moduleDirectory(properties));
-            ModuleDirectory publicDirectory = query -> kernel.modules().reachable(query);
-            ModuleInvoker publicInvoker = new ModuleInvoker() {
-                @Override public <I, O> CompletionStage<Material<O>> invokePublic(
-                        OperationCall<I, O> call) {
-                    return kernel.modules().invokePublic(call);
-                }
-            };
-            ModuleContext context = new ModuleContext(kernel.reasoning(), publicDirectory,
-                    publicInvoker, stateDirectory);
-            modules.addAll(ModuleInstaller.install(moduleLoader.providers(), context, properties,
-                    kernel.modules()));
+            modules.addAll(ModuleInstaller.install(moduleLoader.providers(), moduleId ->
+                    new ModuleContext(kernel.reasoning(), kernel.modules().directoryFor(moduleId),
+                            kernel.modules().invokerFor(moduleId), stateDirectory),
+                    properties, kernel.modules()));
             Optional<LocalInteractionBinding> interaction = LocalInteractionBinding.resolve(
                     properties, kernel.modules().definitions());
             return new MadreApplication(kernel, moduleLoader, reasoningLoader, modules,

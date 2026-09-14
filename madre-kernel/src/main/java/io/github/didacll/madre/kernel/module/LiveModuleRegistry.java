@@ -18,6 +18,7 @@ import io.github.didacll.madre.sdk.module.OperationVisibility;
 import io.github.didacll.madre.sdk.operation.ModuleInvoker;
 import io.github.didacll.madre.sdk.operation.OperationCall;
 import io.github.didacll.madre.sdk.operation.OwnerModuleInvoker;
+import io.github.didacll.madre.sdk.operation.PublicModuleInvoker;
 import io.github.didacll.madre.sdk.registration.ModuleRegistration;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -31,7 +32,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /** In-memory registry for currently running executable Modules; it deliberately has no persistence. */
 public final class LiveModuleRegistry
-        implements ModuleRegistration, ModuleDirectory, ModuleInvoker, OwnerModuleInvoker {
+        implements ModuleRegistration, PublicModuleInvoker, OwnerModuleInvoker {
     private final Optional<ModuleId> configuredCore;
     private final ConcurrentHashMap<ModuleId, Entry> entries = new ConcurrentHashMap<>();
 
@@ -67,8 +68,35 @@ public final class LiveModuleRegistry
         };
     }
 
-    @Override public List<ReachableModule> reachable(ReachabilityQuery query) {
+    /**
+     * Creates the read-only directory supplied to one exact installed Module. The caller identity
+     * is captured here and is therefore absent from the SDK query object.
+     */
+    public ModuleDirectory directoryFor(ModuleId caller) {
+        ModuleId boundCaller = Objects.requireNonNull(caller, "caller");
+        return query -> reachable(boundCaller, query);
+    }
+
+    /**
+     * Creates the Module receiver invocation port supplied to one exact installed Module. The
+     * caller identity is captured by runtime assembly and cannot be supplied by Module code.
+     */
+    public ModuleInvoker invokerFor(ModuleId caller) {
+        ModuleId boundCaller = Objects.requireNonNull(caller, "caller");
+        return new ModuleInvoker() {
+            @Override public <I, O> CompletionStage<Material<O>> invoke(
+                    OperationCall<I, O> call) {
+                return invokeModule(boundCaller, call);
+            }
+        };
+    }
+
+    private List<ReachableModule> reachable(ModuleId callerId, ReachabilityQuery query) {
         Objects.requireNonNull(query, "query");
+        ModuleDefinition caller = installedCaller(callerId).definition();
+        if (!callerCanOffer(caller, query.materialType(), query.sensitivity())) {
+            return List.of();
+        }
         List<ReachableModule> result = new ArrayList<>();
         entries.values().stream().map(Entry::definition)
                 .sorted(Comparator.comparing(module -> module.id().value())).forEach(module -> {
@@ -116,6 +144,65 @@ public final class LiveModuleRegistry
         return invokeOwnerExact(binding, requested);
     }
 
+    private <I, O> CompletionStage<Material<O>> invokeModule(ModuleId callerId,
+            OperationCall<I, O> call) {
+        OperationCall<I, O> requested = Objects.requireNonNull(call, "call");
+        ModuleDefinition caller = installedCaller(callerId).definition();
+        if (!callerCanOffer(caller, requested.input())) {
+            throw new IllegalArgumentException(
+                    "input Material is not structurally reachable from calling Module " + callerId);
+        }
+        OperationBinding<?, ?> binding = exactBinding(requested);
+        if (binding.definition().visibility() != OperationVisibility.PUBLIC) {
+            throw new IllegalArgumentException("Operation is not Module-callable: "
+                    + requested.operation().id());
+        }
+        return invokeModuleExact(binding, requested).thenApply(result -> receive(caller, result));
+    }
+
+    private Entry installedCaller(ModuleId callerId) {
+        Entry caller = entries.get(Objects.requireNonNull(callerId, "callerId"));
+        if (caller == null) {
+            throw new IllegalStateException("calling Module is not installed: " + callerId);
+        }
+        return caller;
+    }
+
+    private static boolean callerCanOffer(ModuleDefinition caller,
+            io.github.didacll.madre.sdk.identity.MaterialTypeId materialType,
+            io.github.didacll.madre.algebra.Sensitivity sensitivity) {
+        if (caller.materialTypes().containsKey(materialType)) {
+            return materialType.moduleId().equals(caller.id());
+        }
+        return caller.publicMaterialReferences().contains(materialType)
+                && sensitivity.canReach(Privacy.MODULE);
+    }
+
+    private static boolean callerCanOffer(ModuleDefinition caller, Material<?> material) {
+        if (caller.materialTypes().containsKey(material.type().id())) {
+            return material.id().moduleId().equals(caller.id())
+                    && material.type().id().moduleId().equals(caller.id());
+        }
+        return caller.publicMaterialReferences().contains(material.type().id())
+                && material.id().moduleId().equals(material.type().id().moduleId())
+                && material.sensitivity().canReach(Privacy.MODULE);
+    }
+
+    private static <O> Material<O> receive(ModuleDefinition caller, Material<O> result) {
+        if (!caller.publicMaterialReferences().contains(result.type().id())) {
+            throw new IllegalStateException("calling Module does not declare foreign Material type "
+                    + result.type().id());
+        }
+        if (!result.id().moduleId().equals(result.type().id().moduleId())) {
+            throw new IllegalStateException("foreign Material identity does not match its owner");
+        }
+        if (!result.sensitivity().canReach(Privacy.MODULE)) {
+            throw new IllegalStateException("foreign Material Sensitivity cannot reach the "
+                    + "Module receiver boundary");
+        }
+        return result;
+    }
+
     private OperationBinding<?, ?> exactBinding(OperationCall<?, ?> requested) {
         Entry entry = entries.get(requested.operation().id().moduleId());
         if (entry == null) {
@@ -135,6 +222,12 @@ public final class LiveModuleRegistry
     private static <I, O> CompletionStage<Material<O>> invokePublicExact(
             OperationBinding<?, ?> binding, OperationCall<I, O> call) {
         return ((OperationBinding<I, O>) binding).invokePublic(call);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <I, O> CompletionStage<Material<O>> invokeModuleExact(
+            OperationBinding<?, ?> binding, OperationCall<I, O> call) {
+        return ((OperationBinding<I, O>) binding).invoke(call);
     }
 
     @SuppressWarnings("unchecked")
