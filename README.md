@@ -25,15 +25,15 @@ Use JDK 21 and the checked-in Gradle wrapper.
 Windows PowerShell or Command Prompt:
 
 ```text
-.\gradlew.bat --no-daemon clean check javadoc publish installDist distZip
-.\gradlew.bat --no-daemon -p verification/sdk-consumer clean compileJava
+.\gradlew.bat --no-daemon --build-cache check javadoc publish installDist distZip
+.\gradlew.bat --no-daemon --build-cache -p verification/sdk-consumer compileJava
 ```
 
 Linux:
 
 ```text
-./gradlew --no-daemon clean check javadoc publish installDist distZip
-./gradlew --no-daemon -p verification/sdk-consumer clean compileJava
+./gradlew --no-daemon --build-cache check javadoc publish installDist distZip
+./gradlew --no-daemon --build-cache -p verification/sdk-consumer compileJava
 ```
 
 Both commands build the same Java sources and produce the same application
@@ -44,13 +44,18 @@ Windows: madre-app\build\install\madre\bin\madre.bat
 Linux:   madre-app/build/install/madre/bin/madre
 ```
 
-CI executes the complete build, tests, Javadocs, publication, packaging, independent
-SDK-consumer compilation and installed-application smoke path on Windows and Linux.
-The hosted Linux runner is CI infrastructure only; MADRE must not depend on
-Ubuntu-specific behavior.
+CI is change-aware rather than rebuilding the full product for every repository edit.
+Executable/build-logic changes are verified on Windows and Linux; production changes
+also run Javadocs, publication, packaging and installed-application smoke; SDK/algebra
+surface changes also compile the independent SDK consumer. Documentation-only and
+acceptance-workflow-only changes stop after lightweight path classification. Active PR
+branches are validated by the pull-request run rather than duplicating the same suite
+again for the branch push. Gradle build-cache reuse is enabled and CI does not force a
+clean build on every change.
 
-No container runtime, VM layer, hosted provider, or external account is required to
-build or test the core repository.
+The hosted Linux runner is CI infrastructure only; MADRE must not depend on
+Ubuntu-specific behavior. No container runtime, VM layer, hosted provider, or external
+account is required to build or test the core repository.
 
 ## Physical connectors
 
@@ -101,7 +106,8 @@ Native Windows acceptance has exercised this path end to end with a real pinned
 `llama-server.exe` and a checksum-pinned Qwen2.5 0.5B GGUF model. The shipped
 owner-interaction Module invoked `standard-prompt`, Kernel selected the actual
 `LlamaCppUnixSocketCapability`, llama-server performed real model inference through a
-`.sock`, and the Module received and interpreted the generated text. No TCP listener,
+`.sock`, and the Module received and interpreted the generated text. The current
+post-algebra-repair acceptance used S5 Material and `Privacy.SECRET`. No TCP listener,
 Windows-specific MADRE transport, container runtime, or hosted inference provider was
 used.
 
@@ -167,9 +173,13 @@ Material is joined with normal Sensitivity composition, and a private review Ope
 submits an ordinary `TextInferenceCommand` through Kernel. No special workflow or
 security path exists.
 
-Live WebSearch acceptance requires a reachable SearXNG installation with JSON output
-enabled. Full live `deep-search` additionally requires a real available
-text-inference Capability in the same run.
+Live post-algebra-repair acceptance has exercised the complete path using public S1
+queries through an explicitly `PUBLIC` SearXNG Capability. Real Wikipedia-backed
+SearXNG JSON results were interpreted by the Module without changing their S1
+sensitivity, and `deep-search` then reviewed both result sets through the real local
+AF_UNIX llama.cpp Capability. The returned review remained S1. The SearXNG fixture,
+llama.cpp build and model existed only for the one-off acceptance run and are not
+normal MADRE dependencies.
 
 ## Local acceptance
 
@@ -183,9 +193,9 @@ Owner's particular Windows installation is deployment/hardware qualification rat
 than a missing cross-platform MADRE mechanism.
 
 The repository does not bundle llama.cpp, a GGUF model, SearXNG, Docker, or any other
-container/orchestration runtime. The Windows real-model acceptance used a temporary,
-checksum-verified model fixture and did not add that artifact or its installer to the
-normal product build.
+container/orchestration runtime. Live acceptance uses temporary pinned/checksum-verified
+physical fixtures and does not add them or their installers to the normal product
+build.
 
 ## Public SDK
 
