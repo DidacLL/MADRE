@@ -4,7 +4,7 @@ import java.util.Objects;
 
 /** Bounded causal or physical-realization responsibility. */
 public enum Integrity {
-    I1(1), I2(2), I3(3), I4(4), I5(5);
+    SYSTEM_RESERVED(0), I1(1), I2(2), I3(3), I4(4), I5(5);
 
     private final int rank;
 

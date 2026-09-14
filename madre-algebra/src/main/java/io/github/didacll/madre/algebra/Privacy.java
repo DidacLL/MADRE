@@ -4,7 +4,7 @@ import java.util.Objects;
 
 /** Confidentiality boundary of a receiver. */
 public enum Privacy {
-    PUBLIC(1), UNKNOWN(2), P3(3), P4(4), P5(5);
+    SYSTEM_RESERVED(0), PUBLIC(1), UNKNOWN(2), LOCAL(3), MODULE(4), SECRET(5);
 
     private final int rank;
 
