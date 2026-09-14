@@ -6,7 +6,11 @@ import io.github.didacll.madre.sdk.operation.ModuleInvoker;
 import java.nio.file.Path;
 import java.util.Objects;
 
-/** Ordinary SDK services supplied when an installed Module is materialized. */
+/**
+ * Ordinary SDK services supplied when one exact installed Module is materialized. The directory
+ * and invoker are caller-bound by runtime assembly; owner-local and external/PUBLIC authority are
+ * deliberately absent.
+ */
 public record ModuleContext(ReasoningService reasoning, ModuleDirectory directory,
         ModuleInvoker invoker, Path stateDirectory) {
     public ModuleContext {

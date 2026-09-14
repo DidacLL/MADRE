@@ -55,16 +55,17 @@ jobs:
           $buildLogic = '^(build\.gradle\.kts|settings\.gradle\.kts|gradlew|gradlew\.bat|gradle/|\.github/workflows/build\.yml)($|/)'
           $anySource = '^madre-[^/]+/src/'
           $productionSource = '^madre-[^/]+/src/main/'
-          $sdkSurface = '^(madre-algebra/src/main/|madre-sdk/src/main/|madre-text-inference/src/main/|verification/sdk-consumer/)'
+          $sdkSurface = '^(madre-algebra/src/main/|madre-sdk/src/main/|madre-text-inference/src/main/|verification/sdk-consumer/|verification/module-interoperability/)'
           $reasoningSurface = '^(madre-algebra/src/main/|madre-sdk/src/main/|madre-reasoning-spi/|madre-text-inference/|verification/reasoning-consumer/)'
           $ownerAcceptance = '^verification/installed-owner-acceptance\.ps1$'
+          $interopAcceptance = '^verification/module-interoperability/'
           $verify = $forceFull
           $production = $forceFull
           $sdkConsumer = $forceFull
           $reasoningConsumer = $forceFull
           foreach ($file in $files) {
-            if ($file -match $buildLogic -or $file -match $anySource -or $file -match '^verification/(sdk|reasoning)-consumer/' -or $file -match $ownerAcceptance) { $verify = $true }
-            if ($file -match $buildLogic -or $file -match $productionSource -or $file -match $ownerAcceptance) { $production = $true }
+            if ($file -match $buildLogic -or $file -match $anySource -or $file -match '^verification/(sdk|reasoning)-consumer/' -or $file -match $ownerAcceptance -or $file -match $interopAcceptance) { $verify = $true }
+            if ($file -match $buildLogic -or $file -match $productionSource -or $file -match $ownerAcceptance -or $file -match $interopAcceptance) { $production = $true }
             if ($file -match $buildLogic -or $file -match $sdkSurface -or $file -match $ownerAcceptance) { $sdkConsumer = $true }
             if ($file -match $buildLogic -or $file -match $reasoningSurface -or $file -match $ownerAcceptance) { $reasoningConsumer = $true }
           }
@@ -119,6 +120,15 @@ jobs:
           & $gradle --no-daemon --build-cache -p verification/sdk-consumer jar
           if ($LASTEXITCODE -ne 0) { throw 'independent Module build failed' }
 
+      - name: Build isolated Module interoperability proof
+        if: needs.changes.outputs.sdk-consumer == 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $gradle = if ($IsWindows) { '.\gradlew.bat' } else { './gradlew' }
+          & $gradle --no-daemon --build-cache -p verification/module-interoperability :callee:jar :caller:jar
+          if ($LASTEXITCODE -ne 0) { throw 'independent interoperability Module build failed' }
+
       - name: Build isolated ReasoningCapability
         if: needs.changes.outputs.reasoning-consumer == 'true'
         shell: pwsh
@@ -153,6 +163,72 @@ jobs:
           Write-Host $output
           if ($output -notmatch 'public:hello') { throw 'minimized PUBLIC result was not returned' }
           if ($output -match 'private:hello') { throw 'raw internal Material crossed the public boundary' }
+
+      - name: Verify installed Module-to-Module receiver boundary
+        if: needs.changes.outputs.production == 'true' && needs.changes.outputs.sdk-consumer == 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          function Slash([string]$value) { return $value.Replace('\', '/') }
+          $moduleDir = Join-Path $env:RUNNER_TEMP 'interop-modules'
+          $reasoningDir = Join-Path $env:RUNNER_TEMP 'interop-reasoning'
+          New-Item -ItemType Directory -Force -Path $moduleDir, $reasoningDir | Out-Null
+          Copy-Item 'verification/module-interoperability/callee/build/libs/interop-callee.jar' (Join-Path $moduleDir 'interop-callee.jar')
+          Copy-Item 'verification/module-interoperability/caller/build/libs/interop-caller.jar' (Join-Path $moduleDir 'interop-caller.jar')
+          $stateDir = Join-Path $env:RUNNER_TEMP 'madre-interop-state'
+          $database = Join-Path $env:RUNNER_TEMP 'madre-interop.sqlite'
+          $config = Join-Path $env:RUNNER_TEMP 'madre-interop.properties'
+          @(
+            "kernel.database=$(Slash $database)",
+            "modules.directory=$(Slash $moduleDir)",
+            "modules.state-directory=$(Slash $stateDir)",
+            "reasoning.directory=$(Slash $reasoningDir)"
+          ) | Set-Content -Path $config -Encoding utf8
+          $launcher = if ($IsWindows) { '.\madre-app\build\install\madre\bin\madre.bat' } else { './madre-app/build/install/madre/bin/madre' }
+
+          $calleeOwner = (& $launcher $config --invoke-owner interop.callee sensitive request S2 hello 2>&1 | Out-String)
+          if ($LASTEXITCODE -ne 0) { Write-Host $calleeOwner; throw 'callee owner-local invocation failed' }
+          Write-Host $calleeOwner
+          if ($calleeOwner -notmatch 'S4\s+classified:hello') { throw 'callee did not produce raw S4 owner-local Material' }
+
+          $calleePublic = (& $launcher $config --invoke-public interop.callee sensitive request S2 hello 2>&1 | Out-String)
+          if ($LASTEXITCODE -ne 0) { Write-Host $calleePublic; throw 'callee PUBLIC invocation failed' }
+          Write-Host $calleePublic
+          if ($calleePublic -notmatch 'public:callee-summary') { throw 'callee PUBLIC semantic minimization was not applied' }
+          if ($calleePublic -match 'classified:hello') { throw 'callee raw S4 Material crossed external PUBLIC boundary' }
+
+          $callerOwner = (& $launcher $config --invoke-owner interop.caller compose request S2 hello 2>&1 | Out-String)
+          if ($LASTEXITCODE -ne 0) { Write-Host $callerOwner; throw 'Module-to-Module composition failed' }
+          Write-Host $callerOwner
+          if ($callerOwner -notmatch 'S4\s+receivedOwner=interop\.callee;receivedId=([^;]+);receivedSensitivity=S4;adaptedOwner=interop\.caller;adaptedId=([^;]+);interpreted=interpreted:hello') {
+            throw 'caller did not receive and adapt raw callee S4 Material'
+          }
+          $receivedId = $Matches[1]
+          $adaptedId = $Matches[2]
+          if ($receivedId -eq $adaptedId) { throw 'caller adaptation reused callee Material identity' }
+
+          $callerPublic = (& $launcher $config --invoke-public interop.caller compose request S2 hello 2>&1 | Out-String)
+          if ($LASTEXITCODE -ne 0) { Write-Host $callerPublic; throw 'caller PUBLIC invocation failed' }
+          Write-Host $callerPublic
+          if ($callerPublic -notmatch 'public:caller-summary') { throw 'caller PUBLIC result was not minimized' }
+          if ($callerPublic -match 'receivedOwner=|classified:hello') { throw 'caller raw composition evidence crossed PUBLIC boundary' }
+
+          $tooSensitive = (& $launcher $config --invoke-owner interop.caller probe-too-sensitive request S2 hello 2>&1 | Out-String)
+          if ($LASTEXITCODE -ne 0) { Write-Host $tooSensitive; throw 'too-sensitive rejection probe failed' }
+          Write-Host $tooSensitive
+          if ($tooSensitive -notmatch 'S2\s+blocked:too-sensitive') { throw 'S5 foreign Material was not rejected at MODULE Privacy' }
+          if ($tooSensitive -match 'too-sensitive:hello') { throw 'S5 foreign payload crossed Module receiver boundary' }
+
+          $undeclared = (& $launcher $config --invoke-owner interop.caller probe-undeclared request S2 hello 2>&1 | Out-String)
+          if ($LASTEXITCODE -ne 0) { Write-Host $undeclared; throw 'undeclared foreign-type rejection probe failed' }
+          Write-Host $undeclared
+          if ($undeclared -notmatch 'S2\s+blocked:undeclared-type') { throw 'undeclared foreign Material type was not rejected' }
+          if ($undeclared -match 'undeclared:hello') { throw 'undeclared foreign payload crossed Module receiver boundary' }
+
+          $private = (& $launcher $config --invoke-owner interop.caller probe-private request S2 hello 2>&1 | Out-String)
+          if ($LASTEXITCODE -ne 0) { Write-Host $private; throw 'PRIVATE reachability probe failed' }
+          Write-Host $private
+          if ($private -notmatch 'S1\s+privateReachable=false') { throw 'PRIVATE Operation became reachable to another Module' }
 
       - name: Verify independently installed reasoning execution
         if: needs.changes.outputs.production == 'true' && needs.changes.outputs.sdk-consumer == 'true' && needs.changes.outputs.reasoning-consumer == 'true'
