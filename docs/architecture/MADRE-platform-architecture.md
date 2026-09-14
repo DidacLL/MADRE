@@ -8,140 +8,105 @@ Owner / local surface
   v
 installed ordinary Module
   | owns application/domain behavior, Material, meaning, state, Agents,
-  | Workflows, Operations, transformation and continuation
+  | Skills, Workflows, Operations, application I/O and continuation
   | may optionally be assigned the CORE role
-  v
-live Module registry / public Module invocation boundary
-  | discovery, exact executable binding validation and PUBLIC reachability
-  | no privilege from CORE, bundling, process or class-loader placement
   |
-  +--> ordinary Module Java/application behavior
+  +--> ordinary Java/application I/O (files, search, databases, devices, network...)
   |
-  `--> physical work only where the current execution contract genuinely applies
+  `--> ReasoningService when bounded behavior needs reasoning
          v
-       Kernel
-         | capability selection, resources, scheduling, durable work and delivery
+       Kernel reasoning runtime
+         | compatible reasoning selection, resources, scheduling,
+         | durable reasoning, retry/cancellation and delivery
          v
-       physical adapter/mechanism
+       ReasoningCapability adapter
 ```
 
-The Security Algebra is behavior of values carried by these objects. It is not a
-runtime component in the diagram.
+The Security Algebra is behavior of values carried by these objects. It is not a runtime component.
 
 ## Module boundary
 
-A Module is the semantic and application/domain boundary. It owns its domain state and
-persistence, Material, Agents, Skills, Workflows, public and private Operations,
-application I/O, semantic transformations, continuation, artifacts, and presentation
-that belong to that domain.
+A Module is the semantic and application/domain boundary. It owns domain state and persistence, Material, Agents, Skills, Workflows, public/private Operations, application I/O, semantic transformations, continuation, artifacts and presentation that belong to that domain.
 
-An Operation is a bounded callable Module/application function. It declares the
-Material it can accept, the receiving Privacy that applies, the Material it may
-produce, and its EffectProfiles when it has consequential variants. Module behavior
-uses ordinary Java and SDK types. A Module does not become a Kernel extension merely
-because one Operation performs file, network, database, device, or other application
-I/O.
+An Operation is bounded callable Module/application behavior. It declares the Material it accepts, receiving Privacy, Material it may produce, maximum output Sensitivity and any EffectProfiles for consequential variants. Module behavior uses ordinary Java and SDK types.
 
-`ModuleDefinition` is the canonical declarative surface. `ModuleInstance` binds that
-definition to the exact executable `OperationBinding` for every declared Operation.
-Registration validates that the binding set exactly matches the declared identities
-and canonical contracts before the Module becomes reachable.
+A Module does not become a Kernel extension merely because one Operation performs file, network, database, device, search or other application I/O.
+
+`ModuleDefinition` is the canonical declarative surface. `ModuleInstance` binds it to exact executable `OperationBinding` values. Registration validates that declared and executable identities/contracts match exactly before the Module becomes reachable.
 
 ## Installation and discovery
 
-MADRE installs executable Modules as ordinary JVM JARs. A JAR exposes a
-`ModuleProvider` using the standard Java service-provider mechanism. The application
-loads providers from the configured Module directory with JDK path/class-loader APIs,
-constructs each Module with ordinary SDK services, and registers its `ModuleInstance`.
-This mechanism is cross-platform Java installation/discovery; it is not a marketplace,
-container architecture, or separate plugin framework.
+Modules are ordinary JVM JARs exposing `ModuleProvider` through Java's service-provider mechanism. The application discovers configured Module JARs with JDK path/class-loader APIs, constructs each Module from `ModuleContext`, and registers its `ModuleInstance`.
 
-Shipped Modules are packaged into the distribution's Module directory but are not
-concrete compile-time dependencies of `madre-app`. Independently built Module JARs use
-the same provider and registration route. Placement in the distribution, a particular
-class loader, or the MADRE process never creates authority.
+Shipped Modules use the same route as independently built Modules. Bundling, class-loader placement, process placement or CORE assignment grants no authority.
 
-The live registry is in-memory and is rebuilt by installed Module providers at boot.
-Its directory API exposes reachable public definitions. Its invocation API resolves
-one installed Module and exact canonical `PUBLIC` Operation and calls it without the
-caller constructing or naming the concrete implementation class.
+The registry is in-memory and rebuilt at boot. `ModuleDirectory` exposes reachable public definitions; `ModuleInvoker` invokes one exact installed `PUBLIC` Operation without callers depending on the concrete implementation class.
 
 ## External/public Material boundary
 
-A public Operation may create internal Material that is not itself safe to expose.
-Every executable `PUBLIC` binding therefore owns a semantic public-result transformer.
-The transformer runs after the internal Operation result is validated and before the
-result leaves the public Module invocation boundary.
+Every executable `PUBLIC` binding owns a `PublicResultTransformer`. The transformer runs after internal Operation output validation and before Material leaves the public invocation boundary.
 
-The external result must be new declared Material with a new identity, must still
-satisfy the declared output contract, and must be minimized enough to reach
-`Privacy.PUBLIC`. Raw internal Material identity cannot be returned as the public
-result. This enforces a mandatory semantic boundary without introducing a generic
-policy evaluator: the Module decides the transformation; the runtime prevents bypass.
+The external result must be new declared Material with a new identity, remain inside the Operation output contract and have Sensitivity able to reach `Privacy.PUBLIC`. Raw internal Material cannot be returned through this path.
+
+Semantic minimization belongs to Module behavior; runtime validation prevents bypass. This is not a generic policy evaluator.
 
 ## Kernel boundary
 
-Kernel owns mechanisms shared across physical execution:
+Kernel owns only shared runtime responsibilities that presently require central coordination:
 
-- the in-memory executable Module registry and public invocation port;
-- the current installation registry of physical Capability manifests and adapter
-  bindings;
-- optional lookup of the configured CORE Module identity;
-- selection of applicable physical mechanisms;
-- immediate and durable physical work;
-- timing, priority, timeout, cancellation, resource coordination, and retry after
-  physical failure;
-- opaque physical result delivery and ordinary runtime logging.
+- live executable Module registry and public invocation port;
+- optional resolution of the configured CORE Module identity;
+- registry of installed reasoning mechanisms;
+- deterministic selection of compatible reasoning mechanisms;
+- shared reasoning resources;
+- immediate and durable reasoning execution;
+- timeout, cancellation and bounded reasoning retry;
+- opaque reasoning-result delivery and ordinary runtime logging.
 
-Kernel does not own Module state, Material semantics, semantic workflows, artifact
-meaning, or ordinary application code. It does not create Module Material.
+Kernel does not own Module state, Material semantics, semantic workflows, artifact meaning, ordinary application I/O, search, model interpretation or continuation. It does not create Module Material.
 
-The runtime may boot with zero physical Capabilities/connectors. An Operation that
-actually submits physical work for which no applicable mechanism is installed fails or
-waits according to the ordinary execution contract when invoked; the absence of a
-reasoning mechanism is not a platform boot failure.
+The runtime may boot with zero reasoning mechanisms. A Module Operation that later requests unavailable reasoning fails or waits according to the reasoning execution contract; mechanism absence is not a platform boot failure.
 
-## Capability boundary and current recovery status
+## ReasoningCapability boundary
 
-The current code still has a generic `Capability<C,R>` SPI whose manifest describes a
-physical command/result contract, receiving Privacy, physical Integrity where
-applicable, availability, physical properties, and required resources. Adapters
-receive physical commands, not Material, Module, Agent, Workflow, Skill, or Operation
-objects.
+The Kernel SPI is deliberately reasoning-specific:
 
-Current physical contracts include text inference and web search, with llama.cpp,
-OpenAI-compatible and SearXNG adapters. Availability remains an observed physical fact
-and Kernel selects only explicitly available mechanisms.
+```text
+ReasoningCapability<R,C extends ReasoningComputation<R>>
+```
 
-This generic shape is not the desired final architecture. It is known recovery debt.
-The correction to reasoning-only `ReasoningCapability`, the placement of
-SearXNG/WebSearch, and removal of the universal physical-action Kernel path from
-ordinary Module behavior are intentionally deferred. No new Module execution in this
-slice is built on generic Capability dispatch, and no new Memory, Knowledge,
-Communication, or WebSearch abstraction is introduced.
+The manifest describes only exact reasoning contract, receiving Privacy, location, expected latency and resource claims. Availability is observed physical/runtime state.
+
+Selection uses the exact computation contract, `Sensitivity <= Privacy`, availability, resources, typed location/latency preferences and deterministic ordering.
+
+Operation Risk is not carried into reasoning work. Reasoning manifests do not carry action-realizer Integrity. A reasoning mechanism supplies computation; it is not automatically the physical realizer of a Module Operation's external effect.
+
+Current adapters provide typed text inference through llama.cpp AF_UNIX, explicit llama.cpp loopback HTTP compatibility, and OpenAI-compatible HTTP.
+
+There is no generic Kernel `Capability<C,R>` action-dispatch path.
+
+## Search placement
+
+Search is ordinary application/domain I/O. `madre-web-search` supplies reusable typed web-search values and `madre-adapter-searxng` supplies an ordinary SearXNG Java client.
+
+The SearXNG client does not depend on Kernel and does not implement `ReasoningCapability`. The former standalone WebSearch Module is not part of the shipped application.
+
+A future domain Module that genuinely owns research/search behavior may depend on the search library/client and compose search semantically inside that Module. That does not require a Kernel search abstraction.
 
 ## CORE installation role
 
-`roles.core`, when present, contains one ordinary installed `ModuleId`. CORE is only a
-role lookup. MADRE also supports no CORE assignment at all, and a configured but absent
-CORE does not prevent platform boot.
+`roles.core`, when present, contains one ordinary installed `ModuleId`. CORE is only role lookup. MADRE also supports no CORE assignment, and a configured-but-absent CORE does not prevent boot.
 
-CORE does not alter invocation authority, Operation visibility, Security Algebra,
-physical selection, scheduling, or public-result rules. There is no CORE subtype,
-privileged registration path, special class-loader treatment, or boot-time requirement
-for Operations with particular names. Any shipped owner-interaction behavior remains
-ordinary Module behavior.
+CORE does not alter invocation authority, Operation visibility, Security Algebra, reasoning selection, scheduling or public-result rules. There is no CORE subtype or privileged registration path.
 
 ## Storage
 
-Module persistence stays inside each Module. Kernel SQLite persists only physical work
-that must survive restart: opaque queued input, scheduling/attempt state, and pending
-physical output until delivery. Runtime cleanup removes payload bytes according to
-delivery and retention. The live Module registry is rebuilt at application boot.
+Module persistence remains inside each Module.
+
+Kernel SQLite persists only durable reasoning work that must survive restart: opaque serialized computation input, delivery Module identity, scheduling/attempt/cancellation/retry state and pending opaque output until collection/acknowledgement/retention cleanup.
+
+The live Module and reasoning registries are rebuilt at application boot.
 
 ## Provider environment
 
-MADRE configuration describes installed physical connector endpoints and physical
-behavior. Account sessions, credentials, authentication flows, authorization,
-permissions, and provider roles remain outside the MADRE domain model and do not alter
-Capability Privacy or Integrity.
+MADRE configuration may describe installed reasoning endpoints and explicit receiving Privacy/location/resource facts. Provider accounts, credentials, authentication flows, authorization, permissions, roles and sessions remain outside MADRE's domain model and do not become Security Algebra values.

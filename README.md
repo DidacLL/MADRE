@@ -1,22 +1,16 @@
 # MADRE
 
-MADRE is personal, owner-sovereign software for coordinating Module applications and
-bounded physical reasoning mechanisms while controlling which information can reach
-public and physical boundaries. The active implementation is Java 21.
+MADRE is personal, owner-sovereign software for modular applications that can use bounded reasoning while keeping information reach explicit. The active implementation is Java 21.
 
-Windows and Linux run the same MADRE application, Kernel, SDK and Module installation
-mechanism. There is no Windows compatibility product layered over a Unix implementation
-and no Linux-specific public runtime.
+Windows and Linux run the same application, Kernel, SDK and Module installation mechanism. There is no Windows compatibility product layered over a Unix implementation and no Linux-specific public runtime.
 
 Start with:
 
 - [MADRE.md](MADRE.md) for product meaning;
 - [Security Algebra](docs/architecture/MADRE-security-algebra.md) for composition;
 - [Platform Architecture](docs/architecture/MADRE-platform-architecture.md) for boundaries;
-- [Module SDK and Interoperability](docs/architecture/MADRE-agent-interoperability.md)
-  for the public/executable Module model;
-- [Physical Execution Contract](docs/architecture/MADRE-execution-contract.md) for the
-  current physical execution path;
+- [Module SDK and Interoperability](docs/architecture/MADRE-agent-interoperability.md) for the public/executable Module model;
+- [Reasoning Execution Contract](docs/architecture/MADRE-execution-contract.md) for the Kernel reasoning path;
 - [Implementation Baseline](docs/implementation-baseline.md) for executable truth.
 
 ## Build and package
@@ -37,44 +31,36 @@ Linux:
 ./gradlew --no-daemon --build-cache -p verification/sdk-consumer jar
 ```
 
-Both hosts build the same Java sources and application distribution. Gradle creates
-native launch shims for the same `MadreMain` application:
+Both hosts build the same Java sources and distribution. Gradle creates native launch shims for the same `MadreMain` application:
 
 ```text
 Windows: madre-app\build\install\madre\bin\madre.bat
 Linux:   madre-app/build/install/madre/bin/madre
 ```
 
-CI verifies executable changes on both Windows and Linux. Production changes also run
-Javadocs, publication, packaging and installed-application smoke. SDK-surface changes
-build the independent executable Module fixture, install its JAR into the built MADRE
-distribution, discover it and invoke a PUBLIC Operation on both hosts.
+CI verifies executable changes on both Windows and Linux. Production changes additionally run Javadocs, publication, packaging and installed-application smoke. SDK-surface changes build the independent executable Module fixture, install its JAR into the built distribution, discover it and invoke a PUBLIC Operation on both hosts.
 
-No container runtime, VM layer, hosted provider, or external account is required to
-build or test the repository.
+No container runtime, VM layer, hosted provider or external account is required for the mandatory build/test path.
 
 ## Module installation
 
-A MADRE Module is a complete executable application/domain boundary. Its JAR provides
-`io.github.didacll.madre.sdk.registration.ModuleProvider` through Java's standard
-service-provider resource:
+A MADRE Module is a complete executable application/domain boundary. Its JAR provides:
+
+```text
+io.github.didacll.madre.sdk.registration.ModuleProvider
+```
+
+through Java's standard service-provider resource:
 
 ```text
 META-INF/services/io.github.didacll.madre.sdk.registration.ModuleProvider
 ```
 
-The provider constructs a `ModuleInstance`: one canonical `ModuleDefinition` plus the
-exact executable binding for every declared Operation. The runtime discovers Module
-JARs from `modules.directory`. Installed distributions default to their sibling
-`modules/` directory.
+The provider constructs a `ModuleInstance`: one canonical `ModuleDefinition` plus exact executable bindings for every declared Operation. Runtime discovery uses `modules.directory`; installed distributions default to their sibling `modules/` directory.
 
-Shipped owner-interaction and WebSearch Modules are packaged into that directory, but
-`madre-app` does not import or compile against their concrete classes. An independently
-built Module uses the same discovery/registration path; bundling, class-loader
-placement and CORE designation confer no privilege.
+The shipped owner-interaction Module is packaged there but `madre-app` does not compile against its concrete class. Independently built Modules use the same discovery/registration path. Bundling, class-loader placement and CORE designation confer no privilege.
 
-`verification/sdk-consumer` demonstrates the independent build boundary. It depends
-only on:
+`verification/sdk-consumer` demonstrates the independent boundary. It depends only on:
 
 ```text
 io.github.didacll:madre-sdk:0.1.0-SNAPSHOT
@@ -84,14 +70,11 @@ and produces `independent-module.jar`.
 
 ## PUBLIC Operation invocation
 
-Runtime callers discover declarations and invoke the exact installed `PUBLIC`
-Operation through the SDK `ModuleInvoker`; they do not need the concrete Module class.
-A public executable binding must apply a Module-owned semantic result transformer
-before Material leaves the public boundary. The result must be new declared Material
-and must be minimized enough to reach `Privacy.PUBLIC`; raw internal Material cannot be
-returned through this path.
+Runtime callers discover declarations and invoke an exact installed `PUBLIC` Operation through SDK `ModuleInvoker` without depending on the concrete Module class.
 
-The local console exposes the same boundary generically:
+A public binding must apply a Module-owned semantic result transformer before Material leaves the public boundary. The result must be new declared Material with a new identity and Sensitivity able to reach `Privacy.PUBLIC`; raw internal Material cannot cross this path.
+
+The local console exposes the same generic public boundary:
 
 ```text
 /modules
@@ -105,44 +88,41 @@ madre <properties> --list-modules
 madre <properties> --invoke-public <module> <operation> <material-type> <S1..S5> <payload>
 ```
 
-The console shortcut currently supports no-effect Operations with Module-owned input
-Material types. The typed SDK `ModuleInvoker` is the runtime invocation boundary and is
-not limited to this text adapter.
+The console shortcut currently supports no-effect Operations with Module-owned input Material types. The typed `ModuleInvoker` is the real runtime boundary.
 
-## CORE and connector independence
+## CORE and reasoning independence
 
-`roles.core` is optional. CORE is only an ordinary installed Module identity lookup;
-it creates no subtype, invocation authority, Security Algebra value, scheduling lane,
-or required Operation names. MADRE boots with no CORE configured and also tolerates a
-configured CORE that is not installed.
+`roles.core` is optional. CORE is an ordinary installed Module identity lookup; it creates no subtype, invocation authority, Security Algebra value, scheduling lane or required Operation names. MADRE boots with no CORE configured and tolerates a configured CORE that is not installed.
 
-Physical connectors are likewise optional at boot. The platform can start with no
-reasoning connector at all. An Operation that actually requires physical inference may
-fail when invoked if no mechanism is available, but connector absence is not a startup
-error.
+Reasoning mechanisms are also optional at boot. An Operation that later needs reasoning may fail when invoked if no compatible mechanism is available, but mechanism absence is not a startup error.
 
-The example configuration therefore keeps every connector disabled by default. The
-existing llama.cpp AF_UNIX/loopback-HTTP, OpenAI-compatible and SearXNG adapters remain
-explicit installation choices.
+The example configuration keeps all reasoning connectors disabled by default.
 
-## Physical connectors
+## Reasoning connectors
 
-The current text-inference contract is transport-neutral. Local llama.cpp has an
-owner-configured AF_UNIX adapter and an explicit loopback-HTTP compatibility adapter;
-the repository also contains OpenAI-compatible text inference and SearXNG web-search
-adapters. Provider account/session/authentication mechanics remain outside MADRE.
+Kernel execution is reasoning-only. The Module-facing `ReasoningService` accepts only nominal `ReasoningComputation<R>` values through `ReasoningRequest`; it is not a generic action/tool/physical-work dispatcher.
 
-Native Windows acceptance has exercised the AF_UNIX path end to end with a real pinned
-`llama-server.exe` and checksum-pinned Qwen model, and separate live acceptance has
-exercised SearXNG plus the WebSearch Module. Those prior physical acceptance results
-remain recorded in the implementation baseline/PR history; this executable Module
-slice does not broaden their generic Capability architecture.
+The current typed text-inference contract can be realized by:
+
+- llama.cpp over AF_UNIX;
+- explicit llama.cpp loopback HTTP compatibility;
+- OpenAI-compatible HTTP.
+
+Selection uses computation-contract compatibility, carried Sensitivity versus explicit receiving Privacy, observed availability, resources and typed location/latency preferences. Operation Risk is not part of reasoning selection.
+
+Provider account/session/authentication mechanics remain outside MADRE.
+
+## Search
+
+Search is ordinary application/domain I/O, not a Kernel reasoning capability.
+
+`madre-web-search` provides reusable typed search values and `madre-adapter-searxng` provides an ordinary Java `SearxngClient`. The SearXNG module has no Kernel dependency and does not implement `ReasoningCapability`.
+
+The former standalone shipped WebSearch Module and generic SearXNG Kernel capability were removed. A future domain Module that genuinely owns research/search behavior may depend on the search library/client directly.
 
 ## Start MADRE
 
-Build the distribution, copy/review the example configuration, and run the single Java
-application. You may remove `roles.core` and leave every connector disabled for a bare
-runtime.
+Build the distribution, copy/review the example configuration and run the single Java application. You may remove `roles.core` and leave all reasoning connectors disabled for a bare runtime.
 
 Windows PowerShell:
 
@@ -160,20 +140,12 @@ cp config/madre.properties.example /absolute/path/madre.properties
 madre-app/build/install/madre/bin/madre /absolute/path/madre.properties
 ```
 
-The distribution's shipped Module JARs are discovered from its `modules/` directory.
-Additional owner-installed Module JARs can be placed in the configured Module
-directory without adding an application compile-time dependency.
+Additional owner-installed Module JARs can be placed in the configured Module directory without adding an application compile-time dependency.
 
-Physical failures remain physical failures. Kernel SQLite stores only current physical
-work, attempt state and retained opaque payloads; semantic interpretation belongs to
-the originating Module.
+Reasoning failures remain reasoning-runtime failures. Kernel SQLite stores only durable reasoning work, attempts and retained opaque payloads; semantic interpretation belongs to the originating Module.
 
-## Architecture recovery boundary
+## Verified baseline
 
-The executable Module work does not make the current generic `Capability` SPI the
-final architecture. The remaining known recovery debt is explicit: reasoning must
-narrow to `ReasoningCapability`, SearXNG/search placement must be corrected, and the
-universal physical-action Kernel path must be removed from ordinary Module/application
-behavior. No new generic Memory, Knowledge, Communication, WebSearch, marketplace,
-model-management, Docker, MCP, Kubernetes or Linux-only architecture is introduced by
-Module installation/discovery.
+Executable head `e0f6803e10956f9cb70c0f386592e92f74a1c49f` passed GitHub Actions run `34848775519` on both Windows and Linux, including `check`, Javadocs/publication/package verification, isolated Module build, independent Module installation/PUBLIC invocation and installed-application smoke.
+
+Real llama.cpp and earlier SearXNG live acceptance runs remain historical integration evidence, but the current architecture no longer routes search through Kernel or ships the old WebSearch Module.

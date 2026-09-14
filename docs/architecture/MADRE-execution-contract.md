@@ -1,103 +1,105 @@
-# MADRE Physical Execution Contract
+# MADRE Reasoning Execution Contract
 
-## Module-created work
+## Scope
 
-A Module Operation converts its Material into a bounded physical command. For the
-initial implementation that command is text inference: text input plus a small,
-strongly typed set of generation options required by the real llama.cpp and
-OpenAI-compatible connectors.
+Kernel execution is intentionally restricted to reasoning. It is not a universal physical-action dispatcher and does not provide a generic `Capability<C,R>` SPI.
 
-The Module submits a work request containing:
+A Module may perform ordinary application I/O directly inside bounded Module behavior. File, database, network, search, device and similar effects do not enter Kernel merely because they are external.
 
-- originating `ModuleId`;
-- the physical command and opaque input;
-- accumulated Sensitivity of the information present in that input;
-- other algebraic demand only when the concrete physical connection genuinely uses
-  it;
-- immediate or durable timing;
-- priority, timeout, and physical retry configuration;
-- typed physical preferences supported by the current Kernel contract.
+## Module-created reasoning work
 
-It contains no Material, Material type, Agent, Operation, concrete Capability
-identity, future Material identity, output Sensitivity, or semantic continuation.
+A Module starts from one valid `OperationCall` and constructs a nominal `ReasoningComputation<R>`. The SDK then creates a `ReasoningRequest<R,C>` where `C extends ReasoningComputation<R>`.
 
-The SDK work factory accepts an already-composed Operation call and derives the
-originating Module, accumulated Sensitivity, and applicable EffectProfile Risk from
-it. Module code supplies only the physical command and ordinary execution controls;
-it cannot copy or replace those carried values. The resulting Kernel request contains
-neither Material identity nor Module payload semantics.
+The request contains:
 
-## Capability selection
+- originating `ModuleId`, derived from the bounded Operation call;
+- the typed reasoning computation;
+- carried Sensitivity, derived from the input Material of that call;
+- immediate or durable execution mode;
+- priority and eligibility time;
+- timeout, cancellation key and reasoning retry policy;
+- typed reasoning preferences currently limited to optional location and maximum latency.
 
-Kernel begins with the registered adapters that accept the request's physical command
-type. For each installed manifest, the request's carried values either compose with
-the manifest values or that Capability is unreachable.
+The request contains no Material identity or Material type, Agent, Workflow, concrete reasoning-mechanism identity, semantic continuation or future output Material.
 
-Kernel then applies:
+Operation Risk is deliberately absent. A reasoning mechanism computes information; it does not thereby realize the external effect described by a Module Operation's EffectProfile.
 
-- current availability;
-- resource capacity;
-- installation rules;
-- the request's typed physical preferences;
-- deterministic tie-breaking.
+## Reasoning contract and mechanism selection
 
-No rejected candidate is created. If no Capability is currently reachable, immediate
-work returns ordinary unavailability. Durable work remains governed by its scheduling
-and physical retry configuration; algebra creates no separate state.
+A `ReasoningCapability<R,C>` exposes:
 
-Modules do not need a Capability name for normal work. Advanced owner-directed
-preferences may be added as typed physical constraints when a real use requires
-them. They must not become a generic property map.
+```text
+manifest()     -> ReasoningCapabilityManifest<R,C>
+availability() -> ReasoningAvailability
+execute(C computation, ReasoningExecutionContext context) -> R
+```
+
+Its manifest contains only installed facts used by reasoning selection:
+
+- nominal `ReasoningCapabilityId`;
+- exact `ReasoningContract<R,C>`;
+- explicit receiving `Privacy`;
+- `ReasoningLocation`;
+- expected latency;
+- resource claims.
+
+It does not contain Material semantics, Module/Operation identities, Risk, action-realizer Integrity, provider-account authority or arbitrary metadata.
+
+Kernel selection is deterministic and proceeds over mechanisms implementing the exact reasoning contract. A candidate is usable only when:
+
+1. the request's carried Sensitivity can reach the manifest's receiving Privacy;
+2. the mechanism is currently available;
+3. required resources can be reserved;
+4. typed request location/latency preferences are satisfied.
+
+No rejected security-decision object is created. A non-composable mechanism is simply unreachable for that request.
 
 ## Invocation
 
-Kernel reserves physical resources and invokes the selected adapter with only:
+Kernel reserves the selected resources and invokes the adapter with only the typed computation and execution mechanics needed for timeout/cancellation/attempt handling.
 
-- the physical command/input;
-- connector options already bounded by the command contract;
-- timeout and cancellation mechanics needed for execution.
+The adapter owns provider-specific protocol translation. Provider request/response structures, endpoint details and transport behavior stay inside the adapter.
 
-The adapter cannot inspect MADRE domain objects. Provider-specific requests and
-responses stay inside the adapter.
+Current reasoning realizations are text inference through:
 
-llama.cpp and OpenAI-compatible text inference both return a physical text result.
-Kernel records which installed Capability actually ran as ordinary attempt telemetry
-and delivers the text result to the originating Module.
+- llama.cpp AF_UNIX transport;
+- explicit llama.cpp loopback-HTTP compatibility transport;
+- OpenAI-compatible HTTP transport.
 
-## Module-owned result
+All implement the same typed text-inference reasoning contract. No connector is silently enabled.
 
-Physical output is not Material. The Module Operation:
+## Module-owned interpretation
 
-1. receives the physical result;
-2. interprets it according to its own behavior;
-3. constructs new Material with a new identity and explicit Sensitivity when the
-   result has semantic value;
-4. updates its own state or UI;
-5. submits another work request, invokes another bounded Operation, or stops.
+A reasoning result is not Material. Kernel neither assigns Material identity nor chooses output Sensitivity.
 
-No physical result type has an execution method or a reference to Kernel.
+The originating Module:
 
-## Immediate and durable work
+1. receives the reasoning result;
+2. interprets it according to its bounded behavior;
+3. creates new Material when the result has semantic value;
+4. updates Module state/presentation as appropriate;
+5. invokes another bounded Operation or stops.
 
-Immediate work returns its physical result to the waiting Module.
+There is no result object that can execute an Operation or submit more work by itself.
 
-Durable work stores an opaque serialized request until physical execution and stores
-an opaque physical result until the Module collects it. Kernel persists only
-scheduling, attempts, delivery state, and those temporary bytes. Restart recovery
-continues eligible work.
+## Immediate and durable reasoning
 
-Physical failure may be retried according to the submitted policy. Lack of a currently
-reachable Capability may wait when the work was deliberately submitted as durable.
-Neither creates Module-domain state.
+Immediate reasoning uses the same registry selection, resource coordination, failure mapping and retry semantics as durable reasoning, but returns the result to the waiting Module call.
 
-## Connector environment
+Durable reasoning stores only the runtime state needed to survive restart. SQLite persists opaque serialized computation bytes, Module identity for delivery, priority/eligibility/timeout/cancellation/retry state, attempts/failure category and opaque result bytes until collection and acknowledgement.
 
-The initial adapters are:
+Queued input survives restart. Interrupted running work returns to an eligible state under the runtime's recovery rules. Successful output survives restart until collected/acknowledged or removed by retention cleanup.
 
-- a llama.cpp text-inference connector, optimized for the owner's local path;
-- an OpenAI-compatible text-inference connector for an endpoint configured by the
-  installation.
+The Kernel cannot inspect persisted computation bytes as Module knowledge.
 
-MADRE owns neither connector authentication nor provider accounts. An externally
-prepared transport may supply the provider's own connection session. The local
-llama.cpp path requires no account mechanism.
+## Failures
+
+Reasoning failures use stable reasoning categories such as unavailable, timeout, cancelled, connection, protocol, remote failure, internal and interrupted. Retry is bounded by the request's `ReasoningRetryPolicy`.
+
+Absence of an installed/available compatible mechanism is a reasoning-runtime condition, not a platform boot failure. MADRE can start with an empty reasoning registry.
+
+## Search and other external I/O
+
+SearXNG is not a `ReasoningCapability`. The repository's SearXNG integration is an ordinary Java client over the reusable web-search value model. A domain Module may use that client directly when web search belongs to its behavior.
+
+The former standalone WebSearch Module and generic search Kernel capability are intentionally removed. Reintroducing search into Kernel would require a new concrete shared-Kernel responsibility, not analogy with tool-calling frameworks.
