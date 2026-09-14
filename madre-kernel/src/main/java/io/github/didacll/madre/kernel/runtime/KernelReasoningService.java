@@ -23,6 +23,7 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -211,8 +212,18 @@ public final class KernelReasoningService implements ReasoningService, AutoClose
             Duration timeout, int attempt, java.util.function.BooleanSupplier cancelled)
             throws ReasoningException {
         Instant deadline = Instant.now().plus(timeout);
-        Future<R> future = executions.submit(() -> selection.capability().execute(computation,
-                new ReasoningExecutionContext(deadline, cancelled, attempt)));
+        final Future<R> future;
+        try {
+            future = executions.submit(() -> selection.capability().execute(computation,
+                    new ReasoningExecutionContext(deadline, cancelled, attempt)));
+        } catch (RejectedExecutionException exception) {
+            boolean shuttingDown = closed.get();
+            throw new ReasoningException(shuttingDown
+                    ? ReasoningFailureCategory.INTERRUPTED : ReasoningFailureCategory.INTERNAL,
+                    shuttingDown ? "reasoning runtime is shutting down"
+                            : "reasoning execution could not be scheduled",
+                    exception);
+        }
         try {
             return future.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
         } catch (TimeoutException exception) {

@@ -2,6 +2,7 @@ package io.github.didacll.madre.kernel.runtime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.github.didacll.madre.algebra.Privacy;
@@ -28,7 +29,11 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -119,6 +124,36 @@ final class DurableReasoningTest {
         }
     }
 
+    @Test void shutdownDoesNotLeakRejectedExecutionFromDurableDispatcher(
+            @TempDir Path directory) throws Exception {
+        CountDownLatch selectionEntered = new CountDownLatch(1);
+        AtomicReference<RejectedExecutionException> rejected = new AtomicReference<>();
+        Thread.UncaughtExceptionHandler previous = Thread.getDefaultUncaughtExceptionHandler();
+        Thread.setDefaultUncaughtExceptionHandler((thread, failure) -> {
+            if (failure instanceof RejectedExecutionException rejectedExecution) {
+                rejected.compareAndSet(null, rejectedExecution);
+            } else if (previous != null) {
+                previous.uncaughtException(thread, failure);
+            }
+        });
+        try {
+            SQLiteReasoningWorkStore store = new SQLiteReasoningWorkStore(
+                    directory.resolve("shutdown.sqlite"));
+            KernelReasoningService service = new KernelReasoningService(
+                    blockingRegistry(selectionEntered), store, Duration.ofHours(1));
+            try {
+                service.submit(request("shutdown", 2));
+                assertTrue(selectionEntered.await(5, TimeUnit.SECONDS));
+            } finally {
+                service.close();
+            }
+            assertNull(rejected.get(),
+                    "shutdown must not leak executor rejection from durable reasoning");
+        } finally {
+            Thread.setDefaultUncaughtExceptionHandler(previous);
+        }
+    }
+
     private static ReasoningCapabilityRegistry registry(ReasoningAvailability availability,
             AtomicInteger calls) {
         ReasoningCapabilityRegistry registry = new ReasoningCapabilityRegistry(
@@ -138,6 +173,34 @@ final class DurableReasoningTest {
                     throw new ReasoningException(ReasoningFailureCategory.CONNECTION,
                             "transient fixture failure");
                 }
+                return computation.value().toUpperCase(java.util.Locale.ROOT);
+            }
+        }, 0);
+        return registry;
+    }
+
+    private static ReasoningCapabilityRegistry blockingRegistry(CountDownLatch selectionEntered) {
+        ReasoningCapabilityRegistry registry = new ReasoningCapabilityRegistry(
+                new ResourceCoordinator(Map.of()));
+        ReasoningCapabilityManifest<String, TestReasoningRequests.FixtureComputation> manifest =
+                new ReasoningCapabilityManifest<>(new ReasoningCapabilityId("blocking-fixture"),
+                        CONTRACT, Privacy.SECRET, ReasoningLocation.LOCAL,
+                        Duration.ofMillis(1), List.of());
+        registry.register(new ReasoningCapability<String,
+                TestReasoningRequests.FixtureComputation>() {
+            @Override public ReasoningCapabilityManifest<String,
+                    TestReasoningRequests.FixtureComputation> manifest() { return manifest; }
+            @Override public ReasoningAvailability availability() {
+                selectionEntered.countDown();
+                try {
+                    new CountDownLatch(1).await();
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                }
+                return ReasoningAvailability.AVAILABLE;
+            }
+            @Override public String execute(TestReasoningRequests.FixtureComputation computation,
+                    ReasoningExecutionContext context) {
                 return computation.value().toUpperCase(java.util.Locale.ROOT);
             }
         }, 0);
