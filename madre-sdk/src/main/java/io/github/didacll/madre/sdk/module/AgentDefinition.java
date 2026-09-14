@@ -21,6 +21,9 @@ public record AgentDefinition(AgentId id, String purpose, Integrity integrity, S
         }
         purpose = purpose.strip();
         Objects.requireNonNull(integrity, "integrity");
+        if (integrity == Integrity.SYSTEM_RESERVED) {
+            throw new IllegalArgumentException("SYSTEM_RESERVED Integrity is not an ordinary Agent value");
+        }
         Set<SkillId> copiedSkills = Set.copyOf(skills);
         Map<WorkflowId, WorkflowDefinition> copiedWorkflows = Map.copyOf(workflows);
         Set<OperationId> copiedOperations = Set.copyOf(operations);
