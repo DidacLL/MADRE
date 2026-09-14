@@ -41,55 +41,37 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $head = if ($env:PR_HEAD_SHA) { $env:PR_HEAD_SHA } else { $env:CURRENT_SHA }
           $forceFull = $false
-
           if ($env:EVENT_NAME -eq 'pull_request' -and $env:PR_BASE_SHA) {
             $base = $env:PR_BASE_SHA
-          }
-          else {
+          } else {
             $base = $env:BEFORE_SHA
-            if ([string]::IsNullOrWhiteSpace($base) -or $base -match '^0+$') {
-              $forceFull = $true
-            }
+            if ([string]::IsNullOrWhiteSpace($base) -or $base -match '^0+$') { $forceFull = $true }
           }
-
           $files = @()
           if (-not $forceFull) {
             $files = @(git diff --name-only $base $head)
             if ($LASTEXITCODE -ne 0) { throw "Unable to classify changes between $base and $head" }
           }
-
           $buildLogic = '^(build\.gradle\.kts|settings\.gradle\.kts|gradlew|gradlew\.bat|gradle/|\.github/workflows/build\.yml)($|/)'
           $anySource = '^madre-[^/]+/src/'
           $productionSource = '^madre-[^/]+/src/main/'
           $sdkSurface = '^(madre-algebra/src/main/|madre-sdk/src/main/|madre-text-inference/src/main/|verification/sdk-consumer/)'
           $reasoningSurface = '^(madre-algebra/src/main/|madre-sdk/src/main/|madre-reasoning-spi/|madre-text-inference/|verification/reasoning-consumer/)'
           $ownerAcceptance = '^verification/installed-owner-acceptance\.ps1$'
-
           $verify = $forceFull
           $production = $forceFull
           $sdkConsumer = $forceFull
           $reasoningConsumer = $forceFull
-
           foreach ($file in $files) {
-            if ($file -match $buildLogic -or $file -match $anySource -or $file -match '^verification/(sdk|reasoning)-consumer/' -or $file -match $ownerAcceptance) {
-              $verify = $true
-            }
-            if ($file -match $buildLogic -or $file -match $productionSource -or $file -match $ownerAcceptance) {
-              $production = $true
-            }
-            if ($file -match $buildLogic -or $file -match $sdkSurface -or $file -match $ownerAcceptance) {
-              $sdkConsumer = $true
-            }
-            if ($file -match $buildLogic -or $file -match $reasoningSurface -or $file -match $ownerAcceptance) {
-              $reasoningConsumer = $true
-            }
+            if ($file -match $buildLogic -or $file -match $anySource -or $file -match '^verification/(sdk|reasoning)-consumer/' -or $file -match $ownerAcceptance) { $verify = $true }
+            if ($file -match $buildLogic -or $file -match $productionSource -or $file -match $ownerAcceptance) { $production = $true }
+            if ($file -match $buildLogic -or $file -match $sdkSurface -or $file -match $ownerAcceptance) { $sdkConsumer = $true }
+            if ($file -match $buildLogic -or $file -match $reasoningSurface -or $file -match $ownerAcceptance) { $reasoningConsumer = $true }
           }
-
           "verify=$($verify.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
           "production=$($production.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
           "sdk-consumer=$($sdkConsumer.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
           "reasoning-consumer=$($reasoningConsumer.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
-
           Write-Host "Changed files: $($files.Count); verify=$verify; production=$production; sdk-consumer=$sdkConsumer; reasoning-consumer=$reasoningConsumer"
           $files | ForEach-Object { Write-Host "  $_" }
 
@@ -217,12 +199,12 @@ jobs:
         if: needs.changes.outputs.production == 'true'
         shell: pwsh
         run: |
-          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $ErrorActionPreference = 'Continue'
           $launcher = if ($IsWindows) { '.\madre-app\build\install\madre\bin\madre.bat' } else { './madre-app/build/install/madre/bin/madre' }
           $output = (& $launcher 2>&1 | Out-String)
           $status = $LASTEXITCODE
+          $ErrorActionPreference = 'Stop'
           Write-Host $output
           if ($status -ne 2) { throw "MADRE exited with $status instead of 2" }
-          if ($output -notmatch 'usage: madre <path-to-madre\.properties>') {
-            throw 'MADRE application did not print usage'
-          }
+          if ($output -notmatch 'usage: madre <path-to-madre\.properties>') { throw 'MADRE application did not print usage' }
