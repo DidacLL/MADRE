@@ -346,7 +346,7 @@ try {
         '/updates',
         '/updates',
         '/exit')
-    if ($restarted -notmatch 'S5\s+.*independent:background-useful:.*\|maximum-generated-tokens=41') {
+    if ($restarted -notmatch '(?s)S5\s+[^\r\n]*independent:background-useful:.*\|maximum-generated-tokens=41') {
         throw '/updates did not prove configured background Module reasoning limit reached durable execution'
     }
     if ((Get-Item $pendingState).Length -ne 0) {
