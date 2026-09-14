@@ -104,7 +104,7 @@ The originating Module:
 4. updates Module state/presentation as appropriate;
 5. invokes another bounded Operation or stops.
 
-For a PUBLIC Operation, the normal public boundary still applies after this interpretation: Module-owned semantic transformation must create new declared Material whose Sensitivity can reach `Privacy.PUBLIC` before the result leaves the runtime.
+Receiver semantics are applied only after the Module has produced contract-valid Material. If the containing `PUBLIC` Operation was invoked through the external/public host boundary, the Module-owned `PublicResultTransformer` must create new declared Material whose Sensitivity can reach `Privacy.PUBLIC`. Owner-local invocation returns the contract-valid Module Material unchanged. Module-to-Module invocation likewise does not run the public transformer; its caller-bound receiver instead requires the foreign result type to be canonically referenced by the receiving Module and the result Sensitivity to reach fixed `Privacy.MODULE`.
 
 There is no result object that can execute an Operation or submit more work by itself.
 
