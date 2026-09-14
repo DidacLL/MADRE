@@ -1,10 +1,15 @@
-# The CORE role is an ordinary registered Module identity.
+# CORE is optional and is only an ordinary installed Module identity. Remove this line
+# to run with no CORE assignment.
 roles.core=io.github.didacll.madre.owner-interaction
 kernel.database=var/kernel-work.sqlite
 kernel.result-retention-seconds=86400
-module.owner-interaction.state=var/owner-interaction-background.state
+modules.state-directory=var/module-state
+# Installed distributions discover JARs from their sibling modules/ directory by default.
+# Set an absolute path to use another installation directory.
+# modules.directory=/absolute/path/to/madre-modules
 
-# Explicit physical capacity and connector claims.
+# Explicit physical capacity and connector claims. All connectors may remain disabled;
+# MADRE still boots and an Operation that needs a missing mechanism fails only when invoked.
 resources.model-slot=1
 resources.network-slot=4
 

@@ -6,13 +6,19 @@ tasks.withType<JavaCompile>().configureEach {
     options.compilerArgs.addAll(listOf("-Xlint:all", "-Werror"))
 }
 
+val shippedModules by configurations.creating {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+    isTransitive = false
+}
+
 dependencies {
-    implementation(project(":madre-module-owner-interaction"))
-    implementation(project(":madre-module-web-search"))
     implementation(project(":madre-kernel"))
     implementation(project(":madre-adapter-llamacpp"))
     implementation(project(":madre-adapter-openai-compatible"))
     implementation(project(":madre-adapter-searxng"))
+    shippedModules(project(":madre-module-owner-interaction"))
+    shippedModules(project(":madre-module-web-search"))
     runtimeOnly("org.slf4j:slf4j-simple:2.0.16")
     testImplementation(platform("org.junit:junit-bom:5.11.4"))
     testImplementation("org.junit.jupiter:junit-jupiter")
@@ -26,6 +32,7 @@ application {
 distributions {
     main {
         contents {
+            from(shippedModules) { into("modules") }
             from(rootProject.file("config/madre.properties.example")) {
                 into("config")
                 rename { "madre.properties" }

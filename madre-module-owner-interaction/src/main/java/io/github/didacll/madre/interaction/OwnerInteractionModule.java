@@ -24,6 +24,8 @@ import io.github.didacll.madre.sdk.material.MaterialType;
 import io.github.didacll.madre.sdk.module.AgentDefinition;
 import io.github.didacll.madre.sdk.module.EffectProfile;
 import io.github.didacll.madre.sdk.module.ModuleDefinition;
+import io.github.didacll.madre.sdk.module.ModuleInstance;
+import io.github.didacll.madre.sdk.module.OperationBinding;
 import io.github.didacll.madre.sdk.module.OperationDefinition;
 import io.github.didacll.madre.sdk.module.OperationVisibility;
 import io.github.didacll.madre.sdk.module.SkillDefinition;
@@ -43,7 +45,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletionStage;
 
-/** Shipped ordinary Module that can be assigned to the installation's CORE role. */
+/** Shipped ordinary Module that can optionally be assigned to the installation's CORE role. */
 public final class OwnerInteractionModule {
     public static final ModuleId ID = new ModuleId("io.github.didacll.madre.owner-interaction");
     public static final MaterialType<String> OWNER_PROMPT = textType("owner-prompt");
@@ -61,9 +63,11 @@ public final class OwnerInteractionModule {
     private static final WorkflowId FAST_WORKFLOW = new WorkflowId(
             INTERACTION_AGENT, "fast-response-with-analysis");
     private static final EffectProfile STANDARD_PROFILE = new EffectProfile(
-            new EffectProfileId(STANDARD_PROMPT, "standard-inference"), Risk.R1, Autonomy.A1);
+            new EffectProfileId(STANDARD_PROMPT, "standard-inference"), Risk.READ,
+            Autonomy.LIVE_INTERACTION);
     private static final EffectProfile FAST_PROFILE = new EffectProfile(
-            new EffectProfileId(FAST_LANE, "fast-inference"), Risk.R1, Autonomy.A1);
+            new EffectProfileId(FAST_LANE, "fast-inference"), Risk.READ,
+            Autonomy.LIVE_INTERACTION);
     private static final ModuleDefinition DEFINITION = createDefinition();
 
     private final ExecutionService execution;
@@ -94,6 +98,15 @@ public final class OwnerInteractionModule {
     }
 
     public ModuleDefinition definition() { return DEFINITION; }
+
+    /** Returns the ordinary executable Module instance used by installation discovery. */
+    public ModuleInstance instance() {
+        return new ModuleInstance(DEFINITION, Map.of(
+                STANDARD_PROMPT, OperationBinding.publicOperation(
+                        operation(STANDARD_PROMPT), standardOperation, this::minimizePublicAnswer),
+                FAST_LANE, OperationBinding.publicOperation(
+                        operation(FAST_LANE), fastOperation, this::minimizePublicAnswer)));
+    }
 
     public Material<String> ownerPrompt(String text, Sensitivity sensitivity) {
         if (text == null || text.isBlank()) {
@@ -217,12 +230,21 @@ public final class OwnerInteractionModule {
         }
     }
 
-    @SuppressWarnings("unchecked")
+    private Material<String> minimizePublicAnswer(Material<String> internal) {
+        String publicText = internal.sensitivity().canReach(Privacy.PUBLIC)
+                ? internal.payload()
+                : "owner-interaction result withheld at public boundary";
+        return material(IMMEDIATE_ANSWER, publicText, Sensitivity.S1);
+    }
+
     private static OperationCall<String, String> call(OperationId operationId,
             EffectProfile profile, Material<String> input) {
-        OperationDefinition<String, String> operation =
-                (OperationDefinition<String, String>) DEFINITION.operations().get(operationId);
-        return OperationCall.withEffect(operation, profile, input, List.of());
+        return OperationCall.withEffect(operation(operationId), profile, input, List.of());
+    }
+
+    @SuppressWarnings("unchecked")
+    private static OperationDefinition<String, String> operation(OperationId operationId) {
+        return (OperationDefinition<String, String>) DEFINITION.operations().get(operationId);
     }
 
     private static Material<String> material(MaterialType<String> type, String text,

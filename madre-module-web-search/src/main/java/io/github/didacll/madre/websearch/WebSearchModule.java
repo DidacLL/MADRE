@@ -23,6 +23,8 @@ import io.github.didacll.madre.sdk.material.MaterialType;
 import io.github.didacll.madre.sdk.module.AgentDefinition;
 import io.github.didacll.madre.sdk.module.EffectProfile;
 import io.github.didacll.madre.sdk.module.ModuleDefinition;
+import io.github.didacll.madre.sdk.module.ModuleInstance;
+import io.github.didacll.madre.sdk.module.OperationBinding;
 import io.github.didacll.madre.sdk.module.OperationDefinition;
 import io.github.didacll.madre.sdk.module.OperationVisibility;
 import io.github.didacll.madre.sdk.module.SkillDefinition;
@@ -34,7 +36,6 @@ import io.github.didacll.madre.text.TextInferenceResult;
 import io.github.didacll.madre.web.WebSearchCommand;
 import io.github.didacll.madre.web.WebSearchResult;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -57,9 +58,11 @@ public final class WebSearchModule {
     private static final SkillId RESEARCH_SKILL = new SkillId(ID, "web-research");
     public static final WorkflowId DEEP_SEARCH = new WorkflowId(RESEARCHER, "deep-search");
     private static final EffectProfile SEARCH_PROFILE = new EffectProfile(
-            new EffectProfileId(SINGLE_SEARCH, "remote-search"), Risk.R1, Autonomy.A1);
+            new EffectProfileId(SINGLE_SEARCH, "remote-search"), Risk.READ,
+            Autonomy.LIVE_INTERACTION);
     private static final EffectProfile REVIEW_PROFILE = new EffectProfile(
-            new EffectProfileId(REVIEW_SEARCHES, "research-review"), Risk.R1, Autonomy.A1);
+            new EffectProfileId(REVIEW_SEARCHES, "research-review"), Risk.READ,
+            Autonomy.LIVE_INTERACTION);
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final ModuleDefinition DEFINITION = createDefinition();
 
@@ -89,6 +92,15 @@ public final class WebSearchModule {
 
     public ModuleDefinition definition() { return DEFINITION; }
 
+    /** Returns the ordinary executable Module instance used by installation discovery. */
+    public ModuleInstance instance() {
+        return new ModuleInstance(DEFINITION, Map.of(
+                SINGLE_SEARCH, OperationBinding.publicOperation(
+                        searchOperation(), searchOperation, this::minimizePublicSearch),
+                REVIEW_SEARCHES, OperationBinding.privateOperation(
+                        reviewOperation(), reviewOperation)));
+    }
+
     public Material<String> searchQuery(String query, Sensitivity sensitivity) {
         if (query == null || query.isBlank()) {
             throw new IllegalArgumentException("query must not be blank");
@@ -96,16 +108,13 @@ public final class WebSearchModule {
         return material(SEARCH_QUERY, query.strip(), sensitivity);
     }
 
-    /** Executes the researcher's one public bounded search Operation. */
+    /** Executes the researcher's one public bounded search Operation inside this Module. */
     public CompletionStage<Material<SearchResultSet>> singleSearch(Material<String> query) {
         requireQuery(query);
         return searchOperation.invoke(searchCall(query));
     }
 
-    /**
-     * Executes the minimal deep-search Workflow: two searches triggered together,
-     * followed by one private review Operation over their joined Module Material.
-     */
+    /** Executes two searches together and then one private review Operation. */
     public CompletionStage<Material<String>> deepSearch(Material<String> firstQuery,
             Material<String> secondQuery) {
         requireQuery(firstQuery);
@@ -179,20 +188,31 @@ public final class WebSearchModule {
                 """ + corpus;
     }
 
-    @SuppressWarnings("unchecked")
+    private Material<SearchResultSet> minimizePublicSearch(Material<SearchResultSet> internal) {
+        SearchResultSet publicPayload = internal.sensitivity().canReach(Privacy.PUBLIC)
+                ? new SearchResultSet(internal.payload().query(), internal.payload().sources())
+                : new SearchResultSet("withheld", List.of());
+        return material(SEARCH_RESULTS, publicPayload, Sensitivity.S1);
+    }
+
     private static OperationCall<String, SearchResultSet> searchCall(Material<String> input) {
-        OperationDefinition<String, SearchResultSet> operation =
-                (OperationDefinition<String, SearchResultSet>) DEFINITION.operations().get(SINGLE_SEARCH);
-        return OperationCall.withEffect(operation, SEARCH_PROFILE, input,
+        return OperationCall.withEffect(searchOperation(), SEARCH_PROFILE, input,
+                List.of(RESEARCHER_INTEGRITY));
+    }
+
+    private static OperationCall<String, String> reviewCall(Material<String> input) {
+        return OperationCall.withEffect(reviewOperation(), REVIEW_PROFILE, input,
                 List.of(RESEARCHER_INTEGRITY));
     }
 
     @SuppressWarnings("unchecked")
-    private static OperationCall<String, String> reviewCall(Material<String> input) {
-        OperationDefinition<String, String> operation =
-                (OperationDefinition<String, String>) DEFINITION.operations().get(REVIEW_SEARCHES);
-        return OperationCall.withEffect(operation, REVIEW_PROFILE, input,
-                List.of(RESEARCHER_INTEGRITY));
+    private static OperationDefinition<String, SearchResultSet> searchOperation() {
+        return (OperationDefinition<String, SearchResultSet>) DEFINITION.operations().get(SINGLE_SEARCH);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static OperationDefinition<String, String> reviewOperation() {
+        return (OperationDefinition<String, String>) DEFINITION.operations().get(REVIEW_SEARCHES);
     }
 
     private static void requireQuery(Material<String> query) {

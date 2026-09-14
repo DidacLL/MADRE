@@ -10,7 +10,7 @@ import io.github.didacll.madre.adapter.searxng.SearxngCapability;
 import io.github.didacll.madre.adapter.searxng.SearxngConfiguration;
 import io.github.didacll.madre.algebra.Integrity;
 import io.github.didacll.madre.algebra.Privacy;
-import io.github.didacll.madre.interaction.OwnerInteractionModule;
+import io.github.didacll.madre.algebra.Sensitivity;
 import io.github.didacll.madre.kernel.capability.CapabilityId;
 import io.github.didacll.madre.kernel.capability.ResourceClaim;
 import io.github.didacll.madre.kernel.capability.ResourceId;
@@ -18,39 +18,45 @@ import io.github.didacll.madre.kernel.config.KernelConfiguration;
 import io.github.didacll.madre.kernel.runtime.CapabilityRegistry;
 import io.github.didacll.madre.kernel.runtime.KernelRuntime;
 import io.github.didacll.madre.sdk.execution.PhysicalLocation;
+import io.github.didacll.madre.sdk.identity.MaterialId;
+import io.github.didacll.madre.sdk.identity.MaterialTypeId;
 import io.github.didacll.madre.sdk.identity.ModuleId;
+import io.github.didacll.madre.sdk.identity.OperationId;
+import io.github.didacll.madre.sdk.material.Material;
+import io.github.didacll.madre.sdk.material.MaterialType;
 import io.github.didacll.madre.sdk.module.ModuleDefinition;
+import io.github.didacll.madre.sdk.module.ModuleInstance;
+import io.github.didacll.madre.sdk.module.OperationDefinition;
 import io.github.didacll.madre.sdk.module.OperationVisibility;
+import io.github.didacll.madre.sdk.operation.OperationCall;
+import io.github.didacll.madre.sdk.registration.ModuleContext;
 import io.github.didacll.madre.sdk.registration.ModuleRegistration;
-import io.github.didacll.madre.websearch.WebSearchModule;
 import java.io.IOException;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Properties;
-import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.CompletionStage;
 
-/** Running installation assembly with ordinary Modules and one configured CORE role. */
+/** Running installation assembly. CORE and physical connectors are optional installation facts. */
 public final class MadreApplication implements AutoCloseable {
-    private static final Set<String> CORE_OPERATION_NAMES = Set.of("standard-prompt", "fast-lane");
-
     private final KernelRuntime kernel;
-    private final OwnerInteractionModule interaction;
-    private final WebSearchModule webSearch;
+    private final InstalledModuleLoader moduleLoader;
     private final List<ModuleRegistration.Registration> moduleRegistrations;
     private final List<CapabilityRegistry.Registration> capabilityRegistrations;
 
-    private MadreApplication(KernelRuntime kernel, OwnerInteractionModule interaction,
-            WebSearchModule webSearch,
+    private MadreApplication(KernelRuntime kernel, InstalledModuleLoader moduleLoader,
             List<ModuleRegistration.Registration> moduleRegistrations,
             List<CapabilityRegistry.Registration> capabilityRegistrations) {
         this.kernel = kernel;
-        this.interaction = interaction;
-        this.webSearch = webSearch;
+        this.moduleLoader = moduleLoader;
         this.moduleRegistrations = List.copyOf(moduleRegistrations);
         this.capabilityRegistrations = List.copyOf(capabilityRegistrations);
     }
@@ -58,39 +64,50 @@ public final class MadreApplication implements AutoCloseable {
     public static MadreApplication start(Properties properties) {
         Objects.requireNonNull(properties, "properties");
         Path database = Path.of(required(properties, "kernel.database")).toAbsolutePath();
-        Path interactionState = Path.of(
-                required(properties, "module.owner-interaction.state")).toAbsolutePath();
         createParent(database);
-        createParent(interactionState);
         KernelRuntime kernel = new KernelRuntime(KernelConfiguration.from(properties));
         List<CapabilityRegistry.Registration> capabilities = new ArrayList<>();
         List<ModuleRegistration.Registration> modules = new ArrayList<>();
+        InstalledModuleLoader loader = null;
         try {
             registerCapabilities(properties, kernel, capabilities);
-            if (capabilities.isEmpty()) {
-                throw new IllegalArgumentException("at least one physical connector must be enabled");
+            Path stateDirectory = stateDirectory(properties, database);
+            Files.createDirectories(stateDirectory);
+            Path moduleDirectory = moduleDirectory(properties);
+            loader = new InstalledModuleLoader(moduleDirectory);
+            ModuleContext context = new ModuleContext(kernel.execution(), kernel.modules(),
+                    kernel.modules(), stateDirectory);
+            for (var provider : loader.providers()) {
+                ModuleInstance instance = Objects.requireNonNull(provider.create(context),
+                        "ModuleProvider returned null");
+                modules.add(kernel.modules().register(instance));
             }
-
-            OwnerInteractionModule interaction = new OwnerInteractionModule(
-                    kernel.execution(), interactionState);
-            WebSearchModule webSearch = new WebSearchModule(kernel.execution());
-            modules.add(kernel.modules().register(interaction.definition()));
-            modules.add(kernel.modules().register(webSearch.definition()));
-
-            ModuleId coreId = kernel.modules().resolvedCore().orElseThrow(() ->
-                    new IllegalStateException("configured CORE Module is not registered"));
-            ModuleDefinition coreDefinition = definitionFor(coreId, interaction, webSearch);
-            if (!qualifiesForCore(coreDefinition)) {
-                throw new IllegalArgumentException("configured CORE Module does not expose the required public interaction behavior: "
-                        + coreId.value());
-            }
-            return new MadreApplication(kernel, interaction, webSearch, modules, capabilities);
-        } catch (RuntimeException exception) {
+            return new MadreApplication(kernel, loader, modules, capabilities);
+        } catch (IOException | RuntimeException exception) {
             closeReverse(modules);
             capabilities.forEach(CapabilityRegistry.Registration::close);
+            if (loader != null) loader.close();
             kernel.close();
-            throw exception;
+            if (exception instanceof RuntimeException runtime) throw runtime;
+            throw new IllegalStateException("cannot initialize Module state directory", exception);
         }
+    }
+
+    private static Path moduleDirectory(Properties properties) {
+        String configured = properties.getProperty("modules.directory");
+        return configured == null || configured.isBlank()
+                ? InstalledModuleLoader.defaultDirectory()
+                : Path.of(configured.strip()).toAbsolutePath().normalize();
+    }
+
+    private static Path stateDirectory(Properties properties, Path database) {
+        String configured = properties.getProperty("modules.state-directory");
+        if (configured != null && !configured.isBlank()) {
+            return Path.of(configured.strip()).toAbsolutePath().normalize();
+        }
+        Path parent = database.getParent();
+        return (parent == null ? Path.of("module-state") : parent.resolve("module-state"))
+                .toAbsolutePath().normalize();
     }
 
     private static void registerCapabilities(Properties properties, KernelRuntime kernel,
@@ -148,34 +165,61 @@ public final class MadreApplication implements AutoCloseable {
         }
     }
 
-    private static ModuleDefinition definitionFor(ModuleId id, OwnerInteractionModule interaction,
-            WebSearchModule webSearch) {
-        if (interaction.definition().id().equals(id)) return interaction.definition();
-        if (webSearch.definition().id().equals(id)) return webSearch.definition();
-        throw new IllegalStateException("registered CORE definition is unavailable to this assembly");
+    public List<ModuleDefinition> installedModules() { return kernel.modules().definitions(); }
+
+    /** Console/public-boundary adapter for one no-effect Module-owned Material input. */
+    public CompletionStage<Material<?>> invokePublicText(ModuleId moduleId, String operationName,
+            String materialTypeName, Sensitivity sensitivity, String encodedPayload) {
+        ModuleDefinition definition = kernel.modules().definition(moduleId).orElseThrow(() ->
+                new IllegalArgumentException("Module is not installed: " + moduleId));
+        OperationDefinition<?, ?> operation = definition.operations().get(
+                new OperationId(moduleId, operationName));
+        if (operation == null || operation.visibility() != OperationVisibility.PUBLIC) {
+            throw new IllegalArgumentException("PUBLIC Operation is not installed: "
+                    + moduleId.value() + "/" + operationName);
+        }
+        if (!operation.effectProfiles().isEmpty()) {
+            throw new IllegalArgumentException(
+                    "console invocation requires an Operation without an EffectProfile");
+        }
+        MaterialTypeId typeId = new MaterialTypeId(moduleId, materialTypeName);
+        if (!operation.acceptedMaterial().containsKey(typeId)) {
+            throw new IllegalArgumentException("Operation does not accept Material type " + typeId);
+        }
+        MaterialType<?> type = definition.materialTypes().get(typeId);
+        if (type == null) {
+            throw new IllegalArgumentException(
+                    "console invocation supports Module-owned input Material types only");
+        }
+        Material<?> input = decodeMaterial(moduleId, type, encodedPayload, sensitivity);
+        return invokeNoEffect(operation, input);
     }
 
-    /** Qualifies an ordinary Module definition without adding a CORE type or execution path. */
-    private static boolean qualifiesForCore(ModuleDefinition definition) {
-        Set<String> publicOperations = definition.operations().values().stream()
-                .filter(operation -> operation.visibility() == OperationVisibility.PUBLIC)
-                .map(operation -> operation.id().name())
-                .collect(java.util.stream.Collectors.toUnmodifiableSet());
-        if (!publicOperations.containsAll(CORE_OPERATION_NAMES)) return false;
-        return definition.agents().values().stream().anyMatch(agent -> {
-            Set<String> names = agent.operations().stream().map(operation -> operation.name())
-                    .collect(java.util.stream.Collectors.toUnmodifiableSet());
-            return names.containsAll(CORE_OPERATION_NAMES);
-        });
+    private static <T> Material<T> decodeMaterial(ModuleId moduleId, MaterialType<T> type,
+            String encodedPayload, Sensitivity sensitivity) {
+        T payload = type.codec().decode(encodedPayload.getBytes(StandardCharsets.UTF_8));
+        return new Material<>(new MaterialId(moduleId, UUID.randomUUID().toString()), type,
+                payload, Objects.requireNonNull(sensitivity, "sensitivity"));
     }
 
-    public OwnerInteractionModule interaction() { return interaction; }
-    public WebSearchModule webSearch() { return webSearch; }
+    @SuppressWarnings("unchecked")
+    private CompletionStage<Material<?>> invokeNoEffect(OperationDefinition<?, ?> operation,
+            Material<?> input) {
+        OperationDefinition<Object, Object> typedOperation =
+                (OperationDefinition<Object, Object>) operation;
+        Material<Object> typedInput = (Material<Object>) input;
+        OperationCall<Object, Object> call = OperationCall.withoutEffect(
+                typedOperation, typedInput);
+        return kernel.modules().invokePublic(call).thenApply(result -> result);
+    }
+
+    public Optional<ModuleId> resolvedCore() { return kernel.modules().resolvedCore(); }
     public KernelRuntime kernel() { return kernel; }
 
     @Override public void close() {
         closeReverse(moduleRegistrations);
         capabilityRegistrations.forEach(CapabilityRegistry.Registration::close);
+        moduleLoader.close();
         kernel.close();
     }
 

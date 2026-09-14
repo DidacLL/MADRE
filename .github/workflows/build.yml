@@ -47,7 +47,6 @@ jobs:
               $base = $env:PR_BASE_SHA
             }
             else {
-              # A first push has no reliable previous branch head. Validate it fully.
               $forceFull = $true
             }
           }
@@ -110,9 +109,30 @@ jobs:
       - name: Verify production documentation and packages on Linux
         if: runner.os == 'Linux' && needs.changes.outputs.production == 'true'
         run: ./gradlew --no-daemon --build-cache javadoc publish installDist distZip
-      - name: Verify isolated SDK consumer on Linux
+      - name: Build isolated executable Module on Linux
         if: runner.os == 'Linux' && needs.changes.outputs.sdk-consumer == 'true'
-        run: ./gradlew --no-daemon --build-cache -p verification/sdk-consumer compileJava
+        run: ./gradlew --no-daemon --build-cache -p verification/sdk-consumer jar
+      - name: Verify independent Module installation and PUBLIC invocation on Linux
+        if: runner.os == 'Linux' && needs.changes.outputs.production == 'true' && needs.changes.outputs.sdk-consumer == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp verification/sdk-consumer/build/libs/independent-module.jar \
+            madre-app/build/install/madre/modules/independent-module.jar
+          module_dir="$(cd madre-app/build/install/madre/modules && pwd)"
+          state_dir="$RUNNER_TEMP/madre-module-state"
+          database="$RUNNER_TEMP/madre-independent.sqlite"
+          config="$RUNNER_TEMP/madre-independent.properties"
+          printf 'kernel.database=%s\nmodules.directory=%s\nmodules.state-directory=%s\n' \
+            "$database" "$module_dir" "$state_dir" > "$config"
+          output="$(madre-app/build/install/madre/bin/madre "$config" \
+            --invoke-public phd.module inspect request S4 hello 2>&1)"
+          printf '%s\n' "$output"
+          printf '%s\n' "$output" | grep -F 'public:hello'
+          if printf '%s\n' "$output" | grep -F 'private:hello'; then
+            echo 'raw internal Material crossed the public boundary' >&2
+            exit 1
+          fi
       - name: Smoke installed application on Linux
         if: runner.os == 'Linux' && needs.changes.outputs.production == 'true'
         shell: bash
@@ -132,10 +152,32 @@ jobs:
         if: runner.os == 'Windows' && needs.changes.outputs.production == 'true'
         shell: pwsh
         run: .\gradlew.bat --no-daemon --build-cache javadoc publish installDist distZip
-      - name: Verify isolated SDK consumer on Windows
+      - name: Build isolated executable Module on Windows
         if: runner.os == 'Windows' && needs.changes.outputs.sdk-consumer == 'true'
         shell: pwsh
-        run: .\gradlew.bat --no-daemon --build-cache -p verification/sdk-consumer compileJava
+        run: .\gradlew.bat --no-daemon --build-cache -p verification/sdk-consumer jar
+      - name: Verify independent Module installation and PUBLIC invocation on Windows
+        if: runner.os == 'Windows' && needs.changes.outputs.production == 'true' && needs.changes.outputs.sdk-consumer == 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Copy-Item 'verification\sdk-consumer\build\libs\independent-module.jar' `
+            'madre-app\build\install\madre\modules\independent-module.jar'
+          $moduleDir = (Resolve-Path 'madre-app\build\install\madre\modules').Path.Replace('\', '/')
+          $stateDir = (Join-Path $env:RUNNER_TEMP 'madre-module-state').Replace('\', '/')
+          $database = (Join-Path $env:RUNNER_TEMP 'madre-independent.sqlite').Replace('\', '/')
+          $config = Join-Path $env:RUNNER_TEMP 'madre-independent.properties'
+          @(
+            "kernel.database=$database",
+            "modules.directory=$moduleDir",
+            "modules.state-directory=$stateDir"
+          ) | Set-Content -Path $config -Encoding utf8
+          $output = (& '.\madre-app\build\install\madre\bin\madre.bat' $config `
+            --invoke-public phd.module inspect request S4 hello 2>&1 | Out-String)
+          if ($LASTEXITCODE -ne 0) { Write-Host $output; throw 'independent Module invocation failed' }
+          Write-Host $output
+          if ($output -notmatch 'public:hello') { throw 'minimized PUBLIC result was not returned' }
+          if ($output -match 'private:hello') { throw 'raw internal Material crossed the public boundary' }
       - name: Smoke installed application on Windows
         if: runner.os == 'Windows' && needs.changes.outputs.production == 'true'
         shell: pwsh

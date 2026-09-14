@@ -1,15 +1,13 @@
 package io.github.didacll.madre.app;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import io.github.didacll.madre.interaction.OwnerInteractionModule;
 import io.github.didacll.madre.text.TextInferenceCommand;
 import io.github.didacll.madre.text.TextInferenceResult;
 import io.github.didacll.madre.web.WebSearchCommand;
 import io.github.didacll.madre.web.WebSearchResult;
-import io.github.didacll.madre.websearch.WebSearchModule;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Properties;
 import org.junit.jupiter.api.Test;
@@ -18,17 +16,27 @@ import org.junit.jupiter.api.io.TempDir;
 final class MadreApplicationTest {
     @TempDir Path temporary;
 
-    @Test void assemblesTwoOrdinaryModulesAndResolvesQualifiedCoreRole() {
-        try (MadreApplication application = MadreApplication.start(properties())) {
-            assertEquals(OwnerInteractionModule.ID,
-                    application.kernel().modules().resolvedCore().orElseThrow());
-            assertEquals(OwnerInteractionModule.ID, application.interaction().definition().id());
-            assertEquals(WebSearchModule.ID, application.webSearch().definition().id());
+    @Test void bootsWithNoCoreNoModulesAndNoReasoningConnector() throws Exception {
+        Files.createDirectories(temporary.resolve("empty-modules"));
+        try (MadreApplication application = MadreApplication.start(bareProperties())) {
+            assertTrue(application.resolvedCore().isEmpty());
+            assertTrue(application.installedModules().isEmpty());
         }
     }
 
-    @Test void acceptsUnixSocketAndLoopbackHttpAsCoexistingTextInferenceCapabilities() {
-        Properties properties = properties();
+    @Test void configuredButAbsentCoreIsOnlyUnresolvedRoleState() throws Exception {
+        Files.createDirectories(temporary.resolve("empty-modules"));
+        Properties properties = bareProperties();
+        properties.setProperty("roles.core", "ordinary.module");
+        try (MadreApplication application = MadreApplication.start(properties)) {
+            assertTrue(application.resolvedCore().isEmpty());
+        }
+    }
+
+    @Test void acceptsUnixSocketAndLoopbackHttpAsCoexistingTextInferenceCapabilities()
+            throws Exception {
+        Files.createDirectories(temporary.resolve("empty-modules"));
+        Properties properties = connectorProperties();
         properties.setProperty("connector.llamacpp-unix.enabled", "true");
         properties.setProperty("connector.llamacpp-unix.id", "test-llama-uds");
         properties.setProperty("connector.llamacpp-unix.socket",
@@ -47,8 +55,9 @@ final class MadreApplicationTest {
         }
     }
 
-    @Test void acceptsSemanticAndRankPrivacyConfigurationNames() {
-        Properties properties = properties();
+    @Test void acceptsSemanticAndRankPrivacyConfigurationNames() throws Exception {
+        Files.createDirectories(temporary.resolve("empty-modules"));
+        Properties properties = connectorProperties();
         properties.setProperty("connector.llamacpp.privacy", "PUBLIC");
         properties.setProperty("resources.network-slot", "1");
         properties.setProperty("connector.searxng.enabled", "true");
@@ -67,31 +76,26 @@ final class MadreApplicationTest {
         }
     }
 
-    @Test void rejectsSystemReservedPrivacyAsInstalledConnectorFact() {
-        Properties properties = properties();
+    @Test void rejectsSystemReservedPrivacyAsInstalledConnectorFact() throws Exception {
+        Files.createDirectories(temporary.resolve("empty-modules"));
+        Properties properties = connectorProperties();
         properties.setProperty("connector.llamacpp.privacy", "SYSTEM_RESERVED");
         assertThrows(IllegalArgumentException.class, () -> MadreApplication.start(properties));
     }
 
-    @Test void rejectsRegisteredModuleThatDoesNotProvideCoreInteractionBehavior() {
-        Properties properties = properties();
-        properties.setProperty("roles.core", WebSearchModule.ID.value());
-        assertThrows(IllegalArgumentException.class, () -> MadreApplication.start(properties));
-    }
-
-    @Test void rejectsCoreAssignmentThatIsNotARegisteredInstalledModule() {
-        Properties properties = properties();
-        properties.setProperty("roles.core", "another.module");
-        assertThrows(IllegalStateException.class, () -> MadreApplication.start(properties));
-    }
-
-    private Properties properties() {
+    private Properties bareProperties() {
         Properties properties = new Properties();
-        properties.setProperty("roles.core", OwnerInteractionModule.ID.value());
         properties.setProperty("kernel.database", temporary.resolve("kernel.sqlite").toString());
         properties.setProperty("kernel.result-retention-seconds", "3600");
-        properties.setProperty("module.owner-interaction.state",
-                temporary.resolve("owner-interaction.state").toString());
+        properties.setProperty("modules.directory",
+                temporary.resolve("empty-modules").toAbsolutePath().toString());
+        properties.setProperty("modules.state-directory",
+                temporary.resolve("module-state").toAbsolutePath().toString());
+        return properties;
+    }
+
+    private Properties connectorProperties() {
+        Properties properties = bareProperties();
         properties.setProperty("resources.model-slot", "1");
         properties.setProperty("connector.llamacpp.enabled", "true");
         properties.setProperty("connector.llamacpp.id", "test-llama");
