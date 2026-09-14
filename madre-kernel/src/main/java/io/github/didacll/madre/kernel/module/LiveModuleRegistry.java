@@ -57,7 +57,7 @@ public final class LiveModuleRegistry implements ModuleRegistration, ModuleDirec
             for (AgentDefinition agent : module.agents().values()) {
                 java.util.Set<OperationId> exposed = agent.operations().stream().filter(operations::containsKey).collect(java.util.stream.Collectors.toUnmodifiableSet());
                 if (!exposed.isEmpty()) {
-                    Privacy effective = exposed.stream().flatMap(id -> operations.get(id).acceptedMaterial().values().stream()).reduce(Privacy.P5, Privacy::combine);
+                    Privacy effective = exposed.stream().flatMap(id -> operations.get(id).acceptedMaterial().values().stream()).reduce(Privacy.SECRET, Privacy::combine);
                     agents.put(agent.id(), new ReachableAgent(agent.id(), agent.purpose(), exposed, effective));
                 }
             }
