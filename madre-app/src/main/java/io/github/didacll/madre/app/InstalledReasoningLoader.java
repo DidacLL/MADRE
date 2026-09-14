@@ -20,24 +20,10 @@ final class InstalledReasoningLoader implements AutoCloseable {
     private final URLClassLoader classLoader;
     private final List<ReasoningMechanismProvider> providers;
 
-    InstalledReasoningLoader(Path directory) {
-        Path reasoning = Objects.requireNonNull(directory, "directory").toAbsolutePath().normalize();
-        if (Files.exists(reasoning) && !Files.isDirectory(reasoning)) {
-            throw new IllegalArgumentException("reasoning.directory is not a directory: " + reasoning);
-        }
-        List<Path> jars;
-        if (!Files.exists(reasoning)) {
-            jars = List.of();
-        } else {
-            try (var entries = Files.list(reasoning)) {
-                jars = entries.filter(Files::isRegularFile)
-                        .filter(path -> path.getFileName().toString().endsWith(".jar"))
-                        .sorted().toList();
-            } catch (IOException exception) {
-                throw new IllegalStateException(
-                        "cannot inspect installed reasoning mechanisms in " + reasoning, exception);
-            }
-        }
+    InstalledReasoningLoader(Path directory) { this(installationDirectories(directory)); }
+
+    InstalledReasoningLoader(List<Path> directories) {
+        List<Path> jars = jars(directories);
         URL[] urls = jars.stream().map(InstalledReasoningLoader::url).toArray(URL[]::new);
         classLoader = new URLClassLoader(urls, ReasoningMechanismProvider.class.getClassLoader());
         try {
@@ -80,10 +66,42 @@ final class InstalledReasoningLoader implements AutoCloseable {
                     && parent.getParent() != null) {
                 return parent.getParent().resolve("reasoning");
             }
+            if (parent != null) return parent.resolve("reasoning");
         } catch (URISyntaxException | RuntimeException ignored) {
             // Development execution can use an explicit reasoning.directory.
         }
         return Path.of("reasoning").toAbsolutePath().normalize();
+    }
+
+    private static List<Path> installationDirectories(Path directory) {
+        Path requested = Objects.requireNonNull(directory, "directory").toAbsolutePath().normalize();
+        Path shipped = defaultDirectory().toAbsolutePath().normalize();
+        if (!requested.equals(shipped)) return List.of(requested);
+        HostEnvironment host = HostEnvironment.resolve();
+        if (!host.hasPackagedDefaults()) return List.of(shipped);
+        Path owner = host.ownerReasoningDirectory();
+        return owner.equals(shipped) ? List.of(shipped) : List.of(shipped, owner);
+    }
+
+    private static List<Path> jars(List<Path> directories) {
+        Objects.requireNonNull(directories, "directories");
+        List<Path> result = new ArrayList<>();
+        for (Path directory : directories.stream().map(path -> Objects.requireNonNull(path, "directory")
+                .toAbsolutePath().normalize()).distinct().toList()) {
+            if (Files.exists(directory) && !Files.isDirectory(directory)) {
+                throw new IllegalArgumentException("reasoning.directory is not a directory: " + directory);
+            }
+            if (!Files.exists(directory)) continue;
+            try (var entries = Files.list(directory)) {
+                result.addAll(entries.filter(Files::isRegularFile)
+                        .filter(path -> path.getFileName().toString().endsWith(".jar"))
+                        .sorted().toList());
+            } catch (IOException exception) {
+                throw new IllegalStateException(
+                        "cannot inspect installed reasoning mechanisms in " + directory, exception);
+            }
+        }
+        return List.copyOf(result);
     }
 
     private static URL url(Path path) {

@@ -10,6 +10,7 @@ import io.github.didacll.madre.sdk.execution.ReasoningComputation;
 import io.github.didacll.madre.sdk.execution.ReasoningPreferences;
 import io.github.didacll.madre.sdk.execution.ReasoningRequest;
 import java.util.Comparator;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -46,6 +47,11 @@ public final class ReasoningCapabilityRegistry {
             throw new IllegalStateException("ReasoningCapability already registered");
         }
         return () -> installed.remove(capability.manifest().id(), entry);
+    }
+
+    /** Stable snapshot of currently materialized reasoning-mechanism identities. */
+    public List<ReasoningCapabilityId> installedIds() {
+        return installed.keySet().stream().sorted().toList();
     }
 
     public Optional<ReasoningContract<?, ?>> contract(String id) {

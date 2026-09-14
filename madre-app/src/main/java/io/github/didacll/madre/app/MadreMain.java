@@ -6,44 +6,129 @@ import io.github.didacll.madre.sdk.material.Material;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.CompletionException;
 
-/** Replaceable local console over installed Module discovery and distinct invocation boundaries. */
+/** Replaceable local console plus host-owned bootstrap and diagnostic entrypoints. */
 public final class MadreMain {
     private MadreMain() { }
 
     public static void main(String[] arguments) throws IOException {
-        if (arguments.length < 1) {
+        final ParsedArguments parsed;
+        try {
+            parsed = parse(arguments);
+        } catch (IllegalArgumentException exception) {
+            System.err.println(exception.getMessage());
             usage();
             System.exit(2);
+            return;
         }
-        Properties properties = new Properties();
-        try (var input = Files.newInputStream(Path.of(arguments[0]))) {
-            properties.load(input);
+
+        HostEnvironment host = HostEnvironment.resolve();
+        if (parsed.configuration().isEmpty() && !host.hasPackagedDefaults()) {
+            usage();
+            System.exit(2);
+            return;
         }
+        HostEnvironment.LoadedConfiguration loaded = host.loadConfiguration(parsed.configuration());
+        Properties properties = loaded.properties();
         try (MadreApplication application = MadreApplication.start(properties)) {
-            if (arguments.length == 1) {
+            List<String> command = parsed.command();
+            if (command.isEmpty()) {
                 runConsole(application);
-            } else if (arguments.length == 2 && arguments[1].equals("--list-modules")) {
+            } else if (command.size() == 1 && command.get(0).equals("doctor")) {
+                doctor(host, loaded, application, properties);
+            } else if (command.size() == 1 && command.get(0).equals("--list-modules")) {
                 printModules(application);
-            } else if (arguments.length == 7
-                    && arguments[1].equals("--invoke-public")) {
-                invoke(application, Invocation.PUBLIC, arguments[2], arguments[3], arguments[4],
-                        arguments[5], arguments[6], true);
-            } else if (arguments.length == 7
-                    && arguments[1].equals("--invoke-owner")) {
-                invoke(application, Invocation.OWNER_LOCAL, arguments[2], arguments[3],
-                        arguments[4], arguments[5], arguments[6], true);
+            } else if (command.size() == 6 && command.get(0).equals("--invoke-public")) {
+                invoke(application, Invocation.PUBLIC, command.get(1), command.get(2), command.get(3),
+                        command.get(4), command.get(5), true);
+            } else if (command.size() == 6 && command.get(0).equals("--invoke-owner")) {
+                invoke(application, Invocation.OWNER_LOCAL, command.get(1), command.get(2),
+                        command.get(3), command.get(4), command.get(5), true);
             } else {
                 usage();
                 System.exit(2);
             }
         }
+    }
+
+    private static ParsedArguments parse(String[] arguments) {
+        List<String> values = new ArrayList<>(List.of(arguments));
+        Optional<Path> configuration = Optional.empty();
+        if (!values.isEmpty() && values.get(0).equals("--config")) {
+            if (values.size() < 2 || values.get(1).isBlank()) {
+                throw new IllegalArgumentException("--config requires a properties-file path");
+            }
+            configuration = Optional.of(Path.of(values.remove(1)));
+            values.remove(0);
+        } else if (!values.isEmpty() && !values.get(0).startsWith("--")
+                && !values.get(0).equals("doctor")) {
+            configuration = Optional.of(Path.of(values.remove(0)));
+        }
+        return new ParsedArguments(configuration, List.copyOf(values));
+    }
+
+    private static void doctor(HostEnvironment host, HostEnvironment.LoadedConfiguration loaded,
+            MadreApplication application, Properties properties) {
+        System.out.println("MADRE doctor");
+        System.out.println("version\t" + version());
+        System.out.println("java.version\t" + System.getProperty("java.version"));
+        System.out.println("java.home\t" + Path.of(System.getProperty("java.home"))
+                .toAbsolutePath().normalize());
+        System.out.println("configuration\t" + loaded.path());
+        String configurationState = loaded.explicit() ? "loaded (explicit)"
+                : loaded.bootstrapped() ? "loaded (bootstrapped)" : "loaded (existing)";
+        System.out.println("configuration.status\t" + configurationState);
+        System.out.println("data.directory\t" + host.dataDirectory());
+        System.out.println("state.directory\t" + host.stateDirectory());
+        for (Path path : moduleArtifactDirectories(properties, host)) {
+            System.out.println("module.artifacts\t" + path);
+        }
+        for (Path path : reasoningArtifactDirectories(properties, host)) {
+            System.out.println("reasoning.artifacts\t" + path);
+        }
+        System.out.println("module.discovery\tinitialized");
+        System.out.println("modules.count\t" + application.installedModules().size());
+        application.installedModules().stream().map(module -> module.id().value()).sorted()
+                .forEach(id -> System.out.println("module\t" + id));
+        String configuredCore = properties.getProperty("roles.core");
+        if (configuredCore == null || configuredCore.isBlank()) {
+            System.out.println("core\tnot configured");
+        } else if (application.resolvedCore().isPresent()) {
+            System.out.println("core\tresolved " + application.resolvedCore().orElseThrow().value());
+        } else {
+            System.out.println("core\tconfigured but unresolved " + configuredCore.strip());
+        }
+        System.out.println("reasoning.discovery\tinitialized");
+        var reasoningIds = application.kernel().reasoningCapabilities().installedIds();
+        System.out.println("reasoning.mechanisms.count\t" + reasoningIds.size());
+        reasoningIds.forEach(id -> System.out.println("reasoning.mechanism\t" + id.value()));
+    }
+
+    private static List<Path> moduleArtifactDirectories(Properties properties, HostEnvironment host) {
+        String configured = properties.getProperty("modules.directory");
+        return configured == null || configured.isBlank()
+                ? host.moduleDirectories()
+                : List.of(Path.of(configured.strip()).toAbsolutePath().normalize());
+    }
+
+    private static List<Path> reasoningArtifactDirectories(Properties properties,
+            HostEnvironment host) {
+        String configured = properties.getProperty("reasoning.directory");
+        return configured == null || configured.isBlank()
+                ? host.reasoningDirectories()
+                : List.of(Path.of(configured.strip()).toAbsolutePath().normalize());
+    }
+
+    private static String version() {
+        String version = MadreMain.class.getPackage().getImplementationVersion();
+        return version == null || version.isBlank() ? "development" : version;
     }
 
     private static void runConsole(MadreApplication application) throws IOException {
@@ -219,11 +304,13 @@ public final class MadreMain {
     }
 
     private static void usage() {
-        System.err.println("usage: madre <path-to-madre.properties> "
-                + "[--list-modules | --invoke-public <module> <operation> "
+        System.err.println("usage: madre [--config <path-to-madre.properties>] "
+                + "[doctor | --list-modules | --invoke-public <module> <operation> "
                 + "<material-type> <S1..S5> <payload> | --invoke-owner <module> <operation> "
                 + "<material-type> <S1..S5> <payload>]");
+        System.err.println("legacy developer usage: madre <path-to-madre.properties> ...");
     }
 
+    private record ParsedArguments(Optional<Path> configuration, List<String> command) { }
     private enum Invocation { PUBLIC, OWNER_LOCAL }
 }
