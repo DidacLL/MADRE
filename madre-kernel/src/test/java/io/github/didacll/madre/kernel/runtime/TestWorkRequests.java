@@ -74,7 +74,8 @@ final class TestWorkRequests {
             return OperationCall.withoutEffect(operation, input);
         }
         EffectProfile profile = new EffectProfile(
-                new EffectProfileId(operationId, "profile"), risk.orElseThrow(), Autonomy.A5);
+                new EffectProfileId(operationId, "profile"), risk.orElseThrow(),
+                Autonomy.AUTONOMOUS);
         OperationDefinition<String, String> operation = new OperationDefinition<>(operationId,
                 "Fixture physical execution", OperationVisibility.PRIVATE,
                 Map.of(inputType.id(), Privacy.SECRET), Map.of(), Map.of(profile.id(), profile));

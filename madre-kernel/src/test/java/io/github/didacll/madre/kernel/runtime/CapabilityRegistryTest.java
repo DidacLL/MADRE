@@ -44,7 +44,7 @@ final class CapabilityRegistryTest {
                 CapabilityAvailability.UNAVAILABLE), 100);
         registry.register(capability("z", Privacy.SECRET, Integrity.I5, CapabilityAvailability.AVAILABLE), 1);
         registry.register(capability("a", Privacy.LOCAL, Integrity.I3, CapabilityAvailability.AVAILABLE), 1);
-        WorkRequest<String, String> request = request(Sensitivity.S4, Optional.of(Risk.R4));
+        WorkRequest<String, String> request = request(Sensitivity.S4, Optional.of(Risk.EXECUTE));
         try (CapabilityRegistry.Selection<String, String> selection = registry.select(request).orElseThrow()) {
             assertEquals("z", selection.capability().manifest().id().value());
             assertTrue(registry.select(request).isEmpty(), "resource is atomically leased");
