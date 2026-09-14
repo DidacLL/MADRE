@@ -68,6 +68,8 @@ A Module may deliberately transform S5 Material into new S4, S3, S2 or S1 Materi
 
 The executable PUBLIC Operation boundary is one use of this rule: before internal result Material crosses the external boundary, the Module must create new declared Material able to reach `Privacy.PUBLIC`. Runtime validation does not invent the transformation.
 
+Owner-local invocation is a different receiver boundary. The owner receiving contract-valid Material inside their own MADRE installation does not imply public disclosure and therefore does not require the PUBLIC transformer or a new S1 Material. The Module-created Sensitivity remains unchanged. This distinction does not add an `OWNER` Privacy value, trusted-user Integrity level or another algebraic carrier; it is an invocation/receiver boundary in runtime architecture.
+
 Reasoning selection is another use: carried request Sensitivity must be able to reach the selected reasoning mechanism's explicit receiving Privacy.
 
 ## Bounded consequential Operation execution
@@ -83,7 +85,11 @@ D <= minimum Integrity of actual non-user causal participants
 
 Only that EffectProfile contributes Risk and Autonomy. Another profile is an independent construction. Owner presence is represented by the profile's actual Autonomy and never changes information reach.
 
-The current public `OperationCall` checks this causal composition before bounded behavior executes. No Kernel policy authority is involved.
+The current public `OperationCall` checks this causal composition before bounded behavior executes. Owner-local and PUBLIC invocation both use the same real `OperationCall`; neither may bypass this composition. A host caller supplies only actual non-user causal participants rather than fabricating Integrity values for a user or CLI.
+
+Reasoning computation alone does not justify an EffectProfile. The shipped owner-interaction `standard-prompt` therefore has no profile. Its `fast-lane` profile is justified by durable/persistent write consequences, and its `collect-background` profile is justified by acknowledgement/cleanup consequences rather than by inference.
+
+No Kernel policy authority is involved.
 
 The previous generic physical-action design also attempted to carry Risk into mechanism selection and model physical-realizer Integrity on generic Capability manifests. That is intentionally removed. Reasoning mechanisms are not generic action realizers.
 
@@ -95,4 +101,4 @@ This invariant creates no policy evaluator, permission service, decision wrapper
 
 ## Runtime concerns are not algebra
 
-Composition produces values, not observations about values. Logging, scheduling, attempts, retry, diagnostics, Module installation/discovery, CORE role lookup, reasoning availability and resource reservation are ordinary runtime concerns and confer no algebraic privilege.
+Composition produces values, not observations about values. Logging, scheduling, attempts, retry, diagnostics, Module installation/discovery, owner-local/public receiver selection, CORE role lookup, reasoning availability and resource reservation are ordinary runtime concerns and confer no algebraic privilege.

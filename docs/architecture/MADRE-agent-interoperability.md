@@ -29,7 +29,8 @@ Runtime behavior is bound through responsibility-specific SDK interfaces:
 - `ModuleProvider` materializes one installable executable Module from `ModuleContext`;
 - `ModuleRegistration` registers executable Module behavior;
 - `ModuleDirectory` exposes currently reachable public definitions;
-- `ModuleInvoker` invokes an exact installed `PUBLIC` Operation from an `OperationCall`;
+- `ModuleInvoker` invokes an exact installed `PUBLIC` Operation across the external/public boundary;
+- `OwnerModuleInvoker` is the host/application owner-local invocation port over an exact installed externally callable Operation;
 - `ReasoningService` is the Module-facing port only for reasoning work.
 
 There is no universal `receive` method, Agent loop, assistant turn, planner, policy engine, workflow interpreter or generic Kernel action dispatcher.
@@ -44,6 +45,24 @@ Shipped and independently built Modules use the same provider/registration route
 
 The independent verification Module is built in a separate Gradle build against only the published `madre-sdk` artifact. CI installs its JAR into a built distribution, discovers it and invokes its public Operation on both Windows and Linux.
 
+## Canonical Operation execution
+
+`OperationBinding.invoke` accepts only an `OperationCall` that references the exact installed canonical declaration. The Module-owned implementation executes, then the internal result is contract-validated before any receiver-specific transformation: output Material type must be declared, its owner must be the Operation's Module, and its Sensitivity must not exceed the declared maximum.
+
+A real `OperationCall` structurally enforces accepted Material/Privacy, exact EffectProfile selection where applicable and causal Integrity composition before bounded behavior executes. Host adapters do not replace this call with a weaker convenience envelope.
+
+## Owner-local invocation boundary
+
+`OwnerModuleInvoker.invokeOwner` resolves the exact installed Module and canonical Operation binding just as the public path does. It is a host/application receiver boundary for the owner using the local MADRE installation.
+
+Only Operations declared `PUBLIC` are owner-callable. `PRIVATE` remains Module-internal; owner locality does not confer implementation authority.
+
+The owner-local route executes the canonical `OperationCall`, returns the contract-valid Material created by the Module and does not call `PublicResultTransformer`. Result Sensitivity is not lowered merely because the owner receives it locally. No Privacy value is inferred from localhost, same-process execution, class-loader placement, shipped placement or CORE assignment.
+
+`OwnerModuleInvoker` is deliberately not present in `ModuleContext`. Installed Modules receive `ModuleInvoker` for cross-Module PUBLIC invocation only. Application assembly passes facade objects for the directory and public invoker rather than the concrete registry, so a Module cannot obtain the host owner-local port by downcasting a context object.
+
+The current application/console generic adapter decodes input through the exact installed `MaterialType` codec and constructs the canonical call. An Operation with no EffectProfile uses `OperationCall.withoutEffect`. A single declared EffectProfile can be selected without extra ceremony; if multiple variants exist the generic selector uses `<operation>@<effect-profile>`. The host supplies only actual non-user causal participants and does not ask a user to invent Integrity values.
+
 ## PUBLIC Operation boundary
 
 `ModuleInvoker.invokePublic` resolves the installed Module and exact canonical Operation binding. Missing Modules, undeclared bindings, forged/non-canonical calls and private Operations are rejected.
@@ -52,7 +71,7 @@ A `PUBLIC` binding must provide a Module-owned `PublicResultTransformer`. Intern
 
 The transformed Material must still satisfy declared output type, owner and maximum Sensitivity. Returning raw internal Material or a replacement that remains too sensitive is rejected.
 
-Semantic transformation remains Module behavior. Runtime enforcement only prevents bypass of the public boundary.
+Semantic transformation remains Module behavior. Runtime enforcement only prevents bypass of the public boundary. Owner-local invocation never transforms first and attempts to reconstruct sensitive information later; the two receiver boundaries are distinct executions of the same bounded Operation contract.
 
 ## Structural algebra in definitions
 
@@ -60,7 +79,9 @@ An Operation directly declares accepted Material types and receiving Privacy. It
 
 A Workflow adds no independent security decision. Every Operation call composes from the actual Material entering that Operation.
 
-For one consequential call, `OperationCall.withEffect` binds one exact EffectProfile and the Integrity values of actual non-user causal participants. The causal requirement is `min(Risk, Autonomy)`. EffectProfile Risk is not forwarded into reasoning work.
+For one consequential call, `OperationCall.withEffect` binds one exact EffectProfile and the Integrity values of actual non-user causal participants. The causal requirement is `min(Risk, Autonomy)`. If there are no non-user causal participants the existing algebra uses I5. EffectProfile Risk is not forwarded into reasoning work.
+
+Reasoning computation alone does not justify an EffectProfile. The shipped owner-interaction Module therefore declares `standard-prompt` as no-effect. `fast-lane` has `WRITE/AUTONOMOUS` because it creates durable work plus Module-owned persistent pending state that continues after foreground interaction. Its Module-specific `collect-background` has `DELETE/LIVE_INTERACTION` because explicit owner collection acknowledges completed durable work and removes completed pending semantic state.
 
 ## Reasoning port
 
@@ -72,11 +93,19 @@ The request does not expose Material identities/types, semantic continuation, a 
 
 This compile-time restriction is intentional: the SDK does not present a generic command envelope that ordinary application effects can reuse accidentally.
 
+## Durable Module interpretation
+
+Kernel durable reasoning stores opaque runtime bytes and stable reasoning-contract/runtime state. Semantic meaning of a pending result remains Module-owned.
+
+The shipped owner-interaction fast lane demonstrates the composition: the Module persists WorkId-to-semantic-state association, Kernel persists opaque reasoning work, process restart rebuilds Module/reasoning installations, a compatible independent reasoning mechanism resumes work, and the installed Module's `collect-background` Operation interprets the completed result into Module Material, acknowledges Kernel work and removes its pending state.
+
+There is no generic Kernel callback, continuation object, background result router or scheduler language.
+
 ## CORE assignment
 
 CORE is an optional installation role containing one ordinary `ModuleId`. If configured and installed, the live registry resolves it. If absent or unresolved, MADRE still boots.
 
-CORE changes no Module definition, visibility, public-invocation authority, algebraic value, reasoning privilege, scheduling privilege or class hierarchy.
+CORE changes no Module definition, visibility, owner-local/public invocation authority, algebraic value, reasoning privilege, scheduling privilege or class hierarchy.
 
 ## Codecs
 

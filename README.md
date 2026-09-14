@@ -70,27 +70,35 @@ io.github.didacll:madre-sdk:0.1.0-SNAPSHOT
 
 and produces `independent-module.jar`.
 
-## PUBLIC Operation invocation
+## Owner-local and PUBLIC invocation
 
-Runtime callers discover declarations and invoke an exact installed `PUBLIC` Operation through SDK `ModuleInvoker` without depending on the concrete Module class.
+MADRE has two deliberately distinct host receiver boundaries over exact installed externally callable Operations.
 
-A public binding must apply a Module-owned semantic result transformer before Material leaves the public boundary. The result must be new declared Material with a new identity and Sensitivity able to reach `Privacy.PUBLIC`; raw internal Material cannot cross this path.
+`OwnerModuleInvoker.invokeOwner` is the owner-local host/application boundary. It resolves the exact canonical installed `PUBLIC` Operation, accepts a real `OperationCall`, executes the Module-owned binding, validates its declared output contract and returns the Module-created Material unchanged. It does not apply `PublicResultTransformer` and does not lower Sensitivity merely because the owner sees the result locally.
 
-The local console exposes the same generic public boundary:
+`OwnerModuleInvoker` is not part of `ModuleContext`. Installed Modules still receive only `ModuleInvoker`, whose reachable cross-Module path is `invokePublic`. The application supplies facade objects rather than its concrete live registry, so a Module cannot recover owner-local authority by downcasting a context port. CORE, shipped placement, class-loader placement and same-process execution do not alter that rule.
+
+`ModuleInvoker.invokePublic` remains the external/public boundary. A public binding must apply its Module-owned semantic result transformer before Material leaves this boundary. The result must be new declared Material with a new identity and Sensitivity able to reach `Privacy.PUBLIC`; raw internal Material cannot cross this path.
+
+The replaceable local console exposes both generic boundaries:
 
 ```text
 /modules
-/invoke <module> <operation> <material-type> <S1..S5> <payload>
+/invoke-owner <module> <operation> <material-type> <S1..S5> <payload>
+/invoke-public <module> <operation> <material-type> <S1..S5> <payload>
 ```
 
 or non-interactively:
 
 ```text
 madre <properties> --list-modules
+madre <properties> --invoke-owner <module> <operation> <material-type> <S1..S5> <payload>
 madre <properties> --invoke-public <module> <operation> <material-type> <S1..S5> <payload>
 ```
 
-The console shortcut currently supports no-effect Operations with Module-owned input Material types. The typed `ModuleInvoker` is the real runtime boundary.
+Both routes decode input through the exact installed canonical `MaterialType` codec and construct the canonical `OperationCall`. For a consequential Operation with one EffectProfile the application selects that exact declared profile and supplies no invented causal participant. If an Operation has multiple profiles, the generic selector is `<operation>@<effect-profile>`.
+
+Owner-local output prints its retained Sensitivity together with payload; PUBLIC output remains the minimized public payload. The legacy interactive `/invoke` alias remains PUBLIC rather than silently changing receiver semantics.
 
 ## Reasoning-adapter installation
 
@@ -134,7 +142,17 @@ The shipped llama.cpp AF_UNIX, explicit loopback-HTTP compatibility and OpenAI-c
 
 Privacy is explicit provider configuration and is never inferred from endpoint, transport or location. Invalid enabled configuration fails startup instead of silently changing mechanism semantics. Prepared authentication/session state remains outside MADRE.
 
-`verification/reasoning-consumer` proves independent adapter installation. It depends only on published `madre-reasoning-spi` and `madre-text-inference`, produces `independent-reasoning-adapter.jar`, is copied into the built distribution's `reasoning/` directory, and provides a deterministic text-inference mechanism requiring no network/model/GPU/credentials.
+`verification/reasoning-consumer` proves independent adapter installation. It depends only on published `madre-reasoning-spi` and `madre-text-inference`, produces `independent-reasoning.jar`, is copied into the built distribution's `reasoning/` directory, and provides deterministic text inference requiring no network/model/GPU/credentials.
+
+## Shipped owner-interaction Module
+
+The shipped owner-interaction Module is ordinary installed Module behavior and may optionally be assigned CORE. Its EffectProfiles describe real consequences, not the fact that reasoning occurred.
+
+`standard-prompt` has no EffectProfile: it performs immediate reasoning and creates response Material, but does not itself perform persistent domain mutation or an external action.
+
+`fast-lane` retains one `WRITE/AUTONOMOUS` EffectProfile named `durable-background-write`. The consequential variant is the durable reasoning submission plus Module-owned pending-state persistence that continues beyond foreground interaction; reasoning computation itself is not the Risk.
+
+`collect-background` is a Module-specific owner-facing Operation with a `DELETE/LIVE_INTERACTION` profile named `acknowledge-completed-background`. It interprets completed opaque reasoning output into Module Material, acknowledges durable Kernel work and removes the Module's completed pending semantic state. It does not create a generic callback, continuation or scheduler abstraction.
 
 ## CORE and reasoning independence
 
@@ -142,7 +160,7 @@ Privacy is explicit provider configuration and is never inferred from endpoint, 
 
 Reasoning mechanisms are also optional at boot. An Operation that later needs reasoning may fail when invoked if no compatible mechanism is available, but mechanism absence is not a startup error. A Module Operation that uses no reasoning remains fully usable with an absent or empty reasoning directory.
 
-CORE designation does not affect reasoning installation, selection or preference.
+CORE designation does not affect owner-local/public invocation semantics, reasoning installation, selection or preference.
 
 ## Reasoning execution
 
@@ -201,6 +219,8 @@ Reasoning failures remain reasoning-runtime failures. Kernel SQLite stores only 
 
 ## Verification evidence
 
-The mandatory CI matrix exercises `check`, Javadocs/publication/package verification, both isolated fixture builds, built-distribution installation/discovery, actual reasoning execution through the independent adapter, PUBLIC semantic transformation, no-reasoning Module invocation and installed-application smoke on Linux and Windows.
+The mandatory CI matrix exercises `check`, Javadocs/publication/package verification, both isolated fixture builds, built-distribution installation/discovery, no-reasoning Module invocation, independent reasoning execution, PUBLIC semantic transformation and installed-application smoke on Linux and Windows.
 
-Historical PR #47 runs additionally exercised live llama.cpp/model inference over the native AF_UNIX adapter. No live external provider/model is required for the deterministic independent-installation proof.
+It additionally discovers the shipped owner-interaction Module from `modules/` and the independent deterministic reasoning adapter from `reasoning/`, proves that S5 owner-local `standard-prompt` returns useful S5 Module Material, proves that the same sensitive call through PUBLIC is semantically minimized, repeats owner-local behavior with and without CORE assignment, and exercises `fast-lane` across a real process restart with the same Kernel SQLite database and Module state directory. The restart proof gates background completion deterministically, resumes durable work after restart, invokes Module-specific `collect-background`, verifies Module interpretation, acknowledgement and pending-state cleanup, and uses no external service.
+
+Historical PR #47 runs additionally exercised live llama.cpp/model inference over the native AF_UNIX adapter. No new live external provider/model evidence is required for this deterministic owner-local slice.

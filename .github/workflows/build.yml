@@ -43,7 +43,6 @@ jobs:
           $forceFull = $false
 
           if ($env:EVENT_NAME -eq 'pull_request' -and $env:PR_BASE_SHA) {
-            # A PR run validates the complete proposed change, not only its latest synchronize delta.
             $base = $env:PR_BASE_SHA
           }
           else {
@@ -64,6 +63,7 @@ jobs:
           $productionSource = '^madre-[^/]+/src/main/'
           $sdkSurface = '^(madre-algebra/src/main/|madre-sdk/src/main/|madre-text-inference/src/main/|verification/sdk-consumer/)'
           $reasoningSurface = '^(madre-algebra/src/main/|madre-sdk/src/main/|madre-reasoning-spi/|madre-text-inference/|verification/reasoning-consumer/)'
+          $ownerAcceptance = '^verification/installed-owner-acceptance\.ps1$'
 
           $verify = $forceFull
           $production = $forceFull
@@ -71,16 +71,16 @@ jobs:
           $reasoningConsumer = $forceFull
 
           foreach ($file in $files) {
-            if ($file -match $buildLogic -or $file -match $anySource -or $file -match '^verification/(sdk|reasoning)-consumer/') {
+            if ($file -match $buildLogic -or $file -match $anySource -or $file -match '^verification/(sdk|reasoning)-consumer/' -or $file -match $ownerAcceptance) {
               $verify = $true
             }
-            if ($file -match $buildLogic -or $file -match $productionSource) {
+            if ($file -match $buildLogic -or $file -match $productionSource -or $file -match $ownerAcceptance) {
               $production = $true
             }
-            if ($file -match $buildLogic -or $file -match $sdkSurface) {
+            if ($file -match $buildLogic -or $file -match $sdkSurface -or $file -match $ownerAcceptance) {
               $sdkConsumer = $true
             }
-            if ($file -match $buildLogic -or $file -match $reasoningSurface) {
+            if ($file -match $buildLogic -or $file -match $reasoningSurface -or $file -match $ownerAcceptance) {
               $reasoningConsumer = $true
             }
           }
@@ -111,139 +111,88 @@ jobs:
         with:
           gradle-version: '8.12'
 
-      - name: Verify on Linux
-        if: runner.os == 'Linux'
-        run: ./gradlew --no-daemon --build-cache check
-      - name: Verify production documentation and packages on Linux
-        if: runner.os == 'Linux' && needs.changes.outputs.production == 'true'
-        run: ./gradlew --no-daemon --build-cache javadoc publish installDist distZip
-      - name: Build isolated executable Module on Linux
-        if: runner.os == 'Linux' && needs.changes.outputs.sdk-consumer == 'true'
-        run: ./gradlew --no-daemon --build-cache -p verification/sdk-consumer jar
-      - name: Build isolated ReasoningCapability on Linux
-        if: runner.os == 'Linux' && needs.changes.outputs.reasoning-consumer == 'true'
-        run: ./gradlew --no-daemon --build-cache -p verification/reasoning-consumer jar
-      - name: Verify independent Module with no reasoning mechanisms on Linux
-        if: runner.os == 'Linux' && needs.changes.outputs.production == 'true' && needs.changes.outputs.sdk-consumer == 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          module_dir="$RUNNER_TEMP/no-reasoning-modules"
-          reasoning_dir="$RUNNER_TEMP/no-reasoning-mechanisms"
-          mkdir -p "$module_dir" "$reasoning_dir"
-          cp verification/sdk-consumer/build/libs/independent-module.jar "$module_dir/independent-module.jar"
-          state_dir="$RUNNER_TEMP/madre-no-reasoning-state"
-          database="$RUNNER_TEMP/madre-no-reasoning.sqlite"
-          config="$RUNNER_TEMP/madre-no-reasoning.properties"
-          printf 'kernel.database=%s\nmodules.directory=%s\nmodules.state-directory=%s\nreasoning.directory=%s\n' \
-            "$database" "$module_dir" "$state_dir" "$reasoning_dir" > "$config"
-          output="$(madre-app/build/install/madre/bin/madre "$config" \
-            --invoke-public phd.module inspect request S4 hello 2>&1)"
-          printf '%s\n' "$output"
-          printf '%s\n' "$output" | grep -F 'public:hello'
-          if printf '%s\n' "$output" | grep -F 'private:hello'; then
-            echo 'raw internal Material crossed the public boundary' >&2
-            exit 1
-          fi
-      - name: Verify independently installed reasoning execution on Linux
-        if: runner.os == 'Linux' && needs.changes.outputs.production == 'true' && needs.changes.outputs.sdk-consumer == 'true' && needs.changes.outputs.reasoning-consumer == 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          cp verification/sdk-consumer/build/libs/independent-module.jar \
-            madre-app/build/install/madre/modules/independent-module.jar
-          cp verification/reasoning-consumer/build/libs/independent-reasoning.jar \
-            madre-app/build/install/madre/reasoning/independent-reasoning.jar
-          module_dir="$(cd madre-app/build/install/madre/modules && pwd)"
-          reasoning_dir="$(cd madre-app/build/install/madre/reasoning && pwd)"
-          ls "$reasoning_dir" | grep -F 'madre-adapter-llamacpp'
-          ls "$reasoning_dir" | grep -F 'madre-adapter-openai-compatible'
-          state_dir="$RUNNER_TEMP/madre-reasoning-state"
-          database="$RUNNER_TEMP/madre-independent-reasoning.sqlite"
-          config="$RUNNER_TEMP/madre-independent-reasoning.properties"
-          printf 'kernel.database=%s\nmodules.directory=%s\nmodules.state-directory=%s\nreasoning.directory=%s\nreasoning.independent-text.instances=deterministic\nreasoning.independent-text.deterministic.enabled=true\nreasoning.independent-text.deterministic.id=independent-text\nreasoning.independent-text.deterministic.privacy=SECRET\nreasoning.independent-text.deterministic.location=LOCAL\nreasoning.independent-text.deterministic.expected-latency-ms=1\nreasoning.independent-text.deterministic.preference=1000\n' \
-            "$database" "$module_dir" "$state_dir" "$reasoning_dir" > "$config"
-          output="$(madre-app/build/install/madre/bin/madre "$config" \
-            --invoke-public phd.module reason request S4 hello 2>&1)"
-          printf '%s\n' "$output"
-          printf '%s\n' "$output" | grep -F 'public:reasoned:independent:hello'
-          if printf '%s\n' "$output" | grep -F 'private:reasoned:'; then
-            echo 'raw reasoning-derived Material crossed the public boundary' >&2
-            exit 1
-          fi
-      - name: Smoke installed application on Linux
-        if: runner.os == 'Linux' && needs.changes.outputs.production == 'true'
-        shell: bash
-        run: |
-          set +e
-          output="$(madre-app/build/install/madre/bin/madre 2>&1)"
-          status=$?
-          set -e
-          test "$status" -eq 2
-          printf '%s\n' "$output" | grep -F 'usage: madre <path-to-madre.properties>'
-
-      - name: Verify on Windows
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: .\gradlew.bat --no-daemon --build-cache check
-      - name: Verify production documentation and packages on Windows
-        if: runner.os == 'Windows' && needs.changes.outputs.production == 'true'
-        shell: pwsh
-        run: .\gradlew.bat --no-daemon --build-cache javadoc publish installDist distZip
-      - name: Build isolated executable Module on Windows
-        if: runner.os == 'Windows' && needs.changes.outputs.sdk-consumer == 'true'
-        shell: pwsh
-        run: .\gradlew.bat --no-daemon --build-cache -p verification/sdk-consumer jar
-      - name: Build isolated ReasoningCapability on Windows
-        if: runner.os == 'Windows' && needs.changes.outputs.reasoning-consumer == 'true'
-        shell: pwsh
-        run: .\gradlew.bat --no-daemon --build-cache -p verification/reasoning-consumer jar
-      - name: Verify independent Module with no reasoning mechanisms on Windows
-        if: runner.os == 'Windows' && needs.changes.outputs.production == 'true' && needs.changes.outputs.sdk-consumer == 'true'
+      - name: Verify
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+          $gradle = if ($IsWindows) { '.\gradlew.bat' } else { './gradlew' }
+          & $gradle --no-daemon --build-cache check
+          if ($LASTEXITCODE -ne 0) { throw 'Gradle check failed' }
+
+      - name: Verify production documentation and packages
+        if: needs.changes.outputs.production == 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $gradle = if ($IsWindows) { '.\gradlew.bat' } else { './gradlew' }
+          & $gradle --no-daemon --build-cache javadoc publish installDist distZip
+          if ($LASTEXITCODE -ne 0) { throw 'production build failed' }
+
+      - name: Build isolated executable Module
+        if: needs.changes.outputs.sdk-consumer == 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $gradle = if ($IsWindows) { '.\gradlew.bat' } else { './gradlew' }
+          & $gradle --no-daemon --build-cache -p verification/sdk-consumer jar
+          if ($LASTEXITCODE -ne 0) { throw 'independent Module build failed' }
+
+      - name: Build isolated ReasoningCapability
+        if: needs.changes.outputs.reasoning-consumer == 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $gradle = if ($IsWindows) { '.\gradlew.bat' } else { './gradlew' }
+          & $gradle --no-daemon --build-cache -p verification/reasoning-consumer jar
+          if ($LASTEXITCODE -ne 0) { throw 'independent reasoning build failed' }
+
+      - name: Verify independent Module with no reasoning mechanisms
+        if: needs.changes.outputs.production == 'true' && needs.changes.outputs.sdk-consumer == 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          function Slash([string]$value) { return $value.Replace('\', '/') }
           $moduleDir = Join-Path $env:RUNNER_TEMP 'no-reasoning-modules'
           $reasoningDir = Join-Path $env:RUNNER_TEMP 'no-reasoning-mechanisms'
           New-Item -ItemType Directory -Force -Path $moduleDir, $reasoningDir | Out-Null
-          Copy-Item 'verification\sdk-consumer\build\libs\independent-module.jar' (Join-Path $moduleDir 'independent-module.jar')
-          $stateDir = (Join-Path $env:RUNNER_TEMP 'madre-no-reasoning-state').Replace('\', '/')
-          $database = (Join-Path $env:RUNNER_TEMP 'madre-no-reasoning.sqlite').Replace('\', '/')
+          Copy-Item 'verification/sdk-consumer/build/libs/independent-module.jar' (Join-Path $moduleDir 'independent-module.jar')
+          $stateDir = Join-Path $env:RUNNER_TEMP 'madre-no-reasoning-state'
+          $database = Join-Path $env:RUNNER_TEMP 'madre-no-reasoning.sqlite'
           $config = Join-Path $env:RUNNER_TEMP 'madre-no-reasoning.properties'
           @(
-            "kernel.database=$database",
-            "modules.directory=$($moduleDir.Replace('\', '/'))",
-            "modules.state-directory=$stateDir",
-            "reasoning.directory=$($reasoningDir.Replace('\', '/'))"
+            "kernel.database=$(Slash $database)",
+            "modules.directory=$(Slash $moduleDir)",
+            "modules.state-directory=$(Slash $stateDir)",
+            "reasoning.directory=$(Slash $reasoningDir)"
           ) | Set-Content -Path $config -Encoding utf8
-          $output = (& '.\madre-app\build\install\madre\bin\madre.bat' $config `
-            --invoke-public phd.module inspect request S4 hello 2>&1 | Out-String)
+          $launcher = if ($IsWindows) { '.\madre-app\build\install\madre\bin\madre.bat' } else { './madre-app/build/install/madre/bin/madre' }
+          $output = (& $launcher $config --invoke-public phd.module inspect request S4 hello 2>&1 | Out-String)
           if ($LASTEXITCODE -ne 0) { Write-Host $output; throw 'no-reasoning Module invocation failed' }
           Write-Host $output
           if ($output -notmatch 'public:hello') { throw 'minimized PUBLIC result was not returned' }
           if ($output -match 'private:hello') { throw 'raw internal Material crossed the public boundary' }
-      - name: Verify independently installed reasoning execution on Windows
-        if: runner.os == 'Windows' && needs.changes.outputs.production == 'true' && needs.changes.outputs.sdk-consumer == 'true' && needs.changes.outputs.reasoning-consumer == 'true'
+
+      - name: Verify independently installed reasoning execution
+        if: needs.changes.outputs.production == 'true' && needs.changes.outputs.sdk-consumer == 'true' && needs.changes.outputs.reasoning-consumer == 'true'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          Copy-Item 'verification\sdk-consumer\build\libs\independent-module.jar' `
-            'madre-app\build\install\madre\modules\independent-module.jar'
-          Copy-Item 'verification\reasoning-consumer\build\libs\independent-reasoning.jar' `
-            'madre-app\build\install\madre\reasoning\independent-reasoning.jar'
-          $shipped = @(Get-ChildItem 'madre-app\build\install\madre\reasoning' -Filter '*.jar' | Select-Object -ExpandProperty Name)
+          function Slash([string]$value) { return $value.Replace('\', '/') }
+          Copy-Item 'verification/sdk-consumer/build/libs/independent-module.jar' 'madre-app/build/install/madre/modules/independent-module.jar' -Force
+          Copy-Item 'verification/reasoning-consumer/build/libs/independent-reasoning.jar' 'madre-app/build/install/madre/reasoning/independent-reasoning.jar' -Force
+          $shipped = @(Get-ChildItem 'madre-app/build/install/madre/reasoning' -Filter '*.jar' | Select-Object -ExpandProperty Name)
           if (-not ($shipped -match 'madre-adapter-llamacpp')) { throw 'shipped llama.cpp adapter is missing from reasoning installation directory' }
           if (-not ($shipped -match 'madre-adapter-openai-compatible')) { throw 'shipped OpenAI-compatible adapter is missing from reasoning installation directory' }
-          $moduleDir = (Resolve-Path 'madre-app\build\install\madre\modules').Path.Replace('\', '/')
-          $reasoningDir = (Resolve-Path 'madre-app\build\install\madre\reasoning').Path.Replace('\', '/')
-          $stateDir = (Join-Path $env:RUNNER_TEMP 'madre-reasoning-state').Replace('\', '/')
-          $database = (Join-Path $env:RUNNER_TEMP 'madre-independent-reasoning.sqlite').Replace('\', '/')
+          $moduleDir = (Resolve-Path 'madre-app/build/install/madre/modules').Path
+          $reasoningDir = (Resolve-Path 'madre-app/build/install/madre/reasoning').Path
+          $stateDir = Join-Path $env:RUNNER_TEMP 'madre-reasoning-state'
+          $database = Join-Path $env:RUNNER_TEMP 'madre-independent-reasoning.sqlite'
           $config = Join-Path $env:RUNNER_TEMP 'madre-independent-reasoning.properties'
           @(
-            "kernel.database=$database",
-            "modules.directory=$moduleDir",
-            "modules.state-directory=$stateDir",
-            "reasoning.directory=$reasoningDir",
+            "kernel.database=$(Slash $database)",
+            "modules.directory=$(Slash $moduleDir)",
+            "modules.state-directory=$(Slash $stateDir)",
+            "reasoning.directory=$(Slash $reasoningDir)",
             'reasoning.independent-text.instances=deterministic',
             'reasoning.independent-text.deterministic.enabled=true',
             'reasoning.independent-text.deterministic.id=independent-text',
@@ -252,25 +201,28 @@ jobs:
             'reasoning.independent-text.deterministic.expected-latency-ms=1',
             'reasoning.independent-text.deterministic.preference=1000'
           ) | Set-Content -Path $config -Encoding utf8
-          $output = (& '.\madre-app\build\install\madre\bin\madre.bat' $config `
-            --invoke-public phd.module reason request S4 hello 2>&1 | Out-String)
+          $launcher = if ($IsWindows) { '.\madre-app\build\install\madre\bin\madre.bat' } else { './madre-app/build/install/madre/bin/madre' }
+          $output = (& $launcher $config --invoke-public phd.module reason request S4 hello 2>&1 | Out-String)
           if ($LASTEXITCODE -ne 0) { Write-Host $output; throw 'independent reasoning invocation failed' }
           Write-Host $output
           if ($output -notmatch 'public:reasoned:independent:hello') { throw 'independent ReasoningCapability result was not returned through PUBLIC transformation' }
           if ($output -match 'private:reasoned:') { throw 'raw reasoning-derived Material crossed the public boundary' }
-      - name: Smoke installed application on Windows
-        if: runner.os == 'Windows' && needs.changes.outputs.production == 'true'
+
+      - name: Verify installed owner-local and PUBLIC boundaries with restart
+        if: needs.changes.outputs.production == 'true' && needs.changes.outputs.sdk-consumer == 'true' && needs.changes.outputs.reasoning-consumer == 'true'
+        shell: pwsh
+        run: ./verification/installed-owner-acceptance.ps1
+
+      - name: Smoke installed application
+        if: needs.changes.outputs.production == 'true'
         shell: pwsh
         run: |
-          $stdout = Join-Path $env:RUNNER_TEMP 'madre-stdout.txt'
-          $stderr = Join-Path $env:RUNNER_TEMP 'madre-stderr.txt'
-          $process = Start-Process -FilePath '.\madre-app\build\install\madre\bin\madre.bat' -Wait -PassThru -NoNewWindow -RedirectStandardOutput $stdout -RedirectStandardError $stderr
-          $output = (Get-Content $stdout -Raw) + (Get-Content $stderr -Raw)
-          if ($process.ExitCode -ne 2) {
-            Write-Host $output
-            throw "MADRE Windows application exited with $($process.ExitCode) instead of 2"
-          }
+          $ErrorActionPreference = 'Stop'
+          $launcher = if ($IsWindows) { '.\madre-app\build\install\madre\bin\madre.bat' } else { './madre-app/build/install/madre/bin/madre' }
+          $output = (& $launcher 2>&1 | Out-String)
+          $status = $LASTEXITCODE
+          Write-Host $output
+          if ($status -ne 2) { throw "MADRE exited with $status instead of 2" }
           if ($output -notmatch 'usage: madre <path-to-madre\.properties>') {
-            Write-Host $output
-            throw 'MADRE Windows application did not print usage'
+            throw 'MADRE application did not print usage'
           }
