@@ -78,6 +78,9 @@ final class SdkInvariantTest {
                 operation, profile, input, List.of(Integrity.I2));
         assertThrows(IllegalArgumentException.class, () ->
                 OperationCall.withEffect(operation, profile, input, List.of(Integrity.I1)));
+        assertThrows(IllegalArgumentException.class, () ->
+                OperationCall.withEffect(operation, profile, input,
+                        List.of(Integrity.SYSTEM_RESERVED)));
         Material<String> undeclaredSensitivity = new Material<>(
                 new MaterialId(owner, "output"), type, "result", Sensitivity.S4);
         assertThrows(IllegalArgumentException.class,
@@ -144,6 +147,9 @@ final class SdkInvariantTest {
         assertThrows(IllegalArgumentException.class, () -> new EffectProfile(
                 new EffectProfileId(operationId, "reserved"),
                 Risk.SYSTEM_RESERVED, Autonomy.A1));
+        assertThrows(IllegalArgumentException.class, () -> new AgentDefinition(
+                new AgentId(owner, "reserved"), "Reserved agent", Integrity.SYSTEM_RESERVED,
+                Set.of(), Map.of(), Set.of(operationId)));
     }
 
     @Test void agentRejectsWorkflowOwnedByAnotherAgent() {
