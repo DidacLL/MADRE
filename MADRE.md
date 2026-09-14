@@ -2,11 +2,11 @@
 
 MADRE is personal software for one owner. It provides a modular local environment for owner-installed applications that may use local or external reasoning while keeping information reach explicit and structural.
 
-MADRE is not a hosted AI platform and does not attempt to protect the owner from software the owner deliberately installs. The owner can install, replace, configure or remove Modules and reasoning mechanisms.
+MADRE is not a hosted AI platform and does not attempt to protect the owner from software the owner deliberately installs. The owner can install, replace, configure or remove Modules and reasoning mechanisms independently.
 
 ## Host platforms
 
-Windows and Linux are first-class hosts for the same MADRE application, Kernel, SDK, Module installation mechanism and persistence model. Windows is not a compatibility port of a Unix implementation, and hosted Linux CI is not a product architecture dependency.
+Windows and Linux are first-class hosts for the same MADRE application, Kernel, SDK, Module installation mechanism, reasoning-mechanism installation mechanism and persistence model. Windows is not a compatibility port of a Unix implementation, and hosted Linux CI is not a product architecture dependency.
 
 A concrete reasoning transport may be platform-specific. That difference remains inside its adapter and does not justify separate Kernel, SDK, Module, Workflow or Security Algebra architectures.
 
@@ -26,13 +26,29 @@ An **EffectProfile** represents one bounded consequential execution variant of a
 
 A **Material** is a typed Module-owned value with nominal identity, content type, payload and Sensitivity. Adapting information creates new Material with a new identity and explicit Sensitivity; the source remains unchanged.
 
-A **ReasoningCapability** is an installed connector to one reasoning mechanism. It exposes only reasoning-contract, receiving-Privacy, placement/latency, resource and availability facts needed by Kernel. It accepts a nominal `ReasoningComputation<R>` and returns its result. It knows nothing about Modules, Agents, Workflows, Operations, Material or semantic continuation.
+A **ReasoningCapability** is one executable reasoning mechanism. It exposes only reasoning-contract, receiving-Privacy, placement/latency, resource and availability facts needed by Kernel. It accepts a nominal `ReasoningComputation<R>` and returns its result. It knows nothing about Modules, Agents, Workflows, Operations, Material or semantic continuation.
+
+A **reasoning adapter** is an independently installable JVM artifact that provides one or more configured `ReasoningCapability` instances through the public reasoning-adapter SPI. An adapter may materialize zero, one or many mechanism instances. Artifact installation does not imply mechanism enablement.
 
 **Kernel** owns the shared runtime pieces that genuinely need central coordination: live executable Module registration/public invocation, optional CORE-role lookup, reasoning-mechanism selection, reasoning resources, immediate/durable reasoning, reasoning retry/cancellation/result delivery and ordinary runtime logging.
 
 The **SDK** supplies the strongly typed construction model and Module-facing ports. Domain objects are programmed as Java objects; JSON is only a boundary representation.
 
+Modules and reasoning mechanisms are distinct installation concepts. A Module owns application/domain semantics. A ReasoningCapability realizes one reasoning computation mechanism. They use separate installation directories, identities and service-provider contracts. CORE designation has no relation to reasoning installation or selection privilege.
+
 Search, files, databases, devices and other application I/O do not become Kernel capabilities merely because they are external. SearXNG is presently a reusable Java client, not a Kernel reasoning mechanism and not a shipped standalone WebSearch Module.
+
+## Reasoning installation
+
+Reasoning adapters are ordinary JVM JARs discovered from the configured reasoning installation directory with Java class-loading and service-provider APIs. Installed distributions use a sibling `reasoning/` directory by default; `reasoning.directory` may explicitly override it.
+
+`madre-app` knows only this generic installation boundary and the read-only `reasoning.*` owner configuration namespace. It has no concrete llama.cpp, OpenAI-compatible or future-provider factory/configuration branch. Provider-specific parsing belongs to each discovered adapter.
+
+The shipped llama.cpp AF_UNIX adapter, explicit llama.cpp loopback-HTTP compatibility adapter and OpenAI-compatible adapter are packaged into the same reasoning installation directory and discovered through the same provider mechanism as an independently supplied adapter. Bundled placement grants no privilege or selection preference.
+
+A provider must explicitly materialize configured mechanisms. Disabled or unconfigured instances materialize nothing. Privacy is explicit owner/provider configuration and is never inferred from locality, endpoint or transport. Invalid enabled configuration is a startup error rather than a semantic fallback.
+
+MADRE can boot when the reasoning directory does not exist, is empty, contains adapters with no enabled mechanisms, or no reasoning mechanism is configured at all. Modules that do not request reasoning remain fully usable in that state.
 
 ## CORE
 
@@ -113,6 +129,8 @@ Registry membership and CORE assignment confer no privilege.
 
 A Module owns semantic/domain persistence.
 
-Kernel SQLite stores only durable reasoning-runtime state: opaque serialized reasoning input, originating Module identity for delivery, scheduling/attempt/cancellation state and opaque result bytes until collection/acknowledgement/retention cleanup. Kernel does not treat queued bytes as Module knowledge.
+Kernel SQLite stores only durable reasoning-runtime state: opaque serialized reasoning input, originating Module identity for delivery, stable reasoning-contract identity, scheduling/attempt/cancellation state and opaque result bytes until collection/acknowledgement/retention cleanup. Persisted work does not depend on a concrete adapter implementation class name; after restart it becomes executable when a compatible computation contract/mechanism is registered again.
+
+Kernel does not treat queued bytes as Module knowledge.
 
 Provider accounts, credentials, authentication, authorization, permissions, roles and externally prepared sessions remain outside the MADRE domain model.

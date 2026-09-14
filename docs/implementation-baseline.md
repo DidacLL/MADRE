@@ -1,18 +1,19 @@
 # Implementation Baseline
 
-The active implementation is one Java 21 Gradle multi-project system. Windows and Linux run the same application, Kernel, SDK, persistence model and Module installation mechanism. There is no separate Windows compatibility implementation and no Linux-specific public runtime.
+The active implementation is one Java 21 Gradle multi-project system. Windows and Linux run the same application, Kernel, SDK, persistence model, Module installation mechanism and reasoning-mechanism installation mechanism. There is no separate Windows compatibility implementation and no Linux-specific public runtime.
 
 The current artifact boundaries are:
 
 - `madre-algebra`: dependency-free nominal Security Algebra carriers;
 - `madre-sdk`: typed Material, Module/Agent/Skill/Workflow/Operation model, executable Module binding/registration/provider contracts, codecs, public Module invocation ports and the Module-facing reasoning port;
+- `madre-reasoning-spi`: published typed reasoning-adapter execution and installation SPI, with no dependency on Kernel runtime implementation;
 - `madre-kernel`: live executable Module registry/public invocation, reasoning-capability registry/selection, reasoning resources, immediate/durable reasoning, SQLite recovery and result delivery;
-- `madre-text-inference`: typed nominal text-inference reasoning computation/result contract;
-- `madre-adapter-llamacpp`, `madre-adapter-openai-compatible`: reasoning adapters;
+- `madre-text-inference`: published typed nominal text-inference computation/result contract;
+- `madre-adapter-llamacpp`, `madre-adapter-openai-compatible`: independently discoverable reasoning-adapter artifacts;
 - `madre-web-search`: reusable typed web-search values;
 - `madre-adapter-searxng`: ordinary SearXNG Java client with no Kernel dependency;
 - `madre-module-owner-interaction`: shipped ordinary CORE-capable Module;
-- `madre-app`: installable assembly, Module discovery, reasoning configuration and replaceable local console.
+- `madre-app`: installable assembly, generic Module/reasoning-artifact discovery and replaceable local console. It has no concrete reasoning-provider implementation dependency or provider-specific configuration branch.
 
 The former generic Kernel `Capability<C,R>` SPI, generic `ExecutionService`/`WorkRequest`, SearXNG Kernel capability and standalone shipped WebSearch Module are removed.
 
@@ -46,7 +47,38 @@ A running Module is registered as `ModuleInstance`: one canonical `ModuleDefinit
 
 Every public binding owns a `PublicResultTransformer`. Before internal Material crosses the external boundary, the transformer must create new declared Material with a new identity and Sensitivity able to reach `Privacy.PUBLIC`. Output type/owner/maximum-Sensitivity declarations remain enforced.
 
-`verification/sdk-consumer` is an executable independent Module built against only the published `io.github.didacll:madre-sdk` artifact. CI installs its JAR into a built MADRE distribution, discovers it, invokes `phd.module/inspect`, expects `public:hello`, and rejects leakage of its internal `private:hello` Material.
+`verification/sdk-consumer` is an executable independent Module built outside the root dependency graph against published MADRE artifacts. It retains `phd.module/inspect`, which performs no reasoning, and adds `phd.module/reason`, which submits a real text-inference `ReasoningRequest` through the supplied `ReasoningService`. Both results pass through the same Module-owned PUBLIC semantic transformation.
+
+## Public reasoning-adapter SPI baseline
+
+`madre-reasoning-spi` is the public adapter boundary. It contains the existing reasoning-specific execution contract plus the minimal installation boundary:
+
+- `ReasoningCapability`;
+- `ReasoningCapabilityId` and `ReasoningCapabilityManifest`;
+- `ReasoningContract` and `ReasoningCodec`;
+- `ReasoningAvailability`;
+- `ReasoningExecutionContext`;
+- `ResourceClaim` and `ResourceId`;
+- typed `ReasoningException` failure reporting;
+- immutable `ReasoningProviderConfiguration`;
+- `ReasoningMechanism` materialization with ordinary installation preference;
+- `ReasoningMechanismProvider` service-provider entrypoint.
+
+The SPI depends on the public SDK. It does not expose `ReasoningCapabilityRegistry`, SQLite stores, schedulers, application assembly, Module/Material semantics, generic tools/actions or semantic continuation.
+
+Both `madre-reasoning-spi` and `madre-text-inference` are published with source/Javadoc artifacts so an adapter can compile independently against the public boundary and the computation contract it implements.
+
+## Reasoning installation baseline
+
+Reasoning JARs are discovered independently from Modules. Installed distributions use sibling `reasoning/` by default; `reasoning.directory` overrides it. Discovery uses `Path`, `Files`, `URLClassLoader` and `ServiceLoader`.
+
+Missing and empty reasoning directories are valid. A provider may materialize zero, one or many mechanisms. Disabled/unconfigured instances register nothing. Adapter installation by itself never enables a mechanism.
+
+`madre-app` passes an immutable read-only view of `reasoning.*` owner configuration to discovered providers and performs only generic registration. Provider-specific parsing, including endpoint/model fields and explicit Privacy, is owned by each adapter. Privacy is not inferred from locality, endpoint or transport.
+
+The shipped llama.cpp AF_UNIX, llama.cpp loopback-HTTP compatibility and OpenAI-compatible artifacts are copied into `reasoning/` and discovered with the same `ReasoningMechanismProvider` path as external adapters. Their explicit-enable behavior remains unchanged in meaning: no configured enabled instance means no registered mechanism.
+
+Provider/classloader resources are closed at shutdown. Startup failures roll back already-created mechanism registrations and close loaders/providers. Null provider materialization and null mechanism values are rejected.
 
 ## Reasoning runtime baseline
 
@@ -56,13 +88,34 @@ A request derives originating Module and carried Sensitivity from a valid bounde
 
 It carries no Material identity/type, semantic continuation, concrete reasoning-mechanism identity or Operation Risk.
 
-Kernel's `ReasoningCapabilityRegistry` selects only compatible reasoning contracts. Selection composes carried Sensitivity with manifest receiving Privacy, then applies observed availability, resource capacity, typed location/latency preferences and deterministic ordering.
+Kernel's `ReasoningCapabilityRegistry` selects only compatible reasoning contracts. Selection composes carried Sensitivity with manifest receiving Privacy, then applies observed availability, resource capacity, typed location/latency preferences, configured installation preference and deterministic identity ordering.
 
-The current text-inference mechanisms are llama.cpp AF_UNIX, explicit llama.cpp loopback HTTP compatibility and OpenAI-compatible HTTP. Provider-specific protocol and account/session details remain outside the public reasoning contract.
+Duplicate capability identity is rejected. The registry also rejects computation-contract declarations where nominal contract identity and computation/result Java types conflict.
 
-Immediate and durable reasoning share selection/resource/failure semantics. Durable work is stored in `SQLiteReasoningWorkStore`; queued input, attempt state and pending output survive restart. Input/result bytes remain opaque to Kernel and are removed according to execution/delivery/retention lifecycle.
+Immediate and durable reasoning share selection/resource/failure semantics. An unavailable mechanism is not selected; an immediate request with no reachable available mechanism fails with the typed unavailable category.
+
+Durable work is stored in `SQLiteReasoningWorkStore`; queued input, attempt state and pending output survive restart. Persistence uses stable reasoning-contract identity and opaque encoded computation/result bytes, not adapter implementation class names. After restart, queued work becomes runnable when a compatible contract/mechanism is registered again.
 
 An empty reasoning registry is valid at boot.
+
+## Independent reasoning-adapter proof
+
+`verification/reasoning-consumer` is a separate Gradle build whose only MADRE dependencies are:
+
+```text
+io.github.didacll:madre-reasoning-spi:0.1.0-SNAPSHOT
+io.github.didacll:madre-text-inference:0.1.0-SNAPSHOT
+```
+
+It produces `independent-reasoning.jar`, exposes `ReasoningMechanismProvider`, and materializes a deterministic text-inference mechanism from ordinary owner configuration. The mechanism returns `independent:<prompt>` and requires no provider service, network, model, native binary, GPU or credentials.
+
+The CI acceptance journey builds a MADRE distribution, builds the independent Module and independent reasoning adapter separately, installs their JARs into the real `modules/` and `reasoning/` directories, configures one independent mechanism instance, invokes `phd.module/reason`, and requires the PUBLIC result:
+
+```text
+public:reasoned:independent:hello
+```
+
+The same journey rejects leakage of the internal `private:reasoned:` Material. A separate invocation points the runtime at an empty reasoning directory and invokes `phd.module/inspect`, proving a non-reasoning installed Module remains usable with zero ReasoningCapabilities.
 
 ## Search baseline
 
@@ -72,46 +125,41 @@ Search is ordinary application/domain I/O, not Kernel reasoning.
 
 The former `SearxngCapability`, standalone `madre-module-web-search`, service-provider registration and deep-search product path were removed from the active application architecture.
 
-Build-time architecture checks reject SearXNG-to-Kernel coupling, SearXNG implementing `ReasoningCapability`, restoration of the standalone WebSearch Module and restoration of the generic `ExecutionService`/`WorkRequest` production API.
+Build-time architecture checks reject SearXNG-to-Kernel coupling, SearXNG implementing `ReasoningCapability`, restoration of the standalone WebSearch Module and restoration of the generic `ExecutionService`/`WorkRequest` production API. They also reject concrete llama.cpp/OpenAI-compatible adapter knowledge or normal concrete-adapter implementation dependencies in `madre-app`, and Kernel-runtime dependencies from the public reasoning SPI/shipped reasoning adapters.
 
 ## CORE and boot baseline
 
-CORE is optional. `roles.core` may be absent; a configured-but-absent CORE remains unresolved and does not prevent boot. CORE changes no invocation authority, Security Algebra value, visibility or reasoning/scheduling privilege.
+CORE is optional. `roles.core` may be absent; a configured-but-absent CORE remains unresolved and does not prevent boot. CORE changes no invocation authority, Security Algebra value, visibility, reasoning installation, reasoning selection or scheduling privilege.
 
-The independent Module runtime verification intentionally supplies only Kernel database, Module directory and Module state directory properties, proving discovery/invocation with no CORE assignment and no reasoning mechanism.
+The runtime supports an absent reasoning directory, an empty reasoning directory and installed providers that produce zero mechanisms. The independent Module no-reasoning verification demonstrates real installed PUBLIC invocation in that state.
 
-## Cross-platform verification
+## Cross-platform acceptance matrix
 
-Executable head:
+The GitHub Actions matrix runs the same source/distribution acceptance path on `ubuntu-latest` and `windows-latest`:
 
-```text
-e0f6803e10956f9cb70c0f386592e92f74a1c49f
-```
-
-passed GitHub Actions run `34848775519` on both `ubuntu-latest` and `windows-latest`.
-
-On both hosts the run passed:
-
-- `check`;
-- production documentation/publication/package verification;
-- isolated executable Module build;
-- independent Module installation and PUBLIC invocation;
+- ordinary `check`;
+- Javadocs/publication/package verification;
+- built distribution;
+- isolated independent Module build;
+- isolated independent reasoning-adapter build;
+- no-reasoning Module installation/PUBLIC invocation;
+- independent reasoning-adapter installation/discovery;
+- actual reasoning execution through that adapter;
+- Module interpretation plus PUBLIC semantic transformation;
 - installed-application smoke.
-
-The initial attempt on the preceding executable commit exposed one Java anonymous-generic inference error in a Kernel test fixture. Commit `e0f6803...` made the fixture type parameters explicit; no production architecture changed.
 
 No container runtime, VM layer, orchestration system, hosted provider account or external service is part of the mandatory build/test path.
 
 ## Live integration evidence
 
-Earlier PR #47 acceptance runs exercised real llama.cpp/model inference over the native AF_UNIX transport and separately exercised SearXNG/live search under the older generic physical-capability design.
+Earlier PR #47 acceptance runs exercised real llama.cpp/model inference over the native AF_UNIX transport. That remains relevant evidence for the shipped llama.cpp reasoning implementation.
 
-The llama.cpp evidence remains relevant to the retained reasoning adapter/transport. The SearXNG evidence demonstrates the client/provider integration historically, but it is not evidence that search currently belongs in Kernel or that the removed WebSearch Module remains shipped.
+Earlier live SearXNG evidence demonstrates the ordinary client/provider integration historically, but it is not evidence that search belongs in Kernel or that the removed WebSearch Module remains shipped.
 
-No new external llama.cpp/model or live SearXNG service was executed as part of the reasoning-boundary correction.
+The owner-installable reasoning-adapter acceptance journey itself uses the deterministic independent adapter; it does not claim new live external-provider/model evidence.
 
 ## Plan status
 
-`docs/master-development-plan.md` is the completed foundation-plan record and contains historical descriptions of the generic physical-capability stage. Those descriptions are superseded where they conflict with the active architecture above.
+`docs/master-development-plan.md` is the completed foundation-plan record and contains historical descriptions of earlier implementation stages. Those descriptions are superseded where they conflict with the active architecture above.
 
 Current product meaning is in `MADRE.md`; active focused boundaries are in `docs/architecture/`; this document is the concise executable truth.
