@@ -107,6 +107,10 @@ function Invoke-MadreConsole([string]$config, [string[]]$inputLines) {
         Write-Host $output
         throw "MADRE console failed with exit code $LASTEXITCODE"
     }
+    if ($output -match 'RejectedExecutionException') {
+        Write-Host $output
+        throw 'MADRE console emitted a reasoning-scheduler shutdown race'
+    }
     Write-Host $output
     return $output
 }
@@ -204,7 +208,7 @@ try {
     Write-Config -path $genericConfig -database (Join-Path $temp 'generic.sqlite') `
         -stateDirectory (Join-Path $temp 'generic-state') -interaction $false
     $genericConsole = Invoke-MadreConsole $genericConfig @('/modules', '/exit')
-    if ($genericConsole -notmatch 'MADRE ready — generic console') {
+    if ($genericConsole -notmatch 'MADRE ready - generic console') {
         throw 'no-interaction installation did not boot into the generic console'
     }
     if ($genericConsole -notmatch 'io\.github\.didacll\.madre\.owner-interaction\s+1\.1\.0') {

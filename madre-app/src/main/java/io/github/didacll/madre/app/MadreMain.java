@@ -52,12 +52,12 @@ public final class MadreMain {
                 .orElse(Sensitivity.S1);
         if (configured.isPresent()) {
             LocalInteractionBinding binding = configured.orElseThrow();
-            System.out.println("MADRE ready — local text -> " + binding.moduleId().value() + "/"
+            System.out.println("MADRE ready - local text -> " + binding.moduleId().value() + "/"
                     + binding.defaultOperation() + " (owner-local, " + currentSensitivity
                     + "); /standard <text>; /updates; /sensitivity <S1..S5>; /modules; "
                     + "/invoke-owner ...; /invoke-public ...; /exit");
         } else {
-            System.out.println("MADRE ready — generic console; /modules; "
+            System.out.println("MADRE ready - generic console; /modules; "
                     + "/invoke-public <module> <operation> <material-type> <S1..S5> <payload>; "
                     + "/invoke-owner <module> <operation> <material-type> <S1..S5> <payload>; /exit");
         }

@@ -163,8 +163,10 @@ public final class KernelReasoningService implements ReasoningService, AutoClose
             store.eligible(Instant.now(), 32)
                     .forEach(work -> executions.execute(() -> runDurable(work)));
         } catch (RuntimeException exception) {
-            LOG.warn("Durable reasoning scheduling pass failed; the next pass will retry",
-                    exception);
+            if (!closed.get()) {
+                LOG.warn("Durable reasoning scheduling pass failed; the next pass will retry",
+                        exception);
+            }
         }
     }
 
