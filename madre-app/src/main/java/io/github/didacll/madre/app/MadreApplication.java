@@ -100,7 +100,7 @@ public final class MadreApplication implements AutoCloseable {
                     new CapabilityId(required(properties, "connector.llamacpp-unix.id")),
                     Path.of(required(properties, "connector.llamacpp-unix.socket")),
                     required(properties, "connector.llamacpp-unix.model"),
-                    Privacy.valueOf(required(properties, "connector.llamacpp-unix.privacy")),
+                    privacy(properties, "connector.llamacpp-unix.privacy"),
                     Integrity.valueOf(required(properties, "connector.llamacpp-unix.integrity")),
                     duration(properties, "connector.llamacpp-unix.expected-latency-ms"),
                     resources(properties, "connector.llamacpp-unix.resource."));
@@ -113,7 +113,7 @@ public final class MadreApplication implements AutoCloseable {
                     new CapabilityId(required(properties, "connector.llamacpp.id")),
                     URI.create(required(properties, "connector.llamacpp.endpoint")),
                     required(properties, "connector.llamacpp.model"),
-                    Privacy.valueOf(required(properties, "connector.llamacpp.privacy")),
+                    privacy(properties, "connector.llamacpp.privacy"),
                     Integrity.valueOf(required(properties, "connector.llamacpp.integrity")),
                     duration(properties, "connector.llamacpp.expected-latency-ms"),
                     resources(properties, "connector.llamacpp.resource."));
@@ -125,7 +125,7 @@ public final class MadreApplication implements AutoCloseable {
                     new CapabilityId(required(properties, "connector.openai-compatible.id")),
                     URI.create(required(properties, "connector.openai-compatible.endpoint")),
                     required(properties, "connector.openai-compatible.model"),
-                    Privacy.valueOf(required(properties, "connector.openai-compatible.privacy")),
+                    privacy(properties, "connector.openai-compatible.privacy"),
                     Integrity.valueOf(required(properties, "connector.openai-compatible.integrity")),
                     PhysicalLocation.valueOf(required(properties,
                             "connector.openai-compatible.location")),
@@ -139,7 +139,7 @@ public final class MadreApplication implements AutoCloseable {
             SearxngConfiguration configuration = new SearxngConfiguration(
                     new CapabilityId(required(properties, "connector.searxng.id")),
                     URI.create(required(properties, "connector.searxng.endpoint")),
-                    Privacy.valueOf(required(properties, "connector.searxng.privacy")),
+                    privacy(properties, "connector.searxng.privacy"),
                     Integrity.valueOf(required(properties, "connector.searxng.integrity")),
                     duration(properties, "connector.searxng.expected-latency-ms"),
                     resources(properties, "connector.searxng.resource."));
@@ -197,6 +197,18 @@ public final class MadreApplication implements AutoCloseable {
         long millis = Long.parseLong(required(properties, key));
         if (millis < 1) throw new IllegalArgumentException(key + " must be positive");
         return Duration.ofMillis(millis);
+    }
+
+    private static Privacy privacy(Properties properties, String key) {
+        return switch (required(properties, key)) {
+            case "P1", "PUBLIC" -> Privacy.PUBLIC;
+            case "P2", "UNKNOWN" -> Privacy.UNKNOWN;
+            case "P3" -> Privacy.P3;
+            case "P4" -> Privacy.P4;
+            case "P5" -> Privacy.P5;
+            default -> throw new IllegalArgumentException(
+                    key + " must be one of P1, P2, P3, P4 or P5");
+        };
     }
 
     private static List<ResourceClaim> resources(Properties properties, String prefix) {

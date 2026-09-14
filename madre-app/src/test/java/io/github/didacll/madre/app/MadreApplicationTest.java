@@ -7,6 +7,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import io.github.didacll.madre.interaction.OwnerInteractionModule;
 import io.github.didacll.madre.text.TextInferenceCommand;
 import io.github.didacll.madre.text.TextInferenceResult;
+import io.github.didacll.madre.web.WebSearchCommand;
+import io.github.didacll.madre.web.WebSearchResult;
 import io.github.didacll.madre.websearch.WebSearchModule;
 import java.nio.file.Path;
 import java.util.Properties;
@@ -41,6 +43,26 @@ final class MadreApplicationTest {
         try (MadreApplication application = MadreApplication.start(properties)) {
             assertTrue(application.kernel().capabilities()
                     .contractForCommand(TextInferenceCommand.class, TextInferenceResult.class)
+                    .isPresent());
+        }
+    }
+
+    @Test void acceptsCanonicalP1AndP2PrivacyConfigurationRanks() {
+        Properties properties = properties();
+        properties.setProperty("connector.llamacpp.privacy", "P1");
+        properties.setProperty("resources.network-slot", "1");
+        properties.setProperty("connector.searxng.enabled", "true");
+        properties.setProperty("connector.searxng.id", "test-search");
+        properties.setProperty("connector.searxng.endpoint", "http://127.0.0.1:1/search");
+        properties.setProperty("connector.searxng.privacy", "P2");
+        properties.setProperty("connector.searxng.integrity", "I2");
+        properties.setProperty("connector.searxng.expected-latency-ms", "100");
+        properties.setProperty("connector.searxng.preference", "100");
+        properties.setProperty("connector.searxng.resource.network-slot", "1");
+
+        try (MadreApplication application = MadreApplication.start(properties)) {
+            assertTrue(application.kernel().capabilities()
+                    .contractForCommand(WebSearchCommand.class, WebSearchResult.class)
                     .isPresent());
         }
     }
