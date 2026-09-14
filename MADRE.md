@@ -11,6 +11,19 @@ SaaS, cloud, public, or otherwise less-private boundary.
 
 The owner can install, replace, configure, or remove every Module and Capability.
 
+## Host platforms
+
+Windows and Linux are first-class hosts for the same MADRE application, Kernel, SDK,
+Modules, persistence and ordinary execution path. Windows is not a compatibility port
+of a Unix implementation, and the public runtime must not depend on one Linux
+distribution merely because that distribution is convenient CI infrastructure.
+
+A physical mechanism may legitimately require a platform-specific Capability adapter.
+That difference stays behind the Capability boundary and does not justify separate
+Kernel, SDK, Module, Workflow or Security Algebra architectures. Supporting one useful
+platform-specific connector does not reduce the required maturity of the shared
+cross-platform product.
+
 ## Building blocks
 
 A **Module** is an owner-installed application or integration. It owns meaning,

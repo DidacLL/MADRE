@@ -8,9 +8,8 @@ module.owner-interaction.state=var/owner-interaction-background.state
 resources.model-slot=1
 resources.network-slot=4
 
-# Preferred same-host llama-server transport on systems with Unix-domain sockets.
-# Start llama-server with an owner-only absolute socket path ending in .sock. This
-# adapter creates no TCP listener and has higher preference than the HTTP fallback.
+# Same-host Unix-domain-socket llama.cpp transport on hosts where the installed
+# llama-server and Java runtime support AF_UNIX. This creates no TCP listener.
 connector.llamacpp-unix.enabled=false
 connector.llamacpp-unix.id=local-llama-uds
 connector.llamacpp-unix.socket=/absolute/path/madre-runtime/llama-server.sock
@@ -21,9 +20,9 @@ connector.llamacpp-unix.expected-latency-ms=30000
 connector.llamacpp-unix.preference=200
 connector.llamacpp-unix.resource.model-slot=1
 
-# Loopback HTTP compatibility adapter. Keep llama-server bound to a loopback
-# interface; never expose owner-local inference via 0.0.0.0 merely for integration.
-connector.llamacpp.enabled=true
+# Loopback HTTP compatibility adapter. It is never enabled implicitly merely to make
+# local inference work. Keep llama-server bound to an explicit loopback IP when used.
+connector.llamacpp.enabled=false
 connector.llamacpp.id=local-llama-http
 connector.llamacpp.endpoint=http://127.0.0.1:8080/
 connector.llamacpp.model=local-model

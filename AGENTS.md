@@ -81,6 +81,25 @@ classes, generics, sealed hierarchies only when the domain is genuinely closed, 
 small responsibility-specific interfaces. JSON is a codec boundary, never the domain
 programming model.
 
+Windows and Linux are first-class host platforms for the same MADRE application,
+Kernel, SDK, Modules, persistence, and ordinary execution path. Windows is the
+Owner's active development environment; never treat it as a compatibility port of a
+Unix design. Do not introduce OS-specific assumptions into the public runtime merely
+because CI happens to run on one particular Linux distribution.
+
+Platform-specific physical mechanisms may have platform-specific Capability adapters
+or acceptance helpers. Keep that difference below the Capability boundary and do not
+promote one platform's transport into a universal architecture claim. A Linux-only
+adapter may remain useful to Linux users while Windows uses or later qualifies another
+physical realization of the same typed contract.
+
+Do not add containers, VM layers, orchestration systems, hosted services, provider
+accounts, or other infrastructure to MADRE's mandatory build/CI/product path merely
+because they are common portability tooling. Add such a dependency only for a concrete
+MADRE requirement accepted by the Owner. Prefer the JDK, the checked-in Gradle
+wrapper, native host execution, and the smallest real physical dependency required by
+the behavior under test.
+
 Do not translate the removed Python packages class for class. In particular, do not
 restore Material-aware Capabilities, autonomous input/output/responsibility surfaces,
 a universal Module or Agent loop, generic property bags, or a test-only Module.
@@ -112,8 +131,8 @@ For every slice:
 2. implement the complete behavior across its real boundaries;
 3. exercise the behavior proportionally, including real execution for real-execution
    claims;
-4. review the entire changed surface for responsibility leakage and familiar
-   framework assumptions;
+4. review the entire changed surface for responsibility leakage, platform assumptions,
+   and familiar framework assumptions;
 5. commit and push the coherent green result;
 6. never merge without explicit Owner instruction.
 
