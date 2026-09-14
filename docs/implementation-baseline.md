@@ -2,23 +2,36 @@
 
 This document records what actually executes on the active Java branch. It is intentionally narrower than the target product responsibilities in `MADRE.md` and `docs/architecture/`.
 
-The active implementation is one Java 21 Gradle multi-project system. Windows and Linux run the same application, Kernel, SDK, persistence model, Module installation/configuration mechanism and reasoning-mechanism installation mechanism. There is no separate Windows compatibility implementation and no Linux-specific public runtime.
+The active implementation is one Java 21 Gradle multi-project system. Windows and Linux run the same application, Kernel, SDK, persistence model, Module installation/configuration mechanism and reasoning-mechanism installation mechanism.
 
-## Current product transition
+## Current owner-product transition
 
-Several current behaviors are proven infrastructure but are not yet the completed owner/developer product:
+MADRE now has a native installed-host foundation in addition to the existing Gradle developer distribution.
 
-- The runnable distribution is a **developer distribution**. Building/running it currently requires JDK 21, the Gradle wrapper, a copied/reviewed properties file and an explicit properties-file argument to the generated launcher. There is no owner-ready native installer or first-run product flow yet.
-- `MadreMain` currently owns the local console read/evaluate loop and commands. Its optional application-local `interaction.*` binding independently selects the Module used for ordinary console text. `roles.core` does not currently drive that binding.
-- The shipped owner-interaction Module owns semantic fast-lane behavior: immediate reasoning, durable background reasoning, Module-owned pending state, interpretation, acknowledgement and optional visible follow-up. It does not own the actual console surface/loop.
-- `/updates` is currently the primary foreground mechanism for exposing completed delayed reasoning. The console invokes a bounded Module collection Operation; it does not interpret Kernel results. Natural delayed semantic re-entry into owner interaction is not implemented yet.
-- Module and reasoning-provider configuration are currently immutable/read-only string settings delivered generically to the owning provider. There is no public provider-owned typed configuration metadata contract suitable for a generic owner configurator yet.
-- `roles.core` currently resolves an optional installed Module identity and creates no privilege or structural qualification. Its target semantic meaning as the default owner-interaction/coordinator role is documented in `MADRE.md`; that qualification/interaction contract is not implemented yet.
-- The SDK and reasoning SPI have strong independent-consumer proofs, but the repository has not yet completed the public developer product: stable external publication/discovery, developer-facing documentation/tooling/testkit and a complete unrelated-developer packaging/install journey are still product work.
+- JDK 21 `jpackage` produces a Windows MSI and Linux DEB from the same `madre-app`, with a bundled Java runtime.
+- A native packaged launch accepts zero arguments. First normal launch resolves conventional per-user host locations, creates them as needed and persists `madre.properties`; later launches reuse that file.
+- Windows uses `%APPDATA%\MADRE` for configuration and `%LOCALAPPDATA%\MADRE` for mutable data/state. Linux follows `XDG_CONFIG_HOME`, `XDG_DATA_HOME` and `XDG_STATE_HOME`, with conventional home-directory fallbacks.
+- Kernel durable data lives under the state root as `kernel-work.sqlite`; Module-owned state is rooted at `<state>/module-state`.
+- Program/shipped artifacts remain inside the read-only application image. Owner-writable future/independent artifact roots are `<data>/modules` and `<data>/reasoning`.
+- Packaged default discovery scans both shipped and owner-writable roots. Explicit `modules.directory` and `reasoning.directory` retain their current exact single-directory override semantics for deterministic development/tests.
+- The first-run bootstrap copies only current host/application installation policy needed to preserve shipped interaction behavior, then writes host-resolved database/state paths. It contains no enabled reasoning instance and invents no provider endpoint, model, credential, Privacy value or provider setting.
+- `madre doctor` reports host/package identity and resolved locations plus configuration/discovery status, installed Modules, resolved CORE and materialized reasoning-mechanism identities/count. It does not dump provider configuration.
+- `installDist`/`distZip` remain developer packaging. They intentionally retain explicit properties-file startup, allowing existing temporary-path acceptance and source workflows to remain isolated.
 
-These are transitional implementation facts. They must not be elevated into permanent architectural responsibilities merely because the current acceptance suite proves them.
+This does not finish the full owner-deployable gate. Provider-aware first-run configuration, generic Module/reasoning lifecycle management and the dedicated CORE-led owner interaction remain subsequent product work. The current string configuration contracts are not promoted into a new generic configurator API by this slice.
 
-## Current artifact boundaries
+## Current semantic/runtime transition
+
+Other previously recorded transitional behavior is unchanged:
+
+- `MadreMain` owns the current local console loop and commands. `interaction.*` independently selects the Module used for ordinary console text; `roles.core` does not drive the binding.
+- The shipped owner-interaction Module owns immediate reasoning, durable background reasoning, Module-owned pending semantic state, interpretation, acknowledgement and optional visible follow-up.
+- `/updates` remains the explicit foreground mechanism that invokes the Module-specific collection Operation; natural delayed semantic re-entry is not implemented.
+- Module and reasoning-provider settings remain immutable/read-only provider-owned strings. No provider-owned typed configuration metadata contract exists yet.
+- `roles.core` still resolves an optional ordinary Module identity and creates no privilege or structural qualification.
+- Independent SDK/reasoning fixtures prove strong public-contract isolation but not a complete community developer product.
+
+## Artifact boundaries
 
 - `madre-algebra`: dependency-free nominal Security Algebra carriers;
 - `madre-sdk`: typed Material, Module/Agent/Skill/Workflow/Operation model, executable Module binding/registration/provider contracts, immutable Module-provider configuration, codecs, caller-bound Module interoperability, host-only owner-local/external-PUBLIC invocation ports and the Module-facing reasoning port;
@@ -29,15 +42,15 @@ These are transitional implementation facts. They must not be elevated into perm
 - `madre-web-search`: reusable typed web-search values;
 - `madre-adapter-searxng`: ordinary SearXNG Java client with no Kernel dependency;
 - `madre-module-owner-interaction`: shipped ordinary CORE-capable Module;
-- `madre-app`: application assembly, generic Module/reasoning artifact discovery, exact identity-scoped configuration/context delivery and the current replaceable local console.
+- `madre-app`: application assembly, host location/bootstrap/diagnostic mechanics, generic multi-root packaged Module/reasoning discovery, exact identity-scoped configuration/context delivery, native packaging and the current replaceable console.
 
-`madre-app` has no concrete owner-interaction or reasoning-provider implementation dependency, no Module-specific configuration parser/table and no provider-specific reasoning configuration branch.
+`madre-app` still has no concrete owner-interaction or reasoning-provider implementation dependency, no Module-specific configuration parser/table and no provider-specific reasoning configuration branch. Native packaging copies shipped artifacts as installation data; it does not compile those implementations into application semantics.
 
-The former generic Kernel `Capability<C,R>` SPI, generic `ExecutionService`/`WorkRequest`, SearXNG Kernel capability and standalone shipped WebSearch Module remain removed.
+The removed generic Kernel `Capability<C,R>` SPI, generic `ExecutionService`/`WorkRequest`, SearXNG Kernel capability and standalone shipped WebSearch Module remain removed.
 
 ## Security Algebra baseline
 
-The exact values are:
+The exact ordinary model is unchanged:
 
 ```text
 Privacy      SYSTEM_RESERVED, PUBLIC, UNKNOWN, LOCAL, MODULE, SECRET
@@ -47,183 +60,112 @@ Risk         SYSTEM_RESERVED, READ, WRITE, DELETE, EXECUTE, POTENTIALLY_HARMFUL
 Autonomy     SYSTEM_RESERVED, LIVE_INTERACTION, ASK_ALWAYS, ASK_ONCE, ACKNOWLEDGE, AUTONOMOUS
 ```
 
-Sensitivity combines by maximum; Privacy and Integrity by minimum; information reaches a receiver iff `Sensitivity <= Privacy`.
+Sensitivity combines by maximum; Privacy and Integrity by minimum; information reaches a receiver iff `Sensitivity <= Privacy`. For one EffectProfile, `min(Risk, Autonomy)` must be supported by actual non-user causal Integrity, or I5 when none exists. Risk is not propagated into reasoning work. `Privacy.MODULE` remains the fixed installed-Module receiver boundary. Native package origin, filesystem location and CORE designation confer no algebraic privilege.
 
-For one exact EffectProfile, `min(Risk, Autonomy)` must be supported by the combined Integrity of actual non-user causal participants, or I5 when there are none. Risk is not propagated into reasoning work. `Privacy.MODULE` is the fixed receiver contract for structurally declared foreign Material crossing between installed Modules.
+## Executable Module/configuration baseline
 
-No generic policy evaluator, OWNER Privacy value, trusted-user Integrity shortcut or persistent security-result object exists.
+A running Module is one canonical `ModuleDefinition` plus exact `OperationBinding` values in a `ModuleInstance`. `ModuleProvider` declares its canonical `ModuleId` before materialization and receives identity-scoped immutable `ModuleProviderConfiguration` plus a caller-bound `ModuleContext`.
 
-## Executable Module and configuration baseline
-
-A running Module is registered as a `ModuleInstance`: one canonical `ModuleDefinition` plus an exact `OperationBinding` for every declared Operation. Registration rejects incomplete, undeclared, foreign and non-canonical executable surfaces.
-
-`ModuleProvider` is the public installation entrypoint:
-
-```text
-ModuleId moduleId()
-ModuleInstance create(ModuleContext context, ModuleProviderConfiguration configuration)
-```
-
-Providers declare canonical identity before materialization. Application discovery uses `modules.directory` or the distribution sibling `modules/` directory and JDK class-loading/service-provider APIs. Shipped Modules are copied there but are not concrete `madre-app` compile dependencies.
-
-Current Module settings use:
+Current Module settings remain:
 
 ```text
 modules.config[<canonical ModuleId>].<module-owned-key>=<value>
 ```
 
-`ModuleProviderConfiguration` contains the exact target `ModuleId` and read-only string settings. `madre-app` only scopes/delivers them; the provider owns supported-key validation, parsing, typed settings and defaults. An explicit setting for an uninstalled identity is rejected. Duplicate providers, identity mismatch and invalid bindings fail startup before a partial Module installation becomes reachable.
+Each provider owns key vocabulary, validation, parsing and defaults. `madre-app` only scopes/delivers strings. Configuration for an uninstalled identity, duplicate providers, materialized identity mismatch or invalid executable bindings fail before partial reachability.
 
-This string configuration is current executable truth. It is not a completed generic configuration-schema product and exposes no typed metadata for an owner configurator today.
+In the native package, default Module discovery loads JARs from the shipped application `modules` directory and the conventional owner data `modules` directory. Explicit `modules.directory` replaces that default pair with exactly the configured directory, preserving the previous developer contract.
+
+No generic provider metadata/schema was added.
 
 ## Receiver boundaries
 
-### Module-to-Module
+Module-to-Module, owner-local and external/PUBLIC behavior is unchanged by host packaging.
 
-`ModuleContext` supplies caller-bound `ModuleDirectory` and `ModuleInvoker` facades. Module code supplies neither caller identity nor receiver Privacy.
+`ModuleContext` contains caller-bound `ModuleDirectory` and `ModuleInvoker`; Module code supplies neither caller identity nor receiver Privacy. The runtime only exposes compatible target `PUBLIC` Operations. A foreign result is delivered only when the caller canonically references its Material type and the Sensitivity reaches fixed `Privacy.MODULE`; the exact callee Material is preserved and `PublicResultTransformer` is not run.
 
-Reachability exposes only target `PUBLIC` Operations compatible with the offered Material. Invocation resolves the exact installed binding and executes ordinary `OperationBinding.invoke`; `PublicResultTransformer` does not run.
+`OwnerModuleInvoker.invokeOwner` executes a canonical installed `PUBLIC` Operation and returns validated Module-created Material unchanged.
 
-Before result exposure the runtime requires the caller to canonically reference the foreign Material type and requires returned Sensitivity to reach fixed `Privacy.MODULE`. Successful delivery preserves the exact callee Material identity, owner, type and Sensitivity. S5 or undeclared foreign Material is rejected before caller code receives it.
+`PublicModuleInvoker.invokePublic` executes the same bounded Operation but requires Module-owned semantic public transformation into new declared Material able to reach `Privacy.PUBLIC`.
 
-The independent caller/callee verification build proves this path on Windows and Linux. This is proven infrastructure, not a prototype slated for removal.
+Both host ports remain absent from `ModuleContext`; packaging, shipped origin and CORE assignment grant no additional authority.
 
-### Owner-local host receiver
+## Local interaction and CORE baseline
 
-`OwnerModuleInvoker.invokeOwner` resolves an exact installed `PUBLIC` Operation, executes the canonical `OperationCall` and returns the validated Module-created Material unchanged. It does not apply public transformation or lower Sensitivity.
+The application-local immutable `LocalInteractionBinding` remains optional and is configured through current `interaction.*` strings. `MadreMain` still owns the foreground loop. Ordinary text/default and `/standard` use owner-local invocation; `/updates` invokes only the configured Module collection Operation; `/sensitivity` modifies explicit console input classification.
 
-### External/PUBLIC host receiver
-
-`PublicModuleInvoker.invokePublic` resolves the same bounded behavior but requires the binding's `PublicResultTransformer` before disclosure. The transformed output must be new declared Material with Sensitivity able to reach `Privacy.PUBLIC`.
-
-Both host ports are absent from `ModuleContext`. CORE assignment, bundled origin, process placement and class-loader placement do not change receiver authority.
-
-## Independent Module proofs
-
-`verification/sdk-consumer` is a separate Gradle build compiled against published MADRE artifacts, not application/Kernel implementation classes. It proves independent Module provider materialization, configuration delivery, real installed discovery and external/PUBLIC behavior.
-
-`verification/module-interoperability` is a second isolated build containing independent caller and callee JARs. It proves:
-
-- owner-local raw S4 result delivery;
-- caller-to-callee S4 Material delivery through fixed `Privacy.MODULE` while preserving callee identity/ownership;
-- caller semantic adaptation to a distinct caller-owned Material identity;
-- mandatory S1 semantic minimization on external/PUBLIC paths;
-- rejection of S5 foreign results, undeclared foreign result types and PRIVATE target Operations;
-- caller identity cannot be forged through the public directory/invoker API.
-
-These fixtures prove the current SDK contract foundation. They are not by themselves evidence that external publication, documentation, testkit/tooling or developer packaging is community-ready.
-
-## Current local interaction baseline
-
-`madre-app` owns an immutable `LocalInteractionBinding`. It is application-local and absent unless `interaction.*` is configured.
-
-The current configuration contract is:
-
-```text
-interaction.module=<installed ModuleId>
-interaction.default-operation=<operation or operation@effect-profile>
-interaction.standard-operation=<operation or operation@effect-profile>
-interaction.prompt-material-type=<Module-owned MaterialType name>
-interaction.default-sensitivity=<S1..S5>
-interaction.updates-operation=<optional operation or operation@effect-profile>
-interaction.updates-material-type=<required with updates-operation>
-interaction.updates-payload=<required with updates-operation>
-interaction.updates-sensitivity=<required with updates-operation, S1..S5>
-```
-
-Resolution occurs after Module discovery and validates the exact installed Module, PUBLIC Operations, accepted Module-owned text Material, output text types, EffectProfile selection, ordinary Sensitivities and optional bounded update payload.
-
-`MadreMain` currently owns the interaction loop. Ordinary non-command text invokes the configured default Operation through owner-local invocation. `/standard` uses the configured standard Operation. `/updates` invokes the configured collection Operation and renders returned Material. `/sensitivity` changes only the current explicit prompt classification. Generic `/modules`, `/invoke-owner`, `/invoke-public`, legacy PUBLIC `/invoke`, `/exit` and `/quit` remain available.
-
-`interaction.module` and `roles.core` are resolved independently in the current code. Acceptance covers CORE absent, interaction target assigned CORE, another Module assigned CORE and unresolved CORE with unchanged current interaction/configuration behavior.
-
-This independence is intentionally recorded as current behavior, not target product architecture.
+`roles.core` remains optional and non-privileged. If the configured identity is installed, the live registry resolves it; absent/unresolved CORE does not prevent boot. Current interaction binding remains independent of CORE assignment. The native bootstrap packages the current shipped role/interaction installation policy only to preserve the existing owner-visible behavior; it does not make those names a universal CORE API and does not add a privileged type/port.
 
 ## Shipped owner-interaction Module baseline
 
-The shipped owner-interaction Module is an ordinary installed Module and may be assigned CORE. Its provider receives settings through the same public `ModuleProviderConfiguration` path as an independent Module.
+The shipped owner-interaction Module remains an ordinary installed Module using the same provider/configuration/discovery path as independent Modules. Its existing bounded Operations continue to prove immediate reasoning, durable background reasoning with Module-owned pending state, and Module interpretation/acknowledgement/cleanup after restart. Owner-local sensitive results remain sensitive; external/PUBLIC results require semantic minimization.
 
-Current settings include foreground/background token limits, timeouts, retry controls and optional reasoning location/latency preferences. Omitting the scope preserves `OwnerInteractionSettings.defaults()`.
+Kernel SQLite and Module semantic persistence remain separate domains.
 
-Its current bounded Operations demonstrate:
+## Reasoning installation/runtime baseline
 
-- `standard-prompt`: immediate reasoning and Module-created response Material, with no EffectProfile;
-- `fast-lane`: foreground reasoning plus durable background reasoning and Module-owned pending-state persistence; its consequential profile is `WRITE/AUTONOMOUS`;
-- `collect-background`: Module interpretation of completed durable reasoning, optional visible follow-up, acknowledgement and cleanup; its profile is `DELETE/LIVE_INTERACTION`.
+Reasoning adapter JARs expose `ReasoningMechanismProvider` through the public reasoning SPI. Providers receive a read-only view of current `reasoning.*` strings and own provider-specific parsing. One provider may materialize zero, one or many mechanisms. Installing an adapter does not enable any mechanism and Privacy is never inferred from endpoint, transport or locality.
 
-Owner-local sensitive results preserve Module-created Sensitivity. External/PUBLIC invocation applies the Module's semantic minimizer.
+In the native package, default reasoning discovery loads the shipped read-only reasoning directory plus the conventional owner data reasoning directory. Explicit `reasoning.directory` retains the previous exact one-directory semantics. The native first-run configuration contains no provider instance configuration, so the shipped adapters legitimately materialize zero mechanisms.
 
-The Module stores only its semantic pending association. Kernel SQLite independently stores opaque durable reasoning state. Across restart the two domains recover independently; the Module later interprets completed work and acknowledges/cleans it through `ReasoningService`.
+`ReasoningService` remains the only Module-facing Kernel reasoning port. Requests carry nominal reasoning computation plus execution controls and derived Module/Sensitivity facts, not Material semantics, semantic continuation, concrete mechanism identity or Operation Risk. Kernel continues to own deterministic compatible selection, resources, immediate/durable execution, retry/cancellation, SQLite runtime persistence and opaque result delivery.
 
-The current `/updates` command merely invokes `collect-background`; no natural delayed conversation re-entry exists yet.
-
-## Public reasoning-adapter SPI baseline
-
-`madre-reasoning-spi` exposes the reasoning-specific public adapter boundary, including `ReasoningCapability`, exact capability identity/manifest, reasoning contracts/codecs, availability, execution context, resource claims, typed failure reporting, immutable provider configuration, `ReasoningMechanism` materialization and `ReasoningMechanismProvider`.
-
-The SPI depends on the public SDK but not Kernel runtime implementation. It exposes no Module/Material semantics, generic tools/actions or semantic continuation.
-
-Both the reasoning SPI and text-inference contract publish source/Javadoc artifacts in the repository's current publication verification.
-
-Reasoning JARs are discovered independently from sibling `reasoning/` by default; the directory may be absent or empty. One provider may materialize zero, one or many mechanisms. Installation alone never enables a mechanism.
-
-`madre-app` passes a read-only view of current `reasoning.*` string configuration to discovered providers and performs generic registration. Provider-specific parsing remains provider-owned. No public typed provider metadata/configurator contract exists yet.
-
-## Reasoning runtime baseline
-
-The Module-facing port is `ReasoningService`. `ReasoningRequest<R,C>` requires `C extends ReasoningComputation<R>`, preventing the reasoning path from becoming a generic command/action envelope.
-
-A request derives originating Module and carried Sensitivity from a valid `OperationCall` and carries the reasoning computation plus execution controls: mode, priority, eligibility, timeout, cancellation, retry and typed location/latency preferences. It carries no Material identity/type, semantic continuation, concrete mechanism identity or Operation Risk.
-
-Kernel selects compatible reasoning contracts using information reach, observed availability, resources, typed preferences, installation preference and deterministic identity ordering. Immediate and durable reasoning share selection/resource/failure semantics.
-
-Durable work is stored in SQLite as opaque encoded computation/result bytes plus stable reasoning-contract identity and runtime state. Queued work survives restart and becomes runnable when a compatible mechanism is registered again.
+`ReasoningCapabilityRegistry` now exposes only a sorted identity snapshot of currently materialized capabilities for host diagnostics. This does not move provider parsing, installation lifecycle or semantic interpretation into Kernel.
 
 An empty reasoning registry is valid at boot.
 
-`verification/reasoning-consumer` is an isolated build depending only on the public reasoning SPI and text-inference contract. It provides deterministic installed reasoning used by acceptance without network/model/native/GPU/credential dependencies.
-
 ## Search baseline
 
-Search is ordinary application/domain I/O, not Kernel reasoning. `madre-web-search` remains a reusable typed value library and `madre-adapter-searxng` an ordinary Java client with no Kernel dependency. The former Kernel SearXNG capability and shipped standalone WebSearch Module remain removed.
+Search remains ordinary application/domain I/O, not Kernel reasoning. `madre-web-search` remains a reusable typed value library and `madre-adapter-searxng` an ordinary Java client with no Kernel dependency.
 
-## CORE and boot baseline
+## Native packaging and developer distribution
 
-Today, `roles.core` is optional. If configured and installed, the registry resolves that ordinary Module identity; if absent or configured-but-uninstalled, boot still succeeds. Current code performs no CORE structural qualification and uses CORE for no special interaction dispatch.
+`madre-app` uses the Gradle `application` plugin for developer `installDist`/`distZip` and direct JDK 21 `jpackage` tasks for owner packaging. No third-party packaging framework was introduced.
 
-CORE changes no invocation authority, Module configuration delivery, Security Algebra value, visibility, reasoning installation, reasoning selection or scheduling privilege.
+`jpackageAppImage` creates an isolated application image containing the application classpath, shipped Module/reasoning JARs, current first-run bootstrap policy and a linked Java runtime. `nativePackage` creates MSI on Windows and DEB on Linux from the same staged inputs. Windows uses per-user installer semantics; Linux uses the conventional `madre` package identity.
 
-The target semantic meaning of CORE as MADRE's default owner-interaction/coordinator Module is a product responsibility documented in `MADRE.md` and `MADRE-platform-architecture.md`; it is not claimed as already implemented here.
+The native product launcher permits zero-argument startup only when the packaged bootstrap marker exists. The Gradle developer distribution deliberately lacks that marker and therefore retains the previous explicit-properties usage. `--config <path>` is the explicit modern override; the historical positional properties path remains accepted for tests/development.
 
-The application also boots with absent/empty reasoning installation. A configured interaction binding can validate and boot with zero mechanisms; an Operation that later needs reasoning reports failure while the console remains usable.
+Normal native startup never writes to the application image and does not use relative CWD state. The bootstrap creates owner configuration/data/state/artifact directories before application assembly and persists host-resolved absolute database/state paths. Established configuration is not rewritten on restart.
 
-## Developer packaging baseline
+## Diagnostics baseline
 
-The current build uses JDK 21 and the checked-in Gradle wrapper. `installDist`/`distZip` create the Java distribution and launch scripts for the same `MadreMain` application on Windows and Linux. Running MADRE currently requires an explicit properties-file path.
+`madre doctor` is intentionally a host diagnostic, not a telemetry/observability framework. On a healthy installation it reports:
 
-This path is the truthful current developer packaging and remains the README run path. It does **not** satisfy the owner-deployable product gate: there is no native owner installer, first-run configuration experience or artifact/configuration management surface yet.
+- MADRE implementation version and actual bundled Java runtime path/version;
+- resolved configuration, data and state locations;
+- effective Module/reasoning artifact directories;
+- successful configuration load and discovery initialization;
+- installed Module count/identities and CORE configured/resolved state;
+- currently materialized reasoning mechanism count/identities.
+
+It reports identities/paths needed for mechanical diagnosis and does not enumerate arbitrary `modules.config[...]` or `reasoning.*` values.
 
 ## Cross-platform acceptance
 
-GitHub Actions runs the same source/distribution acceptance path on `ubuntu-latest` and `windows-latest`, including:
+The original `Java 21 cross-platform build` workflow remains mandatory on Windows and Ubuntu and continues to prove architecture guards, unit tests, Javadocs/publication, developer packages, independent Module/reasoning builds, Module-to-Module interoperability, owner-local/external-PUBLIC behavior, Module configuration, zero-reasoning operation, CORE/interaction independence and durable restart/recovery.
 
-- `check`, architecture guards, Javadocs/publication/package verification;
-- built distribution and installed-application smoke;
-- isolated SDK Module, caller/callee interoperability and reasoning-adapter builds;
-- no-reasoning boot/invocation;
-- owner-local and external/PUBLIC receiver behavior;
-- sensitive Module-to-Module composition and negative boundary cases;
-- independent reasoning mechanism discovery/execution;
-- shipped owner-interaction discovery/configuration;
-- local interaction binding validation and console behavior;
-- durable reasoning restart/recovery plus Module interpretation/acknowledgement through `/updates`.
+The additional `Native owner package` workflow runs on the exact PR head on both first-class hosts. Each host:
 
-No container runtime, VM layer, hosted provider account or external service is part of the mandatory CI path.
+1. builds the `jpackage` application image and native installer;
+2. verifies a bundled runtime exists and removes machine `java` from `PATH` before running MADRE;
+3. launches with zero arguments in a fresh per-user environment and confirms safe bootstrap outside both CWD and program files;
+4. verifies Kernel database, Module state and owner-writable artifact roots in conventional persistent locations;
+5. confirms shipped Module/reasoning artifacts are packaged and the shipped Module is discovered;
+6. confirms zero reasoning mechanisms is a valid initial state;
+7. runs `madre doctor` and checks coherent paths/discovery/CORE/mechanism information without provider-value dumping;
+8. launches again and proves the persisted configuration is reused byte-for-byte;
+9. verifies clean shutdown;
+10. retains the MSI/DEB as a workflow artifact.
 
-Earlier PR #47 acceptance also exercised real llama.cpp/model inference over the native AF_UNIX transport. That remains integration evidence for the shipped adapter but does not change the responsibilities above.
+Windows additionally performs an unattended per-user MSI install, resolves the installed launcher, executes it in a fresh owner environment, and uninstalls the MSI. Linux performs the corresponding unattended DEB install, installed launch in a fresh XDG environment, and package removal.
 
-## Plan status
+No signing/notarization, provider account, external service, container or GPU is required by this packaging acceptance.
 
-`docs/master-development-plan.md` is the completed foundation-plan record. It is not the active roadmap and its historical sequencing or obsolete intermediate types must not override the current product contract.
+## Public development platform status and remaining product gates
 
-Current product meaning is in `MADRE.md`; focused boundaries are in `docs/architecture/`; this document is executable truth; `README.md` is the current runnable developer path.
+The SDK/reasoning SPI still have strong independent-consumer proofs, but external publication/discovery, developer-facing documentation/tooling/testkit and a complete unrelated-developer product journey remain unfinished.
+
+The next deployment-related gaps are deliberately not hidden by this slice: owner-facing provider configuration, Module/reasoning install/remove/update management, and the meaningful CORE-led interaction redesign are still required for the broader product gates in `MADRE.md`.
+
+`docs/master-development-plan.md` remains historical foundation-plan evidence, not the active roadmap.
