@@ -236,7 +236,7 @@ try {
         throw 'console did not remain usable after reasoning availability failure'
     }
 
-    # Presentation-level durable restart proof: ordinary text -> exit -> restart -> /updates.
+    # Presentation-level durable restart proof: ordinary text -> exit -> deterministic completion -> /updates.
     $restartState = Join-Path $temp 'restart-state'
     $restartDb = Join-Path $temp 'restart.sqlite'
     $restartConfig = Join-Path $temp 'restart.properties'
@@ -258,17 +258,25 @@ try {
     }
 
     Set-Content -Path $gate -Value 'open' -Encoding utf8
-    $restarted = Invoke-MadreConsole $restartConfig @(
+    # Keep the previously accepted process boundary between the deterministic capability barrier
+    # and collection so Kernel has persisted SUCCEEDED before the destructive collection Operation.
+    $barrier = Invoke-MadreConsole $restartConfig @(
         '/standard await-background-completion',
-        '/updates',
-        '/updates',
         '/exit')
-    if ($restarted -notmatch 'S5\s+independent:await-background-completion') {
+    if ($barrier -notmatch 'S5\s+independent:await-background-completion') {
         throw 'restart completion barrier did not run through configured standard interaction'
     }
     if (-not (Test-Path $completion)) {
         throw 'durable reasoning did not resume and complete after restart'
     }
+    if ((Get-Item $pendingState).Length -eq 0) {
+        throw 'Module-owned pending state disappeared before explicit /updates acknowledgement'
+    }
+
+    $restarted = Invoke-MadreConsole $restartConfig @(
+        '/updates',
+        '/updates',
+        '/exit')
     if ($restarted -notmatch 'S5\s+.*independent:background-useful:') {
         throw '/updates did not return Module-interpreted durable reasoning after restart'
     }
