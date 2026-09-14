@@ -50,7 +50,7 @@ final class WebSearchModuleTest {
             var searchRegistration = kernel.capabilities().register(
                     searchCapability(Privacy.UNKNOWN, searches), 100);
             var inferenceRegistration = kernel.capabilities().register(
-                    inferenceCapability(Privacy.P5, reviews), 100);
+                    inferenceCapability(Privacy.SECRET, reviews), 100);
             WebSearchModule module = new WebSearchModule(kernel.execution());
             var moduleRegistration = kernel.modules().register(module.definition());
             try {
