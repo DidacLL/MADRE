@@ -72,10 +72,10 @@ Local llama.cpp currently has two adapters implementing the same
 - an explicit loopback-HTTP compatibility adapter restricted to loopback IP literals.
 
 `AF_UNIX` is the protocol-family name rather than a MADRE platform split. The same
-`LlamaCppUnixSocketCapability` implementation has now been exercised against a real
-native llama-server process on Windows, while the existing Java fixture exercises its
-wire and failure behavior wherever the host supports Unix-domain sockets. No Windows
-adapter, alternate Kernel route or compatibility architecture is required.
+`LlamaCppUnixSocketCapability` implementation has now been exercised against real
+native llama-server processes on Windows, including actual GGUF inference through the
+shipped owner-interaction Module and Kernel. No Windows adapter, alternate Kernel route
+or compatibility architecture is required.
 
 Neither llama.cpp connector is enabled by default in the example configuration. Local
 HTTP is never selected implicitly simply because it is convenient for integration.
@@ -91,40 +91,63 @@ Deterministic tests exercise the Security Algebra, public SDK contracts, SQLite 
 runtime, Capability selection, restart/retry behavior, SearXNG protocol behavior,
 WebSearch ordering and interpretation, and llama.cpp physical protocol behavior. The
 Unix-domain-socket llama.cpp tests use an actual Java AF_UNIX server fixture where
-supported; that is protocol/runtime evidence, not real-model acceptance.
+supported; that is deterministic protocol/runtime evidence rather than the live-model
+evidence below.
 
-Cross-platform mechanical verification at PR head `3a423062516fde77d6262d19eec49ec4464e99ea`
-completed successfully in GitHub Actions run `34791697747`: Windows and hosted Linux
-both completed the full clean build, tests, Javadocs, publication, `installDist`,
-`distZip`, isolated SDK-consumer compilation and installed application smoke path.
+Cross-platform mechanical verification at PR head
+`eb0cf05054547447c5d969e4786be1c133dcca7a` completed successfully in GitHub Actions
+run `34794424116`: native Windows and hosted Linux both completed the full clean build,
+tests, Javadocs, publication, `installDist`, `distZip`, isolated SDK-consumer
+compilation and installed-application smoke path.
 
-Windows non-TCP llama.cpp transport was then qualified separately without modifying the
-product branch. One-off GitHub Actions run `34793969886` used native Windows Server
-2025, Temurin Java 21.0.12 and pinned llama.cpp commit
-`ad6c66839af3c5646fba8c6c2e2087a1e4e38948`. It built a real `llama-server.exe`,
-started that server in model-free router mode with an absolute `.sock` host path, and
-invoked the actual MADRE `LlamaCppUnixSocketCapability`. MADRE observed the real server
-as `AVAILABLE` through `/health` over AF_UNIX. This establishes the Windows non-TCP
-transport boundary; it does not claim GGUF inference because no model participated.
-The qualification workflow lives only on the separate probe branch and is not a
-permanent dependency of normal MADRE CI.
+Windows AF_UNIX was first qualified at the physical transport boundary in one-off run
+`34793969886`: a real native `llama-server.exe` built from pinned llama.cpp commit
+`ad6c66839af3c5646fba8c6c2e2087a1e4e38948` bound an absolute `.sock`, and the actual
+MADRE `LlamaCppUnixSocketCapability` observed `/health` as `AVAILABLE` without a TCP
+listener.
 
-Historical real acceptance on this PR exercised the shipped owner-interaction Module
-against a real llama.cpp model through the loopback-HTTP compatibility adapter. That
-remains evidence for the text-inference contract and Module/Kernel execution path, but
-it does not establish a preferred local transport.
+Full real-model Windows AF_UNIX acceptance then succeeded in one-off GitHub Actions run
+`34794681796` on native Windows Server 2025 with Temurin Java 21.0.12. The run:
+
+1. built the installed MADRE application;
+2. built the same pinned llama.cpp commit as a CPU `llama-server.exe` with CURL,
+   accelerator-native tuning, embedded UI and prebuilt UI fetching disabled;
+3. downloaded only the previously established checksum-pinned
+   `qwen2.5-0.5b-instruct-q4_k_m.gguf` acceptance artifact and verified SHA-256
+   `74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db`;
+4. started the real model server on
+   `D:\a\_temp\madre-llama-model.sock` with no TCP listener;
+5. started the actual `MadreApplication`, created S5 owner-prompt Material in the
+   shipped owner-interaction Module, invoked its ordinary `standard-prompt` Operation,
+   submitted the resulting WorkRequest through Kernel, selected the installed
+   `LlamaCppUnixSocketCapability`, performed real model inference, and returned the
+   generated physical result for Module interpretation as answer Material.
+
+The generated answer was nonblank and llama-server logged the model as loaded,
+`listening on unix://D:\a\_temp\madre-llama-model.sock`, followed by real prompt and
+generation timings. This is real Windows model acceptance through the complete shipped
+MADRE path, not a protocol fixture or server-health-only result.
+
+The temporary acceptance workflow and model are not part of normal MADRE CI or the
+product distribution. The separate probe branch is reset after recording the evidence;
+the product retains no build-time llama.cpp, Hugging Face, model-download, container or
+provider dependency.
+
+Historical real acceptance on this PR also exercised the shipped owner-interaction
+Module against a real llama.cpp model through the loopback-HTTP compatibility adapter.
+That remains evidence for the same text-inference contract and Module/Kernel execution
+path, while HTTP remains compatibility rather than the preferred same-host mechanism.
 
 `scripts/acceptance-local.sh` exercises real GGUF inference through the AF_UNIX adapter
 from a Unix shell using an owner-supplied `llama-server` executable and model. The
 helper is host-specific acceptance tooling, not a separate product implementation.
 
-Real-model AF_UNIX inference remains to be exercised with an actual GGUF model on the
-owner's target installation. The missing evidence is model execution, not a missing
-Windows non-TCP transport. Do not replace that acceptance step with an HTTP default or
-an OS-specific MADRE architecture.
+Repeating the Windows AF_UNIX journey on the Owner's particular machine, GPU/backend
+and chosen model is installation/hardware qualification, not an unresolved MADRE
+cross-platform transport or execution feature.
 
-Live WebSearch acceptance also remains incomplete until a real SearXNG JSON endpoint
-is available. Complete live `deep-search` additionally requires a real available
+Live WebSearch acceptance remains incomplete until a real SearXNG JSON endpoint is
+available. Complete live `deep-search` additionally requires a real available
 text-inference Capability in the same run.
 
 Kernel SQLite remains restricted to physical work, scheduling, attempts, delivery

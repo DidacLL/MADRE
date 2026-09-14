@@ -97,11 +97,13 @@ uses llama-server's HTTP framing internally over `AF_UNIX`; it creates no TCP li
 Keep the socket path short and owner-controlled; socket-path and filesystem access
 remain operating-system concerns rather than MADRE algebra values.
 
-Native Windows transport qualification has exercised a real pinned `llama-server.exe`
-with the actual MADRE `LlamaCppUnixSocketCapability`: llama-server bound a `.sock` on
-Windows and MADRE observed `/health` as `AVAILABLE` over `AF_UNIX`. That proves the
-non-TCP transport boundary on Windows. It was intentionally run without a model, so
-real GGUF inference over this transport is still a separate acceptance claim.
+Native Windows acceptance has exercised this path end to end with a real pinned
+`llama-server.exe` and a checksum-pinned Qwen2.5 0.5B GGUF model. The shipped
+owner-interaction Module invoked `standard-prompt`, Kernel selected the actual
+`LlamaCppUnixSocketCapability`, llama-server performed real model inference through a
+`.sock`, and the Module received and interpreted the generated text. No TCP listener,
+Windows-specific MADRE transport, container runtime, or hosted inference provider was
+used.
 
 ### llama.cpp loopback HTTP compatibility
 
@@ -171,16 +173,19 @@ text-inference Capability in the same run.
 
 ## Local acceptance
 
-`scripts/acceptance-local.sh` remains a Unix-shell helper for running a real GGUF model
-through the `AF_UNIX` llama.cpp adapter. It is a convenience for that host environment,
-not a separate MADRE implementation and not the Windows product path.
+`scripts/acceptance-local.sh` remains a Unix-shell convenience for running a real GGUF
+model through the same `AF_UNIX` llama.cpp adapter. It is host-specific acceptance
+tooling, not a separate MADRE implementation and not the Windows product path.
 
-Windows `AF_UNIX` transport itself has been exercised independently against a real
-native llama-server binary. Full real-model acceptance on Windows still requires an
-actual GGUF model; no HTTP fallback is implied by that remaining acceptance step.
+Windows real-model AF_UNIX acceptance has already exercised the shipped Module,
+Operation, Kernel and Capability path on native Windows. Repeating that journey on the
+Owner's particular Windows installation is deployment/hardware qualification rather
+than a missing cross-platform MADRE mechanism.
 
 The repository does not bundle llama.cpp, a GGUF model, SearXNG, Docker, or any other
-container/orchestration runtime.
+container/orchestration runtime. The Windows real-model acceptance used a temporary,
+checksum-verified model fixture and did not add that artifact or its installer to the
+normal product build.
 
 ## Public SDK
 
