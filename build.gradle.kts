@@ -44,7 +44,7 @@ tasks.register("architectureCheck") {
         python.forEach { violations += "${it.relativeTo(rootDir)}: active Python source" }
 
         fileTree(rootDir) {
-            include("madre-kernel/src/main/java/**/reasoning/*.java")
+            include("madre-reasoning-spi/src/main/java/**/reasoning/*.java")
         }.forEach { source ->
             val text = source.readText()
             Regex("\\b(Material(Type)?|Module|Agent|Operation|Skill|Workflow)(Id)?\\b")
@@ -55,6 +55,40 @@ tasks.register("architectureCheck") {
         fileTree(rootDir) { include("madre-kernel/src/main/**/*.java") }.forEach { source ->
             if (Regex("new\\s+Material\\s*[<(]").containsMatchIn(source.readText())) {
                 violations += "${source.relativeTo(rootDir)}: Kernel-created Material"
+            }
+        }
+
+        val reasoningSpiBuild = file("madre-reasoning-spi/build.gradle.kts")
+        if (reasoningSpiBuild.exists() && reasoningSpiBuild.readText().contains("madre-kernel")) {
+            violations += "madre-reasoning-spi/build.gradle.kts: public reasoning SPI depends on Kernel runtime"
+        }
+        listOf("madre-adapter-llamacpp", "madre-adapter-openai-compatible").forEach { projectName ->
+            val adapterBuild = file("$projectName/build.gradle.kts")
+            if (adapterBuild.exists() && adapterBuild.readText().contains("madre-kernel")) {
+                violations += "$projectName/build.gradle.kts: reasoning adapter depends on Kernel runtime"
+            }
+        }
+        val appBuild = file("madre-app/build.gradle.kts")
+        if (Regex("implementation\\(project\\(\":madre-adapter-(llamacpp|openai-compatible)\"\\)\\)")
+                .containsMatchIn(appBuild.readText())) {
+            violations += "madre-app/build.gradle.kts: application has a concrete reasoning-adapter implementation dependency"
+        }
+        fileTree(rootDir) { include("madre-app/src/main/**/*.java") }.forEach { source ->
+            val text = source.readText()
+            listOf(
+                "LlamaCppReasoningCapability",
+                "LlamaCppUnixSocketReasoningCapability",
+                "OpenAiCompatibleReasoningCapability",
+                "LlamaCppConfiguration",
+                "LlamaCppUnixSocketConfiguration",
+                "OpenAiCompatibleConfiguration"
+            ).forEach { concrete ->
+                if (text.contains(concrete)) {
+                    violations += "${source.relativeTo(rootDir)}: application knows concrete reasoning adapter $concrete"
+                }
+            }
+            if (Regex("reasoning\\.(llamacpp|openai-compatible)").containsMatchIn(text)) {
+                violations += "${source.relativeTo(rootDir)}: application parses a concrete reasoning-provider namespace"
             }
         }
 

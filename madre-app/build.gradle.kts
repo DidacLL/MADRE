@@ -12,11 +12,18 @@ val shippedModules by configurations.creating {
     isTransitive = false
 }
 
+val shippedReasoning by configurations.creating {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+    isTransitive = false
+}
+
 dependencies {
     implementation(project(":madre-kernel"))
-    implementation(project(":madre-adapter-llamacpp"))
-    implementation(project(":madre-adapter-openai-compatible"))
+    runtimeOnly(project(":madre-text-inference"))
     shippedModules(project(":madre-module-owner-interaction"))
+    shippedReasoning(project(":madre-adapter-llamacpp"))
+    shippedReasoning(project(":madre-adapter-openai-compatible"))
     runtimeOnly("org.slf4j:slf4j-simple:2.0.16")
     testImplementation(platform("org.junit:junit-bom:5.11.4"))
     testImplementation("org.junit.jupiter:junit-jupiter")
@@ -31,6 +38,7 @@ distributions {
     main {
         contents {
             from(shippedModules) { into("modules") }
+            from(shippedReasoning) { into("reasoning") }
             from(rootProject.file("config/madre.properties.example")) {
                 into("config")
                 rename { "madre.properties" }

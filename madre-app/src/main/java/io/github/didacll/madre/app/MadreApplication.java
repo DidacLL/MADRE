@@ -1,20 +1,13 @@
 package io.github.didacll.madre.app;
 
-import io.github.didacll.madre.adapter.llamacpp.LlamaCppConfiguration;
-import io.github.didacll.madre.adapter.llamacpp.LlamaCppReasoningCapability;
-import io.github.didacll.madre.adapter.llamacpp.LlamaCppUnixSocketConfiguration;
-import io.github.didacll.madre.adapter.llamacpp.LlamaCppUnixSocketReasoningCapability;
-import io.github.didacll.madre.adapter.openai.OpenAiCompatibleConfiguration;
-import io.github.didacll.madre.adapter.openai.OpenAiCompatibleReasoningCapability;
-import io.github.didacll.madre.algebra.Privacy;
 import io.github.didacll.madre.algebra.Sensitivity;
 import io.github.didacll.madre.kernel.config.KernelConfiguration;
-import io.github.didacll.madre.kernel.reasoning.ReasoningCapabilityId;
-import io.github.didacll.madre.kernel.reasoning.ResourceClaim;
-import io.github.didacll.madre.kernel.reasoning.ResourceId;
+import io.github.didacll.madre.kernel.reasoning.ReasoningCapability;
 import io.github.didacll.madre.kernel.runtime.KernelRuntime;
 import io.github.didacll.madre.kernel.runtime.ReasoningCapabilityRegistry;
-import io.github.didacll.madre.sdk.execution.ReasoningLocation;
+import io.github.didacll.madre.reasoning.installation.ReasoningMechanism;
+import io.github.didacll.madre.reasoning.installation.ReasoningProviderConfiguration;
+import io.github.didacll.madre.sdk.execution.ReasoningComputation;
 import io.github.didacll.madre.sdk.identity.MaterialId;
 import io.github.didacll.madre.sdk.identity.MaterialTypeId;
 import io.github.didacll.madre.sdk.identity.ModuleId;
@@ -29,16 +22,16 @@ import io.github.didacll.madre.sdk.operation.OperationCall;
 import io.github.didacll.madre.sdk.registration.ModuleContext;
 import io.github.didacll.madre.sdk.registration.ModuleRegistration;
 import java.io.IOException;
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.TreeMap;
 import java.util.UUID;
 import java.util.concurrent.CompletionStage;
 
@@ -46,14 +39,17 @@ import java.util.concurrent.CompletionStage;
 public final class MadreApplication implements AutoCloseable {
     private final KernelRuntime kernel;
     private final InstalledModuleLoader moduleLoader;
+    private final InstalledReasoningLoader reasoningLoader;
     private final List<ModuleRegistration.Registration> moduleRegistrations;
     private final List<ReasoningCapabilityRegistry.Registration> reasoningRegistrations;
 
     private MadreApplication(KernelRuntime kernel, InstalledModuleLoader moduleLoader,
+            InstalledReasoningLoader reasoningLoader,
             List<ModuleRegistration.Registration> moduleRegistrations,
             List<ReasoningCapabilityRegistry.Registration> reasoningRegistrations) {
         this.kernel = kernel;
         this.moduleLoader = moduleLoader;
+        this.reasoningLoader = reasoningLoader;
         this.moduleRegistrations = List.copyOf(moduleRegistrations);
         this.reasoningRegistrations = List.copyOf(reasoningRegistrations);
     }
@@ -65,26 +61,35 @@ public final class MadreApplication implements AutoCloseable {
         KernelRuntime kernel = new KernelRuntime(KernelConfiguration.from(properties));
         List<ReasoningCapabilityRegistry.Registration> capabilities = new ArrayList<>();
         List<ModuleRegistration.Registration> modules = new ArrayList<>();
-        InstalledModuleLoader loader = null;
+        InstalledReasoningLoader reasoningLoader = null;
+        InstalledModuleLoader moduleLoader = null;
         try {
-            registerReasoningCapabilities(properties, kernel, capabilities);
+            reasoningLoader = new InstalledReasoningLoader(reasoningDirectory(properties));
+            ReasoningProviderConfiguration reasoningConfiguration =
+                    reasoningConfiguration(properties);
+            for (ReasoningMechanism<?, ?> mechanism
+                    : reasoningLoader.materialize(reasoningConfiguration)) {
+                capabilities.add(registerReasoning(kernel.reasoningCapabilities(), mechanism));
+            }
+
             Path stateDirectory = stateDirectory(properties, database);
             Files.createDirectories(stateDirectory);
-            Path moduleDirectory = moduleDirectory(properties);
-            loader = new InstalledModuleLoader(moduleDirectory);
+            moduleLoader = new InstalledModuleLoader(moduleDirectory(properties));
             ModuleContext context = new ModuleContext(kernel.reasoning(), kernel.modules(),
                     kernel.modules(), stateDirectory);
-            for (var provider : loader.providers()) {
+            for (var provider : moduleLoader.providers()) {
                 ModuleInstance instance = Objects.requireNonNull(provider.create(context),
                         "ModuleProvider returned null");
                 modules.add(kernel.modules().register(instance));
             }
-            return new MadreApplication(kernel, loader, modules, capabilities);
+            return new MadreApplication(kernel, moduleLoader, reasoningLoader, modules,
+                    capabilities);
         } catch (IOException | RuntimeException exception) {
-            closeReverse(modules);
-            capabilities.forEach(ReasoningCapabilityRegistry.Registration::close);
-            if (loader != null) loader.close();
-            kernel.close();
+            closeAfterFailure(modules, exception);
+            closeAfterFailure(capabilities, exception);
+            closeAfterFailure(moduleLoader, exception);
+            closeAfterFailure(reasoningLoader, exception);
+            closeAfterFailure(kernel, exception);
             if (exception instanceof RuntimeException runtime) throw runtime;
             throw new IllegalStateException("cannot initialize Module state directory", exception);
         }
@@ -97,6 +102,22 @@ public final class MadreApplication implements AutoCloseable {
                 : Path.of(configured.strip()).toAbsolutePath().normalize();
     }
 
+    private static Path reasoningDirectory(Properties properties) {
+        String configured = properties.getProperty("reasoning.directory");
+        return configured == null || configured.isBlank()
+                ? InstalledReasoningLoader.defaultDirectory()
+                : Path.of(configured.strip()).toAbsolutePath().normalize();
+    }
+
+    private static ReasoningProviderConfiguration reasoningConfiguration(Properties properties) {
+        Map<String, String> values = new TreeMap<>();
+        properties.stringPropertyNames().stream()
+                .filter(name -> name.startsWith("reasoning."))
+                .filter(name -> !name.equals("reasoning.directory"))
+                .forEach(name -> values.put(name, properties.getProperty(name)));
+        return new ReasoningProviderConfiguration(values);
+    }
+
     private static Path stateDirectory(Properties properties, Path database) {
         String configured = properties.getProperty("modules.state-directory");
         if (configured != null && !configured.isBlank()) {
@@ -107,51 +128,11 @@ public final class MadreApplication implements AutoCloseable {
                 .toAbsolutePath().normalize();
     }
 
-    private static void registerReasoningCapabilities(Properties properties,
-            KernelRuntime kernel, List<ReasoningCapabilityRegistry.Registration> capabilities) {
-        if (enabled(properties, "connector.llamacpp-unix.enabled")) {
-            LlamaCppUnixSocketConfiguration configuration =
-                    new LlamaCppUnixSocketConfiguration(
-                            new ReasoningCapabilityId(required(properties,
-                                    "connector.llamacpp-unix.id")),
-                            Path.of(required(properties, "connector.llamacpp-unix.socket")),
-                            required(properties, "connector.llamacpp-unix.model"),
-                            privacy(properties, "connector.llamacpp-unix.privacy"),
-                            duration(properties,
-                                    "connector.llamacpp-unix.expected-latency-ms"),
-                            resources(properties, "connector.llamacpp-unix.resource."));
-            capabilities.add(kernel.reasoningCapabilities().register(
-                    new LlamaCppUnixSocketReasoningCapability(configuration),
-                    integer(properties, "connector.llamacpp-unix.preference")));
-        }
-        if (enabled(properties, "connector.llamacpp.enabled")) {
-            LlamaCppConfiguration configuration = new LlamaCppConfiguration(
-                    new ReasoningCapabilityId(required(properties, "connector.llamacpp.id")),
-                    URI.create(required(properties, "connector.llamacpp.endpoint")),
-                    required(properties, "connector.llamacpp.model"),
-                    privacy(properties, "connector.llamacpp.privacy"),
-                    duration(properties, "connector.llamacpp.expected-latency-ms"),
-                    resources(properties, "connector.llamacpp.resource."));
-            capabilities.add(kernel.reasoningCapabilities().register(
-                    new LlamaCppReasoningCapability(configuration),
-                    integer(properties, "connector.llamacpp.preference")));
-        }
-        if (enabled(properties, "connector.openai-compatible.enabled")) {
-            OpenAiCompatibleConfiguration configuration = new OpenAiCompatibleConfiguration(
-                    new ReasoningCapabilityId(required(properties,
-                            "connector.openai-compatible.id")),
-                    URI.create(required(properties, "connector.openai-compatible.endpoint")),
-                    required(properties, "connector.openai-compatible.model"),
-                    privacy(properties, "connector.openai-compatible.privacy"),
-                    ReasoningLocation.valueOf(required(properties,
-                            "connector.openai-compatible.location")),
-                    duration(properties,
-                            "connector.openai-compatible.expected-latency-ms"),
-                    resources(properties, "connector.openai-compatible.resource."));
-            capabilities.add(kernel.reasoningCapabilities().register(
-                    new OpenAiCompatibleReasoningCapability(configuration),
-                    integer(properties, "connector.openai-compatible.preference")));
-        }
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static ReasoningCapabilityRegistry.Registration registerReasoning(
+            ReasoningCapabilityRegistry registry, ReasoningMechanism<?, ?> mechanism) {
+        ReasoningCapability capability = mechanism.capability();
+        return registry.register(capability, mechanism.preference());
     }
 
     public List<ModuleDefinition> installedModules() { return kernel.modules().definitions(); }
@@ -206,49 +187,53 @@ public final class MadreApplication implements AutoCloseable {
     public KernelRuntime kernel() { return kernel; }
 
     @Override public void close() {
-        closeReverse(moduleRegistrations);
-        reasoningRegistrations.forEach(ReasoningCapabilityRegistry.Registration::close);
-        moduleLoader.close();
-        kernel.close();
+        RuntimeException failure = null;
+        failure = closeAll(moduleRegistrations, failure);
+        failure = closeOne(moduleLoader, failure);
+        failure = closeAll(reasoningRegistrations, failure);
+        failure = closeOne(reasoningLoader, failure);
+        failure = closeOne(kernel, failure);
+        if (failure != null) throw failure;
     }
 
-    private static void closeReverse(List<ModuleRegistration.Registration> registrations) {
-        for (int index = registrations.size() - 1; index >= 0; index--) {
-            registrations.get(index).close();
+    private static RuntimeException closeAll(List<? extends AutoCloseable> closeables,
+            RuntimeException failure) {
+        RuntimeException current = failure;
+        for (int index = closeables.size() - 1; index >= 0; index--) {
+            current = closeOne(closeables.get(index), current);
+        }
+        return current;
+    }
+
+    private static RuntimeException closeOne(AutoCloseable closeable, RuntimeException failure) {
+        if (closeable == null) return failure;
+        try {
+            closeable.close();
+            return failure;
+        } catch (Exception exception) {
+            RuntimeException wrapped = exception instanceof RuntimeException runtime
+                    ? runtime : new IllegalStateException("cannot close MADRE runtime resource",
+                            exception);
+            if (failure == null) return wrapped;
+            failure.addSuppressed(wrapped);
+            return failure;
         }
     }
 
-    private static boolean enabled(Properties properties, String key) {
-        return Boolean.parseBoolean(properties.getProperty(key, "false"));
+    private static void closeAfterFailure(List<? extends AutoCloseable> closeables,
+            Throwable failure) {
+        for (int index = closeables.size() - 1; index >= 0; index--) {
+            closeAfterFailure(closeables.get(index), failure);
+        }
     }
 
-    private static int integer(Properties properties, String key) {
-        return Integer.parseInt(required(properties, key));
-    }
-
-    private static Duration duration(Properties properties, String key) {
-        long millis = Long.parseLong(required(properties, key));
-        if (millis < 1) throw new IllegalArgumentException(key + " must be positive");
-        return Duration.ofMillis(millis);
-    }
-
-    private static Privacy privacy(Properties properties, String key) {
-        return switch (required(properties, key)) {
-            case "P1", "PUBLIC" -> Privacy.PUBLIC;
-            case "P2", "UNKNOWN" -> Privacy.UNKNOWN;
-            case "P3", "LOCAL" -> Privacy.LOCAL;
-            case "P4", "MODULE" -> Privacy.MODULE;
-            case "P5", "SECRET" -> Privacy.SECRET;
-            default -> throw new IllegalArgumentException(
-                    key + " must be one of PUBLIC/P1, UNKNOWN/P2, LOCAL/P3, MODULE/P4 or SECRET/P5");
-        };
-    }
-
-    private static List<ResourceClaim> resources(Properties properties, String prefix) {
-        return properties.stringPropertyNames().stream().filter(name -> name.startsWith(prefix))
-                .sorted().map(name -> new ResourceClaim(
-                        new ResourceId(name.substring(prefix.length())),
-                        Long.parseLong(required(properties, name)))).toList();
+    private static void closeAfterFailure(AutoCloseable closeable, Throwable failure) {
+        if (closeable == null) return;
+        try {
+            closeable.close();
+        } catch (Exception closeFailure) {
+            failure.addSuppressed(closeFailure);
+        }
     }
 
     private static String required(Properties properties, String key) {

@@ -3,8 +3,7 @@ package io.github.didacll.madre.app;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import io.github.didacll.madre.text.TextInferenceCommand;
-import io.github.didacll.madre.text.TextInferenceResult;
+import io.github.didacll.madre.sdk.execution.ReasoningComputation;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Properties;
@@ -14,14 +13,25 @@ import org.junit.jupiter.api.io.TempDir;
 final class MadreApplicationTest {
     @TempDir Path temporary;
 
-    @Test void bootsWithNoCoreNoModulesAndNoReasoningCapability() throws Exception {
+    @Test void bootsWithNoCoreNoModulesAndAbsentReasoningDirectory() throws Exception {
         Files.createDirectories(temporary.resolve("empty-modules"));
         try (MadreApplication application = MadreApplication.start(bareProperties())) {
             assertTrue(application.resolvedCore().isEmpty());
             assertTrue(application.installedModules().isEmpty());
             assertTrue(application.kernel().reasoningCapabilities()
-                    .contractForComputation(TextInferenceCommand.class,
-                            TextInferenceResult.class).isEmpty());
+                    .contractForComputation(TestComputation.class, String.class).isEmpty());
+        }
+    }
+
+    @Test void bootsWithEmptyReasoningDirectory() throws Exception {
+        Files.createDirectories(temporary.resolve("empty-modules"));
+        Files.createDirectories(temporary.resolve("empty-reasoning"));
+        Properties properties = bareProperties();
+        properties.setProperty("reasoning.directory",
+                temporary.resolve("empty-reasoning").toAbsolutePath().toString());
+        try (MadreApplication application = MadreApplication.start(properties)) {
+            assertTrue(application.kernel().reasoningCapabilities()
+                    .contractForComputation(TestComputation.class, String.class).isEmpty());
         }
     }
 
@@ -34,42 +44,11 @@ final class MadreApplicationTest {
         }
     }
 
-    @Test void acceptsUnixSocketAndLoopbackHttpAsCoexistingTextReasoningMechanisms()
-            throws Exception {
+    @Test void rejectsReasoningDirectoryThatIsAFile() throws Exception {
         Files.createDirectories(temporary.resolve("empty-modules"));
-        Properties properties = connectorProperties();
-        properties.setProperty("connector.llamacpp-unix.enabled", "true");
-        properties.setProperty("connector.llamacpp-unix.id", "test-llama-uds");
-        properties.setProperty("connector.llamacpp-unix.socket",
-                temporary.resolve("llama.sock").toAbsolutePath().toString());
-        properties.setProperty("connector.llamacpp-unix.model", "test-model");
-        properties.setProperty("connector.llamacpp-unix.privacy", "SECRET");
-        properties.setProperty("connector.llamacpp-unix.expected-latency-ms", "100");
-        properties.setProperty("connector.llamacpp-unix.preference", "200");
-        properties.setProperty("connector.llamacpp-unix.resource.model-slot", "1");
-
-        try (MadreApplication application = MadreApplication.start(properties)) {
-            assertTrue(application.kernel().reasoningCapabilities()
-                    .contractForComputation(TextInferenceCommand.class,
-                            TextInferenceResult.class).isPresent());
-        }
-    }
-
-    @Test void acceptsSemanticAndRankPrivacyConfigurationNames() throws Exception {
-        Files.createDirectories(temporary.resolve("empty-modules"));
-        Properties properties = connectorProperties();
-        properties.setProperty("connector.llamacpp.privacy", "P5");
-        try (MadreApplication application = MadreApplication.start(properties)) {
-            assertTrue(application.kernel().reasoningCapabilities()
-                    .contractForComputation(TextInferenceCommand.class,
-                            TextInferenceResult.class).isPresent());
-        }
-    }
-
-    @Test void rejectsSystemReservedPrivacyAsInstalledReasoningFact() throws Exception {
-        Files.createDirectories(temporary.resolve("empty-modules"));
-        Properties properties = connectorProperties();
-        properties.setProperty("connector.llamacpp.privacy", "SYSTEM_RESERVED");
+        Path file = Files.writeString(temporary.resolve("not-a-directory"), "x");
+        Properties properties = bareProperties();
+        properties.setProperty("reasoning.directory", file.toString());
         assertThrows(IllegalArgumentException.class, () -> MadreApplication.start(properties));
     }
 
@@ -81,20 +60,12 @@ final class MadreApplicationTest {
                 temporary.resolve("empty-modules").toAbsolutePath().toString());
         properties.setProperty("modules.state-directory",
                 temporary.resolve("module-state").toAbsolutePath().toString());
+        properties.setProperty("reasoning.directory",
+                temporary.resolve("missing-reasoning").toAbsolutePath().toString());
         return properties;
     }
 
-    private Properties connectorProperties() {
-        Properties properties = bareProperties();
-        properties.setProperty("resources.model-slot", "1");
-        properties.setProperty("connector.llamacpp.enabled", "true");
-        properties.setProperty("connector.llamacpp.id", "test-llama");
-        properties.setProperty("connector.llamacpp.endpoint", "http://127.0.0.1:1/");
-        properties.setProperty("connector.llamacpp.model", "test-model");
-        properties.setProperty("connector.llamacpp.privacy", "SECRET");
-        properties.setProperty("connector.llamacpp.expected-latency-ms", "100");
-        properties.setProperty("connector.llamacpp.preference", "100");
-        properties.setProperty("connector.llamacpp.resource.model-slot", "1");
-        return properties;
+    private record TestComputation() implements ReasoningComputation<String> {
+        @Override public Class<String> resultType() { return String.class; }
     }
 }

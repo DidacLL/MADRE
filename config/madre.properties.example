@@ -4,40 +4,46 @@ roles.core=io.github.didacll.madre.owner-interaction
 kernel.database=var/kernel-work.sqlite
 kernel.result-retention-seconds=86400
 modules.state-directory=var/module-state
-# Installed distributions discover JARs from their sibling modules/ directory by default.
+# Installed distributions discover Module JARs from their sibling modules/ directory by default.
 # modules.directory=/absolute/path/to/madre-modules
+# Reasoning mechanisms are discovered independently from sibling reasoning/ JARs by default.
+# reasoning.directory=/absolute/path/to/madre-reasoning
 
-# Explicit resource capacity for reasoning mechanisms. All mechanisms may remain disabled;
-# MADRE still boots and Modules that do not need reasoning remain fully executable.
+# Explicit resource capacity for reasoning mechanisms. The reasoning directory may be absent
+# or empty, and every installed provider may remain disabled; MADRE still boots.
 resources.model-slot=1
 
-# Same-host AF_UNIX llama.cpp transport where the host/JDK support Unix-domain sockets.
-connector.llamacpp-unix.enabled=false
-connector.llamacpp-unix.id=local-llama-uds
-connector.llamacpp-unix.socket=/absolute/path/madre-runtime/llama-server.sock
-connector.llamacpp-unix.model=local-model
-connector.llamacpp-unix.privacy=SECRET
-connector.llamacpp-unix.expected-latency-ms=30000
-connector.llamacpp-unix.preference=200
-connector.llamacpp-unix.resource.model-slot=1
+# Provider-owned configuration supports multiple named AF_UNIX llama.cpp instances.
+# Merely installing the adapter JAR never enables an instance.
+reasoning.llamacpp-unix.instances=primary
+reasoning.llamacpp-unix.primary.enabled=false
+reasoning.llamacpp-unix.primary.id=local-llama-uds
+reasoning.llamacpp-unix.primary.socket=/absolute/path/madre-runtime/llama-server.sock
+reasoning.llamacpp-unix.primary.model=local-model
+reasoning.llamacpp-unix.primary.privacy=SECRET
+reasoning.llamacpp-unix.primary.expected-latency-ms=30000
+reasoning.llamacpp-unix.primary.preference=200
+reasoning.llamacpp-unix.primary.resource.model-slot=1
 
-# Loopback HTTP compatibility adapter. It is never enabled implicitly.
-connector.llamacpp.enabled=false
-connector.llamacpp.id=local-llama-http
-connector.llamacpp.endpoint=http://127.0.0.1:8080/
-connector.llamacpp.model=local-model
-connector.llamacpp.privacy=SECRET
-connector.llamacpp.expected-latency-ms=30000
-connector.llamacpp.preference=100
-connector.llamacpp.resource.model-slot=1
+# Explicit loopback-HTTP llama.cpp compatibility instance.
+reasoning.llamacpp-http.instances=compat
+reasoning.llamacpp-http.compat.enabled=false
+reasoning.llamacpp-http.compat.id=local-llama-http
+reasoning.llamacpp-http.compat.endpoint=http://127.0.0.1:8080/
+reasoning.llamacpp-http.compat.model=local-model
+reasoning.llamacpp-http.compat.privacy=SECRET
+reasoning.llamacpp-http.compat.expected-latency-ms=30000
+reasoning.llamacpp-http.compat.preference=100
+reasoning.llamacpp-http.compat.resource.model-slot=1
 
-# Optional unauthenticated OpenAI-compatible reasoning endpoint. Account/session mechanics
-# remain external. Location is a mechanism-selection fact and derives no Privacy value.
-connector.openai-compatible.enabled=false
-connector.openai-compatible.id=compatible-text
-connector.openai-compatible.endpoint=http://127.0.0.1:8081/v1/
-connector.openai-compatible.model=compatible-model
-connector.openai-compatible.privacy=SECRET
-connector.openai-compatible.location=LOCAL
-connector.openai-compatible.expected-latency-ms=30000
-connector.openai-compatible.preference=50
+# Optional OpenAI-compatible instances. Account/session mechanics remain external.
+# Privacy is always explicit and is never inferred from endpoint or ReasoningLocation.
+reasoning.openai-compatible.instances=example
+reasoning.openai-compatible.example.enabled=false
+reasoning.openai-compatible.example.id=compatible-text
+reasoning.openai-compatible.example.endpoint=http://127.0.0.1:8081/v1/
+reasoning.openai-compatible.example.model=compatible-model
+reasoning.openai-compatible.example.privacy=SECRET
+reasoning.openai-compatible.example.location=LOCAL
+reasoning.openai-compatible.example.expected-latency-ms=30000
+reasoning.openai-compatible.example.preference=50

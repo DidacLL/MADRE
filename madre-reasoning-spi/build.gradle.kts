@@ -16,7 +16,6 @@ tasks.withType<JavaCompile>().configureEach {
 
 dependencies {
     api(project(":madre-sdk"))
-    implementation("com.fasterxml.jackson.core:jackson-databind:2.18.2")
     testImplementation(platform("org.junit:junit-bom:5.11.4"))
     testImplementation("org.junit.jupiter:junit-jupiter")
 }
@@ -28,8 +27,8 @@ publishing {
         create<MavenPublication>("mavenJava") {
             from(components["java"])
             pom {
-                name = "MADRE Text Inference Contract"
-                description = "Published typed text-inference computation contract for MADRE Modules and reasoning adapters."
+                name = "MADRE Reasoning Adapter SPI"
+                description = "Public typed SPI for independently installed MADRE reasoning mechanisms."
                 url = "https://github.com/DidacLL/MADRE"
                 licenses { license { name = "GNU Affero General Public License v3.0"; url = "https://www.gnu.org/licenses/agpl-3.0.html" } }
                 developers { developer { id = "DidacLL" } }
