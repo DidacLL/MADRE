@@ -69,7 +69,7 @@ final class SdkInvariantTest {
                 "hello", Sensitivity.S2);
         OperationId operationId = new OperationId(owner, "run");
         EffectProfile profile = new EffectProfile(new EffectProfileId(operationId, "bounded"),
-                Risk.R3, Autonomy.A2);
+                Risk.DELETE, Autonomy.ASK_ALWAYS);
         OperationDefinition<String, String> operation = new OperationDefinition<>(operationId,
                 "Run bounded behavior", OperationVisibility.PUBLIC,
                 Map.of(type.id(), Privacy.LOCAL), Map.of(type.id(), Sensitivity.S3),
@@ -146,10 +146,23 @@ final class SdkInvariantTest {
                 Map.of(type.id(), Sensitivity.SYSTEM_RESERVED), Map.of()));
         assertThrows(IllegalArgumentException.class, () -> new EffectProfile(
                 new EffectProfileId(operationId, "reserved"),
-                Risk.SYSTEM_RESERVED, Autonomy.A1));
+                Risk.SYSTEM_RESERVED, Autonomy.LIVE_INTERACTION));
         assertThrows(IllegalArgumentException.class, () -> new AgentDefinition(
                 new AgentId(owner, "reserved"), "Reserved agent", Integrity.SYSTEM_RESERVED,
                 Set.of(), Map.of(), Set.of(operationId)));
+    }
+
+    @Test void semanticRiskAndAutonomyNamesRetainTheirOrderedRanks() {
+        assertEquals(1, Risk.READ.rank());
+        assertEquals(2, Risk.WRITE.rank());
+        assertEquals(3, Risk.DELETE.rank());
+        assertEquals(4, Risk.EXECUTE.rank());
+        assertEquals(5, Risk.POTENTIALLY_HARMFUL.rank());
+        assertEquals(1, Autonomy.LIVE_INTERACTION.rank());
+        assertEquals(2, Autonomy.ASK_ALWAYS.rank());
+        assertEquals(3, Autonomy.ASK_ONCE.rank());
+        assertEquals(4, Autonomy.ACKNOWLEDGE.rank());
+        assertEquals(5, Autonomy.AUTONOMOUS.rank());
     }
 
     @Test void agentRejectsWorkflowOwnedByAnotherAgent() {

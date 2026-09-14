@@ -14,8 +14,10 @@ public final class KernelRuntime implements AutoCloseable {
     public KernelRuntime(KernelConfiguration configuration) {
         Objects.requireNonNull(configuration, "configuration");
         store = new SQLiteWorkStore(configuration.workDatabase());
-        capabilities = new CapabilityRegistry(new ResourceCoordinator(configuration.resourceCapacity()));
-        execution = new KernelExecutionService(capabilities, store, configuration.resultRetention());
+        capabilities = new CapabilityRegistry(
+                new ResourceCoordinator(configuration.resourceCapacity()));
+        execution = new KernelExecutionService(capabilities, store,
+                configuration.resultRetention());
         modules = new LiveModuleRegistry(configuration.coreModule());
     }
     public CapabilityRegistry capabilities() { return capabilities; }
