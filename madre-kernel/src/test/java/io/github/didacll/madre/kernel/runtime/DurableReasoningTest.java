@@ -127,7 +127,8 @@ final class DurableReasoningTest {
                 new ReasoningCapabilityManifest<>(new ReasoningCapabilityId("fixture"),
                         CONTRACT, Privacy.SECRET, ReasoningLocation.LOCAL,
                         Duration.ofMillis(1), List.of());
-        registry.register(new ReasoningCapability<>() {
+        registry.register(new ReasoningCapability<String,
+                TestReasoningRequests.FixtureComputation>() {
             @Override public ReasoningCapabilityManifest<String,
                     TestReasoningRequests.FixtureComputation> manifest() { return manifest; }
             @Override public ReasoningAvailability availability() { return availability; }
