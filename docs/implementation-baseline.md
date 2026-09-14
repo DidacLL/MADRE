@@ -72,12 +72,23 @@ assignment creates no CORE subtype, privilege or alternate execution path.
 
 ## Cross-platform baseline
 
-CI runs the complete Java build, tests, Javadocs, publication, distribution packaging,
-independent SDK-consumer compilation and installed-application smoke path on both a
-native Windows GitHub runner and a hosted Linux GitHub runner. The Linux runner is a
-CI host, not an architectural Ubuntu dependency. Distro-specific qualification can be
-expanded later when useful; the codebase must not introduce Ubuntu-specific product
-assumptions in the meantime.
+Windows and Linux remain equal validation targets for executable or build-logic
+changes. The change-aware workflow first classifies the paths changed since the
+previous branch/PR head. Executable/build-logic changes run `check` on both hosts;
+production-source changes additionally run Javadocs, publication, application
+packaging and installed-application smoke; public algebra/SDK surface changes also
+compile the independent SDK consumer. Gradle build-cache reuse is enabled and the
+workflow does not force `clean` on every change.
+
+Documentation-only and acceptance-workflow-only changes stop after lightweight path
+classification and do not allocate the Windows/Linux Java matrix. Active PR branches
+are validated by the pull-request event rather than also duplicating the same suite for
+every branch push. Superseded runs for the same PR/ref are cancelled by workflow
+concurrency.
+
+The Linux runner is a CI host, not an architectural Ubuntu dependency. Distro-specific
+qualification can be expanded later when useful; the codebase must not introduce
+Ubuntu-specific product assumptions in the meantime.
 
 The Gradle application distribution generates `bin/madre` and `bin/madre.bat` as
 launch shims for the same `MadreMain` Java application and packaged libraries. They are
@@ -123,11 +134,18 @@ Unix-domain-socket llama.cpp tests use an actual Java AF_UNIX server fixture whe
 supported; that is deterministic protocol/runtime evidence rather than the live-model
 evidence below.
 
-Cross-platform mechanical verification at PR head
-`eb0cf05054547447c5d969e4786be1c133dcca7a` completed successfully in GitHub Actions
-run `34794424116`: native Windows and hosted Linux both completed the full clean build,
-tests, Javadocs, publication, `installDist`, `distZip`, isolated SDK-consumer
-compilation and installed-application smoke path.
+Cross-platform mechanical verification of executable head
+`914987e4780d115225af7253210aad54ef2e37b6` completed successfully in GitHub Actions
+run `34800439078`: native Windows and hosted Linux both completed `check`, Javadocs,
+publication, `installDist`, `distZip`, isolated SDK-consumer compilation and
+installed-application smoke. That head also introduced the change-aware CI rules.
+
+CI selectivity was exercised separately in run `34800483346`: a documentation-only
+change produced `verify=false`, `production=false`, `sdk-consumer=false`, so the Java
+matrix and its Windows/Linux test, package, SDK-consumer and application-smoke work did
+not run. Acceptance-workflow-only changes were likewise classified without launching
+the generic Java matrix; the dedicated live WebSearch probe's generic workflow run
+`34800999504` completed with its build job skipped.
 
 Windows AF_UNIX was first qualified at the physical transport boundary in one-off run
 `34793969886`: a real native `llama-server.exe` built from pinned llama.cpp commit
@@ -135,37 +153,56 @@ Windows AF_UNIX was first qualified at the physical transport boundary in one-of
 MADRE `LlamaCppUnixSocketCapability` observed `/health` as `AVAILABLE` without a TCP
 listener.
 
-Full real-model Windows AF_UNIX acceptance then succeeded in one-off GitHub Actions run
-`34794681796` on native Windows Server 2025 with Temurin Java 21.0.12. The run:
+After the Security Algebra repair, full real-model Windows AF_UNIX acceptance was
+re-run successfully in GitHub Actions run `34800581474` on native Windows Server 2025
+with Temurin Java 21.0.12. The run:
 
 1. built the installed MADRE application;
-2. built the same pinned llama.cpp commit as a CPU `llama-server.exe` with CURL,
-   accelerator-native tuning, embedded UI and prebuilt UI fetching disabled;
-3. downloaded only the previously established checksum-pinned
-   `qwen2.5-0.5b-instruct-q4_k_m.gguf` acceptance artifact and verified SHA-256
+2. built pinned llama.cpp commit `ad6c66839af3c5646fba8c6c2e2087a1e4e38948`
+   as a CPU `llama-server.exe` without an embedded/prebuilt UI or provider dependency;
+3. downloaded the checksum-pinned `qwen2.5-0.5b-instruct-q4_k_m.gguf` acceptance
+   artifact and verified SHA-256
    `74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db`;
-4. started the real model server on
-   `D:\a\_temp\madre-llama-model.sock` with no TCP listener;
-5. started the actual `MadreApplication`, created S5 owner-prompt Material in the
-   shipped owner-interaction Module, invoked its ordinary `standard-prompt` Operation,
-   submitted the resulting WorkRequest through Kernel, selected the installed
-   `LlamaCppUnixSocketCapability`, performed real model inference, and returned the
-   generated physical result for Module interpretation as answer Material.
+4. started the real model server on a Windows `.sock` with no TCP listener;
+5. constructed the actual llama Capability with `Privacy.SECRET`, configured the
+   installation with textual `SECRET`, created S5 owner-prompt Material in the shipped
+   owner-interaction Module, invoked its ordinary `standard-prompt` Operation, submitted
+   the resulting WorkRequest through Kernel, selected the installed
+   `LlamaCppUnixSocketCapability`, performed real model inference, and returned a
+   nonblank generated result for Module interpretation.
 
-The generated answer was nonblank and llama-server logged the model as loaded,
-`listening on unix://D:\a\_temp\madre-llama-model.sock`, followed by real prompt and
-generation timings. This is real Windows model acceptance through the complete shipped
-MADRE path, not a protocol fixture or server-health-only result.
+This is current real Windows S5-to-SECRET acceptance through the complete shipped
+MADRE path after the algebra correction, not a protocol fixture or server-health-only
+result.
 
-The temporary acceptance workflow and model are not part of normal MADRE CI or the
-product distribution. The separate probe branch is reset after recording the evidence;
-the product retains no build-time llama.cpp, Hugging Face, model-download, container or
-provider dependency.
+Live WebSearch and complete `deep-search` acceptance were likewise re-run after the
+Security Algebra repair in GitHub Actions run `34800999502`. The temporary acceptance
+installation used pinned SearXNG commit
+`d4ce87c23431f607162fc5c39ce52c538d64588f` with only its Wikipedia engine enabled,
+and the same pinned local llama.cpp/Qwen physical reviewer described above. It used no
+container or hosted inference provider.
+
+The run first verified real outbound SearXNG JSON results for `Java programming
+language` and `SQLite`; their first URLs were respectively
+`https://en.wikipedia.org/wiki/Java_(programming_language)` and
+`https://en.wikipedia.org/wiki/SQLite`. MADRE then executed both queries as S1 Material
+through an explicitly `PUBLIC` SearXNG Capability. The WebSearch Module interpreted
+both physical result sets as Module-owned Material and preserved S1 sensitivity. Its
+Agent-owned `deep-search` Workflow then executed the two searches and the private
+review Operation through the real local AF_UNIX text-inference Capability. The final
+nonblank review remained S1. No special WebSearch algebra rule, Kernel workflow path,
+or sensitivity promotion was introduced.
+
+The temporary acceptance workflows, SearXNG installation, llama.cpp build and model
+are not part of normal MADRE CI or the product distribution. The probe branches are
+reset after recording the evidence; the product retains no build-time llama.cpp,
+Hugging Face, SearXNG, model-download, container or provider dependency.
 
 Historical real acceptance on this PR also exercised the shipped owner-interaction
 Module against a real llama.cpp model through the loopback-HTTP compatibility adapter.
-That remains evidence for the same text-inference contract and Module/Kernel execution
-path, while HTTP remains compatibility rather than the preferred same-host mechanism.
+That remains additional evidence for the same text-inference contract and Module/Kernel
+execution path, while HTTP remains compatibility rather than the same-host non-TCP
+path.
 
 `scripts/acceptance-local.sh` exercises real GGUF inference through the AF_UNIX adapter
 from a Unix shell using an owner-supplied `llama-server` executable and model. The
@@ -174,11 +211,6 @@ helper is host-specific acceptance tooling, not a separate product implementatio
 Repeating the Windows AF_UNIX journey on the Owner's particular machine, GPU/backend
 and chosen model is installation/hardware qualification, not an unresolved MADRE
 cross-platform transport or execution feature.
-
-Live WebSearch acceptance remains incomplete until a real SearXNG JSON endpoint is
-available. Complete live `deep-search` additionally requires a real available
-text-inference Capability in the same run. Any live acceptance conclusion must be
-re-run after this Security Algebra correction before being treated as current evidence.
 
 Kernel SQLite remains restricted to physical work, scheduling, attempts, delivery
 state and opaque payloads. Semantic search results, Material, workflows and
