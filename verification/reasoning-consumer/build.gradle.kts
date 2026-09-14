@@ -3,7 +3,7 @@ plugins { java }
 repositories { maven { url = uri("../../build/isolated-repository") } }
 
 dependencies {
-    implementation("io.github.didacll:madre-sdk:0.1.0-SNAPSHOT")
+    implementation("io.github.didacll:madre-reasoning-spi:0.1.0-SNAPSHOT")
     implementation("io.github.didacll:madre-text-inference:0.1.0-SNAPSHOT")
 }
 
@@ -14,4 +14,4 @@ tasks.withType<JavaCompile>().configureEach {
     options.compilerArgs.addAll(listOf("-Xlint:all", "-Werror"))
 }
 
-tasks.jar { archiveFileName.set("independent-module.jar") }
+tasks.jar { archiveFileName.set("independent-reasoning.jar") }
