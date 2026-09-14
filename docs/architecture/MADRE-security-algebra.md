@@ -17,7 +17,7 @@ Privacy names describe actual confidentiality boundaries:
 - `PUBLIC`: disclosure to any receiver is acceptable;
 - `UNKNOWN`: an applicable third-party boundary outside stronger owner-controlled boundaries;
 - `LOCAL`: confined to the owner's local MADRE environment;
-- `MODULE`: confined to the owning Module boundary;
+- `MODULE`: confined to one Module receiver boundary;
 - `SECRET`: strongest ordinary confidentiality boundary.
 
 `P1` through `P5` may be used only as textual installation notation for the five ordinary Privacy values. Rank 0 is never an ordinary installation fact.
@@ -41,6 +41,7 @@ Algebraic values attach directly to the real MADRE object or contract where thei
 - an Operation declares maximum Sensitivity for Material it may produce;
 - an Agent derives effective Privacy from Operations it exposes;
 - a Module derives effective Sensitivity from reachable Material and declared outputs;
+- the installed Module-to-Module receiver contract uses `Privacy.MODULE` for a foreign Material type structurally declared by the calling Module;
 - one EffectProfile carries Risk and Autonomy;
 - an actual non-user causal participant contributes Integrity;
 - one installed reasoning mechanism declares the Privacy of its receiving boundary.
@@ -66,9 +67,11 @@ Existing values remain unchanged when another participant cannot compose, and no
 
 A Module may deliberately transform S5 Material into new S4, S3, S2 or S1 Material. Each result requires a new nominal Material identity and explicit Sensitivity justified by Module behavior. The source remains S5.
 
-The executable PUBLIC Operation boundary is one use of this rule: before internal result Material crosses the external boundary, the Module must create new declared Material able to reach `Privacy.PUBLIC`. Runtime validation does not invent the transformation.
+The executable external/PUBLIC Operation boundary is one use of this rule: before internal result Material crosses the external receiver boundary, the Module must create new declared Material able to reach `Privacy.PUBLIC`. Runtime validation does not invent the transformation.
 
-Owner-local invocation is a different receiver boundary. The owner receiving contract-valid Material inside their own MADRE installation does not imply public disclosure and therefore does not require the PUBLIC transformer or a new S1 Material. The Module-created Sensitivity remains unchanged. This distinction does not add an `OWNER` Privacy value, trusted-user Integrity level or another algebraic carrier; it is an invocation/receiver boundary in runtime architecture.
+Module-to-Module invocation is a different receiver boundary. The calling Module must structurally declare the callee-owned Material type in its canonical `publicMaterialReferences`; that declaration denotes a foreign public type reference, not S1 disclosure. Runtime assembly binds the actual calling `ModuleId`, and the receiver Privacy is the fixed SDK contract `Privacy.MODULE`, not a value supplied by Module code. A contract-valid S4 callee result can therefore reach a declared caller unchanged, preserving its Material identity, owner and Sensitivity. An undeclared foreign type or S5 result cannot reach that Module receiver and is rejected before the result stage exposes Material to caller code. `PublicResultTransformer` does not participate in this connection.
+
+Owner-local invocation is another receiver boundary. The owner receiving contract-valid Material inside their own MADRE installation does not imply public disclosure and therefore does not require the PUBLIC transformer or a new S1 Material. The Module-created Sensitivity remains unchanged. This distinction does not add an `OWNER` Privacy value, trusted-user Integrity level or another algebraic carrier; it is an invocation/receiver boundary in runtime architecture.
 
 Reasoning selection is another use: carried request Sensitivity must be able to reach the selected reasoning mechanism's explicit receiving Privacy.
 
@@ -85,7 +88,7 @@ D <= minimum Integrity of actual non-user causal participants
 
 Only that EffectProfile contributes Risk and Autonomy. Another profile is an independent construction. Owner presence is represented by the profile's actual Autonomy and never changes information reach.
 
-The current public `OperationCall` checks this causal composition before bounded behavior executes. Owner-local and PUBLIC invocation both use the same real `OperationCall`; neither may bypass this composition. A host caller supplies only actual non-user causal participants rather than fabricating Integrity values for a user or CLI.
+The current public `OperationCall` checks this causal composition before bounded behavior executes. Module-to-Module, owner-local and external/PUBLIC invocation all use the same real `OperationCall`; none may bypass this composition. A host caller supplies only actual non-user causal participants rather than fabricating Integrity values for a user or CLI.
 
 Reasoning computation alone does not justify an EffectProfile. The shipped owner-interaction `standard-prompt` therefore has no profile. Its `fast-lane` profile is justified by durable/persistent write consequences, and its `collect-background` profile is justified by acknowledgement/cleanup consequences rather than by inference.
 
@@ -101,4 +104,4 @@ This invariant creates no policy evaluator, permission service, decision wrapper
 
 ## Runtime concerns are not algebra
 
-Composition produces values, not observations about values. Logging, scheduling, attempts, retry, diagnostics, Module installation/discovery, owner-local/public receiver selection, CORE role lookup, reasoning availability and resource reservation are ordinary runtime concerns and confer no algebraic privilege.
+Composition produces values, not observations about values. Logging, scheduling, attempts, retry, diagnostics, Module installation/discovery, Module/owner-local/external-PUBLIC receiver selection, CORE role lookup, reasoning availability and resource reservation are ordinary runtime concerns and confer no algebraic privilege.

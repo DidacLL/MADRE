@@ -11,6 +11,9 @@ installed ordinary Module
   | Skills, Workflows, Operations, application I/O and continuation
   | may optionally be assigned the CORE role
   |
+  +--> caller-bound ModuleDirectory / ModuleInvoker
+  |      for compatible installed Module composition
+  |
   +--> ordinary Java/application I/O (files, search, databases, devices, network...)
   |
   `--> ReasoningService when bounded behavior needs reasoning
@@ -23,7 +26,7 @@ installed ordinary Module
 
 External/public caller
   |
-  | PUBLIC invocation + Module-owned semantic transformation
+  | host PublicModuleInvoker + Module-owned semantic transformation
   v
 installed ordinary Module
 ```
@@ -42,15 +45,17 @@ A Module does not become a Kernel extension merely because one Operation perform
 
 `ModuleDefinition` is the canonical declarative surface. `ModuleInstance` binds it to exact executable `OperationBinding` values. Registration validates that declared and executable identities/contracts match exactly before the Module becomes reachable.
 
+`ModuleDefinition.publicMaterialReferences` records public Material type declarations owned by other Modules that this Module structurally references. The name does not mean values of that type are S1. For Module-to-Module result reception, this declaration is the caller's opt-in to the foreign type, while the SDK/runtime supplies the fixed `Privacy.MODULE` receiving boundary.
+
 ## Module installation and discovery
 
 Modules are ordinary JVM JARs exposing `ModuleProvider` through Java's service-provider mechanism. The application discovers configured Module JARs with JDK path/class-loader APIs. Each provider declares its canonical `ModuleId` before materialization, then receives ordinary `ModuleContext` services plus immutable `ModuleProviderConfiguration` scoped to that identity and creates its `ModuleInstance`.
 
 Shipped Modules use the same route as independently built Modules. Bundling, class-loader placement, process placement or CORE assignment grants no authority.
 
-The Module registry is in-memory and rebuilt at boot. `ModuleDirectory` exposes reachable public definitions. `ModuleInvoker` invokes one exact installed `PUBLIC` Operation across the external/public boundary. `OwnerModuleInvoker` is a separate host/application port for owner-local invocation of an exact installed externally callable Operation.
+The Module registry is in-memory and rebuilt at boot. Application assembly constructs each provider's `ModuleContext` from its canonical provider identity. The supplied `ModuleDirectory` and `ModuleInvoker` are facades bound to that identity. `ReachabilityQuery` contains no caller identity and `ModuleInvoker.invoke` accepts no caller identity or receiver Privacy, so Module code cannot claim another installed identity through the public Module API.
 
-`OwnerModuleInvoker` is not exposed in `ModuleContext`. Application assembly gives Modules separate facade objects for `ModuleDirectory` and `ModuleInvoker`, not the concrete live registry. Thus a Module cannot downcast a context port to obtain owner-local invocation simply because it is installed in the same process.
+`OwnerModuleInvoker` and `PublicModuleInvoker` are separate host/application ports and are not exposed in `ModuleContext`. The concrete live registry is likewise not exposed to Modules.
 
 ## Module installation configuration boundary
 
@@ -66,9 +71,28 @@ Brackets are deliberate structural delimiters. The public `ModuleId` grammar per
 
 A Module provider owns all interpretation and validation of its scoped keys, including typed settings and defaults. Omitted configuration is an empty configuration for the exact identity. Explicit malformed settings fail materialization; configuration targeting an identity for which no provider is installed fails startup rather than being ignored.
 
-Provider identity is enforced before registration. Duplicate provider identities are rejected before any provider materializes; a provider that returns a `ModuleInstance` with a different canonical identity is rejected. All providers materialize and their executable bindings validate before any Module is registered, so a materialization/configuration failure cannot expose an earlier Module in a startup that will fail. Registration failures close already-created registrations in reverse order, preserving the existing application startup rollback/resource cleanup discipline.
+Provider identity is enforced before registration. Duplicate provider identities are rejected before any provider materializes; a provider that returns a `ModuleInstance` with a different canonical identity is rejected. All providers materialize and their executable bindings validate before any Module is registered, so a materialization/configuration failure cannot expose an earlier Module in a startup that will fail. Registration failures close already-created registrations in reverse order, preserving the application startup rollback/resource cleanup discipline.
 
 This configuration boundary is independent of `roles.core` and `interaction.*`. CORE does not grant or alter Module configuration, and the application presentation binding neither supplies nor overrides Module-owned settings.
+
+## Module-to-Module Material boundary
+
+Module-to-Module invocation represents one installed application calling another while remaining a Module receiver. It is not owner-local authority and is not external/public disclosure.
+
+The caller-bound directory exposes only exact target Operations declared `PUBLIC` and only when the offered Material can reach the target Operation's declared accepted-Material Privacy. PRIVATE Operations are never discoverable through this port.
+
+The caller-bound invoker resolves the exact installed target binding and executes `OperationBinding.invoke`, which validates the callee's contract-valid internal result. It does not call `PublicResultTransformer`.
+
+Before result delivery, the runtime checks the actual bound caller's canonical `publicMaterialReferences` and the fixed Module receiver boundary:
+
+```text
+returned foreign Material type is declared by caller
+and returned Sensitivity <= Privacy.MODULE
+```
+
+If the connection exists, the exact callee Material crosses unchanged: same nominal Material identity, same owning Module, same type and same Sensitivity. The caller may interpret it and create new caller-owned Material with a new identity. If the foreign type is undeclared or the result is S5, the completion stage fails before caller code receives the Material.
+
+No Module supplies a caller identity or arbitrary receiving Privacy per call. No new Operation visibility, Security Algebra value, policy evaluator, transport or CORE privilege is introduced.
 
 ## Owner-local Material boundary
 
@@ -84,19 +108,19 @@ No Privacy is inferred from localhost, same process, class-loader placement, COR
 
 ## External/public Material boundary
 
-Every executable `PUBLIC` binding owns a `PublicResultTransformer`. The transformer runs after internal Operation output validation and before Material leaves the public invocation boundary.
+`PublicModuleInvoker.invokePublic` is the host external/public receiver path. Every executable `PUBLIC` binding owns a `PublicResultTransformer`. The transformer runs after internal Operation output validation and before Material leaves this receiver boundary.
 
 The external result must be new declared Material with a new identity, remain inside the Operation output contract and have Sensitivity able to reach `Privacy.PUBLIC`. Raw internal Material cannot be returned through this path.
 
 Semantic minimization belongs to Module behavior; runtime validation prevents bypass. This is not a generic policy evaluator.
 
-Owner-local and PUBLIC invocation are genuinely distinct receiver boundaries. Owner-local execution does not invoke the public transformer and then attempt to recover sensitive information.
+Module-to-Module, owner-local and external/PUBLIC invocation are genuinely distinct receiver boundaries. Neither Module nor owner-local execution runs the public transformer and then attempts to reconstruct sensitive information.
 
 ## Generic application adapter
 
 `madre-app` has no compile-time dependency on the concrete owner-interaction Module. It discovers declarations and codecs through installed Module/runtime contracts only.
 
-The console/non-interactive adapter can invoke both receiver boundaries generically. Input is decoded with the exact canonical installed `MaterialType` codec and a canonical `OperationCall` is constructed. For no-effect Operations it uses `withoutEffect`; for a consequential Operation it selects the exact declared EffectProfile, using `<operation>@<effect-profile>` only when disambiguation is necessary. The host supplies only actual non-user causal participants and never asks the user to fabricate Integrity values.
+The console/non-interactive adapter can invoke both host receiver boundaries generically. Input is decoded with the exact canonical installed `MaterialType` codec and a canonical `OperationCall` is constructed. For no-effect Operations it uses `withoutEffect`; for a consequential Operation it selects the exact declared EffectProfile, using `<operation>@<effect-profile>` only when disambiguation is necessary. The host supplies only actual non-user causal participants and never asks the user to fabricate Integrity values.
 
 The console is a replaceable local adapter rather than a workflow/policy/chat framework.
 
@@ -112,7 +136,7 @@ With a valid binding, ordinary non-command text is mapped onto the configured de
 
 The initial prompt Sensitivity comes from explicit `interaction.default-sensitivity`; `/sensitivity S1..S5` changes that local session value explicitly. No model, keyword rule, reasoning mechanism, endpoint or CORE assignment classifies arbitrary owner text. `SYSTEM_RESERVED` remains unavailable. Owner-local results retain and display their actual Material Sensitivity.
 
-Ordinary text does not alias PUBLIC invocation. `/invoke-public` and legacy `/invoke` remain external/public routes. `/invoke-owner`, `/modules`, `/exit` and `/quit` remain available independently. If `interaction.*` is absent, the same application boots the generic low-level console.
+Ordinary text does not alias external/PUBLIC invocation. `/invoke-public` and legacy `/invoke` remain external/public routes. `/invoke-owner`, `/modules`, `/exit` and `/quit` remain available independently. If `interaction.*` is absent, the same application boots the generic low-level console.
 
 The interaction binding and `roles.core` are independent installation facts. CORE lookup is not consulted while resolving or invoking the local presentation binding. The same configured interaction behavior therefore remains valid with CORE absent, assigned to the interaction target, assigned to a different installed Module or unresolved.
 
@@ -136,7 +160,7 @@ Startup materialization and registration are transactional at the application-as
 
 Kernel owns only shared runtime responsibilities that presently require central coordination:
 
-- live executable Module registry and the host owner-local/public invocation mechanics;
+- live executable Module registry and the caller-bound Module/host receiver mechanics;
 - optional resolution of the configured CORE Module identity;
 - registry of installed reasoning mechanisms;
 - deterministic selection of compatible reasoning mechanisms;
@@ -145,7 +169,7 @@ Kernel owns only shared runtime responsibilities that presently require central 
 - timeout, cancellation and bounded reasoning retry;
 - opaque reasoning-result delivery and ordinary runtime logging.
 
-Kernel does not own Module state, Material semantics, semantic workflows, artifact meaning, ordinary application I/O, search, model interpretation, continuation or local console presentation binding. It does not create Module Material.
+Kernel does not own Module state, Material semantics, semantic workflows, artifact meaning, ordinary application I/O, search, model interpretation, continuation or local console presentation binding. It does not create Module Material and does not semantically transform Module-to-Module results.
 
 The runtime may boot with zero reasoning mechanisms. A Module Operation that later requests unavailable reasoning fails or waits according to the reasoning execution contract; mechanism absence is not a platform boot failure. A Module that uses no reasoning remains executable with an absent/empty reasoning installation directory. A configured presentation binding is likewise allowed at boot with zero mechanisms because it validates Module structure, not reasoning availability.
 
@@ -191,7 +215,7 @@ A future domain Module that genuinely owns research/search behavior may depend o
 
 `roles.core`, when present, contains one ordinary installed `ModuleId`. CORE is only role lookup. MADRE also supports no CORE assignment, and a configured-but-absent CORE does not prevent boot.
 
-CORE does not alter invocation authority, Operation visibility, Security Algebra, local interaction presentation authority, Module configuration delivery, reasoning installation, reasoning selection, scheduling or public-result rules. There is no CORE subtype or privileged registration path. The owner-local port is not a CORE port and is not exposed to a CORE Module.
+CORE does not alter invocation authority, Operation visibility, Security Algebra, local interaction presentation authority, Module configuration delivery, reasoning installation, reasoning selection, scheduling or public-result rules. There is no CORE subtype or privileged registration path. Neither host invocation port is a CORE port and neither is exposed to a CORE Module.
 
 ## Storage
 

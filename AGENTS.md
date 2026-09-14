@@ -14,7 +14,10 @@ Third-party libraries, protocols, providers, models and runtimes may constrain a
 
 - A Module owns meaning, state, persistence, Material, transformations, Agents, Skills, Agent-owned Workflows, interpretation, continuation, UI and bounded Operations.
 - An Operation is bounded Module/application behavior. Ordinary file, network, database, device and search I/O remains ordinary Module/application behavior unless a specific shared Kernel responsibility exists.
-- Kernel owns the live executable Module registry/public invocation boundary, optional CORE-role resolution, and the shared reasoning runtime: reasoning-mechanism registration/selection, resources, immediate/durable reasoning, retries, cancellation, delivery and runtime logging.
+- Kernel owns the live executable Module registry and receiver mechanics, optional CORE-role resolution, and the shared reasoning runtime: reasoning-mechanism registration/selection, resources, immediate/durable reasoning, retries, cancellation, delivery and runtime logging.
+- Installed Module composition uses caller-bound `ModuleDirectory`/`ModuleInvoker` facades. Runtime assembly binds the canonical caller identity; Module code does not supply a caller identity or arbitrary receiving Privacy. Contract-valid foreign results are receivable only for canonically referenced foreign Material types that can reach fixed `Privacy.MODULE`.
+- External/PUBLIC disclosure is a separate host boundary. `PublicResultTransformer` remains mandatory there and is not run merely because one installed Module invoked another.
+- `OwnerModuleInvoker` and the external/PUBLIC host invoker remain outside `ModuleContext`. PRIVATE Operations remain Module-internal.
 - `ReasoningCapability` is intentionally narrow. It accepts only nominal `ReasoningComputation<R>` values and returns reasoning results. It knows no Module, Agent, Operation, Workflow, Material or semantic continuation.
 - Reasoning adapters are ordinary owner-installable JVM artifacts discovered independently from Modules through the public reasoning-adapter SPI. `madre-app` must not know concrete reasoning-provider types or parse provider-specific configuration.
 - Module providers declare their canonical `ModuleId` before materialization and receive immutable owner configuration scoped to that exact identity through the public Module SDK. `madre-app` may extract/deliver the generic `modules.config[<ModuleId>].*` namespace, but Module-specific keys, parsing, validation and typed settings remain inside the Module artifact.
@@ -43,7 +46,7 @@ Attach a value directly to the real object or contract where it applies. Do not 
 
 A non-composable participant is simply unreachable for that construction. No persistent security result or special security lifecycle exists.
 
-`Privacy.UNKNOWN` is explicit P2 for an applicable third-party boundary outside owner control. It is not missing information and is never inferred from locality or provider identity.
+`Privacy.UNKNOWN` is explicit P2 for an applicable third-party boundary outside owner control. It is not missing information and is never inferred from locality or provider identity. `Privacy.MODULE` is the structural P4 receiver contract for declared foreign Material crossing between installed Modules; it is not caller-chosen per invocation.
 
 ## Public engineering model
 
@@ -53,13 +56,13 @@ Windows and Linux are first-class hosts for the same application, Kernel, SDK, M
 
 Platform-specific reasoning transports may have platform-specific adapters. Keep differences below the reasoning adapter boundary. Do not promote one platform's transport into a universal architecture claim.
 
-Module developers may depend on the published SDK and relevant published computation-contract artifacts, but not on `madre-app` or Kernel runtime implementation classes merely to receive installation configuration or execute bounded Module behavior. Reasoning adapter developers may depend on the published reasoning SPI and relevant published computation-contract artifacts, but not on `madre-app` or Kernel runtime implementation classes merely to register a mechanism. Keep registries, SQLite stores, schedulers and application assembly private to their runtime responsibilities.
+Module developers may depend on the published SDK and relevant published computation-contract artifacts, but not on `madre-app` or Kernel runtime implementation classes merely to receive installation configuration, discover/invoke compatible installed Modules or execute bounded Module behavior. Reasoning adapter developers may depend on the published reasoning SPI and relevant published computation-contract artifacts, but not on `madre-app` or Kernel runtime implementation classes merely to register a mechanism. Keep registries, SQLite stores, schedulers and application assembly private to their runtime responsibilities.
 
 Do not add containers, VM layers, orchestration systems, hosted services or provider accounts to the mandatory build/CI/product path without a concrete Owner-accepted requirement. Prefer the JDK, checked-in Gradle wrapper, native host execution and the smallest real dependency required by the behavior under test.
 
 Do not restore the removed Python packages class-for-class. In particular, do not restore Material-aware capabilities, a generic `Capability<C,R>` Kernel SPI, universal physical-action dispatch, autonomous input/output surfaces, a universal Module/Agent loop, arbitrary property bags or test-only product Modules.
 
-Tests establish mathematical invariants, public contracts, failure mechanics and real integrations. A fixture may replace an external reasoning mechanism for deterministic tests, but it cannot stand in for claimed product behavior. No production adapter may invent favorable availability or reachability.
+Tests establish mathematical invariants, public contracts, failure mechanics and real integrations. A fixture may replace an external reasoning mechanism for deterministic tests, but it cannot stand in for claimed product behavior. Independent Module interoperability claims must be proven using artifacts compiled against the published SDK rather than application/Kernel implementation classes. No production adapter may invent favorable availability or reachability.
 
 ## Delivery discipline
 
