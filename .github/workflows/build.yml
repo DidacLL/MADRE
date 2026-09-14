@@ -2,13 +2,93 @@ name: Java 21 cross-platform build
 
 on:
   push:
+    branches:
+      - main
+      - 'architecture/**'
+      - 'probe/**'
   pull_request:
 
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      verify: ${{ steps.scope.outputs.verify }}
+      production: ${{ steps.scope.outputs.production }}
+      sdk-consumer: ${{ steps.scope.outputs.sdk-consumer }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - name: Classify changed paths
+        id: scope
+        shell: pwsh
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          CURRENT_SHA: ${{ github.sha }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $head = if ($env:PR_HEAD_SHA) { $env:PR_HEAD_SHA } else { $env:CURRENT_SHA }
+          $base = $env:BEFORE_SHA
+          $forceFull = $false
+
+          if ([string]::IsNullOrWhiteSpace($base) -or $base -match '^0+$') {
+            if ($env:EVENT_NAME -eq 'pull_request' -and $env:PR_BASE_SHA) {
+              $base = $env:PR_BASE_SHA
+            }
+            else {
+              # A first push has no reliable previous branch head. Validate it fully.
+              $forceFull = $true
+            }
+          }
+
+          $files = @()
+          if (-not $forceFull) {
+            $files = @(git diff --name-only $base $head)
+            if ($LASTEXITCODE -ne 0) { throw "Unable to classify changes between $base and $head" }
+          }
+
+          $buildLogic = '^(build\.gradle\.kts|settings\.gradle\.kts|gradlew|gradlew\.bat|gradle/|\.github/workflows/build\.yml)($|/)'
+          $anySource = '^madre-[^/]+/src/'
+          $productionSource = '^madre-[^/]+/src/main/'
+          $sdkSurface = '^(madre-algebra/src/main/|madre-sdk/src/main/|verification/sdk-consumer/)'
+
+          $verify = $forceFull
+          $production = $forceFull
+          $sdkConsumer = $forceFull
+
+          foreach ($file in $files) {
+            if ($file -match $buildLogic -or $file -match $anySource -or $file -match '^verification/sdk-consumer/') {
+              $verify = $true
+            }
+            if ($file -match $buildLogic -or $file -match $productionSource) {
+              $production = $true
+            }
+            if ($file -match $buildLogic -or $file -match $sdkSurface) {
+              $sdkConsumer = $true
+            }
+          }
+
+          "verify=$($verify.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          "production=$($production.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          "sdk-consumer=$($sdkConsumer.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+
+          Write-Host "Changed files: $($files.Count); verify=$verify; production=$production; sdk-consumer=$sdkConsumer"
+          $files | ForEach-Object { Write-Host "  $_" }
+
   build:
+    needs: changes
+    if: needs.changes.outputs.verify == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -16,7 +96,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
@@ -24,14 +104,17 @@ jobs:
         with:
           gradle-version: '8.12'
 
-      - name: Build, verify and package on Linux
+      - name: Verify on Linux
         if: runner.os == 'Linux'
-        run: ./gradlew --no-daemon clean check javadoc publish installDist distZip
+        run: ./gradlew --no-daemon --build-cache check
+      - name: Verify production documentation and packages on Linux
+        if: runner.os == 'Linux' && needs.changes.outputs.production == 'true'
+        run: ./gradlew --no-daemon --build-cache javadoc publish installDist distZip
       - name: Verify isolated SDK consumer on Linux
-        if: runner.os == 'Linux'
-        run: ./gradlew --no-daemon -p verification/sdk-consumer clean compileJava
+        if: runner.os == 'Linux' && needs.changes.outputs.sdk-consumer == 'true'
+        run: ./gradlew --no-daemon --build-cache -p verification/sdk-consumer compileJava
       - name: Smoke installed application on Linux
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && needs.changes.outputs.production == 'true'
         shell: bash
         run: |
           set +e
@@ -41,16 +124,20 @@ jobs:
           test "$status" -eq 2
           printf '%s\n' "$output" | grep -F 'usage: madre <path-to-madre.properties>'
 
-      - name: Build, verify and package on Windows
+      - name: Verify on Windows
         if: runner.os == 'Windows'
         shell: pwsh
-        run: .\gradlew.bat --no-daemon clean check javadoc publish installDist distZip
+        run: .\gradlew.bat --no-daemon --build-cache check
+      - name: Verify production documentation and packages on Windows
+        if: runner.os == 'Windows' && needs.changes.outputs.production == 'true'
+        shell: pwsh
+        run: .\gradlew.bat --no-daemon --build-cache javadoc publish installDist distZip
       - name: Verify isolated SDK consumer on Windows
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && needs.changes.outputs.sdk-consumer == 'true'
         shell: pwsh
-        run: .\gradlew.bat --no-daemon -p verification/sdk-consumer clean compileJava
+        run: .\gradlew.bat --no-daemon --build-cache -p verification/sdk-consumer compileJava
       - name: Smoke installed application on Windows
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && needs.changes.outputs.production == 'true'
         shell: pwsh
         run: |
           $stdout = Join-Path $env:RUNNER_TEMP 'madre-stdout.txt'
