@@ -208,3 +208,4 @@ jobs:
           Write-Host $output
           if ($status -ne 2) { throw "MADRE exited with $status instead of 2" }
           if ($output -notmatch 'usage: madre <path-to-madre\.properties>') { throw 'MADRE application did not print usage' }
+          exit 0
