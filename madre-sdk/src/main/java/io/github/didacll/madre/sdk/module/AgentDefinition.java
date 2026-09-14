@@ -47,7 +47,7 @@ public record AgentDefinition(AgentId id, String purpose, Integrity integrity, S
                 .map(operationId -> Objects.requireNonNull(definitions.get(operationId),
                         "unresolved Operation " + operationId))
                 .flatMap(operation -> operation.acceptedMaterial().values().stream())
-                .reduce(Privacy.P5, Privacy::combine);
+                .reduce(Privacy.SECRET, Privacy::combine);
     }
 
     public java.util.Optional<Sensitivity> effectiveSensitivity(
