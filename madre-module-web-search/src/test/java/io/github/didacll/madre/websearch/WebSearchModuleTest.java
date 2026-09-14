@@ -52,7 +52,7 @@ final class WebSearchModuleTest {
             var inferenceRegistration = kernel.capabilities().register(
                     inferenceCapability(Privacy.SECRET, reviews), 100);
             WebSearchModule module = new WebSearchModule(kernel.execution());
-            var moduleRegistration = kernel.modules().register(module.definition());
+            var moduleRegistration = kernel.modules().register(module.instance());
             try {
                 Material<String> first = module.searchQuery("MADRE privacy algebra", Sensitivity.S2);
                 Material<String> second = module.searchQuery("agent workflows", Sensitivity.S2);
