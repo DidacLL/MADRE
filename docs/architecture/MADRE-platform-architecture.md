@@ -3,183 +3,145 @@
 ## Responsibility map
 
 ```text
-Owner
+Owner / local surface
   |
   v
-ordinary Module assigned to CORE role or another Module
-  | owns Material, meaning, Agents, Operations and continuation
-  | Agents own Workflows over their Operation repertoires
-  | creates an opaque physical work request
+installed ordinary Module
+  | owns application/domain behavior, Material, meaning, state, Agents,
+  | Workflows, Operations, transformation and continuation
+  | may optionally be assigned the CORE role
   v
-Kernel
-  | live Module and Capability registries
-  | selection, routing, resources, scheduling, queue and delivery
-  v
-Capability adapter
-  | invokes one installed physical mechanism
-  v
-physical output
-  | delivered opaquely
-  v
-originating Module
-  | interprets output, creates new Material and continues or stops
+live Module registry / public Module invocation boundary
+  | discovery, exact executable binding validation and PUBLIC reachability
+  | no privilege from CORE, bundling, process or class-loader placement
+  |
+  +--> ordinary Module Java/application behavior
+  |
+  `--> physical work only where the current execution contract genuinely applies
+         v
+       Kernel
+         | capability selection, resources, scheduling, durable work and delivery
+         v
+       physical adapter/mechanism
 ```
 
-The algebra is behavior of the values carried by these objects. It is not a runtime
-component in the diagram.
+The Security Algebra is behavior of values carried by these objects. It is not a
+runtime component in the diagram.
 
 ## Module boundary
 
-A Module is the semantic and application boundary. It owns:
+A Module is the semantic and application/domain boundary. It owns its domain state and
+persistence, Material, Agents, Skills, Workflows, public and private Operations,
+application I/O, semantic transformations, continuation, artifacts, and presentation
+that belong to that domain.
 
-- its domain state and persistence;
-- Material identities, types, payloads and Sensitivity;
-- Agents and the Skills it provides;
-- public and private Operations;
-- conversion from Material to physical connector input;
-- interpretation of physical output;
-- creation of new Material;
-- continuation and user presentation.
+An Operation is a bounded callable Module/application function. It declares the
+Material it can accept, the receiving Privacy that applies, the Material it may
+produce, and its EffectProfiles when it has consequential variants. Module behavior
+uses ordinary Java and SDK types. A Module does not become a Kernel extension merely
+because one Operation performs file, network, database, device, or other application
+I/O.
 
-Each Agent owns the Workflows in its learned repertoire. A Module-provided Skill may
-materialize as one or more Workflows for an Agent. The current minimal Workflow is an
-ordered sequence of Operations triggered together as one semantic behavior. That is
-Module/Agent behavior, not a Kernel workflow language.
+`ModuleDefinition` is the canonical declarative surface. `ModuleInstance` binds that
+definition to the exact executable `OperationBinding` for every declared Operation.
+Registration validates that the binding set exactly matches the declared identities
+and canonical contracts before the Module becomes reachable.
 
-An Operation is the bounded entry to Module behavior. It declares the Material it can
-accept, the receiving Privacy that applies, the Material it may produce, and its
-EffectProfiles when it has consequential variants. Those declarations are direct
-parts of the Operation; they are not separately identified surface objects.
+## Installation and discovery
 
-Module behavior calls the SDK directly while composing its actual values. Correct
-construction is the implementation model, not a voluntary call to a separate
-service. When a Workflow invokes multiple Operations, every Operation composes from
-the actual Material entering that Operation and every resulting physical request is
-selected independently by Kernel.
+MADRE installs executable Modules as ordinary JVM JARs. A JAR exposes a
+`ModuleProvider` using the standard Java service-provider mechanism. The application
+loads providers from the configured Module directory with JDK path/class-loader APIs,
+constructs each Module with ordinary SDK services, and registers its `ModuleInstance`.
+This mechanism is cross-platform Java installation/discovery; it is not a marketplace,
+container architecture, or separate plugin framework.
 
-The WebSearch Module is the first concrete stress case. Its researcher Agent owns a
-`deep-search` Workflow whose minimal sequence is two `single-search` Operation
-invocations followed by one private review Operation. The two searches independently
-cross the web-search physical boundary; their Module-interpreted Material is then
-joined and the review independently crosses the text-inference boundary. The Workflow
-has no combined security state and no privileged execution path.
+Shipped Modules are packaged into the distribution's Module directory but are not
+concrete compile-time dependencies of `madre-app`. Independently built Module JARs use
+the same provider and registration route. Placement in the distribution, a particular
+class loader, or the MADRE process never creates authority.
+
+The live registry is in-memory and is rebuilt by installed Module providers at boot.
+Its directory API exposes reachable public definitions. Its invocation API resolves
+one installed Module and exact canonical `PUBLIC` Operation and calls it without the
+caller constructing or naming the concrete implementation class.
+
+## External/public Material boundary
+
+A public Operation may create internal Material that is not itself safe to expose.
+Every executable `PUBLIC` binding therefore owns a semantic public-result transformer.
+The transformer runs after the internal Operation result is validated and before the
+result leaves the public Module invocation boundary.
+
+The external result must be new declared Material with a new identity, must still
+satisfy the declared output contract, and must be minimized enough to reach
+`Privacy.PUBLIC`. Raw internal Material identity cannot be returned as the public
+result. This enforces a mandatory semantic boundary without introducing a generic
+policy evaluator: the Module decides the transformation; the runtime prevents bypass.
 
 ## Kernel boundary
 
-Kernel owns mechanisms shared across Modules:
+Kernel owns mechanisms shared across physical execution:
 
-- an in-memory registry of running Module definitions;
-- an installation registry of physical Capability manifests and adapter bindings;
-- resolution of the configured CORE Module identity;
-- Capability selection from request values, installed manifest values, current
-  availability, resources, and deterministic configuration;
+- the in-memory executable Module registry and public invocation port;
+- the current installation registry of physical Capability manifests and adapter
+  bindings;
+- optional lookup of the configured CORE Module identity;
+- selection of applicable physical mechanisms;
 - immediate and durable physical work;
 - timing, priority, timeout, cancellation, resource coordination, and retry after
   physical failure;
-- opaque result delivery;
-- ordinary runtime logging.
+- opaque physical result delivery and ordinary runtime logging.
 
-Kernel does not own Module definitions after restart, Module state, Material,
-semantic workflows, or Operation behavior. It does not create or classify output.
+Kernel does not own Module state, Material semantics, semantic workflows, artifact
+meaning, or ordinary application code. It does not create Module Material.
 
-The live Module registry makes exact public Agents and Operations reachable to other
-Modules. Kernel does not interpret them. Invocation enters the target Module's
-ordinary bounded Operation interface.
+The runtime may boot with zero physical Capabilities/connectors. An Operation that
+actually submits physical work for which no applicable mechanism is installed fails or
+waits according to the ordinary execution contract when invoked; the absence of a
+reasoning mechanism is not a platform boot failure.
 
-## Capability boundary
+## Capability boundary and current recovery status
 
-A Capability is a connector registered in Kernel. Its manifest describes only the
-installed mechanism:
+The current code still has a generic `Capability<C,R>` SPI whose manifest describes a
+physical command/result contract, receiving Privacy, physical Integrity where
+applicable, availability, physical properties, and required resources. Adapters
+receive physical commands, not Material, Module, Agent, Workflow, Skill, or Operation
+objects.
 
-- Kernel identity;
-- physical command/input and output contract;
-- explicit receiving Privacy;
-- Integrity where the connector is an actual physical realizer;
-- availability and physical properties;
-- required resources;
-- connector configuration and supported bounded options.
+Current physical contracts include text inference and web search, with llama.cpp,
+OpenAI-compatible and SearXNG adapters. Availability remains an observed physical fact
+and Kernel selects only explicitly available mechanisms.
 
-The adapter accepts the physical command and returns physical output. It contains no
-Material, Module, Agent, Workflow, Skill, or Operation reference.
-
-Capability availability is an observed physical fact, not a favorable default. An
-adapter may report `AVAILABLE` only after its own mechanism-specific reachability
-check establishes that state. A failed check reports `UNAVAILABLE`; an interrupted or
-otherwise unestablished check is `UNKNOWN`. Kernel selects only explicitly
-`AVAILABLE` Capabilities. Test fixtures may inject explicit states to exercise Kernel
-logic, but production adapters must not hardcode success merely to keep execution
-moving.
-
-MADRE currently has two typed physical contracts:
-
-- text inference: llama.cpp and OpenAI-compatible adapters accept
-  `TextInferenceCommand` and return `TextInferenceResult`;
-- web search: the SearXNG adapter accepts `WebSearchCommand` and returns
-  `WebSearchResult`.
-
-SearXNG HTTP/JSON details stay inside the adapter. The WebSearch Module sees only the
-typed physical search contract and interprets its returned hits into Module-owned
-research Material. Search endpoint, Privacy, Integrity, latency and resource claims
-are installation facts. Locality or provider identity never derives algebraic values.
-
-A physical contract does not imply one transport. Multiple adapters may implement the
-same contract through different physical mechanisms and coexist in one installation.
-Same-host llama.cpp has an AF_UNIX domain-socket adapter and a loopback-HTTP
-compatibility adapter under the same text-inference contract. `AF_UNIX` is the socket
-family name, not a Unix-only MADRE architecture: the same adapter implementation can
-run on supported Windows and Unix-like hosts, and its real llama-server availability
-path has been exercised natively on Windows. Kernel sees ordinary Capabilities and
-selects using their manifests and request values; it has no concept of llama.cpp,
-HTTP, AF_UNIX, model-server routes, or native APIs. The domain-socket adapter keeps the
-server in a separate process without creating a TCP listener; the HTTP adapter is an
-explicit compatibility mechanism rather than a cross-platform requirement.
-
-Third-party libraries and protocols constrain only their adapter implementation. They
-must not redefine MADRE objects or move their transport/session/lifecycle concepts into
-Kernel, SDK, Modules, Agents, Workflows, Operations, Material, or the Security Algebra.
-If a future direct `libllama` adapter is implemented, its native ABI and model lifetime
-remain private physical mechanics behind the same contract unless a genuinely new
-MADRE responsibility proves otherwise.
-
-New physical contracts are introduced only when a real connector requires different
-physical command/result semantics; they extend the Capability SPI rather than expanding
-one generic dictionary.
+This generic shape is not the desired final architecture. It is known recovery debt.
+The correction to reasoning-only `ReasoningCapability`, the placement of
+SearXNG/WebSearch, and removal of the universal physical-action Kernel path from
+ordinary Module behavior are intentionally deferred. No new Module execution in this
+slice is built on generic Capability dispatch, and no new Memory, Knowledge,
+Communication, or WebSearch abstraction is introduced.
 
 ## CORE installation role
 
-Installation configuration assigns `CORE` to one ordinary `ModuleId`. Kernel
-resolves that identity in the live registry. The surrounding application sends
-default owner interaction to that Module.
+`roles.core`, when present, contains one ordinary installed `ModuleId`. CORE is only a
+role lookup. MADRE also supports no CORE assignment at all, and a configured but absent
+CORE does not prevent platform boot.
 
-A CORE candidate must expose the ordinary public behavior required by the role. The
-current minimum qualification is the public `standard-prompt` and `fast-lane`
-Operations exposed through one Agent, matching the existing product contract. The
-shipped owner-interaction Module qualifies. The WebSearch Module does not. No CORE
-subtype, privileged path, special algebra, or Kernel scheduling lane exists.
-
-A CORE interaction Agent may detect that another installed Agent/Operation/Workflow is
-better suited to an owner request, or the owner may choose that behavior directly in
-a UI. That trigger is user-experience behavior. It does not make the target Workflow
-a CORE or Kernel concept. The current console directly exposes WebSearch operations as
-the first exercised UI path; automatic conversational routing is not implied by this
-slice.
+CORE does not alter invocation authority, Operation visibility, Security Algebra,
+physical selection, scheduling, or public-result rules. There is no CORE subtype,
+privileged registration path, special class-loader treatment, or boot-time requirement
+for Operations with particular names. Any shipped owner-interaction behavior remains
+ordinary Module behavior.
 
 ## Storage
 
-Module persistence stays inside each Module.
-
-Kernel persists only physical work that must survive restart:
-
-- opaque queued input;
-- scheduling and attempt state;
-- pending physical output until delivery.
-
-Runtime cleanup removes payload bytes according to delivery and retention. The live
-Module registry is rebuilt when Modules start.
+Module persistence stays inside each Module. Kernel SQLite persists only physical work
+that must survive restart: opaque queued input, scheduling/attempt state, and pending
+physical output until delivery. Runtime cleanup removes payload bytes according to
+delivery and retention. The live Module registry is rebuilt at application boot.
 
 ## Provider environment
 
-MADRE configuration describes connector endpoints and physical behavior. Account
-sessions, credentials, authentication flows, authorization, permissions, and provider
-roles are supplied outside the MADRE model. They do not alter Capability Privacy or
-Integrity.
+MADRE configuration describes installed physical connector endpoints and physical
+behavior. Account sessions, credentials, authentication flows, authorization,
+permissions, and provider roles remain outside the MADRE domain model and do not alter
+Capability Privacy or Integrity.

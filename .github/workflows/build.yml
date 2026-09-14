@@ -39,14 +39,15 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $head = if ($env:PR_HEAD_SHA) { $env:PR_HEAD_SHA } else { $env:CURRENT_SHA }
-          $base = $env:BEFORE_SHA
           $forceFull = $false
 
-          if ([string]::IsNullOrWhiteSpace($base) -or $base -match '^0+$') {
-            if ($env:EVENT_NAME -eq 'pull_request' -and $env:PR_BASE_SHA) {
-              $base = $env:PR_BASE_SHA
-            }
-            else {
+          if ($env:EVENT_NAME -eq 'pull_request' -and $env:PR_BASE_SHA) {
+            # A PR run validates the complete proposed change, not only its latest synchronize delta.
+            $base = $env:PR_BASE_SHA
+          }
+          else {
+            $base = $env:BEFORE_SHA
+            if ([string]::IsNullOrWhiteSpace($base) -or $base -match '^0+$') {
               $forceFull = $true
             }
           }
