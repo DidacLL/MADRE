@@ -48,12 +48,14 @@ public final class IndependentDefinition {
 
     private IndependentDefinition() { }
 
-    static ModuleInstance instance(ReasoningService reasoning) {
+    static ModuleInstance instance(ReasoningService reasoning, String resultPrefix) {
+        java.util.Objects.requireNonNull(reasoning, "reasoning");
+        String prefix = java.util.Objects.requireNonNull(resultPrefix, "resultPrefix");
         Operation<String, String> inspect = new Operation<>() {
             @Override protected java.util.concurrent.CompletionStage<Material<String>> execute(
                     OperationCall<String, String> call) {
                 return CompletableFuture.completedFuture(material(RESULT,
-                        "private:" + call.input().payload(), Sensitivity.S4));
+                        "private:" + prefix + call.input().payload(), Sensitivity.S4));
             }
         };
         Operation<String, String> reason = new Operation<>() {
@@ -65,7 +67,7 @@ public final class IndependentDefinition {
                                 0, Duration.ofSeconds(5), ReasoningRetryPolicy.none(),
                                 Optional.empty(), ReasoningPreferences.unconstrained());
                 return reasoning.execute(request).thenApply(result -> material(RESULT,
-                        "private:reasoned:" + result.text(), Sensitivity.S4));
+                        "private:reasoned:" + prefix + result.text(), Sensitivity.S4));
             }
         };
         return new ModuleInstance(DEFINITION, Map.of(

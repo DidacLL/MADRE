@@ -106,10 +106,21 @@ tasks.register("architectureCheck") {
                 "owner-prompt",
                 "background-collection-request",
                 "durable-background-write",
-                "acknowledge-completed-background"
+                "acknowledge-completed-background",
+                "foreground-maximum-tokens",
+                "background-maximum-tokens",
+                "foreground-timeout-ms",
+                "background-timeout-ms",
+                "background-retry-attempts",
+                "background-retry-delay-ms",
+                "foreground-location",
+                "foreground-maximum-latency-ms",
+                "background-location",
+                "background-maximum-latency-ms",
+                "result-prefix"
             ).forEach { concreteIdentity ->
                 if (text.contains(concreteIdentity)) {
-                    violations += "${source.relativeTo(rootDir)}: application hard-codes owner-interaction identity $concreteIdentity"
+                    violations += "${source.relativeTo(rootDir)}: application hard-codes Module-specific fact $concreteIdentity"
                 }
             }
         }

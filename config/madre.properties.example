@@ -9,6 +9,24 @@ modules.state-directory=var/module-state
 # Reasoning mechanisms are discovered independently from sibling reasoning/ JARs by default.
 # reasoning.directory=/absolute/path/to/madre-reasoning
 
+# Optional owner Module configuration is delivered generically through the public Module-provider
+# installation boundary. The exact syntax is modules.config[<canonical ModuleId>].<module-owned-key>.
+# Square brackets are structural delimiters; valid ModuleId values cannot contain them, so dotted,
+# dashed and underscored Module identities are scoped exactly rather than parsed by dot segments.
+# madre-app does not know the keys below: the owner-interaction Module owns their validation/defaults.
+# Omitting every line for this Module preserves OwnerInteractionSettings.defaults().
+# modules.config[io.github.didacll.madre.owner-interaction].foreground-maximum-tokens=256
+# modules.config[io.github.didacll.madre.owner-interaction].background-maximum-tokens=512
+# modules.config[io.github.didacll.madre.owner-interaction].foreground-timeout-ms=90000
+# modules.config[io.github.didacll.madre.owner-interaction].background-timeout-ms=300000
+# modules.config[io.github.didacll.madre.owner-interaction].background-retry-attempts=3
+# modules.config[io.github.didacll.madre.owner-interaction].background-retry-delay-ms=5000
+# Optional reasoning-selection constraints are Module-owned too; absence means unconstrained.
+# modules.config[io.github.didacll.madre.owner-interaction].foreground-location=LOCAL
+# modules.config[io.github.didacll.madre.owner-interaction].foreground-maximum-latency-ms=30000
+# modules.config[io.github.didacll.madre.owner-interaction].background-location=LOCAL
+# modules.config[io.github.didacll.madre.owner-interaction].background-maximum-latency-ms=30000
+
 # Optional local text presentation binding. This is madre-app installation policy over one ordinary
 # installed Module and is independent of roles.core. Remove all interaction.* lines for the generic
 # low-level console. The configured default Sensitivity is explicit; it is never inferred from text.

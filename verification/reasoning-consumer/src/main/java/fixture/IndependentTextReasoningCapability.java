@@ -78,7 +78,8 @@ final class IndependentTextReasoningCapability
                 throw new ReasoningException(ReasoningFailureCategory.CONNECTION,
                         "deterministic background gate is closed");
             }
-            TextInferenceResult result = result("independent:background-useful:" + prompt);
+            TextInferenceResult result = result("independent:background-useful:" + prompt,
+                    computation.maximumGeneratedTokens());
             backgroundCompletion.ifPresent(this::writeCompletion);
             return result;
         }
@@ -89,11 +90,12 @@ final class IndependentTextReasoningCapability
                 LockSupport.parkNanos(Duration.ofMillis(1).toNanos());
             }
         }
-        return result("independent:" + prompt);
+        return result("independent:" + prompt, computation.maximumGeneratedTokens());
     }
 
-    private static TextInferenceResult result(String text) {
-        return new TextInferenceResult(text, TextInferenceResult.CompletionReason.STOP, -1, -1);
+    private static TextInferenceResult result(String text, int maximumGeneratedTokens) {
+        return new TextInferenceResult(text + "|maximum-generated-tokens="
+                + maximumGeneratedTokens, TextInferenceResult.CompletionReason.STOP, -1, -1);
     }
 
     private void writeCompletion(Path marker) {

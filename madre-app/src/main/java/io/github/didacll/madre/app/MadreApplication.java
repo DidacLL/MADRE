@@ -16,7 +16,6 @@ import io.github.didacll.madre.sdk.material.Material;
 import io.github.didacll.madre.sdk.material.MaterialType;
 import io.github.didacll.madre.sdk.module.EffectProfile;
 import io.github.didacll.madre.sdk.module.ModuleDefinition;
-import io.github.didacll.madre.sdk.module.ModuleInstance;
 import io.github.didacll.madre.sdk.module.OperationDefinition;
 import io.github.didacll.madre.sdk.module.OperationVisibility;
 import io.github.didacll.madre.sdk.operation.ModuleInvoker;
@@ -89,11 +88,8 @@ public final class MadreApplication implements AutoCloseable {
             };
             ModuleContext context = new ModuleContext(kernel.reasoning(), publicDirectory,
                     publicInvoker, stateDirectory);
-            for (var provider : moduleLoader.providers()) {
-                ModuleInstance instance = Objects.requireNonNull(provider.create(context),
-                        "ModuleProvider returned null");
-                modules.add(kernel.modules().register(instance));
-            }
+            modules.addAll(ModuleInstaller.install(moduleLoader.providers(), context, properties,
+                    kernel.modules()));
             Optional<LocalInteractionBinding> interaction = LocalInteractionBinding.resolve(
                     properties, kernel.modules().definitions());
             return new MadreApplication(kernel, moduleLoader, reasoningLoader, modules,
