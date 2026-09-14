@@ -1,0 +1,364 @@
+package io.github.didacll.madre.kernel.runtime;
+
+import io.github.didacll.madre.algebra.Sensitivity;
+import io.github.didacll.madre.kernel.reasoning.ReasoningCapabilityId;
+import io.github.didacll.madre.sdk.execution.CancellationKey;
+import io.github.didacll.madre.sdk.execution.ReasoningFailureCategory;
+import io.github.didacll.madre.sdk.execution.ReasoningLocation;
+import io.github.didacll.madre.sdk.execution.WorkId;
+import io.github.didacll.madre.sdk.execution.WorkState;
+import io.github.didacll.madre.sdk.execution.WorkStatus;
+import io.github.didacll.madre.sdk.identity.ModuleId;
+import java.nio.file.Path;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+
+/** SQLite persistence for queued reasoning and opaque computation/result bytes. */
+public final class SQLiteReasoningWorkStore implements AutoCloseable {
+    private final Connection connection;
+
+    public SQLiteReasoningWorkStore(Path file) {
+        try {
+            connection = DriverManager.getConnection("jdbc:sqlite:" + file.toAbsolutePath());
+            try (Statement statement = connection.createStatement()) {
+                statement.execute("PRAGMA journal_mode=WAL");
+                statement.execute("PRAGMA foreign_keys=ON");
+                statement.execute("""
+                        CREATE TABLE IF NOT EXISTS reasoning_work (
+                          id TEXT PRIMARY KEY, originating_module TEXT NOT NULL,
+                          contract_id TEXT NOT NULL, computation BLOB,
+                          sensitivity TEXT NOT NULL, priority INTEGER NOT NULL,
+                          eligible_at INTEGER NOT NULL, timeout_ms INTEGER NOT NULL,
+                          maximum_attempts INTEGER NOT NULL, retry_delay_ms INTEGER NOT NULL,
+                          cancellation_key TEXT, preferred_location TEXT,
+                          maximum_latency_ms INTEGER, state TEXT NOT NULL,
+                          attempts INTEGER NOT NULL, failure_category TEXT,
+                          result BLOB, completed_at INTEGER
+                        )""");
+                statement.execute("""
+                        CREATE TABLE IF NOT EXISTS reasoning_attempt (
+                          work_id TEXT NOT NULL, attempt INTEGER NOT NULL,
+                          reasoning_capability_id TEXT NOT NULL, started_at INTEGER NOT NULL,
+                          finished_at INTEGER, failure_category TEXT,
+                          PRIMARY KEY(work_id, attempt),
+                          FOREIGN KEY(work_id) REFERENCES reasoning_work(id) ON DELETE CASCADE
+                        )""");
+                statement.execute("CREATE INDEX IF NOT EXISTS reasoning_work_schedule "
+                        + "ON reasoning_work(state, eligible_at, priority DESC)");
+            }
+            recoverInterrupted();
+        } catch (SQLException exception) {
+            throw new IllegalStateException("cannot open reasoning-work store", exception);
+        }
+    }
+
+    public synchronized void insert(StoredReasoningWork work) {
+        try (PreparedStatement statement = connection.prepareStatement("""
+                INSERT INTO reasoning_work VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""")) {
+            bind(statement, work);
+            statement.executeUpdate();
+        } catch (SQLException exception) {
+            throw failure("insert reasoning work", exception);
+        }
+    }
+
+    public synchronized Optional<StoredReasoningWork> find(WorkId id) {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT * FROM reasoning_work WHERE id=?")) {
+            statement.setString(1, id.value());
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next() ? Optional.of(read(result)) : Optional.empty();
+            }
+        } catch (SQLException exception) {
+            throw failure("find reasoning work", exception);
+        }
+    }
+
+    synchronized List<StoredReasoningWork> eligible(Instant now, int limit) {
+        List<StoredReasoningWork> work = new ArrayList<>();
+        try (PreparedStatement statement = connection.prepareStatement("""
+                SELECT * FROM reasoning_work WHERE state='QUEUED' AND eligible_at<=?
+                ORDER BY priority DESC, eligible_at ASC, id ASC LIMIT ?""")) {
+            statement.setLong(1, now.toEpochMilli());
+            statement.setInt(2, limit);
+            try (ResultSet result = statement.executeQuery()) {
+                while (result.next()) work.add(read(result));
+            }
+            return List.copyOf(work);
+        } catch (SQLException exception) {
+            throw failure("list eligible reasoning work", exception);
+        }
+    }
+
+    synchronized boolean beginAttempt(WorkId id, int expectedAttempts,
+            ReasoningCapabilityId capability, Instant now) {
+        try {
+            connection.setAutoCommit(false);
+            try (PreparedStatement update = connection.prepareStatement("""
+                    UPDATE reasoning_work SET state='RUNNING', attempts=attempts+1,
+                    failure_category=NULL
+                    WHERE id=? AND state='QUEUED' AND attempts=?""")) {
+                update.setString(1, id.value());
+                update.setInt(2, expectedAttempts);
+                if (update.executeUpdate() != 1) {
+                    connection.rollback();
+                    return false;
+                }
+            }
+            try (PreparedStatement attempt = connection.prepareStatement(
+                    "INSERT INTO reasoning_attempt VALUES(?,?,?,?,NULL,NULL)")) {
+                attempt.setString(1, id.value());
+                attempt.setInt(2, expectedAttempts + 1);
+                attempt.setString(3, capability.value());
+                attempt.setLong(4, now.toEpochMilli());
+                attempt.executeUpdate();
+            }
+            connection.commit();
+            return true;
+        } catch (SQLException exception) {
+            rollback();
+            throw failure("begin reasoning attempt", exception);
+        } finally {
+            autoCommit();
+        }
+    }
+
+    synchronized void succeed(WorkId id, int attempt, byte[] result, Instant now) {
+        transaction(() -> {
+            try (PreparedStatement statement = connection.prepareStatement("""
+                    UPDATE reasoning_work SET state='SUCCEEDED', computation=NULL,
+                    result=?, completed_at=? WHERE id=? AND state='RUNNING'""")) {
+                statement.setBytes(1, result);
+                statement.setLong(2, now.toEpochMilli());
+                statement.setString(3, id.value());
+                statement.executeUpdate();
+            }
+            finishAttempt(id, attempt, now, null);
+        });
+    }
+
+    synchronized void failAttempt(StoredReasoningWork work,
+            ReasoningFailureCategory category, Instant now) {
+        int attempt = work.attempts() + 1;
+        boolean retry = attempt < work.maximumAttempts();
+        transaction(() -> {
+            try (PreparedStatement statement = connection.prepareStatement("""
+                    UPDATE reasoning_work SET state=?, eligible_at=?, failure_category=?,
+                    completed_at=? WHERE id=? AND state='RUNNING'""")) {
+                statement.setString(1, retry ? "QUEUED" : "FAILED");
+                statement.setLong(2, now.plus(work.retryDelay()).toEpochMilli());
+                statement.setString(3, category.name());
+                if (retry) statement.setNull(4, java.sql.Types.BIGINT);
+                else statement.setLong(4, now.toEpochMilli());
+                statement.setString(5, work.id().value());
+                statement.executeUpdate();
+            }
+            finishAttempt(work.id(), attempt, now, category.name());
+        });
+    }
+
+    public synchronized boolean cancel(WorkId id) {
+        try (PreparedStatement statement = connection.prepareStatement("""
+                UPDATE reasoning_work SET state='CANCELLED', computation=NULL, completed_at=?
+                WHERE id=? AND state IN ('QUEUED','RUNNING')""")) {
+            statement.setLong(1, Instant.now().toEpochMilli());
+            statement.setString(2, id.value());
+            return statement.executeUpdate() == 1;
+        } catch (SQLException exception) {
+            throw failure("cancel reasoning work", exception);
+        }
+    }
+
+    public synchronized int cancel(CancellationKey key) {
+        try (PreparedStatement statement = connection.prepareStatement("""
+                UPDATE reasoning_work SET state='CANCELLED', computation=NULL, completed_at=?
+                WHERE cancellation_key=? AND state IN ('QUEUED','RUNNING')""")) {
+            statement.setLong(1, Instant.now().toEpochMilli());
+            statement.setString(2, key.value());
+            return statement.executeUpdate();
+        } catch (SQLException exception) {
+            throw failure("cancel reasoning work group", exception);
+        }
+    }
+
+    public synchronized boolean acknowledge(WorkId id) {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "DELETE FROM reasoning_work WHERE id=? AND state='SUCCEEDED'")) {
+            statement.setString(1, id.value());
+            return statement.executeUpdate() == 1;
+        } catch (SQLException exception) {
+            throw failure("acknowledge reasoning work", exception);
+        }
+    }
+
+    public synchronized int cleanup(Instant completedBefore) {
+        try (PreparedStatement statement = connection.prepareStatement("""
+                DELETE FROM reasoning_work WHERE completed_at IS NOT NULL AND completed_at<?
+                AND state IN ('SUCCEEDED','FAILED','CANCELLED')""")) {
+            statement.setLong(1, completedBefore.toEpochMilli());
+            return statement.executeUpdate();
+        } catch (SQLException exception) {
+            throw failure("clean retained reasoning work", exception);
+        }
+    }
+
+    public Optional<WorkStatus> status(WorkId id) {
+        return find(id).map(work -> new WorkStatus(work.id(), work.state(), work.attempts(),
+                work.eligibleAt(), work.failureCategory(), work.completedAt()));
+    }
+
+    private void recoverInterrupted() throws SQLException {
+        try (Statement statement = connection.createStatement()) {
+            statement.executeUpdate("""
+                    UPDATE reasoning_attempt
+                    SET finished_at=CAST(unixepoch('subsec') * 1000 AS INTEGER),
+                        failure_category='INTERRUPTED'
+                    WHERE finished_at IS NULL AND EXISTS (
+                      SELECT 1 FROM reasoning_work
+                      WHERE reasoning_work.id=reasoning_attempt.work_id
+                      AND reasoning_work.state='RUNNING'
+                      AND reasoning_work.attempts=reasoning_attempt.attempt)
+                    """);
+            statement.executeUpdate("""
+                    UPDATE reasoning_work SET state='QUEUED',
+                    eligible_at=CAST(unixepoch('subsec') * 1000 AS INTEGER),
+                    failure_category='INTERRUPTED'
+                    WHERE state='RUNNING' AND attempts < maximum_attempts""");
+            statement.executeUpdate("""
+                    UPDATE reasoning_work SET state='FAILED', computation=NULL,
+                    failure_category='INTERRUPTED',
+                    completed_at=CAST(unixepoch('subsec') * 1000 AS INTEGER)
+                    WHERE state='RUNNING' AND attempts >= maximum_attempts""");
+        }
+    }
+
+    private void finishAttempt(WorkId id, int attempt, Instant now, String category)
+            throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement("""
+                UPDATE reasoning_attempt SET finished_at=?, failure_category=?
+                WHERE work_id=? AND attempt=?""")) {
+            statement.setLong(1, now.toEpochMilli());
+            if (category == null) statement.setNull(2, java.sql.Types.VARCHAR);
+            else statement.setString(2, category);
+            statement.setString(3, id.value());
+            statement.setInt(4, attempt);
+            statement.executeUpdate();
+        }
+    }
+
+    private static void bind(PreparedStatement statement, StoredReasoningWork work)
+            throws SQLException {
+        statement.setString(1, work.id().value());
+        statement.setString(2, work.module().value());
+        statement.setString(3, work.contractId());
+        statement.setBytes(4, work.computation());
+        statement.setString(5, work.sensitivity().name());
+        statement.setInt(6, work.priority());
+        statement.setLong(7, work.eligibleAt().toEpochMilli());
+        statement.setLong(8, work.timeout().toMillis());
+        statement.setInt(9, work.maximumAttempts());
+        statement.setLong(10, work.retryDelay().toMillis());
+        nullable(statement, 11, work.cancellationKey().map(CancellationKey::value));
+        nullable(statement, 12, work.location().map(Enum::name));
+        if (work.maximumLatency().isPresent()) {
+            statement.setLong(13, work.maximumLatency().orElseThrow().toMillis());
+        } else {
+            statement.setNull(13, java.sql.Types.BIGINT);
+        }
+        statement.setString(14, work.state().name());
+        statement.setInt(15, work.attempts());
+        nullable(statement, 16, work.failureCategory().map(Enum::name));
+        if (work.result().isPresent()) statement.setBytes(17, work.result().orElseThrow());
+        else statement.setNull(17, java.sql.Types.BLOB);
+        if (work.completedAt().isPresent()) {
+            statement.setLong(18, work.completedAt().orElseThrow().toEpochMilli());
+        } else {
+            statement.setNull(18, java.sql.Types.BIGINT);
+        }
+    }
+
+    private static StoredReasoningWork read(ResultSet result) throws SQLException {
+        byte[] computation = result.getBytes("computation");
+        byte[] output = result.getBytes("result");
+        return new StoredReasoningWork(new WorkId(result.getString("id")),
+                new ModuleId(result.getString("originating_module")),
+                result.getString("contract_id"), computation,
+                Sensitivity.valueOf(result.getString("sensitivity")),
+                result.getInt("priority"), Instant.ofEpochMilli(result.getLong("eligible_at")),
+                Duration.ofMillis(result.getLong("timeout_ms")),
+                result.getInt("maximum_attempts"),
+                Duration.ofMillis(result.getLong("retry_delay_ms")),
+                optional(result.getString("cancellation_key")).map(CancellationKey::new),
+                optionalEnum(ReasoningLocation.class, result.getString("preferred_location")),
+                optionalLong(result, "maximum_latency_ms").map(Duration::ofMillis),
+                WorkState.valueOf(result.getString("state")), result.getInt("attempts"),
+                optionalEnum(ReasoningFailureCategory.class,
+                        result.getString("failure_category")),
+                Optional.ofNullable(output),
+                optionalLong(result, "completed_at").map(Instant::ofEpochMilli));
+    }
+
+    private static Optional<Long> optionalLong(ResultSet result, String column)
+            throws SQLException {
+        long value = result.getLong(column);
+        return result.wasNull() ? Optional.empty() : Optional.of(value);
+    }
+
+    private static Optional<String> optional(String value) {
+        return Optional.ofNullable(value);
+    }
+
+    private static <E extends Enum<E>> Optional<E> optionalEnum(Class<E> type, String value) {
+        return value == null ? Optional.empty() : Optional.of(Enum.valueOf(type, value));
+    }
+
+    private static void nullable(PreparedStatement statement, int index,
+            Optional<String> value) throws SQLException {
+        if (value.isPresent()) statement.setString(index, value.orElseThrow());
+        else statement.setNull(index, java.sql.Types.VARCHAR);
+    }
+
+    private void transaction(SqlAction action) {
+        try {
+            connection.setAutoCommit(false);
+            action.run();
+            connection.commit();
+        } catch (SQLException exception) {
+            rollback();
+            throw failure("update reasoning work", exception);
+        } finally {
+            autoCommit();
+        }
+    }
+
+    private void rollback() {
+        try { connection.rollback(); }
+        catch (SQLException ignored) { /* original failure wins */ }
+    }
+
+    private void autoCommit() {
+        try { connection.setAutoCommit(true); }
+        catch (SQLException exception) { throw failure("restore transaction mode", exception); }
+    }
+
+    private static IllegalStateException failure(String action, SQLException exception) {
+        return new IllegalStateException("cannot " + action, exception);
+    }
+
+    @Override public synchronized void close() {
+        try { connection.close(); }
+        catch (SQLException exception) { throw failure("close reasoning-work store", exception); }
+    }
+
+    @FunctionalInterface
+    private interface SqlAction { void run() throws SQLException; }
+}

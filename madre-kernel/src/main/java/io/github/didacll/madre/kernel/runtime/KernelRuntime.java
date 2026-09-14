@@ -4,24 +4,26 @@ import io.github.didacll.madre.kernel.config.KernelConfiguration;
 import io.github.didacll.madre.kernel.module.LiveModuleRegistry;
 import java.util.Objects;
 
-/** Cohesive owner of one Kernel process and its physical/runtime boundaries. */
+/** Cohesive owner of one Kernel process and its reasoning/runtime boundaries. */
 public final class KernelRuntime implements AutoCloseable {
-    private final SQLiteWorkStore store;
-    private final KernelExecutionService execution;
-    private final CapabilityRegistry capabilities;
+    private final SQLiteReasoningWorkStore store;
+    private final KernelReasoningService reasoning;
+    private final ReasoningCapabilityRegistry reasoningCapabilities;
     private final LiveModuleRegistry modules;
 
     public KernelRuntime(KernelConfiguration configuration) {
         Objects.requireNonNull(configuration, "configuration");
-        store = new SQLiteWorkStore(configuration.workDatabase());
-        capabilities = new CapabilityRegistry(
+        store = new SQLiteReasoningWorkStore(configuration.workDatabase());
+        reasoningCapabilities = new ReasoningCapabilityRegistry(
                 new ResourceCoordinator(configuration.resourceCapacity()));
-        execution = new KernelExecutionService(capabilities, store,
+        reasoning = new KernelReasoningService(reasoningCapabilities, store,
                 configuration.resultRetention());
         modules = new LiveModuleRegistry(configuration.coreModule());
     }
-    public CapabilityRegistry capabilities() { return capabilities; }
+
+    public ReasoningCapabilityRegistry reasoningCapabilities() { return reasoningCapabilities; }
     public LiveModuleRegistry modules() { return modules; }
-    public KernelExecutionService execution() { return execution; }
-    @Override public void close() { execution.close(); }
+    public KernelReasoningService reasoning() { return reasoning; }
+
+    @Override public void close() { reasoning.close(); }
 }

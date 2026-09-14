@@ -1,6 +1,6 @@
 package io.github.didacll.madre.kernel.config;
 
-import io.github.didacll.madre.kernel.capability.ResourceId;
+import io.github.didacll.madre.kernel.reasoning.ResourceId;
 import io.github.didacll.madre.sdk.identity.ModuleId;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -10,7 +10,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 
-/** Explicit installation settings for the local physical runtime. */
+/** Explicit installation settings for the local Kernel reasoning runtime. */
 public record KernelConfiguration(Optional<ModuleId> coreModule, Path workDatabase,
         Duration resultRetention, Map<ResourceId, Long> resourceCapacity) {
     public KernelConfiguration {

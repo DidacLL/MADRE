@@ -7,7 +7,6 @@ tasks.withType<JavaCompile>().configureEach {
 }
 
 dependencies {
-    api(project(":madre-kernel"))
     api(project(":madre-web-search"))
     implementation("com.fasterxml.jackson.core:jackson-databind:2.18.2")
     testImplementation(platform("org.junit:junit-bom:5.11.4"))

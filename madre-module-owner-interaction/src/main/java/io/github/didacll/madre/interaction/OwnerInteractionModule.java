@@ -5,10 +5,10 @@ import io.github.didacll.madre.algebra.Integrity;
 import io.github.didacll.madre.algebra.Privacy;
 import io.github.didacll.madre.algebra.Risk;
 import io.github.didacll.madre.algebra.Sensitivity;
-import io.github.didacll.madre.sdk.execution.ExecutionService;
-import io.github.didacll.madre.sdk.execution.PhysicalRetryPolicy;
+import io.github.didacll.madre.sdk.execution.ReasoningRequest;
+import io.github.didacll.madre.sdk.execution.ReasoningRetryPolicy;
+import io.github.didacll.madre.sdk.execution.ReasoningService;
 import io.github.didacll.madre.sdk.execution.WorkId;
-import io.github.didacll.madre.sdk.execution.WorkRequest;
 import io.github.didacll.madre.sdk.execution.WorkState;
 import io.github.didacll.madre.sdk.identity.AgentId;
 import io.github.didacll.madre.sdk.identity.EffectProfileId;
@@ -70,7 +70,7 @@ public final class OwnerInteractionModule {
             Autonomy.LIVE_INTERACTION);
     private static final ModuleDefinition DEFINITION = createDefinition();
 
-    private final ExecutionService execution;
+    private final ReasoningService reasoning;
     private final OwnerInteractionSettings settings;
     private final OwnerInteractionStateStore state;
     private final Operation<String, String> standardOperation = new Operation<>() {
@@ -86,20 +86,19 @@ public final class OwnerInteractionModule {
         }
     };
 
-    public OwnerInteractionModule(ExecutionService execution, Path stateFile) {
-        this(execution, stateFile, OwnerInteractionSettings.defaults());
+    public OwnerInteractionModule(ReasoningService reasoning, Path stateFile) {
+        this(reasoning, stateFile, OwnerInteractionSettings.defaults());
     }
 
-    public OwnerInteractionModule(ExecutionService execution, Path stateFile,
+    public OwnerInteractionModule(ReasoningService reasoning, Path stateFile,
             OwnerInteractionSettings settings) {
-        this.execution = java.util.Objects.requireNonNull(execution, "execution");
+        this.reasoning = java.util.Objects.requireNonNull(reasoning, "reasoning");
         this.state = new OwnerInteractionStateStore(stateFile);
         this.settings = java.util.Objects.requireNonNull(settings, "settings");
     }
 
     public ModuleDefinition definition() { return DEFINITION; }
 
-    /** Returns the ordinary executable Module instance used by installation discovery. */
     public ModuleInstance instance() {
         return new ModuleInstance(DEFINITION, Map.of(
                 STANDARD_PROMPT, OperationBinding.publicOperation(
@@ -123,12 +122,13 @@ public final class OwnerInteractionModule {
     private CompletionStage<Material<String>> executeStandardPrompt(
             OperationCall<String, String> call) {
         Material<String> prompt = call.input();
-        TextInferenceCommand command = new TextInferenceCommand(prompt.payload(),
+        TextInferenceCommand computation = new TextInferenceCommand(prompt.payload(),
                 settings.foregroundMaximumTokens(), List.of());
-        WorkRequest<TextInferenceCommand, TextInferenceResult> request = WorkRequest.immediate(
-                call, command, TextInferenceResult.class, 50, settings.foregroundTimeout(),
-                PhysicalRetryPolicy.none(), Optional.empty(), settings.foregroundPreferences());
-        return execution.execute(request).thenApply(result ->
+        ReasoningRequest<TextInferenceResult, TextInferenceCommand> request =
+                ReasoningRequest.immediate(call, computation, 50, settings.foregroundTimeout(),
+                        ReasoningRetryPolicy.none(), Optional.empty(),
+                        settings.foregroundPreferences());
+        return reasoning.execute(request).thenApply(result ->
                 material(IMMEDIATE_ANSWER, requireGeneratedText(result), prompt.sensitivity()));
     }
 
@@ -139,49 +139,50 @@ public final class OwnerInteractionModule {
 
     private CompletionStage<Material<String>> executeFastLane(OperationCall<String, String> call) {
         Material<String> prompt = call.input();
-        TextInferenceCommand foregroundCommand = new TextInferenceCommand(prompt.payload(),
+        TextInferenceCommand foregroundComputation = new TextInferenceCommand(prompt.payload(),
                 settings.foregroundMaximumTokens(), List.of());
-        WorkRequest<TextInferenceCommand, TextInferenceResult> foreground = WorkRequest.immediate(
-                call, foregroundCommand, TextInferenceResult.class, 100,
-                settings.foregroundTimeout(), PhysicalRetryPolicy.none(), Optional.empty(),
-                settings.foregroundPreferences());
-        CompletionStage<TextInferenceResult> foregroundResult = execution.execute(foreground);
+        ReasoningRequest<TextInferenceResult, TextInferenceCommand> foreground =
+                ReasoningRequest.immediate(call, foregroundComputation, 100,
+                        settings.foregroundTimeout(), ReasoningRetryPolicy.none(), Optional.empty(),
+                        settings.foregroundPreferences());
+        CompletionStage<TextInferenceResult> foregroundResult = reasoning.execute(foreground);
 
-        TextInferenceCommand analysisCommand = new TextInferenceCommand(
+        TextInferenceCommand analysisComputation = new TextInferenceCommand(
                 backgroundPrompt(prompt.payload()), settings.backgroundMaximumTokens(), List.of());
-        WorkRequest<TextInferenceCommand, TextInferenceResult> background = WorkRequest.durable(
-                call, analysisCommand, TextInferenceResult.class, 10, Instant.now(),
-                settings.backgroundTimeout(), settings.backgroundRetry(), Optional.empty(),
-                settings.backgroundPreferences());
+        ReasoningRequest<TextInferenceResult, TextInferenceCommand> background =
+                ReasoningRequest.durable(call, analysisComputation, 10, Instant.now(),
+                        settings.backgroundTimeout(), settings.backgroundRetry(), Optional.empty(),
+                        settings.backgroundPreferences());
         submitBackground(background, prompt.sensitivity());
         return foregroundResult.thenApply(result ->
                 material(IMMEDIATE_ANSWER, requireGeneratedText(result), prompt.sensitivity()));
     }
 
-    private void submitBackground(WorkRequest<TextInferenceCommand, TextInferenceResult> background,
+    private void submitBackground(
+            ReasoningRequest<TextInferenceResult, TextInferenceCommand> background,
             Sensitivity sensitivity) {
-        WorkId backgroundId = execution.submit(background);
+        WorkId backgroundId = reasoning.submit(background);
         try {
             state.add(backgroundId, sensitivity);
         } catch (RuntimeException exception) {
-            execution.cancel(backgroundId);
+            reasoning.cancel(backgroundId);
             throw exception;
         }
     }
 
-    /** Interprets terminal physical background results and removes acknowledged Module state. */
+    /** Interprets terminal reasoning results and removes acknowledged Module state. */
     public List<BackgroundUpdate> collectBackground() {
         List<BackgroundUpdate> updates = new ArrayList<>();
-        state.snapshot().forEach((id, sensitivity) -> execution.inspect(id).ifPresent(status -> {
+        state.snapshot().forEach((id, sensitivity) -> reasoning.inspect(id).ifPresent(status -> {
             if (status.state() == WorkState.SUCCEEDED) {
-                Optional<TextInferenceResult> result = execution.collect(id, TextInferenceResult.class);
+                Optional<TextInferenceResult> result = reasoning.collect(id, TextInferenceResult.class);
                 if (result.isEmpty()) return;
                 String text = requireGeneratedText(result.orElseThrow());
                 Material<String> analysis = material(BACKGROUND_ANALYSIS, text, sensitivity);
                 Optional<Material<String>> followUp = usefulFollowUp(text)
                         ? Optional.of(material(VISIBLE_FOLLOW_UP, text.strip(), sensitivity))
                         : Optional.empty();
-                execution.acknowledge(id);
+                reasoning.acknowledge(id);
                 state.remove(id);
                 updates.add(new BackgroundUpdate(id, status.state(), Optional.of(analysis),
                         followUp, Optional.empty()));
@@ -217,7 +218,7 @@ public final class OwnerInteractionModule {
     private static String requireGeneratedText(TextInferenceResult result) {
         String text = java.util.Objects.requireNonNull(result, "result").text().strip();
         if (text.isEmpty()) {
-            throw new IllegalStateException("physical inference returned empty text");
+            throw new IllegalStateException("reasoning inference returned empty text");
         }
         return text;
     }
@@ -281,20 +282,19 @@ public final class OwnerInteractionModule {
         SkillDefinition prompting = new SkillDefinition(PROMPTING_SKILL,
                 "Construct bounded text-inference prompts from owner prompt Material");
         SkillDefinition interpretation = new SkillDefinition(ANALYSIS_SKILL,
-                "Interpret physical background text as analysis and an optional visible follow-up");
+                "Interpret background reasoning text as analysis and an optional visible follow-up");
         WorkflowDefinition standardWorkflow = new WorkflowDefinition(STANDARD_WORKFLOW,
-                "Convert an owner prompt into one physical request and interpret its result",
+                "Convert an owner prompt into one reasoning request and interpret its result",
                 List.of(STANDARD_PROMPT));
         WorkflowDefinition fastWorkflow = new WorkflowDefinition(FAST_WORKFLOW,
-                "Return foreground inference while durable analysis proceeds independently",
+                "Return foreground inference while durable reasoning proceeds independently",
                 List.of(FAST_LANE));
         AgentDefinition interaction = new AgentDefinition(INTERACTION_AGENT,
                 "Owner-facing interaction through bounded standard and fast-lane behavior",
                 Integrity.I5, Set.of(PROMPTING_SKILL, ANALYSIS_SKILL),
                 Map.of(STANDARD_WORKFLOW, standardWorkflow, FAST_WORKFLOW, fastWorkflow),
                 Set.of(STANDARD_PROMPT, FAST_LANE));
-        return new ModuleDefinition(ID, "1.0.0",
-                "Owner interaction and fallback behavior",
+        return new ModuleDefinition(ID, "1.0.0", "Owner interaction and fallback behavior",
                 Map.of(OWNER_PROMPT.id(), OWNER_PROMPT, IMMEDIATE_ANSWER.id(), IMMEDIATE_ANSWER,
                         BACKGROUND_ANALYSIS.id(), BACKGROUND_ANALYSIS,
                         VISIBLE_FOLLOW_UP.id(), VISIBLE_FOLLOW_UP),

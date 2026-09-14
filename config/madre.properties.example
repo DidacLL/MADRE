@@ -5,59 +5,39 @@ kernel.database=var/kernel-work.sqlite
 kernel.result-retention-seconds=86400
 modules.state-directory=var/module-state
 # Installed distributions discover JARs from their sibling modules/ directory by default.
-# Set an absolute path to use another installation directory.
 # modules.directory=/absolute/path/to/madre-modules
 
-# Explicit physical capacity and connector claims. All connectors may remain disabled;
-# MADRE still boots and an Operation that needs a missing mechanism fails only when invoked.
+# Explicit resource capacity for reasoning mechanisms. All mechanisms may remain disabled;
+# MADRE still boots and Modules that do not need reasoning remain fully executable.
 resources.model-slot=1
-resources.network-slot=4
 
-# Same-host AF_UNIX llama.cpp transport on hosts where the installed llama-server and
-# Java runtime support Unix-domain sockets. This creates no TCP listener. On Windows,
-# prefer forward slashes in this .properties value, for example:
-# connector.llamacpp-unix.socket=C:/madre-runtime/llama-server.sock
+# Same-host AF_UNIX llama.cpp transport where the host/JDK support Unix-domain sockets.
 connector.llamacpp-unix.enabled=false
 connector.llamacpp-unix.id=local-llama-uds
 connector.llamacpp-unix.socket=/absolute/path/madre-runtime/llama-server.sock
 connector.llamacpp-unix.model=local-model
 connector.llamacpp-unix.privacy=SECRET
-connector.llamacpp-unix.integrity=I5
 connector.llamacpp-unix.expected-latency-ms=30000
 connector.llamacpp-unix.preference=200
 connector.llamacpp-unix.resource.model-slot=1
 
-# Loopback HTTP compatibility adapter. It is never enabled implicitly merely to make
-# local inference work. Keep llama-server bound to an explicit loopback IP when used.
+# Loopback HTTP compatibility adapter. It is never enabled implicitly.
 connector.llamacpp.enabled=false
 connector.llamacpp.id=local-llama-http
 connector.llamacpp.endpoint=http://127.0.0.1:8080/
 connector.llamacpp.model=local-model
 connector.llamacpp.privacy=SECRET
-connector.llamacpp.integrity=I5
 connector.llamacpp.expected-latency-ms=30000
 connector.llamacpp.preference=100
 connector.llamacpp.resource.model-slot=1
 
-# Optional unauthenticated OpenAI-compatible endpoint. Account/session mechanics are external.
+# Optional unauthenticated OpenAI-compatible reasoning endpoint. Account/session mechanics
+# remain external. Location is a mechanism-selection fact and derives no Privacy value.
 connector.openai-compatible.enabled=false
 connector.openai-compatible.id=compatible-text
 connector.openai-compatible.endpoint=http://127.0.0.1:8081/v1/
 connector.openai-compatible.model=compatible-model
 connector.openai-compatible.privacy=SECRET
-connector.openai-compatible.integrity=I5
 connector.openai-compatible.location=LOCAL
 connector.openai-compatible.expected-latency-ms=30000
 connector.openai-compatible.preference=50
-
-# Optional SearXNG JSON search endpoint. The receiving Privacy and Integrity are
-# installation facts; endpoint locality never derives either value. UNKNOWN means the
-# handling is not public but is outside the owner's stronger local/module/secret boundaries.
-connector.searxng.enabled=false
-connector.searxng.id=web-search
-connector.searxng.endpoint=http://127.0.0.1:8888/search
-connector.searxng.privacy=UNKNOWN
-connector.searxng.integrity=I2
-connector.searxng.expected-latency-ms=5000
-connector.searxng.preference=100
-connector.searxng.resource.network-slot=1

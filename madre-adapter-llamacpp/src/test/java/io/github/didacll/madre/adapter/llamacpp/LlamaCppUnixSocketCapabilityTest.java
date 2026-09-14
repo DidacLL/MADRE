@@ -5,13 +5,12 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import io.github.didacll.madre.algebra.Integrity;
 import io.github.didacll.madre.algebra.Privacy;
-import io.github.didacll.madre.kernel.capability.CapabilityAvailability;
-import io.github.didacll.madre.kernel.capability.CapabilityException;
-import io.github.didacll.madre.kernel.capability.CapabilityId;
-import io.github.didacll.madre.kernel.capability.ExecutionContext;
-import io.github.didacll.madre.sdk.execution.PhysicalFailureCategory;
+import io.github.didacll.madre.kernel.reasoning.ReasoningAvailability;
+import io.github.didacll.madre.kernel.reasoning.ReasoningCapabilityId;
+import io.github.didacll.madre.kernel.reasoning.ReasoningException;
+import io.github.didacll.madre.kernel.reasoning.ReasoningExecutionContext;
+import io.github.didacll.madre.sdk.execution.ReasoningFailureCategory;
 import io.github.didacll.madre.text.TextInferenceCommand;
 import io.github.didacll.madre.text.TextInferenceResult;
 import java.io.ByteArrayOutputStream;
@@ -71,12 +70,13 @@ final class LlamaCppUnixSocketCapabilityTest {
                 }
             });
 
-            LlamaCppUnixSocketCapability capability = new LlamaCppUnixSocketCapability(
-                    configuration(socket));
-            assertEquals(CapabilityAvailability.AVAILABLE, capability.availability());
+            LlamaCppUnixSocketReasoningCapability capability =
+                    new LlamaCppUnixSocketReasoningCapability(configuration(socket));
+            assertEquals(ReasoningAvailability.AVAILABLE, capability.availability());
             TextInferenceResult result = capability.execute(
                     new TextInferenceCommand("hello over uds", 16, List.of("stop")),
-                    new ExecutionContext(Instant.now().plusSeconds(5), () -> false, 1));
+                    new ReasoningExecutionContext(Instant.now().plusSeconds(5),
+                            () -> false, 1));
 
             assertEquals("uds text", result.text());
             assertEquals(4, result.promptTokens());
@@ -98,26 +98,28 @@ final class LlamaCppUnixSocketCapabilityTest {
     @Test void absentSocketIsNeverReportedAvailable() throws Exception {
         Assumptions.assumeTrue(unixDomainSocketsSupported());
         Path socket = temporary.resolve("missing.sock").toAbsolutePath();
-        LlamaCppUnixSocketCapability capability = new LlamaCppUnixSocketCapability(
-                configuration(socket));
-        assertEquals(CapabilityAvailability.UNAVAILABLE, capability.availability());
+        LlamaCppUnixSocketReasoningCapability capability =
+                new LlamaCppUnixSocketReasoningCapability(configuration(socket));
+        assertEquals(ReasoningAvailability.UNAVAILABLE, capability.availability());
 
-        CapabilityException failure = assertThrows(CapabilityException.class,
+        ReasoningException failure = assertThrows(ReasoningException.class,
                 () -> capability.execute(new TextInferenceCommand("hello", 1, List.of()),
-                        new ExecutionContext(Instant.now().plusSeconds(1), () -> false, 1)));
-        assertEquals(PhysicalFailureCategory.CONNECTION, failure.category());
+                        new ReasoningExecutionContext(Instant.now().plusSeconds(1),
+                                () -> false, 1)));
+        assertEquals(ReasoningFailureCategory.CONNECTION, failure.category());
     }
 
     @Test void configurationRequiresAbsoluteSocketPath() {
         assertThrows(IllegalArgumentException.class,
-                () -> new LlamaCppUnixSocketConfiguration(new CapabilityId("relative"),
-                        Path.of("llama.sock"), "model", Privacy.SECRET, Integrity.I5,
-                        Duration.ofSeconds(1), List.of()));
+                () -> new LlamaCppUnixSocketConfiguration(
+                        new ReasoningCapabilityId("relative"), Path.of("llama.sock"),
+                        "model", Privacy.SECRET, Duration.ofSeconds(1), List.of()));
     }
 
     private LlamaCppUnixSocketConfiguration configuration(Path socket) {
-        return new LlamaCppUnixSocketConfiguration(new CapabilityId("llama-uds"), socket,
-                "installed-model", Privacy.SECRET, Integrity.I5, Duration.ofSeconds(1), List.of());
+        return new LlamaCppUnixSocketConfiguration(
+                new ReasoningCapabilityId("llama-uds"), socket, "installed-model",
+                Privacy.SECRET, Duration.ofSeconds(1), List.of());
     }
 
     private static boolean unixDomainSocketsSupported() {

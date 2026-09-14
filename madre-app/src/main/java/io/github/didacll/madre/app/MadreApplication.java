@@ -1,23 +1,20 @@
 package io.github.didacll.madre.app;
 
-import io.github.didacll.madre.adapter.llamacpp.LlamaCppCapability;
 import io.github.didacll.madre.adapter.llamacpp.LlamaCppConfiguration;
-import io.github.didacll.madre.adapter.llamacpp.LlamaCppUnixSocketCapability;
+import io.github.didacll.madre.adapter.llamacpp.LlamaCppReasoningCapability;
 import io.github.didacll.madre.adapter.llamacpp.LlamaCppUnixSocketConfiguration;
-import io.github.didacll.madre.adapter.openai.OpenAiCompatibleCapability;
+import io.github.didacll.madre.adapter.llamacpp.LlamaCppUnixSocketReasoningCapability;
 import io.github.didacll.madre.adapter.openai.OpenAiCompatibleConfiguration;
-import io.github.didacll.madre.adapter.searxng.SearxngCapability;
-import io.github.didacll.madre.adapter.searxng.SearxngConfiguration;
-import io.github.didacll.madre.algebra.Integrity;
+import io.github.didacll.madre.adapter.openai.OpenAiCompatibleReasoningCapability;
 import io.github.didacll.madre.algebra.Privacy;
 import io.github.didacll.madre.algebra.Sensitivity;
-import io.github.didacll.madre.kernel.capability.CapabilityId;
-import io.github.didacll.madre.kernel.capability.ResourceClaim;
-import io.github.didacll.madre.kernel.capability.ResourceId;
 import io.github.didacll.madre.kernel.config.KernelConfiguration;
-import io.github.didacll.madre.kernel.runtime.CapabilityRegistry;
+import io.github.didacll.madre.kernel.reasoning.ReasoningCapabilityId;
+import io.github.didacll.madre.kernel.reasoning.ResourceClaim;
+import io.github.didacll.madre.kernel.reasoning.ResourceId;
 import io.github.didacll.madre.kernel.runtime.KernelRuntime;
-import io.github.didacll.madre.sdk.execution.PhysicalLocation;
+import io.github.didacll.madre.kernel.runtime.ReasoningCapabilityRegistry;
+import io.github.didacll.madre.sdk.execution.ReasoningLocation;
 import io.github.didacll.madre.sdk.identity.MaterialId;
 import io.github.didacll.madre.sdk.identity.MaterialTypeId;
 import io.github.didacll.madre.sdk.identity.ModuleId;
@@ -45,20 +42,20 @@ import java.util.Properties;
 import java.util.UUID;
 import java.util.concurrent.CompletionStage;
 
-/** Running installation assembly. CORE and physical connectors are optional installation facts. */
+/** Running installation assembly. CORE and reasoning mechanisms are optional facts. */
 public final class MadreApplication implements AutoCloseable {
     private final KernelRuntime kernel;
     private final InstalledModuleLoader moduleLoader;
     private final List<ModuleRegistration.Registration> moduleRegistrations;
-    private final List<CapabilityRegistry.Registration> capabilityRegistrations;
+    private final List<ReasoningCapabilityRegistry.Registration> reasoningRegistrations;
 
     private MadreApplication(KernelRuntime kernel, InstalledModuleLoader moduleLoader,
             List<ModuleRegistration.Registration> moduleRegistrations,
-            List<CapabilityRegistry.Registration> capabilityRegistrations) {
+            List<ReasoningCapabilityRegistry.Registration> reasoningRegistrations) {
         this.kernel = kernel;
         this.moduleLoader = moduleLoader;
         this.moduleRegistrations = List.copyOf(moduleRegistrations);
-        this.capabilityRegistrations = List.copyOf(capabilityRegistrations);
+        this.reasoningRegistrations = List.copyOf(reasoningRegistrations);
     }
 
     public static MadreApplication start(Properties properties) {
@@ -66,16 +63,16 @@ public final class MadreApplication implements AutoCloseable {
         Path database = Path.of(required(properties, "kernel.database")).toAbsolutePath();
         createParent(database);
         KernelRuntime kernel = new KernelRuntime(KernelConfiguration.from(properties));
-        List<CapabilityRegistry.Registration> capabilities = new ArrayList<>();
+        List<ReasoningCapabilityRegistry.Registration> capabilities = new ArrayList<>();
         List<ModuleRegistration.Registration> modules = new ArrayList<>();
         InstalledModuleLoader loader = null;
         try {
-            registerCapabilities(properties, kernel, capabilities);
+            registerReasoningCapabilities(properties, kernel, capabilities);
             Path stateDirectory = stateDirectory(properties, database);
             Files.createDirectories(stateDirectory);
             Path moduleDirectory = moduleDirectory(properties);
             loader = new InstalledModuleLoader(moduleDirectory);
-            ModuleContext context = new ModuleContext(kernel.execution(), kernel.modules(),
+            ModuleContext context = new ModuleContext(kernel.reasoning(), kernel.modules(),
                     kernel.modules(), stateDirectory);
             for (var provider : loader.providers()) {
                 ModuleInstance instance = Objects.requireNonNull(provider.create(context),
@@ -85,7 +82,7 @@ public final class MadreApplication implements AutoCloseable {
             return new MadreApplication(kernel, loader, modules, capabilities);
         } catch (IOException | RuntimeException exception) {
             closeReverse(modules);
-            capabilities.forEach(CapabilityRegistry.Registration::close);
+            capabilities.forEach(ReasoningCapabilityRegistry.Registration::close);
             if (loader != null) loader.close();
             kernel.close();
             if (exception instanceof RuntimeException runtime) throw runtime;
@@ -110,58 +107,50 @@ public final class MadreApplication implements AutoCloseable {
                 .toAbsolutePath().normalize();
     }
 
-    private static void registerCapabilities(Properties properties, KernelRuntime kernel,
-            List<CapabilityRegistry.Registration> capabilities) {
+    private static void registerReasoningCapabilities(Properties properties,
+            KernelRuntime kernel, List<ReasoningCapabilityRegistry.Registration> capabilities) {
         if (enabled(properties, "connector.llamacpp-unix.enabled")) {
-            LlamaCppUnixSocketConfiguration configuration = new LlamaCppUnixSocketConfiguration(
-                    new CapabilityId(required(properties, "connector.llamacpp-unix.id")),
-                    Path.of(required(properties, "connector.llamacpp-unix.socket")),
-                    required(properties, "connector.llamacpp-unix.model"),
-                    privacy(properties, "connector.llamacpp-unix.privacy"),
-                    Integrity.valueOf(required(properties, "connector.llamacpp-unix.integrity")),
-                    duration(properties, "connector.llamacpp-unix.expected-latency-ms"),
-                    resources(properties, "connector.llamacpp-unix.resource."));
-            capabilities.add(kernel.capabilities().register(
-                    new LlamaCppUnixSocketCapability(configuration),
+            LlamaCppUnixSocketConfiguration configuration =
+                    new LlamaCppUnixSocketConfiguration(
+                            new ReasoningCapabilityId(required(properties,
+                                    "connector.llamacpp-unix.id")),
+                            Path.of(required(properties, "connector.llamacpp-unix.socket")),
+                            required(properties, "connector.llamacpp-unix.model"),
+                            privacy(properties, "connector.llamacpp-unix.privacy"),
+                            duration(properties,
+                                    "connector.llamacpp-unix.expected-latency-ms"),
+                            resources(properties, "connector.llamacpp-unix.resource."));
+            capabilities.add(kernel.reasoningCapabilities().register(
+                    new LlamaCppUnixSocketReasoningCapability(configuration),
                     integer(properties, "connector.llamacpp-unix.preference")));
         }
         if (enabled(properties, "connector.llamacpp.enabled")) {
             LlamaCppConfiguration configuration = new LlamaCppConfiguration(
-                    new CapabilityId(required(properties, "connector.llamacpp.id")),
+                    new ReasoningCapabilityId(required(properties, "connector.llamacpp.id")),
                     URI.create(required(properties, "connector.llamacpp.endpoint")),
                     required(properties, "connector.llamacpp.model"),
                     privacy(properties, "connector.llamacpp.privacy"),
-                    Integrity.valueOf(required(properties, "connector.llamacpp.integrity")),
                     duration(properties, "connector.llamacpp.expected-latency-ms"),
                     resources(properties, "connector.llamacpp.resource."));
-            capabilities.add(kernel.capabilities().register(new LlamaCppCapability(configuration),
+            capabilities.add(kernel.reasoningCapabilities().register(
+                    new LlamaCppReasoningCapability(configuration),
                     integer(properties, "connector.llamacpp.preference")));
         }
         if (enabled(properties, "connector.openai-compatible.enabled")) {
             OpenAiCompatibleConfiguration configuration = new OpenAiCompatibleConfiguration(
-                    new CapabilityId(required(properties, "connector.openai-compatible.id")),
+                    new ReasoningCapabilityId(required(properties,
+                            "connector.openai-compatible.id")),
                     URI.create(required(properties, "connector.openai-compatible.endpoint")),
                     required(properties, "connector.openai-compatible.model"),
                     privacy(properties, "connector.openai-compatible.privacy"),
-                    Integrity.valueOf(required(properties, "connector.openai-compatible.integrity")),
-                    PhysicalLocation.valueOf(required(properties,
+                    ReasoningLocation.valueOf(required(properties,
                             "connector.openai-compatible.location")),
-                    duration(properties, "connector.openai-compatible.expected-latency-ms"),
+                    duration(properties,
+                            "connector.openai-compatible.expected-latency-ms"),
                     resources(properties, "connector.openai-compatible.resource."));
-            capabilities.add(kernel.capabilities().register(
-                    new OpenAiCompatibleCapability(configuration),
+            capabilities.add(kernel.reasoningCapabilities().register(
+                    new OpenAiCompatibleReasoningCapability(configuration),
                     integer(properties, "connector.openai-compatible.preference")));
-        }
-        if (enabled(properties, "connector.searxng.enabled")) {
-            SearxngConfiguration configuration = new SearxngConfiguration(
-                    new CapabilityId(required(properties, "connector.searxng.id")),
-                    URI.create(required(properties, "connector.searxng.endpoint")),
-                    privacy(properties, "connector.searxng.privacy"),
-                    Integrity.valueOf(required(properties, "connector.searxng.integrity")),
-                    duration(properties, "connector.searxng.expected-latency-ms"),
-                    resources(properties, "connector.searxng.resource."));
-            capabilities.add(kernel.capabilities().register(new SearxngCapability(configuration),
-                    integer(properties, "connector.searxng.preference")));
         }
     }
 
@@ -218,7 +207,7 @@ public final class MadreApplication implements AutoCloseable {
 
     @Override public void close() {
         closeReverse(moduleRegistrations);
-        capabilityRegistrations.forEach(CapabilityRegistry.Registration::close);
+        reasoningRegistrations.forEach(ReasoningCapabilityRegistry.Registration::close);
         moduleLoader.close();
         kernel.close();
     }
@@ -257,7 +246,8 @@ public final class MadreApplication implements AutoCloseable {
 
     private static List<ResourceClaim> resources(Properties properties, String prefix) {
         return properties.stringPropertyNames().stream().filter(name -> name.startsWith(prefix))
-                .sorted().map(name -> new ResourceClaim(new ResourceId(name.substring(prefix.length())),
+                .sorted().map(name -> new ResourceClaim(
+                        new ResourceId(name.substring(prefix.length())),
                         Long.parseLong(required(properties, name)))).toList();
     }
 

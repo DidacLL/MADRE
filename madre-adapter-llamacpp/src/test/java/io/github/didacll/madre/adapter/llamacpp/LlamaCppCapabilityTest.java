@@ -4,13 +4,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.sun.net.httpserver.HttpServer;
-import io.github.didacll.madre.algebra.Integrity;
 import io.github.didacll.madre.algebra.Privacy;
-import io.github.didacll.madre.kernel.capability.CapabilityAvailability;
-import io.github.didacll.madre.kernel.capability.CapabilityException;
-import io.github.didacll.madre.kernel.capability.CapabilityId;
-import io.github.didacll.madre.kernel.capability.ExecutionContext;
-import io.github.didacll.madre.sdk.execution.PhysicalFailureCategory;
+import io.github.didacll.madre.kernel.reasoning.ReasoningAvailability;
+import io.github.didacll.madre.kernel.reasoning.ReasoningCapabilityId;
+import io.github.didacll.madre.kernel.reasoning.ReasoningException;
+import io.github.didacll.madre.kernel.reasoning.ReasoningExecutionContext;
+import io.github.didacll.madre.sdk.execution.ReasoningFailureCategory;
 import io.github.didacll.madre.text.TextInferenceCommand;
 import io.github.didacll.madre.text.TextInferenceResult;
 import java.net.InetSocketAddress;
@@ -23,44 +22,63 @@ final class LlamaCppCapabilityTest {
     @Test void executesChatProtocolAndClassifiesMalformedResponse() throws Exception {
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         AtomicBoolean malformed = new AtomicBoolean();
-        server.createContext("/health", exchange -> { exchange.sendResponseHeaders(200, -1); exchange.close(); });
+        server.createContext("/health", exchange -> {
+            exchange.sendResponseHeaders(200, -1); exchange.close();
+        });
         server.createContext("/v1/chat/completions", exchange -> {
-            String request = new String(exchange.getRequestBody().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            String request = new String(exchange.getRequestBody().readAllBytes(),
+                    java.nio.charset.StandardCharsets.UTF_8);
             String body = !malformed.get() && request.contains("installed-model")
                     ? "{\"choices\":[{\"message\":{\"content\":\"real protocol text\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":2,\"completion_tokens\":3}}"
                     : "{}";
-            byte[] bytes = body.getBytes(java.nio.charset.StandardCharsets.UTF_8); exchange.sendResponseHeaders(200, bytes.length);
+            byte[] bytes = body.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, bytes.length);
             exchange.getResponseBody().write(bytes); exchange.close();
         });
         server.start();
         try {
-            LlamaCppCapability capability = new LlamaCppCapability(new LlamaCppConfiguration(new CapabilityId("llama"),
-                    java.net.URI.create("http://127.0.0.1:" + server.getAddress().getPort()), "installed-model",
-                    Privacy.SECRET, Integrity.I5, java.time.Duration.ofMillis(10), List.of()));
-            assertEquals(CapabilityAvailability.AVAILABLE, capability.availability());
-            TextInferenceResult result = capability.execute(new TextInferenceCommand("hello", 16, List.of()),
-                    new ExecutionContext(Instant.now().plusSeconds(2), () -> false, 1));
+            LlamaCppReasoningCapability capability = new LlamaCppReasoningCapability(
+                    new LlamaCppConfiguration(new ReasoningCapabilityId("llama"),
+                            java.net.URI.create("http://127.0.0.1:"
+                                    + server.getAddress().getPort()),
+                            "installed-model", Privacy.SECRET,
+                            java.time.Duration.ofMillis(10), List.of()));
+            assertEquals(ReasoningAvailability.AVAILABLE, capability.availability());
+            TextInferenceResult result = capability.execute(
+                    new TextInferenceCommand("hello", 16, List.of()),
+                    new ReasoningExecutionContext(Instant.now().plusSeconds(2),
+                            () -> false, 1));
             assertEquals("real protocol text", result.text());
             malformed.set(true);
-            CapabilityException malformedFailure = assertThrows(CapabilityException.class, () -> capability.execute(
-                    new TextInferenceCommand("hello", 16, List.of()), new ExecutionContext(Instant.now().plusSeconds(2), () -> false, 1)));
-            assertEquals(PhysicalFailureCategory.PROTOCOL, malformedFailure.category());
-        } finally { server.stop(0); }
+            ReasoningException malformedFailure = assertThrows(ReasoningException.class,
+                    () -> capability.execute(new TextInferenceCommand("hello", 16, List.of()),
+                            new ReasoningExecutionContext(Instant.now().plusSeconds(2),
+                                    () -> false, 1)));
+            assertEquals(ReasoningFailureCategory.PROTOCOL, malformedFailure.category());
+        } finally {
+            server.stop(0);
+        }
 
-        LlamaCppCapability unavailable = new LlamaCppCapability(new LlamaCppConfiguration(new CapabilityId("closed"),
-                java.net.URI.create("http://127.0.0.1:1"), "model", Privacy.SECRET, Integrity.I5, java.time.Duration.ofMillis(10), List.of()));
-        CapabilityException failure = assertThrows(CapabilityException.class, () -> unavailable.execute(
-                new TextInferenceCommand("hello", 1, List.of()), new ExecutionContext(Instant.now().plusSeconds(1), () -> false, 1)));
-        assertEquals(PhysicalFailureCategory.CONNECTION, failure.category());
-        assertEquals(CapabilityAvailability.UNAVAILABLE, unavailable.availability());
+        LlamaCppReasoningCapability unavailable = new LlamaCppReasoningCapability(
+                new LlamaCppConfiguration(new ReasoningCapabilityId("closed"),
+                        java.net.URI.create("http://127.0.0.1:1"), "model", Privacy.SECRET,
+                        java.time.Duration.ofMillis(10), List.of()));
+        ReasoningException failure = assertThrows(ReasoningException.class,
+                () -> unavailable.execute(new TextInferenceCommand("hello", 1, List.of()),
+                        new ReasoningExecutionContext(Instant.now().plusSeconds(1),
+                                () -> false, 1)));
+        assertEquals(ReasoningFailureCategory.CONNECTION, failure.category());
+        assertEquals(ReasoningAvailability.UNAVAILABLE, unavailable.availability());
     }
 
     @Test void localHttpAdapterRejectsRemoteEndpoints() {
         assertThrows(IllegalArgumentException.class, () -> new LlamaCppConfiguration(
-                new CapabilityId("remote"), java.net.URI.create("http://192.0.2.10:8080"),
-                "model", Privacy.SECRET, Integrity.I5, java.time.Duration.ofMillis(10), List.of()));
+                new ReasoningCapabilityId("remote"),
+                java.net.URI.create("http://192.0.2.10:8080"), "model", Privacy.SECRET,
+                java.time.Duration.ofMillis(10), List.of()));
         assertThrows(IllegalArgumentException.class, () -> new LlamaCppConfiguration(
-                new CapabilityId("hostname"), java.net.URI.create("http://localhost:8080"),
-                "model", Privacy.SECRET, Integrity.I5, java.time.Duration.ofMillis(10), List.of()));
+                new ReasoningCapabilityId("hostname"),
+                java.net.URI.create("http://localhost:8080"), "model", Privacy.SECRET,
+                java.time.Duration.ofMillis(10), List.of()));
     }
 }

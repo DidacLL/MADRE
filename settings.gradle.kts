@@ -10,6 +10,5 @@ include(
     "madre-adapter-openai-compatible",
     "madre-adapter-searxng",
     "madre-module-owner-interaction",
-    "madre-module-web-search",
     "madre-app"
 )

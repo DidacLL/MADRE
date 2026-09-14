@@ -1,12 +1,10 @@
 package io.github.didacll.madre.app;
 
-import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.github.didacll.madre.text.TextInferenceCommand;
 import io.github.didacll.madre.text.TextInferenceResult;
-import io.github.didacll.madre.web.WebSearchCommand;
-import io.github.didacll.madre.web.WebSearchResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Properties;
@@ -16,11 +14,14 @@ import org.junit.jupiter.api.io.TempDir;
 final class MadreApplicationTest {
     @TempDir Path temporary;
 
-    @Test void bootsWithNoCoreNoModulesAndNoReasoningConnector() throws Exception {
+    @Test void bootsWithNoCoreNoModulesAndNoReasoningCapability() throws Exception {
         Files.createDirectories(temporary.resolve("empty-modules"));
         try (MadreApplication application = MadreApplication.start(bareProperties())) {
             assertTrue(application.resolvedCore().isEmpty());
             assertTrue(application.installedModules().isEmpty());
+            assertTrue(application.kernel().reasoningCapabilities()
+                    .contractForComputation(TextInferenceCommand.class,
+                            TextInferenceResult.class).isEmpty());
         }
     }
 
@@ -33,7 +34,7 @@ final class MadreApplicationTest {
         }
     }
 
-    @Test void acceptsUnixSocketAndLoopbackHttpAsCoexistingTextInferenceCapabilities()
+    @Test void acceptsUnixSocketAndLoopbackHttpAsCoexistingTextReasoningMechanisms()
             throws Exception {
         Files.createDirectories(temporary.resolve("empty-modules"));
         Properties properties = connectorProperties();
@@ -43,40 +44,29 @@ final class MadreApplicationTest {
                 temporary.resolve("llama.sock").toAbsolutePath().toString());
         properties.setProperty("connector.llamacpp-unix.model", "test-model");
         properties.setProperty("connector.llamacpp-unix.privacy", "SECRET");
-        properties.setProperty("connector.llamacpp-unix.integrity", "I5");
         properties.setProperty("connector.llamacpp-unix.expected-latency-ms", "100");
         properties.setProperty("connector.llamacpp-unix.preference", "200");
         properties.setProperty("connector.llamacpp-unix.resource.model-slot", "1");
 
         try (MadreApplication application = MadreApplication.start(properties)) {
-            assertTrue(application.kernel().capabilities()
-                    .contractForCommand(TextInferenceCommand.class, TextInferenceResult.class)
-                    .isPresent());
+            assertTrue(application.kernel().reasoningCapabilities()
+                    .contractForComputation(TextInferenceCommand.class,
+                            TextInferenceResult.class).isPresent());
         }
     }
 
     @Test void acceptsSemanticAndRankPrivacyConfigurationNames() throws Exception {
         Files.createDirectories(temporary.resolve("empty-modules"));
         Properties properties = connectorProperties();
-        properties.setProperty("connector.llamacpp.privacy", "PUBLIC");
-        properties.setProperty("resources.network-slot", "1");
-        properties.setProperty("connector.searxng.enabled", "true");
-        properties.setProperty("connector.searxng.id", "test-search");
-        properties.setProperty("connector.searxng.endpoint", "http://127.0.0.1:1/search");
-        properties.setProperty("connector.searxng.privacy", "P2");
-        properties.setProperty("connector.searxng.integrity", "I2");
-        properties.setProperty("connector.searxng.expected-latency-ms", "100");
-        properties.setProperty("connector.searxng.preference", "100");
-        properties.setProperty("connector.searxng.resource.network-slot", "1");
-
+        properties.setProperty("connector.llamacpp.privacy", "P5");
         try (MadreApplication application = MadreApplication.start(properties)) {
-            assertTrue(application.kernel().capabilities()
-                    .contractForCommand(WebSearchCommand.class, WebSearchResult.class)
-                    .isPresent());
+            assertTrue(application.kernel().reasoningCapabilities()
+                    .contractForComputation(TextInferenceCommand.class,
+                            TextInferenceResult.class).isPresent());
         }
     }
 
-    @Test void rejectsSystemReservedPrivacyAsInstalledConnectorFact() throws Exception {
+    @Test void rejectsSystemReservedPrivacyAsInstalledReasoningFact() throws Exception {
         Files.createDirectories(temporary.resolve("empty-modules"));
         Properties properties = connectorProperties();
         properties.setProperty("connector.llamacpp.privacy", "SYSTEM_RESERVED");
@@ -102,7 +92,6 @@ final class MadreApplicationTest {
         properties.setProperty("connector.llamacpp.endpoint", "http://127.0.0.1:1/");
         properties.setProperty("connector.llamacpp.model", "test-model");
         properties.setProperty("connector.llamacpp.privacy", "SECRET");
-        properties.setProperty("connector.llamacpp.integrity", "I5");
         properties.setProperty("connector.llamacpp.expected-latency-ms", "100");
         properties.setProperty("connector.llamacpp.preference", "100");
         properties.setProperty("connector.llamacpp.resource.model-slot", "1");

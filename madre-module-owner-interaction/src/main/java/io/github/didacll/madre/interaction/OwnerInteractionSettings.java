@@ -1,16 +1,16 @@
 package io.github.didacll.madre.interaction;
 
-import io.github.didacll.madre.sdk.execution.PhysicalPreferences;
-import io.github.didacll.madre.sdk.execution.PhysicalRetryPolicy;
+import io.github.didacll.madre.sdk.execution.ReasoningPreferences;
+import io.github.didacll.madre.sdk.execution.ReasoningRetryPolicy;
 import java.time.Duration;
 import java.util.Objects;
 
-/** Ordinary physical controls chosen by the shipped Module's bounded behavior. */
+/** Reasoning controls chosen by the shipped Module's bounded behavior. */
 public record OwnerInteractionSettings(int foregroundMaximumTokens,
-        int backgroundMaximumTokens,
-        Duration foregroundTimeout, Duration backgroundTimeout,
-        PhysicalRetryPolicy backgroundRetry, PhysicalPreferences foregroundPreferences,
-        PhysicalPreferences backgroundPreferences) {
+        int backgroundMaximumTokens, Duration foregroundTimeout,
+        Duration backgroundTimeout, ReasoningRetryPolicy backgroundRetry,
+        ReasoningPreferences foregroundPreferences,
+        ReasoningPreferences backgroundPreferences) {
     public OwnerInteractionSettings {
         if (foregroundMaximumTokens < 1 || backgroundMaximumTokens < 1) {
             throw new IllegalArgumentException("generation limits must be positive");
@@ -28,8 +28,7 @@ public record OwnerInteractionSettings(int foregroundMaximumTokens,
 
     public static OwnerInteractionSettings defaults() {
         return new OwnerInteractionSettings(256, 512, Duration.ofSeconds(90),
-                Duration.ofMinutes(5),
-                new PhysicalRetryPolicy(3, Duration.ofSeconds(5)),
-                PhysicalPreferences.unconstrained(), PhysicalPreferences.unconstrained());
+                Duration.ofMinutes(5), new ReasoningRetryPolicy(3, Duration.ofSeconds(5)),
+                ReasoningPreferences.unconstrained(), ReasoningPreferences.unconstrained());
     }
 }

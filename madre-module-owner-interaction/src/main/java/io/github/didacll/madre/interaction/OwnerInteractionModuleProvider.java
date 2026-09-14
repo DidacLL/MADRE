@@ -7,7 +7,7 @@ import io.github.didacll.madre.sdk.registration.ModuleProvider;
 /** Installation entrypoint for the shipped ordinary owner-interaction Module. */
 public final class OwnerInteractionModuleProvider implements ModuleProvider {
     @Override public ModuleInstance create(ModuleContext context) {
-        return new OwnerInteractionModule(context.execution(),
+        return new OwnerInteractionModule(context.reasoning(),
                 context.stateDirectory().resolve("owner-interaction-background.state")).instance();
     }
 }

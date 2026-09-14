@@ -11,9 +11,10 @@ import io.github.didacll.madre.algebra.Risk;
 import io.github.didacll.madre.algebra.Sensitivity;
 import io.github.didacll.madre.sdk.codec.CodecException;
 import io.github.didacll.madre.sdk.codec.ModuleDefinitionJsonCodec;
-import io.github.didacll.madre.sdk.execution.PhysicalPreferences;
-import io.github.didacll.madre.sdk.execution.PhysicalRetryPolicy;
-import io.github.didacll.madre.sdk.execution.WorkRequest;
+import io.github.didacll.madre.sdk.execution.ReasoningComputation;
+import io.github.didacll.madre.sdk.execution.ReasoningPreferences;
+import io.github.didacll.madre.sdk.execution.ReasoningRequest;
+import io.github.didacll.madre.sdk.execution.ReasoningRetryPolicy;
 import io.github.didacll.madre.sdk.identity.AgentId;
 import io.github.didacll.madre.sdk.identity.EffectProfileId;
 import io.github.didacll.madre.sdk.identity.MaterialId;
@@ -87,7 +88,7 @@ final class SdkInvariantTest {
                 () -> call.acceptOutput(undeclaredSensitivity));
     }
 
-    @Test void workRequestDerivesItsCarriedValuesFromTheBoundedOperationCall() {
+    @Test void reasoningRequestDerivesReachabilityFromTheBoundedOperationCall() {
         ModuleId owner = new ModuleId("owner.module");
         MaterialType<String> type = new MaterialType<>(new MaterialTypeId(owner, "text"),
                 String.class, "text/plain", STRINGS);
@@ -98,13 +99,14 @@ final class SdkInvariantTest {
                 Map.of(type.id(), Privacy.LOCAL), Map.of(type.id(), Sensitivity.S3), Map.of());
         OperationCall<String, String> call = OperationCall.withoutEffect(operation, input);
 
-        WorkRequest<String, String> request = WorkRequest.immediate(call, "physical",
-                String.class, 1, Duration.ofSeconds(1), PhysicalRetryPolicy.none(),
-                Optional.empty(), PhysicalPreferences.unconstrained());
+        ReasoningRequest<String, FixtureReasoning> request = ReasoningRequest.immediate(
+                call, new FixtureReasoning("reason"), 1, Duration.ofSeconds(1),
+                ReasoningRetryPolicy.none(), Optional.empty(),
+                ReasoningPreferences.unconstrained());
 
         assertEquals(owner, request.originatingModule());
         assertEquals(Sensitivity.S3, request.carriedSensitivity());
-        assertEquals(Optional.empty(), request.effectRisk());
+        assertEquals(String.class, request.resultType());
     }
 
     @Test void agentOwnsOrderedWorkflowsAndDefinitionsRoundTrip() {
@@ -193,5 +195,9 @@ final class SdkInvariantTest {
                 Set.of(), Map.of(workflowId, workflow), Set.of(operationId));
         return new ModuleDefinition(owner, "1.0.0", "Owner module", Map.of(type.id(), type),
                 Set.of(), Map.of(agentId, agent), Map.of(), Map.of(operationId, operation));
+    }
+
+    private record FixtureReasoning(String value) implements ReasoningComputation<String> {
+        @Override public Class<String> resultType() { return String.class; }
     }
 }
