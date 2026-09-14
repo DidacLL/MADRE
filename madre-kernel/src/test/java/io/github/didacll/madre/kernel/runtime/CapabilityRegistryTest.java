@@ -52,6 +52,17 @@ final class CapabilityRegistryTest {
         assertTrue(registry.select(request).isPresent());
     }
 
+    @Test void installedCapabilityFactsRejectSystemReservedValues() {
+        assertThrows(IllegalArgumentException.class, () -> new CapabilityManifest<>(
+                new CapabilityId("reserved-privacy"), CONTRACT, Privacy.SYSTEM_RESERVED,
+                Optional.of(Integrity.I5), PhysicalLocation.LOCAL, Duration.ofMillis(10),
+                List.of()));
+        assertThrows(IllegalArgumentException.class, () -> new CapabilityManifest<>(
+                new CapabilityId("reserved-integrity"), CONTRACT, Privacy.PUBLIC,
+                Optional.of(Integrity.SYSTEM_RESERVED), PhysicalLocation.LOCAL,
+                Duration.ofMillis(10), List.of()));
+    }
+
     @Test void onePhysicalJavaContractCannotDriftAcrossRegisteredCapabilities() {
         CapabilityRegistry registry = new CapabilityRegistry(
                 new ResourceCoordinator(Map.of(SLOT, 1L)));
