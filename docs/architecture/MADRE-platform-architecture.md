@@ -124,12 +124,15 @@ are installation facts. Locality or provider identity never derives algebraic va
 
 A physical contract does not imply one transport. Multiple adapters may implement the
 same contract through different physical mechanisms and coexist in one installation.
-Same-host llama.cpp now has both a Unix-domain-socket adapter and a loopback-HTTP
-compatibility adapter under the same text-inference contract. Kernel sees ordinary
-Capabilities and selects using their manifests and request values; it has no concept of
-llama.cpp, HTTP, AF_UNIX, model-server routes, or native APIs. The Unix adapter keeps
-the server in a separate process without creating a TCP listener; the HTTP adapter is
-retained for platforms/environments where that compatibility route is needed.
+Same-host llama.cpp has an AF_UNIX domain-socket adapter and a loopback-HTTP
+compatibility adapter under the same text-inference contract. `AF_UNIX` is the socket
+family name, not a Unix-only MADRE architecture: the same adapter implementation can
+run on supported Windows and Unix-like hosts, and its real llama-server availability
+path has been exercised natively on Windows. Kernel sees ordinary Capabilities and
+selects using their manifests and request values; it has no concept of llama.cpp,
+HTTP, AF_UNIX, model-server routes, or native APIs. The domain-socket adapter keeps the
+server in a separate process without creating a TCP listener; the HTTP adapter is an
+explicit compatibility mechanism rather than a cross-platform requirement.
 
 Third-party libraries and protocols constrain only their adapter implementation. They
 must not redefine MADRE objects or move their transport/session/lifecycle concepts into

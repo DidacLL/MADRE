@@ -59,12 +59,29 @@ the example configuration enables no connector automatically.
 
 ### llama.cpp Unix-domain socket
 
-MADRE includes a non-TCP llama.cpp Capability using an owner-configured AF_UNIX socket
-on hosts where the installed llama-server and Java runtime support that mechanism.
-It remains useful to Linux/Unix users and stays entirely behind the text-inference
-Capability boundary.
+MADRE includes a non-TCP llama.cpp Capability using an owner-configured `AF_UNIX`
+socket. Despite the historical protocol-family name, this mechanism is usable on both
+Windows and Unix-like hosts when the installed llama-server and Java runtime support
+`AF_UNIX`. The same MADRE Capability implementation is used on both operating-system
+families; no Windows transport fork is involved.
 
-Example on a compatible Unix-like host:
+Windows PowerShell example:
+
+```text
+New-Item -ItemType Directory -Force C:\madre-runtime | Out-Null
+llama-server.exe -m C:\models\model.gguf `
+  --alias local-model `
+  --host C:\madre-runtime\llama-server.sock
+```
+
+When writing that socket path in a Java `.properties` file, forward slashes avoid
+backslash escaping:
+
+```text
+connector.llamacpp-unix.socket=C:/madre-runtime/llama-server.sock
+```
+
+Linux example:
 
 ```text
 mkdir -p /absolute/path/madre-runtime
@@ -76,11 +93,15 @@ llama-server -m /absolute/path/model.gguf \
 ```
 
 Then enable `connector.llamacpp-unix.*` and set its absolute socket path. The adapter
-uses llama-server's HTTP framing internally over AF_UNIX; it creates no TCP listener.
+uses llama-server's HTTP framing internally over `AF_UNIX`; it creates no TCP listener.
+Keep the socket path short and owner-controlled; socket-path and filesystem access
+remain operating-system concerns rather than MADRE algebra values.
 
-The Java AF_UNIX implementation is tested where the host supports it. Real
-llama-server model acceptance over this path still requires an actual llama-server and
-GGUF model. Windows must not be claimed from Linux evidence alone.
+Native Windows transport qualification has exercised a real pinned `llama-server.exe`
+with the actual MADRE `LlamaCppUnixSocketCapability`: llama-server bound a `.sock` on
+Windows and MADRE observed `/health` as `AVAILABLE` over `AF_UNIX`. That proves the
+non-TCP transport boundary on Windows. It was intentionally run without a model, so
+real GGUF inference over this transport is still a separate acceptance claim.
 
 ### llama.cpp loopback HTTP compatibility
 
@@ -150,10 +171,13 @@ text-inference Capability in the same run.
 
 ## Local acceptance
 
-`scripts/acceptance-local.sh` is a platform-specific acceptance helper for the
-Unix-domain-socket llama.cpp adapter. It is useful evidence for that adapter; it is
-not the Windows acceptance path and it does not define MADRE's cross-platform
-architecture.
+`scripts/acceptance-local.sh` remains a Unix-shell helper for running a real GGUF model
+through the `AF_UNIX` llama.cpp adapter. It is a convenience for that host environment,
+not a separate MADRE implementation and not the Windows product path.
+
+Windows `AF_UNIX` transport itself has been exercised independently against a real
+native llama-server binary. Full real-model acceptance on Windows still requires an
+actual GGUF model; no HTTP fallback is implied by that remaining acceptance step.
 
 The repository does not bundle llama.cpp, a GGUF model, SearXNG, Docker, or any other
 container/orchestration runtime.

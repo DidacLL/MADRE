@@ -66,16 +66,16 @@ adapters do not hardcode favorable availability merely to keep execution moving.
 Local llama.cpp currently has two adapters implementing the same
 `TextInferenceCommand`/`TextInferenceResult` contract:
 
-- a Unix-domain-socket adapter that connects to an absolute owner-configured AF_UNIX
-  path, probes `/health`, performs llama-server HTTP framing over that socket, enforces
-  execution deadlines and creates no TCP listener;
+- an `AF_UNIX` domain-socket adapter that connects to an absolute owner-configured
+  socket path, probes `/health`, performs llama-server HTTP framing over that socket,
+  enforces execution deadlines and creates no TCP listener;
 - an explicit loopback-HTTP compatibility adapter restricted to loopback IP literals.
 
-The Unix-domain-socket adapter is a physical mechanism for hosts where the installed
-llama-server and Java runtime support AF_UNIX. It remains useful even if another host
-needs a different physical realization. That platform difference must stay below the
-Capability boundary and must not create different Kernel, SDK, Module or Workflow
-architectures.
+`AF_UNIX` is the protocol-family name rather than a MADRE platform split. The same
+`LlamaCppUnixSocketCapability` implementation has now been exercised against a real
+native llama-server process on Windows, while the existing Java fixture exercises its
+wire and failure behavior wherever the host supports Unix-domain sockets. No Windows
+adapter, alternate Kernel route or compatibility architecture is required.
 
 Neither llama.cpp connector is enabled by default in the example configuration. Local
 HTTP is never selected implicitly simply because it is convenient for integration.
@@ -90,21 +90,38 @@ outside MADRE.
 Deterministic tests exercise the Security Algebra, public SDK contracts, SQLite Kernel
 runtime, Capability selection, restart/retry behavior, SearXNG protocol behavior,
 WebSearch ordering and interpretation, and llama.cpp physical protocol behavior. The
-Unix-socket llama.cpp tests use an actual Java AF_UNIX server fixture where supported;
-that is protocol/runtime evidence, not real-model acceptance.
+Unix-domain-socket llama.cpp tests use an actual Java AF_UNIX server fixture where
+supported; that is protocol/runtime evidence, not real-model acceptance.
+
+Cross-platform mechanical verification at PR head `3a423062516fde77d6262d19eec49ec4464e99ea`
+completed successfully in GitHub Actions run `34791697747`: Windows and hosted Linux
+both completed the full clean build, tests, Javadocs, publication, `installDist`,
+`distZip`, isolated SDK-consumer compilation and installed application smoke path.
+
+Windows non-TCP llama.cpp transport was then qualified separately without modifying the
+product branch. One-off GitHub Actions run `34793969886` used native Windows Server
+2025, Temurin Java 21.0.12 and pinned llama.cpp commit
+`ad6c66839af3c5646fba8c6c2e2087a1e4e38948`. It built a real `llama-server.exe`,
+started that server in model-free router mode with an absolute `.sock` host path, and
+invoked the actual MADRE `LlamaCppUnixSocketCapability`. MADRE observed the real server
+as `AVAILABLE` through `/health` over AF_UNIX. This establishes the Windows non-TCP
+transport boundary; it does not claim GGUF inference because no model participated.
+The qualification workflow lives only on the separate probe branch and is not a
+permanent dependency of normal MADRE CI.
 
 Historical real acceptance on this PR exercised the shipped owner-interaction Module
 against a real llama.cpp model through the loopback-HTTP compatibility adapter. That
 remains evidence for the text-inference contract and Module/Kernel execution path, but
 it does not establish a preferred local transport.
 
-`scripts/acceptance-local.sh` exercises the Unix-domain-socket llama.cpp adapter with
-an owner-supplied `llama-server` executable and GGUF model on a compatible host. It is
-adapter-specific acceptance, not evidence for another operating system.
+`scripts/acceptance-local.sh` exercises real GGUF inference through the AF_UNIX adapter
+from a Unix shell using an owner-supplied `llama-server` executable and model. The
+helper is host-specific acceptance tooling, not a separate product implementation.
 
-Real Windows non-TCP llama.cpp acceptance remains unclaimed until an actual Windows
-physical mechanism is exercised. Do not replace that missing evidence with an HTTP
-default, a wrapper claim, or a Linux-only result.
+Real-model AF_UNIX inference remains to be exercised with an actual GGUF model on the
+owner's target installation. The missing evidence is model execution, not a missing
+Windows non-TCP transport. Do not replace that acceptance step with an HTTP default or
+an OS-specific MADRE architecture.
 
 Live WebSearch acceptance also remains incomplete until a real SearXNG JSON endpoint
 is available. Complete live `deep-search` additionally requires a real available

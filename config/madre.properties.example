@@ -8,8 +8,10 @@ module.owner-interaction.state=var/owner-interaction-background.state
 resources.model-slot=1
 resources.network-slot=4
 
-# Same-host Unix-domain-socket llama.cpp transport on hosts where the installed
-# llama-server and Java runtime support AF_UNIX. This creates no TCP listener.
+# Same-host AF_UNIX llama.cpp transport on hosts where the installed llama-server and
+# Java runtime support Unix-domain sockets. This creates no TCP listener. On Windows,
+# prefer forward slashes in this .properties value, for example:
+# connector.llamacpp-unix.socket=C:/madre-runtime/llama-server.sock
 connector.llamacpp-unix.enabled=false
 connector.llamacpp-unix.id=local-llama-uds
 connector.llamacpp-unix.socket=/absolute/path/madre-runtime/llama-server.sock
