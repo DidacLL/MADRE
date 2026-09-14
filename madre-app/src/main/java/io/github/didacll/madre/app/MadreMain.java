@@ -9,6 +9,7 @@ import java.io.InputStreamReader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.CompletionException;
 
@@ -33,11 +34,11 @@ public final class MadreMain {
             } else if (arguments.length == 7
                     && arguments[1].equals("--invoke-public")) {
                 invoke(application, Invocation.PUBLIC, arguments[2], arguments[3], arguments[4],
-                        arguments[5], arguments[6]);
+                        arguments[5], arguments[6], true);
             } else if (arguments.length == 7
                     && arguments[1].equals("--invoke-owner")) {
                 invoke(application, Invocation.OWNER_LOCAL, arguments[2], arguments[3],
-                        arguments[4], arguments[5], arguments[6]);
+                        arguments[4], arguments[5], arguments[6], true);
             } else {
                 usage();
                 System.exit(2);
@@ -46,13 +47,26 @@ public final class MadreMain {
     }
 
     private static void runConsole(MadreApplication application) throws IOException {
-        System.out.println("MADRE ready — /modules; "
-                + "/invoke-public <module> <operation> <material-type> <S1..S5> <payload>; "
-                + "/invoke-owner <module> <operation> <material-type> <S1..S5> <payload>; /exit");
+        Optional<LocalInteractionBinding> configured = application.interactionBinding();
+        Sensitivity currentSensitivity = configured.map(LocalInteractionBinding::defaultSensitivity)
+                .orElse(Sensitivity.S1);
+        if (configured.isPresent()) {
+            LocalInteractionBinding binding = configured.orElseThrow();
+            System.out.println("MADRE ready — local text -> " + binding.moduleId().value() + "/"
+                    + binding.defaultOperation() + " (owner-local, " + currentSensitivity
+                    + "); /standard <text>; /updates; /sensitivity <S1..S5>; /modules; "
+                    + "/invoke-owner ...; /invoke-public ...; /exit");
+        } else {
+            System.out.println("MADRE ready — generic console; /modules; "
+                    + "/invoke-public <module> <operation> <material-type> <S1..S5> <payload>; "
+                    + "/invoke-owner <module> <operation> <material-type> <S1..S5> <payload>; /exit");
+        }
+
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(System.in))) {
             String line;
             while ((line = reader.readLine()) != null) {
                 String input = line.strip();
+                if (input.isEmpty()) continue;
                 if (input.equals("/exit") || input.equals("/quit")) break;
                 if (input.equals("/modules")) {
                     printModules(application);
@@ -71,7 +85,68 @@ public final class MadreMain {
                 if (input.startsWith("/invoke ")) {
                     invokeConsole(application, Invocation.PUBLIC,
                             input.substring("/invoke ".length()));
+                    continue;
                 }
+                if (input.startsWith("/sensitivity ") || input.equals("/sensitivity")) {
+                    if (configured.isEmpty()) {
+                        System.err.println("interaction is not configured");
+                        continue;
+                    }
+                    String value = input.equals("/sensitivity") ? ""
+                            : input.substring("/sensitivity ".length()).strip();
+                    try {
+                        currentSensitivity = ownerSensitivity(value);
+                        System.out.println("input sensitivity\t" + currentSensitivity.name());
+                    } catch (IllegalArgumentException exception) {
+                        System.err.println("sensitivity failure: " + exception.getMessage());
+                    }
+                    continue;
+                }
+                if (input.startsWith("/standard ") || input.equals("/standard")) {
+                    if (configured.isEmpty()) {
+                        System.err.println("interaction is not configured");
+                        continue;
+                    }
+                    String text = input.equals("/standard") ? ""
+                            : input.substring("/standard ".length()).strip();
+                    if (text.isEmpty()) {
+                        System.err.println("standard requires text");
+                        continue;
+                    }
+                    LocalInteractionBinding binding = configured.orElseThrow();
+                    invoke(application, Invocation.OWNER_LOCAL, binding.moduleId().value(),
+                            binding.standardOperation(), binding.promptMaterialType(),
+                            currentSensitivity.name(), text, false);
+                    continue;
+                }
+                if (input.equals("/updates")) {
+                    if (configured.isEmpty()) {
+                        System.err.println("interaction is not configured");
+                        continue;
+                    }
+                    LocalInteractionBinding binding = configured.orElseThrow();
+                    if (binding.updates().isEmpty()) {
+                        System.err.println("interaction background updates are not configured");
+                        continue;
+                    }
+                    LocalInteractionBinding.UpdatesBinding updates = binding.updates().orElseThrow();
+                    invoke(application, Invocation.OWNER_LOCAL, binding.moduleId().value(),
+                            updates.operation(), updates.materialType(), updates.sensitivity().name(),
+                            updates.payload(), false);
+                    continue;
+                }
+                if (input.startsWith("/")) {
+                    System.err.println("unknown command: " + input);
+                    continue;
+                }
+                if (configured.isEmpty()) {
+                    System.err.println("interaction is not configured; use /invoke-owner for local Module invocation");
+                    continue;
+                }
+                LocalInteractionBinding binding = configured.orElseThrow();
+                invoke(application, Invocation.OWNER_LOCAL, binding.moduleId().value(),
+                        binding.defaultOperation(), binding.promptMaterialType(),
+                        currentSensitivity.name(), input, false);
             }
         }
     }
@@ -84,7 +159,8 @@ public final class MadreMain {
                     + "<S1..S5> <payload>");
             return;
         }
-        invoke(application, invocation, fields[0], fields[1], fields[2], fields[3], fields[4]);
+        invoke(application, invocation, fields[0], fields[1], fields[2], fields[3], fields[4],
+                false);
     }
 
     private static void printModules(MadreApplication application) {
@@ -101,13 +177,10 @@ public final class MadreMain {
     }
 
     private static void invoke(MadreApplication application, Invocation invocation, String module,
-            String operation, String materialType, String sensitivityValue, String payload) {
+            String operation, String materialType, String sensitivityValue, String payload,
+            boolean failFast) {
         try {
-            Sensitivity sensitivity = Sensitivity.valueOf(
-                    sensitivityValue.toUpperCase(Locale.ROOT));
-            if (sensitivity == Sensitivity.SYSTEM_RESERVED) {
-                throw new IllegalArgumentException("SYSTEM_RESERVED is not owner Material");
-            }
+            Sensitivity sensitivity = ownerSensitivity(sensitivityValue);
             Material<?> result = switch (invocation) {
                 case PUBLIC -> application.invokePublicText(new ModuleId(module), operation,
                         materialType, sensitivity, payload).toCompletableFuture().join();
@@ -119,14 +192,30 @@ public final class MadreMain {
             } else {
                 System.out.println(result.payload());
             }
-        } catch (CompletionException exception) {
-            Throwable cause = exception.getCause() == null ? exception : exception.getCause();
-            System.err.println("operation failure: " + cause.getMessage());
-            throw exception;
-        } catch (IllegalArgumentException exception) {
-            System.err.println("operation failure: " + exception.getMessage());
-            throw exception;
+        } catch (RuntimeException exception) {
+            Throwable cause = exception instanceof CompletionException
+                    && exception.getCause() != null ? exception.getCause() : exception;
+            String message = cause.getMessage() == null ? cause.getClass().getSimpleName()
+                    : cause.getMessage();
+            System.err.println("operation failure: " + message);
+            if (failFast) throw exception;
         }
+    }
+
+    private static Sensitivity ownerSensitivity(String sensitivityValue) {
+        if (sensitivityValue == null || sensitivityValue.isBlank()) {
+            throw new IllegalArgumentException("Sensitivity must be one of S1..S5");
+        }
+        final Sensitivity sensitivity;
+        try {
+            sensitivity = Sensitivity.valueOf(sensitivityValue.toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalArgumentException("Sensitivity must be one of S1..S5", exception);
+        }
+        if (sensitivity == Sensitivity.SYSTEM_RESERVED) {
+            throw new IllegalArgumentException("SYSTEM_RESERVED is not owner Material");
+        }
+        return sensitivity;
     }
 
     private static void usage() {

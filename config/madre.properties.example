@@ -9,6 +9,19 @@ modules.state-directory=var/module-state
 # Reasoning mechanisms are discovered independently from sibling reasoning/ JARs by default.
 # reasoning.directory=/absolute/path/to/madre-reasoning
 
+# Optional local text presentation binding. This is madre-app installation policy over one ordinary
+# installed Module and is independent of roles.core. Remove all interaction.* lines for the generic
+# low-level console. The configured default Sensitivity is explicit; it is never inferred from text.
+interaction.module=io.github.didacll.madre.owner-interaction
+interaction.default-operation=fast-lane
+interaction.standard-operation=standard-prompt
+interaction.prompt-material-type=owner-prompt
+interaction.default-sensitivity=S5
+interaction.updates-operation=collect-background
+interaction.updates-material-type=background-collection-request
+interaction.updates-payload=collect
+interaction.updates-sensitivity=S1
+
 # Explicit resource capacity for reasoning mechanisms. The reasoning directory may be absent
 # or empty, and every installed provider may remain disabled; MADRE still boots.
 resources.model-slot=1

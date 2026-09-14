@@ -73,6 +73,10 @@ tasks.register("architectureCheck") {
                 .containsMatchIn(appBuild.readText())) {
             violations += "madre-app/build.gradle.kts: application has a concrete reasoning-adapter implementation dependency"
         }
+        if (Regex("implementation\\(project\\(\":madre-module-owner-interaction\"\\)\\)")
+                .containsMatchIn(appBuild.readText())) {
+            violations += "madre-app/build.gradle.kts: application compiles against concrete owner-interaction Module"
+        }
         fileTree(rootDir) { include("madre-app/src/main/**/*.java") }.forEach { source ->
             val text = source.readText()
             listOf(
@@ -89,6 +93,24 @@ tasks.register("architectureCheck") {
             }
             if (Regex("reasoning\\.(llamacpp|openai-compatible)").containsMatchIn(text)) {
                 violations += "${source.relativeTo(rootDir)}: application parses a concrete reasoning-provider namespace"
+            }
+            if (text.contains("io.github.didacll.madre.interaction")
+                    || text.contains("OwnerInteractionModule")) {
+                violations += "${source.relativeTo(rootDir)}: application compiles against concrete owner-interaction Module"
+            }
+            listOf(
+                "io.github.didacll.madre.owner-interaction",
+                "standard-prompt",
+                "fast-lane",
+                "collect-background",
+                "owner-prompt",
+                "background-collection-request",
+                "durable-background-write",
+                "acknowledge-completed-background"
+            ).forEach { concreteIdentity ->
+                if (text.contains(concreteIdentity)) {
+                    violations += "${source.relativeTo(rootDir)}: application hard-codes owner-interaction identity $concreteIdentity"
+                }
             }
         }
 

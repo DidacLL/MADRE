@@ -33,35 +33,59 @@ if ($IsWindows) {
 $temp = Join-Path ([System.IO.Path]::GetTempPath()) ('madre-owner-acceptance-' + [guid]::NewGuid())
 New-Item -ItemType Directory -Force -Path $temp | Out-Null
 
-function Write-Config(
-    [string]$path,
-    [string]$database,
-    [string]$stateDirectory,
-    [string]$gateFile,
-    [string]$completionFile,
-    [bool]$core
-) {
+function Write-Config {
+    param(
+        [string]$path,
+        [string]$database,
+        [string]$stateDirectory,
+        [string]$gateFile = '',
+        [string]$completionFile = '',
+        [string]$coreModule = '',
+        [bool]$interaction = $true,
+        [bool]$reasoning = $true,
+        [string]$configuredReasoningDir = ''
+    )
+    if ([string]::IsNullOrWhiteSpace($configuredReasoningDir)) {
+        $configuredReasoningDir = $reasoningDir
+    }
     $lines = @(
         "kernel.database=$(Slash $database)",
         "modules.directory=$(Slash $moduleDir)",
         "modules.state-directory=$(Slash $stateDirectory)",
-        "reasoning.directory=$(Slash $reasoningDir)",
-        'reasoning.independent-text.instances=deterministic',
-        'reasoning.independent-text.deterministic.enabled=true',
-        'reasoning.independent-text.deterministic.id=independent-text',
-        'reasoning.independent-text.deterministic.privacy=SECRET',
-        'reasoning.independent-text.deterministic.location=LOCAL',
-        'reasoning.independent-text.deterministic.expected-latency-ms=1',
-        'reasoning.independent-text.deterministic.preference=1000'
+        "reasoning.directory=$(Slash $configuredReasoningDir)"
     )
-    if ($gateFile) {
-        $lines += "reasoning.independent-text.deterministic.background-gate-file=$(Slash $gateFile)"
+    if ($reasoning) {
+        $lines += @(
+            'reasoning.independent-text.instances=deterministic',
+            'reasoning.independent-text.deterministic.enabled=true',
+            'reasoning.independent-text.deterministic.id=independent-text',
+            'reasoning.independent-text.deterministic.privacy=SECRET',
+            'reasoning.independent-text.deterministic.location=LOCAL',
+            'reasoning.independent-text.deterministic.expected-latency-ms=1',
+            'reasoning.independent-text.deterministic.preference=1000'
+        )
+        if ($gateFile) {
+            $lines += "reasoning.independent-text.deterministic.background-gate-file=$(Slash $gateFile)"
+        }
+        if ($completionFile) {
+            $lines += "reasoning.independent-text.deterministic.background-completion-file=$(Slash $completionFile)"
+        }
     }
-    if ($completionFile) {
-        $lines += "reasoning.independent-text.deterministic.background-completion-file=$(Slash $completionFile)"
+    if ($interaction) {
+        $lines += @(
+            'interaction.module=io.github.didacll.madre.owner-interaction',
+            'interaction.default-operation=fast-lane',
+            'interaction.standard-operation=standard-prompt',
+            'interaction.prompt-material-type=owner-prompt',
+            'interaction.default-sensitivity=S5',
+            'interaction.updates-operation=collect-background',
+            'interaction.updates-material-type=background-collection-request',
+            'interaction.updates-payload=collect',
+            'interaction.updates-sensitivity=S1'
+        )
     }
-    if ($core) {
-        $lines += 'roles.core=io.github.didacll.madre.owner-interaction'
+    if ($coreModule) {
+        $lines += "roles.core=$coreModule"
     }
     $lines | Set-Content -Path $path -Encoding utf8
 }
@@ -76,11 +100,31 @@ function Invoke-Madre([string]$config, [string[]]$arguments) {
     return $output
 }
 
+function Invoke-MadreConsole([string]$config, [string[]]$inputLines) {
+    $inputText = ($inputLines -join [Environment]::NewLine) + [Environment]::NewLine
+    $output = ($inputText | & $launcher $config 2>&1 | Out-String).Trim()
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host $output
+        throw "MADRE console failed with exit code $LASTEXITCODE"
+    }
+    Write-Host $output
+    return $output
+}
+
+function Invoke-MadreExpectFailure([string]$config, [string[]]$arguments) {
+    $output = (& $launcher $config @arguments 2>&1 | Out-String).Trim()
+    $status = $LASTEXITCODE
+    Write-Host $output
+    if ($status -eq 0) { throw 'MADRE invocation unexpectedly succeeded' }
+    return $output
+}
+
 try {
+    # Keep the exact generic owner-local and PUBLIC diagnostic boundaries independently proven.
     $standardState = Join-Path $temp 'standard-state'
     $standardDb = Join-Path $temp 'standard.sqlite'
     $standardConfig = Join-Path $temp 'standard.properties'
-    Write-Config $standardConfig $standardDb $standardState '' '' $false
+    Write-Config -path $standardConfig -database $standardDb -stateDirectory $standardState
 
     $owner = Invoke-Madre $standardConfig @(
         '--invoke-owner', 'io.github.didacll.madre.owner-interaction', 'standard-prompt',
@@ -99,33 +143,111 @@ try {
         throw 'sensitive owner reasoning leaked through PUBLIC invocation'
     }
 
+    # The configured presentation uses the same installed Module through owner-local invocation.
+    $console = Invoke-MadreConsole $standardConfig @(
+        'ordinary-default',
+        '/sensitivity S3',
+        'ordinary-session',
+        '/standard explicit-standard',
+        '/exit')
+    if ($console -notmatch 'S5\s+independent:ordinary-default') {
+        throw 'ordinary console text did not execute the configured fast/default owner-local path at S5'
+    }
+    if ($console -notmatch 'input sensitivity\s+S3') {
+        throw 'explicit session sensitivity command was not applied'
+    }
+    if ($console -notmatch 'S3\s+independent:ordinary-session') {
+        throw 'ordinary console text did not preserve explicit session Sensitivity'
+    }
+    if ($console -notmatch 'S3\s+independent:explicit-standard') {
+        throw '/standard did not execute the configured standard owner-local path'
+    }
+
+    # CORE assignment to the interaction Module is an independent role fact.
     $coreState = Join-Path $temp 'core-state'
     $coreDb = Join-Path $temp 'core.sqlite'
     $coreConfig = Join-Path $temp 'core.properties'
-    Write-Config $coreConfig $coreDb $coreState '' '' $true
+    Write-Config -path $coreConfig -database $coreDb -stateDirectory $coreState `
+        -coreModule 'io.github.didacll.madre.owner-interaction'
     $modules = Invoke-Madre $coreConfig @('--list-modules')
     if ($modules -notmatch 'io\.github\.didacll\.madre\.owner-interaction\s+1\.1\.0\s+\[CORE\]') {
         throw 'owner-interaction Module did not resolve as optional CORE role'
     }
-    $coreOwner = Invoke-Madre $coreConfig @(
-        '--invoke-owner', 'io.github.didacll.madre.owner-interaction', 'standard-prompt',
-        'owner-prompt', 'S5', 'sensitive-owner-material')
-    if ($coreOwner -notmatch 'S5\s+independent:sensitive-owner-material') {
-        throw 'CORE assignment changed owner-local invocation behavior'
+    $coreConsole = Invoke-MadreConsole $coreConfig @('core-ordinary', '/exit')
+    if ($coreConsole -notmatch 'S5\s+independent:core-ordinary') {
+        throw 'CORE assignment changed convenient owner-local interaction behavior'
     }
 
+    # A different resolved CORE and an unresolved CORE likewise do not control presentation authority.
+    $differentCoreConfig = Join-Path $temp 'different-core.properties'
+    Write-Config -path $differentCoreConfig -database (Join-Path $temp 'different-core.sqlite') `
+        -stateDirectory (Join-Path $temp 'different-core-state') -coreModule 'phd.module'
+    $differentModules = Invoke-Madre $differentCoreConfig @('--list-modules')
+    if ($differentModules -notmatch 'phd\.module\s+1\.0\.0\s+\[CORE\]') {
+        throw 'independent Module did not resolve as the deliberately different CORE'
+    }
+    $differentCoreConsole = Invoke-MadreConsole $differentCoreConfig @('different-core', '/exit')
+    if ($differentCoreConsole -notmatch 'S5\s+independent:different-core') {
+        throw 'different CORE assignment changed configured interaction binding authority'
+    }
+
+    $unresolvedCoreConfig = Join-Path $temp 'unresolved-core.properties'
+    Write-Config -path $unresolvedCoreConfig -database (Join-Path $temp 'unresolved-core.sqlite') `
+        -stateDirectory (Join-Path $temp 'unresolved-core-state') -coreModule 'missing.module'
+    $unresolvedCoreConsole = Invoke-MadreConsole $unresolvedCoreConfig @('unresolved-core', '/exit')
+    if ($unresolvedCoreConsole -notmatch 'S5\s+independent:unresolved-core') {
+        throw 'unresolved CORE assignment changed configured interaction binding authority'
+    }
+
+    # No interaction configuration remains a valid generic console installation.
+    $genericConfig = Join-Path $temp 'generic.properties'
+    Write-Config -path $genericConfig -database (Join-Path $temp 'generic.sqlite') `
+        -stateDirectory (Join-Path $temp 'generic-state') -interaction $false
+    $genericConsole = Invoke-MadreConsole $genericConfig @('/modules', '/exit')
+    if ($genericConsole -notmatch 'MADRE ready — generic console') {
+        throw 'no-interaction installation did not boot into the generic console'
+    }
+    if ($genericConsole -notmatch 'io\.github\.didacll\.madre\.owner-interaction\s+1\.1\.0') {
+        throw 'generic console lost normal installed Module discovery'
+    }
+
+    # Interaction validation happens at startup against installed canonical declarations.
+    $invalidConfig = Join-Path $temp 'invalid-interaction.properties'
+    Copy-Item $standardConfig $invalidConfig
+    Add-Content -Path $invalidConfig -Value 'interaction.default-operation=missing-operation'
+    $invalid = Invoke-MadreExpectFailure $invalidConfig @('--list-modules')
+    if ($invalid -notmatch 'interaction\.default-operation is incompatible') {
+        throw 'malformed interaction binding did not fail startup clearly'
+    }
+
+    # Reasoning is not a boot requirement; a reasoning-backed interaction fails as an operation.
+    $emptyReasoning = Join-Path $temp 'empty-reasoning'
+    New-Item -ItemType Directory -Force -Path $emptyReasoning | Out-Null
+    $noReasoningConfig = Join-Path $temp 'no-reasoning-interaction.properties'
+    Write-Config -path $noReasoningConfig -database (Join-Path $temp 'no-reasoning.sqlite') `
+        -stateDirectory (Join-Path $temp 'no-reasoning-state') -reasoning $false `
+        -configuredReasoningDir $emptyReasoning
+    $noReasoningConsole = Invoke-MadreConsole $noReasoningConfig @(
+        'reasoning-unavailable', '/modules', '/exit')
+    if ($noReasoningConsole -notmatch 'operation failure:') {
+        throw 'missing reasoning mechanism was not reported as an operation/runtime failure'
+    }
+    if ($noReasoningConsole -notmatch 'io\.github\.didacll\.madre\.owner-interaction\s+1\.1\.0') {
+        throw 'console did not remain usable after reasoning availability failure'
+    }
+
+    # Presentation-level durable restart proof: ordinary text -> exit -> restart -> /updates.
     $restartState = Join-Path $temp 'restart-state'
     $restartDb = Join-Path $temp 'restart.sqlite'
     $restartConfig = Join-Path $temp 'restart.properties'
     $gate = Join-Path $temp 'background.gate'
     $completion = Join-Path $temp 'background.complete'
-    Write-Config $restartConfig $restartDb $restartState $gate $completion $false
+    Write-Config -path $restartConfig -database $restartDb -stateDirectory $restartState `
+        -gateFile $gate -completionFile $completion
 
-    $foreground = Invoke-Madre $restartConfig @(
-        '--invoke-owner', 'io.github.didacll.madre.owner-interaction', 'fast-lane',
-        'owner-prompt', 'S4', 'restart-sensitive')
-    if ($foreground -notmatch 'S4\s+independent:restart-sensitive') {
-        throw 'fast-lane foreground result was not returned through owner-local invocation'
+    $foreground = Invoke-MadreConsole $restartConfig @('restart-sensitive', '/exit')
+    if ($foreground -notmatch 'S5\s+independent:restart-sensitive') {
+        throw 'fast-lane foreground result was not returned through convenient owner-local interaction'
     }
     if (Test-Path $completion) {
         throw 'background reasoning completed before the deterministic restart gate opened'
@@ -136,31 +258,25 @@ try {
     }
 
     Set-Content -Path $gate -Value 'open' -Encoding utf8
-    $barrier = Invoke-Madre $restartConfig @(
-        '--invoke-owner', 'io.github.didacll.madre.owner-interaction', 'standard-prompt',
-        'owner-prompt', 'S1', 'await-background-completion')
-    if ($barrier -notmatch 'S1\s+independent:await-background-completion') {
-        throw 'restart barrier did not complete through the independent reasoning adapter'
+    $restarted = Invoke-MadreConsole $restartConfig @(
+        '/standard await-background-completion',
+        '/updates',
+        '/updates',
+        '/exit')
+    if ($restarted -notmatch 'S5\s+independent:await-background-completion') {
+        throw 'restart completion barrier did not run through configured standard interaction'
     }
     if (-not (Test-Path $completion)) {
         throw 'durable reasoning did not resume and complete after restart'
     }
-
-    $collected = Invoke-Madre $restartConfig @(
-        '--invoke-owner', 'io.github.didacll.madre.owner-interaction', 'collect-background',
-        'background-collection-request', 'S1', 'collect')
-    if ($collected -notmatch 'S4\s+.*independent:background-useful:') {
-        throw 'Module did not interpret the completed durable reasoning result after restart'
+    if ($restarted -notmatch 'S5\s+.*independent:background-useful:') {
+        throw '/updates did not return Module-interpreted durable reasoning after restart'
     }
     if ((Get-Item $pendingState).Length -ne 0) {
-        throw 'Module-owned pending state was not removed after collection'
+        throw 'Module-owned pending state was not removed after /updates collection'
     }
-
-    $empty = Invoke-Madre $restartConfig @(
-        '--invoke-owner', 'io.github.didacll.madre.owner-interaction', 'collect-background',
-        'background-collection-request', 'S1', 'collect')
-    if ($empty -notmatch 'S1\s+no completed background updates') {
-        throw 'acknowledged durable reasoning remained visible after cleanup'
+    if ($restarted -notmatch 'S1\s+no completed background updates') {
+        throw 'second /updates did not prove acknowledgement and cleanup'
     }
 } finally {
     Remove-Item -Recurse -Force $temp -ErrorAction SilentlyContinue

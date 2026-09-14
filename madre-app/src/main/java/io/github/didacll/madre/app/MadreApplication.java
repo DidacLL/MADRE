@@ -8,7 +8,6 @@ import io.github.didacll.madre.kernel.runtime.ReasoningCapabilityRegistry;
 import io.github.didacll.madre.reasoning.installation.ReasoningMechanism;
 import io.github.didacll.madre.reasoning.installation.ReasoningProviderConfiguration;
 import io.github.didacll.madre.sdk.directory.ModuleDirectory;
-import io.github.didacll.madre.sdk.execution.ReasoningComputation;
 import io.github.didacll.madre.sdk.identity.MaterialId;
 import io.github.didacll.madre.sdk.identity.MaterialTypeId;
 import io.github.didacll.madre.sdk.identity.ModuleId;
@@ -38,23 +37,26 @@ import java.util.TreeMap;
 import java.util.UUID;
 import java.util.concurrent.CompletionStage;
 
-/** Running installation assembly. CORE and reasoning mechanisms are optional facts. */
+/** Running installation assembly. CORE, local interaction and reasoning mechanisms are independent optional facts. */
 public final class MadreApplication implements AutoCloseable {
     private final KernelRuntime kernel;
     private final InstalledModuleLoader moduleLoader;
     private final InstalledReasoningLoader reasoningLoader;
     private final List<ModuleRegistration.Registration> moduleRegistrations;
     private final List<ReasoningCapabilityRegistry.Registration> reasoningRegistrations;
+    private final Optional<LocalInteractionBinding> interactionBinding;
 
     private MadreApplication(KernelRuntime kernel, InstalledModuleLoader moduleLoader,
             InstalledReasoningLoader reasoningLoader,
             List<ModuleRegistration.Registration> moduleRegistrations,
-            List<ReasoningCapabilityRegistry.Registration> reasoningRegistrations) {
+            List<ReasoningCapabilityRegistry.Registration> reasoningRegistrations,
+            Optional<LocalInteractionBinding> interactionBinding) {
         this.kernel = kernel;
         this.moduleLoader = moduleLoader;
         this.reasoningLoader = reasoningLoader;
         this.moduleRegistrations = List.copyOf(moduleRegistrations);
         this.reasoningRegistrations = List.copyOf(reasoningRegistrations);
+        this.interactionBinding = Objects.requireNonNull(interactionBinding, "interactionBinding");
     }
 
     public static MadreApplication start(Properties properties) {
@@ -92,8 +94,10 @@ public final class MadreApplication implements AutoCloseable {
                         "ModuleProvider returned null");
                 modules.add(kernel.modules().register(instance));
             }
+            Optional<LocalInteractionBinding> interaction = LocalInteractionBinding.resolve(
+                    properties, kernel.modules().definitions());
             return new MadreApplication(kernel, moduleLoader, reasoningLoader, modules,
-                    capabilities);
+                    capabilities, interaction);
         } catch (IOException | RuntimeException exception) {
             closeAfterFailure(modules, exception);
             closeAfterFailure(capabilities, exception);
@@ -166,14 +170,26 @@ public final class MadreApplication implements AutoCloseable {
             String encodedPayload) {
         ModuleDefinition definition = kernel.modules().definition(moduleId).orElseThrow(() ->
                 new IllegalArgumentException("Module is not installed: " + moduleId));
+        ResolvedTextOperation resolved = resolveTextOperation(definition, operationSpec,
+                materialTypeName);
+        Material<?> input = decodeMaterial(moduleId, resolved.inputType(), encodedPayload,
+                sensitivity);
+        return invokeExact(boundary, resolved.operation(), input, resolved.effectProfileName());
+    }
+
+    static ResolvedTextOperation resolveTextOperation(ModuleDefinition definition,
+            String operationSpec, String materialTypeName) {
+        Objects.requireNonNull(definition, "definition");
         OperationSelection selection = operationSelection(operationSpec);
+        ModuleId moduleId = definition.id();
         OperationDefinition<?, ?> operation = definition.operations().get(
                 new OperationId(moduleId, selection.operationName()));
         if (operation == null || operation.visibility() != OperationVisibility.PUBLIC) {
             throw new IllegalArgumentException("PUBLIC Operation is not installed: "
                     + moduleId.value() + "/" + selection.operationName());
         }
-        MaterialTypeId typeId = new MaterialTypeId(moduleId, materialTypeName);
+        MaterialTypeId typeId = new MaterialTypeId(moduleId,
+                Objects.requireNonNull(materialTypeName, "materialTypeName"));
         if (!operation.acceptedMaterial().containsKey(typeId)) {
             throw new IllegalArgumentException("Operation does not accept Material type " + typeId);
         }
@@ -182,8 +198,8 @@ public final class MadreApplication implements AutoCloseable {
             throw new IllegalArgumentException(
                     "local invocation supports Module-owned input Material types only");
         }
-        Material<?> input = decodeMaterial(moduleId, type, encodedPayload, sensitivity);
-        return invokeExact(boundary, operation, input, selection.effectProfileName());
+        selectedEffectProfile(operation, selection.effectProfileName());
+        return new ResolvedTextOperation(operation, type, selection.effectProfileName());
     }
 
     private static OperationSelection operationSelection(String operationSpec) {
@@ -225,29 +241,34 @@ public final class MadreApplication implements AutoCloseable {
     private static <I, O> OperationCall<I, O> operationCall(
             OperationDefinition<I, O> operation, Material<I> input,
             Optional<String> effectProfileName) {
+        Optional<EffectProfile> selected = selectedEffectProfile(operation, effectProfileName);
+        if (selected.isEmpty()) return OperationCall.withoutEffect(operation, input);
+        return OperationCall.withEffect(operation, selected.orElseThrow(), input, List.of());
+    }
+
+    private static Optional<EffectProfile> selectedEffectProfile(OperationDefinition<?, ?> operation,
+            Optional<String> effectProfileName) {
         Map<?, EffectProfile> profiles = operation.effectProfiles();
         if (profiles.isEmpty()) {
             if (effectProfileName.isPresent()) {
                 throw new IllegalArgumentException("Operation has no EffectProfile: "
                         + operation.id());
             }
-            return OperationCall.withoutEffect(operation, input);
+            return Optional.empty();
         }
-        EffectProfile selected;
         if (effectProfileName.isPresent()) {
-            selected = profiles.values().stream()
-                    .filter(profile -> profile.id().name().equals(effectProfileName.orElseThrow()))
+            String requested = effectProfileName.orElseThrow();
+            return Optional.of(profiles.values().stream()
+                    .filter(profile -> profile.id().name().equals(requested))
                     .findFirst().orElseThrow(() -> new IllegalArgumentException(
-                            "EffectProfile is not declared by Operation: "
-                                    + effectProfileName.orElseThrow()));
-        } else if (profiles.size() == 1) {
-            selected = profiles.values().iterator().next();
-        } else {
-            throw new IllegalArgumentException("Operation has multiple EffectProfiles; use "
-                    + operation.id().name() + "@<effect-profile>");
+                            "EffectProfile is not declared by Operation: " + requested)));
         }
-        return OperationCall.withEffect(operation, selected, input, List.of());
+        if (profiles.size() == 1) return Optional.of(profiles.values().iterator().next());
+        throw new IllegalArgumentException("Operation has multiple EffectProfiles; use "
+                + operation.id().name() + "@<effect-profile>");
     }
+
+    Optional<LocalInteractionBinding> interactionBinding() { return interactionBinding; }
 
     public Optional<ModuleId> resolvedCore() { return kernel.modules().resolvedCore(); }
     public KernelRuntime kernel() { return kernel; }
@@ -323,4 +344,7 @@ public final class MadreApplication implements AutoCloseable {
     private enum InvocationBoundary { PUBLIC, OWNER_LOCAL }
 
     private record OperationSelection(String operationName, Optional<String> effectProfileName) { }
+
+    record ResolvedTextOperation(OperationDefinition<?, ?> operation, MaterialType<?> inputType,
+            Optional<String> effectProfileName) { }
 }
