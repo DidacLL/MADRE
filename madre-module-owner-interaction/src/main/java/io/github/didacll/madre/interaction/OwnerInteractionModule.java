@@ -246,12 +246,12 @@ public final class OwnerInteractionModule {
     private static ModuleDefinition createDefinition() {
         OperationDefinition<String, String> standard = new OperationDefinition<>(STANDARD_PROMPT,
                 "Produce one interpreted response to owner prompt Material",
-                OperationVisibility.PUBLIC, Map.of(OWNER_PROMPT.id(), Privacy.P5),
+                OperationVisibility.PUBLIC, Map.of(OWNER_PROMPT.id(), Privacy.SECRET),
                 Map.of(IMMEDIATE_ANSWER.id(), Sensitivity.S5),
                 Map.of(STANDARD_PROFILE.id(), STANDARD_PROFILE));
         OperationDefinition<String, String> fast = new OperationDefinition<>(FAST_LANE,
                 "Return a foreground response and independently analyze durable background work",
-                OperationVisibility.PUBLIC, Map.of(OWNER_PROMPT.id(), Privacy.P5),
+                OperationVisibility.PUBLIC, Map.of(OWNER_PROMPT.id(), Privacy.SECRET),
                 Map.of(IMMEDIATE_ANSWER.id(), Sensitivity.S5,
                         BACKGROUND_ANALYSIS.id(), Sensitivity.S5,
                         VISIBLE_FOLLOW_UP.id(), Sensitivity.S5),
