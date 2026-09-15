@@ -117,6 +117,18 @@ Do not restore the removed Python packages class-for-class. In particular, do no
 
 Tests establish mathematical invariants, public contracts, failure mechanics and real integrations. A fixture may replace an external reasoning mechanism for deterministic tests, but it cannot stand in for claimed product behavior.
 
+## Verification economics
+
+Verification must be proportional to the engineering risk of the change. `docs/development-verification.md` is the executable development policy for local tests and hosted CI.
+
+MADRE is a single-developer project. Do not turn GitHub Actions into the development scheduler. The standing PR signal is intentionally one lightweight Linux `check`; expensive cross-platform SDK, reasoning-configuration and native-package journeys are explicit/manual acceptance tools.
+
+Use focused local tests while implementing and root `check` when the change crosses project boundaries or a coherent slice is ready for handoff. Continue productive work after a push unless a relevant failure is already known. Do not repeatedly poll queued/running workflows, wait for "exact-head green", rerun unrelated jobs, or stop implementation merely because hosted CI has not finished.
+
+A relevant failing check still matters: establish whether it exposes a genuine repository defect and fix the defect before building dependent behavior on it. But CI state is evidence, not ceremony. Do not add mandatory workflow stages without a demonstrated defect class that cannot be covered more cheaply by existing local or lightweight verification.
+
+Cross-platform packaging and installation evidence remains important because Windows and Linux are first-class hosts, but exercise that evidence deliberately for relevant boundary changes, release checkpoints or explicit Owner requests rather than continuously on every commit.
+
 ## Product gates and sequencing
 
 Native Windows/Linux owner deployment, generic reasoning-provider configuration, the public SDK/testkit/experimental lifecycle, the independent developer journey, and the first heterogeneous inference families are implemented foundations. Preserve them as substrate rather than repeatedly treating them as the next product objective.
@@ -144,7 +156,8 @@ For each coherent change:
 3. implement complete behavior across its real boundaries;
 4. exercise behavior proportionally, including real execution for real-execution claims;
 5. review the changed surface for responsibility leakage and platform/framework assumptions;
-6. commit and push a coherent green result;
-7. never merge without explicit Owner instruction.
+6. commit and push a coherent locally verified result; hosted CI may continue asynchronously and must not become the default development wait loop;
+7. investigate relevant failures when they occur, but do not require exact-head CI completion before continuing unrelated productive work;
+8. never merge without explicit Owner instruction.
 
 MADRE has no installed-base compatibility obligation for discarded prototypes. Replace incompatible development artifacts directly and preserve unrelated Owner changes.
