@@ -72,6 +72,23 @@ tasks.register("architectureCheck") {
                 violations += "madre-sdk-testkit/build.gradle.kts: public testkit depends on Kernel implementation"
             }
         }
+        listOf("madre-sdk", "madre-sdk-testkit", "madre-kernel", "madre-app", "madre-reasoning-spi")
+                .forEach { projectName ->
+                    val projectBuild = file("$projectName/build.gradle.kts")
+                    if (projectBuild.exists()
+                            && projectBuild.readText().contains("madre-sdk-experimental")) {
+                        violations += "$projectName/build.gradle.kts: stable/runtime boundary depends on experimental SDK"
+                    }
+                }
+        val experimentalBuild = file("madre-sdk-experimental/build.gradle.kts")
+        if (experimentalBuild.exists()) {
+            val text = experimentalBuild.readText()
+            listOf("madre-kernel", "madre-app", "madre-reasoning-spi").forEach { forbiddenProject ->
+                if (text.contains(forbiddenProject)) {
+                    violations += "madre-sdk-experimental/build.gradle.kts: experimental authoring depends on $forbiddenProject"
+                }
+            }
+        }
         listOf("madre-adapter-llamacpp", "madre-adapter-openai-compatible").forEach { projectName ->
             val adapterBuild = file("$projectName/build.gradle.kts")
             if (adapterBuild.exists() && adapterBuild.readText().contains("madre-kernel")) {

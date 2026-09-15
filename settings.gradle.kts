@@ -3,6 +3,7 @@ rootProject.name = "madre"
 include(
     "madre-algebra",
     "madre-sdk",
+    "madre-sdk-experimental",
     "madre-sdk-testkit",
     "madre-bom",
     "madre-reasoning-spi",

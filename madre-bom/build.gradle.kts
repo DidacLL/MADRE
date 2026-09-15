@@ -7,6 +7,7 @@ dependencies {
     constraints {
         api(project(":madre-algebra"))
         api(project(":madre-sdk"))
+        api(project(":madre-sdk-experimental"))
         api(project(":madre-sdk-testkit"))
         api(project(":madre-reasoning-spi"))
         api(project(":madre-text-inference"))
@@ -19,7 +20,7 @@ publishing {
             from(components["javaPlatform"])
             pom {
                 name = "MADRE Public Artifact BOM"
-                description = "Version alignment for MADRE public SDK, testkit, reasoning SPI and computation contracts."
+                description = "Version alignment for MADRE public SDK, testkit, experimental authoring, reasoning SPI and computation contracts."
                 url = "https://github.com/DidacLL/MADRE"
                 licenses { license { name = "GNU Affero General Public License v3.0"; url = "https://www.gnu.org/licenses/agpl-3.0.html" } }
                 developers { developer { id = "DidacLL" } }
