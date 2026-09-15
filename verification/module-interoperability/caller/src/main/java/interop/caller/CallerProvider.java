@@ -55,13 +55,10 @@ public final class CallerProvider implements ModuleProvider {
         private final OperationBinding<String, String> probePrivate;
 
         private CallerModule(ModuleContext context) {
-            OperationDefinition<String, String> composeContract = operation("compose", Sensitivity.S4);
-            OperationDefinition<String, String> tooSensitiveContract =
-                    operation("probe-too-sensitive", Sensitivity.S2);
-            OperationDefinition<String, String> undeclaredContract =
-                    operation("probe-undeclared", Sensitivity.S2);
-            OperationDefinition<String, String> privateContract =
-                    operation("probe-private", Sensitivity.S1);
+            OperationDefinition composeContract = operation("compose", Sensitivity.S4);
+            OperationDefinition tooSensitiveContract = operation("probe-too-sensitive", Sensitivity.S2);
+            OperationDefinition undeclaredContract = operation("probe-undeclared", Sensitivity.S2);
+            OperationDefinition privateContract = operation("probe-private", Sensitivity.S1);
             compose = OperationBinding.publicOperation(composeContract, compose(context),
                     CallerProvider::publicResult);
             probeTooSensitive = OperationBinding.publicOperation(tooSensitiveContract,
@@ -88,18 +85,16 @@ public final class CallerProvider implements ModuleProvider {
         }
     }
 
-    private static OperationDefinition<String, String> operation(String name,
-            Sensitivity maximum) {
-        return new OperationDefinition<>(new OperationId(ID, name), name,
+    private static OperationDefinition operation(String name, Sensitivity maximum) {
+        return new OperationDefinition(new OperationId(ID, name), name,
                 OperationVisibility.PUBLIC, Map.of(REQUEST.id(), Privacy.MODULE),
                 Map.of(ADAPTED.id(), maximum), Map.of());
     }
 
     private static Operation<String, String> compose(ModuleContext context) {
         return Operation.of(call -> {
-            OperationDefinition<String, String> remote = find(context, call.input(), "sensitive");
-            OperationCall<String, String> remoteCall =
-                    OperationCall.withoutEffect(remote, call.input());
+            OperationDefinition remote = find(context, call.input(), "sensitive");
+            OperationCall<String, String> remoteCall = OperationCall.withoutEffect(remote, call.input());
             return context.invoker().invoke(remoteCall).thenApply(received -> {
                 MaterialId adaptedId = new MaterialId(ID, "adapted-" + UUID.randomUUID());
                 String interpreted = received.payload().replaceFirst("^classified:", "interpreted:");
@@ -117,7 +112,7 @@ public final class CallerProvider implements ModuleProvider {
     private static Operation<String, String> blockedProbe(ModuleContext context,
             String operationName, String expected) {
         return Operation.of(call -> {
-            OperationDefinition<String, String> remote = find(context, call.input(), operationName);
+            OperationDefinition remote = find(context, call.input(), operationName);
             OperationCall<String, String> remoteCall = OperationCall.withoutEffect(remote, call.input());
             return context.invoker().invoke(remoteCall).handle((received, failure) -> {
                 if (failure == null) {
@@ -140,18 +135,17 @@ public final class CallerProvider implements ModuleProvider {
         });
     }
 
-    @SuppressWarnings("unchecked")
-    private static OperationDefinition<String, String> find(ModuleContext context,
+    private static OperationDefinition find(ModuleContext context,
             Material<String> input, String operationName) {
         ReachableModule module = context.directory().reachable(
                         new ReachabilityQuery(input.type().id(), input.sensitivity())).stream()
                 .filter(candidate -> candidate.id().equals(CALLEE))
                 .findFirst().orElseThrow(() -> new IllegalStateException("callee is not reachable"));
-        OperationDefinition<?, ?> operation = module.operations().get(new OperationId(CALLEE, operationName));
+        OperationDefinition operation = module.operations().get(new OperationId(CALLEE, operationName));
         if (operation == null) {
             throw new IllegalStateException("callee Operation is not reachable: " + operationName);
         }
-        return (OperationDefinition<String, String>) operation;
+        return operation;
     }
 
     private static Material<String> own(String payload, Sensitivity sensitivity) {

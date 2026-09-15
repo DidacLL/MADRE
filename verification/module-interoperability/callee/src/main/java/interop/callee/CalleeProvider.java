@@ -51,13 +51,13 @@ public final class CalleeProvider implements ModuleProvider {
         private final OperationBinding<String, String> privateSensitive;
 
         private CalleeModule() {
-            OperationDefinition<String, String> sensitiveContract = operation(
+            OperationDefinition sensitiveContract = operation(
                     "sensitive", Sensitivity.S4, RESULT, true);
-            OperationDefinition<String, String> tooSensitiveContract = operation(
+            OperationDefinition tooSensitiveContract = operation(
                     "too-sensitive", Sensitivity.S5, RESULT, false);
-            OperationDefinition<String, String> undeclaredContract = operation(
+            OperationDefinition undeclaredContract = operation(
                     "undeclared-result", Sensitivity.S2, OTHER_RESULT, false);
-            OperationDefinition<String, String> privateContract = new OperationDefinition<>(
+            OperationDefinition privateContract = new OperationDefinition(
                     new OperationId(ID, "private-sensitive"), "Private sensitive behavior",
                     OperationVisibility.PRIVATE,
                     Map.of(REQUEST.id(), Privacy.MODULE, CALLER_REQUEST, Privacy.MODULE),
@@ -87,12 +87,12 @@ public final class CalleeProvider implements ModuleProvider {
         }
     }
 
-    private static OperationDefinition<String, String> operation(String name,
-            Sensitivity sensitivity, MaterialType<String> output, boolean acceptOwnerInput) {
+    private static OperationDefinition operation(String name, Sensitivity sensitivity,
+            MaterialType<String> output, boolean acceptOwnerInput) {
         Map<MaterialTypeId, Privacy> accepted = acceptOwnerInput
                 ? Map.of(REQUEST.id(), Privacy.MODULE, CALLER_REQUEST, Privacy.MODULE)
                 : Map.of(CALLER_REQUEST, Privacy.MODULE);
-        return new OperationDefinition<>(new OperationId(ID, name), name,
+        return new OperationDefinition(new OperationId(ID, name), name,
                 OperationVisibility.PUBLIC, accepted, Map.of(output.id(), sensitivity), Map.of());
     }
 

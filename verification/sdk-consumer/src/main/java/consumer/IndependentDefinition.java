@@ -34,9 +34,9 @@ public final class IndependentDefinition implements Module {
     static final MaterialType<String> RESULT = textType("result");
     static final OperationId INSPECT = new OperationId(ID, "inspect");
     static final OperationId REASON = new OperationId(ID, "reason");
-    private static final OperationDefinition<String, String> INSPECT_OPERATION = operation(
+    private static final OperationDefinition INSPECT_OPERATION = operation(
             INSPECT, "Inspect independent Module input without reasoning");
-    static final OperationDefinition<String, String> REASON_OPERATION = operation(
+    static final OperationDefinition REASON_OPERATION = operation(
             REASON, "Interpret independently installed reasoning output");
 
     private final OperationBinding<String, String> inspect;
@@ -79,9 +79,8 @@ public final class IndependentDefinition implements Module {
         return List.of(inspect, reason);
     }
 
-    private static OperationDefinition<String, String> operation(OperationId id,
-            String description) {
-        return new OperationDefinition<>(id, description, OperationVisibility.PUBLIC,
+    private static OperationDefinition operation(OperationId id, String description) {
+        return new OperationDefinition(id, description, OperationVisibility.PUBLIC,
                 Map.of(REQUEST.id(), Privacy.SECRET), Map.of(RESULT.id(), Sensitivity.S4), Map.of());
     }
 
