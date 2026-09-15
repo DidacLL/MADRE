@@ -90,10 +90,15 @@ final class ReasoningCli {
                             "cannot resolve source JAR for reasoning provider " + descriptor.id()));
             ReasoningArtifactLifecycle.Source source = ReasoningArtifactLifecycle.classify(host,
                     discovered.sourceJar());
-            String artifact = source == ReasoningArtifactLifecycle.Source.OWNER
+            boolean managedOwner = source == ReasoningArtifactLifecycle.Source.OWNER
+                    && ManagedJarFiles.isManagedPath(host.ownerReasoningDirectory(), "reasoning",
+                            descriptor.id().value(), discovered.sourceJar());
+            String sourceLabel = source == ReasoningArtifactLifecycle.Source.OWNER && !managedOwner
+                    ? "manual" : source.label();
+            String artifact = managedOwner
                     ? "\tartifact=" + discovered.sourceJar().getFileName() : "";
             System.out.println("reasoning.provider\t" + descriptor.id() + "\t"
-                    + descriptor.displayName() + "\tsource=" + source.label() + artifact);
+                    + descriptor.displayName() + "\tsource=" + sourceLabel + artifact);
             System.out.println("  " + descriptor.help());
             for (ReasoningConfigurationField field : descriptor.fields()) {
                 StringBuilder detail = new StringBuilder("  field\t").append(field.name())
