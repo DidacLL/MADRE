@@ -34,6 +34,9 @@ final class AuthoringConvenienceTest {
     private static final MaterialType<String> TEXT = new MaterialType<>(
             new MaterialTypeId(OWNER, "text"), String.class, "text/plain; charset=utf-8",
             MaterialCodecs.utf8String());
+    private static final MaterialType<String> UNDECLARED = new MaterialType<>(
+            new MaterialTypeId(OWNER, "undeclared"), String.class, "text/plain; charset=utf-8",
+            MaterialCodecs.utf8String());
 
     @Test
     void utf8StringCodecRoundTripsUnicodeWithoutOwningMaterialSemantics() {
@@ -52,7 +55,8 @@ final class AuthoringConvenienceTest {
         OperationCall<String, String> call = OperationCall.withoutEffect(definition, input);
         Operation<String, String> implementation = Operation.of(ignored ->
                 CompletableFuture.completedFuture(new Material<>(
-                        new MaterialId(FOREIGN, "wrong-owner"), TEXT, "result", Sensitivity.S2)));
+                        new MaterialId(OWNER, "undeclared-output"), UNDECLARED,
+                        "result", Sensitivity.S2)));
 
         CompletionException failure = assertThrows(CompletionException.class,
                 () -> implementation.invoke(call).toCompletableFuture().join());
