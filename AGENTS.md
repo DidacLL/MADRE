@@ -25,7 +25,7 @@ Before proposing a new architectural/product slice, an orchestrator must be able
 1. What is MADRE, and why are owner product and public experimentation platform equally important?
 2. What creates a Module boundary, and which technical primitives do not create one?
 3. What belongs to Module/Agent/Operation, to Kernel, to reasoning provider/adapter, and to the host product?
-4. What is an Operation semantically, and why must its behavior, caller/surface exposure and reasoning receiver/locality remain separate questions?
+4. What is an Operation, which facts make one bounded Module execution MADRE-arbitrable, and why must exposure, presentation, reasoning and transport remain orthogonal to that definition?
 5. What does Security Algebra govern, and which values must never be inferred from locality/provider/model/process/CORE status or Operation visibility?
 6. What is CORE, and what privilege does it receive?
 7. Why are Java executable objects separated from portable Module descriptions, and where does Java payload typing live?
@@ -81,7 +81,7 @@ A Module owns meaning, domain state/persistence, Material, transformations, opti
 
 An Agent is an optional Module-owned intelligent actor. A concrete Agent may own typed state when its semantics require it. There is no universal Agent loop, planner, memory model, prompt framework or tool loop.
 
-An Operation is one bounded piece of Module-owned semantic behavior. It may request reasoning or perform ordinary application effects, but semantic interpretation and continuation remain Module-owned. Whether another Module, the Owner's presentation surface or an external caller may enter that behavior is a separate exposure concern. Whether its reasoning executes locally or remotely is a separate reasoning receiver concern. Do not derive one from another. Agent methods, state helpers and ordinary Java objects must not create a second MADRE semantic execution path around declared Operations.
+An Operation is one bounded execution of Module logic through MADRE. It exists so that execution can participate in MADRE's ordinary typed, modular, trust and Security-Algebra arbitration while the Module still owns its implementation and meaning. Exposure to another Module, presentation to the Owner, external disclosure, reasoning use/locality and transport are orthogonal concerns and must not be used to define whether something is an Operation. Agent methods, state helpers and ordinary Java objects must not create a second MADRE-arbitrated execution path around declared Operations.
 
 Kernel is deliberately narrow. It owns live executable Module registry/receiver mechanics plus shared reasoning registration/selection, resources, immediate/durable execution, retry, cancellation, opaque persistence and result delivery.
 
@@ -117,11 +117,11 @@ EffectProfile
 
 `OperationDefinition` is language-neutral and non-generic. Java payload typing lives on executable Operation/Call/Binding objects. `MaterialTypeDefinition` contains nominal identity/content type; Java class and codec belong to `MaterialType<T>`.
 
-The current `OperationVisibility.PUBLIC/PRIVATE` is a 0.x installed-runtime exposure marker. It is not Material confidentiality, external publication, owner visibility or reasoning locality. Current owner-local and external/PUBLIC host adapters reuse `PUBLIC` Operations as transitional wiring; do not turn that fact into the semantic definition of Operation or invent a larger exposure enum without concrete product evidence.
+The current `OperationVisibility.PUBLIC/PRIVATE` is a 0.x installed-runtime exposure marker. It is not Material confidentiality, external publication, owner visibility or reasoning locality. Current owner-local and external/PUBLIC host adapters reuse `PUBLIC` Operations as transitional wiring; do not turn that fact into the definition of Operation or invent a larger exposure enum without concrete product evidence.
 
 `ModuleInstance` is validated runtime/adaptor assembly, not the ordinary Module authoring model. `ModuleProvider.create(...)` returns the executable `Module`.
 
-`StatefulAgent<S>` is a stable execution-side OOP convenience for typed Agent-owned state. It provides serialized state reads/transitions and optional commit-before-publish persistence. It defines no state schema, memory semantics, persistence format or execution loop. Subclasses still implement MADRE semantic behavior through ordinary Operation bindings and calls.
+`StatefulAgent<S>` is a stable execution-side OOP convenience for typed Agent-owned state. It provides serialized state reads/transitions and optional commit-before-publish persistence. It defines no state schema, memory semantics, persistence format or execution loop. Subclasses still express MADRE-arbitrable behavior through ordinary Operation bindings and calls.
 
 An unproven Java Agent defaults to `Integrity.I1`; generated or experimental code must not invent stronger assurance. Lack of proof should reduce trust/composability, not make arbitrary local software impossible.
 
@@ -213,7 +213,7 @@ Native owner deployment, Module/reasoning configuration, local artifact lifecycl
 
 Choose new work from concrete owner/developer/semantic-programming friction. Prefer substantial end-to-end owner/developer experiments over repeated framework-only cleanup. The goal is to reach a first genuinely deployable MADRE installation that can be used to learn which semantic and inference abstractions deserve further investment.
 
-The shipped owner-interaction Module is now a real stateful reference consumer. It uses `StatefulAgent<OwnerConversationState>`, bounded persisted conversation state, Security-Algebra-preserving contextual Material, immediate and durable reasoning, and ordinary Operation-bound execution. It remains transitional: `interaction.*` is still independent from CORE, its conversational Operations are `PUBLIC` because of current host wiring rather than a durable semantic requirement, and delayed follow-up still requires explicit `/updates` presentation.
+The shipped owner-interaction Module is now a real stateful reference consumer. It uses `StatefulAgent<OwnerConversationState>`, bounded persisted conversation state, Security-Algebra-preserving contextual Material, immediate and durable reasoning, and ordinary Operation-bound execution. It remains transitional: `interaction.*` is still independent from CORE, its conversational Operations are `PUBLIC` because of current host wiring rather than a durable requirement, and delayed follow-up still requires explicit `/updates` presentation.
 
 Promote small orthogonal SDK abstractions when a real implementation proves their usefulness, even when they are optional specializations rather than universal concepts. Do not pre-build a universal Agent framework, universal memory/RAG system, planner/tool API, workflow language, semantic database abstraction or Module taxonomy.
 
