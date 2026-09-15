@@ -1,7 +1,7 @@
 package io.github.didacll.madre.sdk.registration;
 
 import io.github.didacll.madre.sdk.identity.ModuleId;
-import io.github.didacll.madre.sdk.module.ModuleInstance;
+import io.github.didacll.madre.sdk.module.Module;
 import java.util.Objects;
 
 /** Java service-provider entrypoint for one installable executable MADRE Module artifact. */
@@ -29,6 +29,9 @@ public interface ModuleProvider {
         return candidate;
     }
 
-    /** Materializes exactly that Module from ordinary SDK services and its scoped owner settings. */
-    ModuleInstance create(ModuleContext context, ModuleProviderConfiguration configuration);
+    /**
+     * Materializes exactly that executable semantic Module from ordinary SDK services and its
+     * scoped owner settings. Runtime assembly and portable contract projection are host concerns.
+     */
+    Module create(ModuleContext context, ModuleProviderConfiguration configuration);
 }
