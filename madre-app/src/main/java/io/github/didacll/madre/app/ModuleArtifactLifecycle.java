@@ -31,6 +31,10 @@ final class ModuleArtifactLifecycle {
             throw new IllegalArgumentException("Module " + id
                     + " is shipped with MADRE and cannot be overridden by an owner artifact");
         }
+        if (existing != null && existing.source() == Source.MANUAL) {
+            throw new IllegalArgumentException("Module " + id + " is discovered from a manually placed owner JAR ("
+                    + existing.path().getFileName() + "); remove that file manually before managed installation");
+        }
 
         Path owner = host.ownerModuleDirectory().toAbsolutePath().normalize();
         if (replace) {
@@ -87,6 +91,10 @@ final class ModuleArtifactLifecycle {
         if (artifact.source() == Source.SHIPPED) {
             throw new IllegalArgumentException("shipped Module cannot be uninstalled: " + id);
         }
+        if (artifact.source() == Source.MANUAL) {
+            throw new IllegalArgumentException("Module " + id + " is discovered from a manually placed owner JAR ("
+                    + artifact.path().getFileName() + "); MADRE will not delete it. Remove that file manually if intended");
+        }
         if (artifact.source() != Source.OWNER) {
             throw new IllegalArgumentException("Module is not in MADRE's owner-managed Module root: " + id);
         }
@@ -126,11 +134,16 @@ final class ModuleArtifactLifecycle {
         return new UninstallResult(id, artifact.path(), changed);
     }
 
-    static Source classify(HostEnvironment host, Path source) {
-        Path parent = Objects.requireNonNull(source, "source").toAbsolutePath().normalize().getParent();
-        if (host.ownerModuleDirectory().toAbsolutePath().normalize().equals(parent)) return Source.OWNER;
+    static Source classify(HostEnvironment host, ModuleId id, Path source) {
+        Path path = Objects.requireNonNull(source, "source").toAbsolutePath().normalize();
+        Path parent = path.getParent();
+        Path owner = host.ownerModuleDirectory().toAbsolutePath().normalize();
         if (host.moduleDirectories().getFirst().toAbsolutePath().normalize().equals(parent)) {
             return Source.SHIPPED;
+        }
+        if (owner.equals(parent)) {
+            return ManagedJarFiles.isManagedPath(owner, "module", id.value(), path)
+                    ? Source.OWNER : Source.MANUAL;
         }
         return Source.DEVELOPMENT;
     }
@@ -186,7 +199,7 @@ final class ModuleArtifactLifecycle {
                 ModuleId id = Objects.requireNonNull(discovered.provider().moduleId(),
                         "ModuleProvider.moduleId()");
                 InstalledArtifact artifact = new InstalledArtifact(id, discovered.sourceJar(),
-                        classify(host, discovered.sourceJar()));
+                        classify(host, id, discovered.sourceJar()));
                 if (result.putIfAbsent(id.value(), artifact) != null) {
                     throw new IllegalStateException("duplicate ModuleProvider identity: " + id.value());
                 }
@@ -240,7 +253,7 @@ final class ModuleArtifactLifecycle {
     }
 
     enum Source {
-        SHIPPED("shipped"), OWNER("owner"), DEVELOPMENT("development");
+        SHIPPED("shipped"), OWNER("owner"), MANUAL("manual"), DEVELOPMENT("development");
         private final String label;
         Source(String label) { this.label = label; }
         String label() { return label; }
