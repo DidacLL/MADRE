@@ -46,8 +46,7 @@ final class AuthoringConvenienceTest {
 
     @Test
     void functionalOperationStillUsesNormalOutputValidation() {
-        OperationDefinition<String, String> definition = operationDefinition(
-                OperationVisibility.PRIVATE);
+        OperationDefinition definition = operationDefinition(OperationVisibility.PRIVATE);
         Material<String> input = new Material<>(new MaterialId(OWNER, "input"), TEXT,
                 "hello", Sensitivity.S2);
         OperationCall<String, String> call = OperationCall.withoutEffect(definition, input);
@@ -62,8 +61,7 @@ final class AuthoringConvenienceTest {
 
     @Test
     void publicBindingStillRequiresExplicitSemanticTransformation() {
-        OperationDefinition<String, String> definition = operationDefinition(
-                OperationVisibility.PUBLIC);
+        OperationDefinition definition = operationDefinition(OperationVisibility.PUBLIC);
         Operation<String, String> implementation = Operation.of(call ->
                 CompletableFuture.completedFuture(new Material<>(
                         new MaterialId(OWNER, "output"), TEXT, "result", Sensitivity.S2)));
@@ -88,9 +86,8 @@ final class AuthoringConvenienceTest {
                 Map.of(alias, TEXT), Set.of(), Map.of(), Map.of(), Map.of()));
     }
 
-    private static OperationDefinition<String, String> operationDefinition(
-            OperationVisibility visibility) {
-        return new OperationDefinition<>(new OperationId(OWNER, "run"), "Run authoring test",
+    private static OperationDefinition operationDefinition(OperationVisibility visibility) {
+        return new OperationDefinition(new OperationId(OWNER, "run"), "Run authoring test",
                 visibility, Map.of(TEXT.id(), Privacy.LOCAL),
                 Map.of(TEXT.id(), Sensitivity.S3), Map.of());
     }
