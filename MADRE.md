@@ -19,13 +19,17 @@ On the semantic/application side, useful behavior may depend on experiments with
 
 On the inference side, useful behavior may depend on different inference origins and runtimes, different models behind common contracts, richer generation controls, embeddings, multimodal computation, and mechanism-specific optimization. This is especially important for local low-resource environments, where small language models may require careful model/runtime tuning to obtain acceptable results.
 
+Those examples identify experimentation areas, not architectural components that MADRE must mirror one-for-one. They do not imply a roadmap, a mandatory Module inventory or a requirement to lift every inference primitive into Module semantics. A technical capability earns a higher-level abstraction only when real semantic software demonstrates that abstraction's ownership and reuse.
+
+A Module exists because a coherent application/domain owns meaning, state, interpretation, bounded behavior and domain semantics. Search, embeddings, model APIs, databases, transports, storage and similar facilities may be implementation techniques or reusable libraries used by a Module without becoming Modules themselves. Likewise, a typed reasoning computation contract may remain a lower-layer inference primitive indefinitely; its existence alone does not justify Material types, Agents, Workflows or stable SDK concepts around it.
+
 Therefore experimentation ergonomics are not secondary developer convenience. They are part of MADRE's product strategy. MADRE should make it easy to build ordinary local software around heterogeneous inference engines while preserving typed contracts, modularity, owner control and clear responsibility boundaries.
 
 The SDK is the primary experimentation surface for semantic agentic engineering. Public reasoning computation contracts and independently installed adapters/providers are the inference experimentation surface. Higher-level experimental facilities should have an explicit incubation lifecycle and may change during 0.x. Only patterns that survive real experiments and demonstrate repeated value should graduate into stable SDK APIs or dedicated stable public contract artifacts.
 
 `Model-agnostic` does not mean feature-poor inference or a lowest-common-denominator request object. It means the Kernel does not depend on concrete models, providers or engine implementations. Common portable inference semantics may be represented by rich typed computation contracts when multiple implementations can honor them. Engine/model/runtime-specific tuning remains provider/adapter responsibility. Shared scheduling, selection, resources, retry, cancellation and durable execution remain Kernel responsibility.
 
-This causal reasoning is authoritative product intent. Do not reduce it to a slogan such as "finish CORE first", "keep inference minimal", or "put all model controls into Kernel". CORE is an important owner-facing reference Module and UX benchmark, but it is also a major consumer of the experimentation platform. Its present interaction shape should not prematurely define universal stable SDK contracts.
+This causal reasoning is authoritative product intent. Do not reduce it to a slogan such as "finish CORE first", "keep inference minimal", "put all model controls into Kernel", "build a Module for each reasoning capability" or "turn the latest experiment into the next product layer". CORE is an important owner-facing reference Module and UX benchmark, but it is also a major consumer of the experimentation platform. Its present interaction shape should not prematurely define universal stable SDK contracts.
 
 ## Product layering
 
@@ -68,7 +72,7 @@ A concrete reasoning transport may be platform-specific. That difference remains
 
 ## Building blocks
 
-A **Module** is an owner-installed application or integration. It owns meaning, domain state, persistence, Material, transformations, Agents, Skills, Workflows, interpretation, continuation, domain-specific integrations, domain-specific user experience and bounded Operations.
+A **Module** is an owner-installed application or integration. It owns meaning, domain state, persistence, Material, transformations, Agents, Skills, Workflows, interpretation, continuation, domain-specific integrations, domain-specific user experience and bounded Operations. A reusable technical primitive with no coherent semantic/domain ownership is not a Module.
 
 An **Agent** is a Module-owned intelligent actor. It has no universal loop or assistant behavior. Its available behavior comes from learned Skills, Agent-owned Workflows and Operations its Module exposes.
 
@@ -84,7 +88,7 @@ A **Material** is a typed Module-owned value with nominal identity, content type
 
 A **ReasoningCapability** is one executable model/mechanism implementation of a reasoning contract. It exposes only the reasoning-contract, receiving-Privacy, location/latency, resource and availability facts Kernel needs. It knows nothing about Modules, Agents, Workflows, Operations, Material, external actions or semantic continuation.
 
-A **reasoning computation contract** is a nominal typed description of one portable family of inference work and its result, such as the current text-inference contract. Future contracts may cover materially different inference families such as embeddings or multimodal computation when real experiments establish their exact public semantics.
+A **reasoning computation contract** is a nominal typed description of one portable family of inference work and its result. The current public families include preserved text inference (`madre.text-inference.v1`), richer text generation (`madre.text-generation.v2`) and text embeddings (`madre.text-embedding.v1`). These are inference contracts, not Module-domain concepts. Future computation families such as multimodal work may be added when real inference experiments establish their portable semantics.
 
 A **reasoning adapter** is an independently installable JVM artifact that provides one or more configured `ReasoningCapability` instances through the public reasoning-adapter SPI. Installation does not imply mechanism enablement.
 
@@ -198,7 +202,7 @@ The reasoning architecture deliberately separates three kinds of variability:
 - **mechanism/model/runtime tuning** belongs to the reasoning provider/adapter and its owner configuration;
 - **shared execution mechanics** belong to Kernel.
 
-This allows future common contracts to become richer without making Kernel model-specific, while still allowing engine-specific optimization needed for constrained local inference.
+A computation family being available does not create an application responsibility above it. Modules may use a computation when their semantic behavior requires it, but Kernel and the SDK do not manufacture domain meaning around that computation. This allows common contracts to become richer without making Kernel model-specific or forcing inference vocabulary into Module architecture.
 
 Kernel selects compatible reachable mechanisms, coordinates resources, executes immediate or durable work and persists durable runtime state in SQLite. Persisted reasoning input/output remains opaque to Kernel semantics. After restart, compatible reasoning mechanisms can resume queued work; the originating Module remains responsible for interpretation and any continuation.
 
@@ -210,7 +214,7 @@ MADRE needs an explicit distinction between stable contracts and experimental de
 
 Stable public SDK/contract artifacts contain concepts already justified by durable ownership and interoperability requirements. They should change deliberately because independently developed Modules and adapters may depend on them.
 
-Experimental SDK facilities are an incubation channel for higher-level authoring/testing/semantic-engineering techniques. They may include helpers for Agent/Workflow construction, harness engineering, context/request optimization, semantic-store integration or similar capabilities only when concrete experiments require them. Experimental facilities may evolve or disappear during 0.x and must not become dependencies of Kernel or the stable SDK merely by existing.
+Experimental SDK facilities are an incubation channel for higher-level authoring/testing/semantic-engineering techniques. They may include helpers for Agent/Workflow construction, harness engineering, context/request optimization, semantic-store integration or similar capabilities only when concrete experiments require them. These are reusable software facilities, not automatic Module boundaries. Experimental facilities may evolve or disappear during 0.x and must not become dependencies of Kernel or the stable SDK merely by existing.
 
 Graduation is explicit. Repeated successful use should demonstrate that an experimental pattern is broadly reusable, has a clear responsibility owner and can be expressed without leaking one Module/provider's private semantics before it becomes a stable SDK API or dedicated stable artifact.
 
@@ -220,20 +224,25 @@ This lifecycle is how MADRE can remain solid while still being a productive play
 
 The current SDK/reasoning SPI are a strong public-contract foundation. Independent Gradle builds already compile Modules and reasoning adapters against published MADRE artifacts only; installed-distribution acceptance proves discovery, Module-to-Module composition, owner-local/PUBLIC behavior and independent reasoning execution on Windows and Linux.
 
-That evidence is necessary but not sufficient for the experimentation/developer product. MADRE is not considered developer-ready merely because isolated fixtures compile. The SDK needs stable consumable publication/alignment, developer documentation, testing/testkit support, authoring/packaging ergonomics, an explicit experimental lifecycle and an end-to-end unrelated-developer journey that does not require repository-internal knowledge.
+The SDK foundation now also includes aligned public artifacts, deterministic `madre-sdk-testkit`, an explicit `madre-sdk-experimental` incubation artifact, and a complete independent external-directory Module journey. The first heterogeneous inference slice additionally demonstrates multiple stable computation families and generic value-level mechanism compatibility without expanding Module semantics or making Kernel model-specific.
 
-Optional future standard libraries for ordinary application I/O, MCP, UI, audio, testing or similar developer ergonomics may belong above Kernel when concrete use demonstrates value. Semantic databases, knowledge graphs, retrieval and memory facilities likewise belong in Module/SDK/application layers unless a distinct shared-runtime responsibility is demonstrated; their usefulness does not make them Kernel services.
+That evidence is necessary but not sufficient for a mature experimentation/developer product. MADRE still needs continued SDK refinement from real developer use, external release/versioning mechanics, and evidence from multiple unrelated semantic applications. The goal is not to accumulate framework concepts; it is to make ordinary modular agentic software easy to build, test, package and evolve.
 
-## Product gates
+Optional future standard libraries for ordinary application I/O, MCP, UI, audio, testing or similar developer ergonomics may belong above Kernel when concrete use demonstrates value. Semantic databases, knowledge graphs, retrieval and memory facilities likewise belong in Module/SDK/application layers unless a distinct shared-runtime responsibility is demonstrated; their usefulness does not make them Kernel services, and their existence does not itself justify a dedicated Module.
 
-Native Windows/Linux owner deployment and generic reasoning-provider configuration are implemented foundations. The next outcomes follow the Owner reasoning above rather than treating the current CORE shape as the next API to freeze:
+## Current development posture
 
-1. **Solid SDK experimentation foundation.** Make independent Module development, deterministic semantic testing, packaging and iteration low-friction; establish clear stable versus experimental API lifecycle and a complete unrelated-developer journey.
-2. **Heterogeneous inference experimentation.** Deepen common typed computation contracts and provider-owned model/runtime configuration from real experiments, including low-resource local-model optimization. Add materially different computation families such as embeddings or multimodal inference only when their concrete semantics are being exercised.
-3. **Iterative owner UX/CORE engineering.** Use CORE as a major reference experiment, improve foreground/durable interaction through the SDK/inference surfaces, and graduate only interaction abstractions that prove reusable.
-4. **Generic owner Module configuration.** Build the real Module configurator when needed by the owner/developer journey and recover only the provider-owned typed metadata it actually requires.
-5. **Broader reusable integrations from demonstrated demand.** Semantic stores/knowledge graphs, Skills/MCP libraries, audio/multimodal UX and other community facilities follow concrete experiments rather than speculative framework design.
+Native Windows/Linux owner deployment, generic reasoning-provider configuration, the SDK/testkit/experimental lifecycle, the independent developer journey, preserved durable text inference, richer text generation and text embeddings are implemented foundations.
 
-These are dependency-oriented product outcomes, not an immutable master plan or permission to implement all listed experiments at once. The purpose of SDK-first work is to make experimentation cheap and rigorous; each actual feature still requires a concrete consumer and acceptance journey.
+The active priority is to make MADRE a progressively more complete and low-friction framework for ordinary modular agentic software. Development should start from concrete semantic-programming and owner/developer friction, not from a recently added inference primitive or from a list of fashionable agentic techniques.
 
-Research on QVAC, AAAAT, OpenWhispr and other external systems remains evidence only unless the Owner explicitly accepts a product direction.
+Use these rules when selecting the next slice:
+
+1. **Deepen the SDK from real semantic use.** Exercise stable contracts through existing semantic consumers such as the owner-interaction Module and through genuinely independent domain software. Improve authoring, composition, testing, reasoning orchestration and semantic-engineering ergonomics only where concrete code demonstrates repeated friction.
+2. **Incubate reusable techniques without inventing domains.** Higher-level helpers may enter `madre-sdk-experimental` when they simplify real semantic code while still producing/consuming the stable object model. A helper, library or inference capability does not become a Module unless an actual application/domain owns its semantics.
+3. **Keep inference evolution independent.** Provider/runtime tuning and new portable computation families continue when concrete experiments require them. They do not become Module architecture merely because they are available.
+4. **Use CORE as evidence, not authority.** CORE/owner interaction is a major UX benchmark and a useful SDK consumer, but current Operation names and interaction wiring do not define universal stable contracts.
+5. **Complete host/developer mechanics from real journeys.** Generic Module configuration, artifact lifecycle/release tooling and related product facilities should be recovered from demonstrated owner/developer needs.
+6. **Promote only proven abstractions.** Stable SDK growth requires repeated use, clear responsibility ownership and evidence that the abstraction does not leak one domain or provider's private semantics.
+
+These are responsibility rules, not a feature checklist. Research on QVAC, AAAAT, OpenWhispr and other external systems remains evidence only unless the Owner explicitly accepts a product direction.
