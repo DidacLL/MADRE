@@ -13,11 +13,13 @@ public final class ModuleInstance {
     /**
      * Adapter-oriented assembly path for an already available portable definition.
      * Native Java Modules should normally implement {@link Module} and use {@link #from(Module)}.
+     * The assembly is validated immediately so an invalid ModuleInstance cannot escape construction.
      */
     public ModuleInstance(ModuleDefinition definition,
             Map<OperationId, OperationBinding<?, ?>> operations) {
         this.definition = Objects.requireNonNull(definition, "definition");
         this.operations = Map.copyOf(operations);
+        validateBindings();
     }
 
     /** Derives the portable description and canonical binding map from one Java Module object. */
@@ -31,18 +33,13 @@ public final class ModuleInstance {
                 throw new IllegalArgumentException("duplicate Operation identity: " + id);
             }
         }
-        ModuleInstance instance = new ModuleInstance(executable.definition(), bindings);
-        instance.validateBindings();
-        return instance;
+        return new ModuleInstance(executable.definition(), bindings);
     }
 
     public ModuleDefinition definition() { return definition; }
     public Map<OperationId, OperationBinding<?, ?>> operations() { return operations; }
 
-    /**
-     * Validates the executable surface against the canonical portable contracts. Runtime
-     * registration invokes this before the Module becomes reachable.
-     */
+    /** Confirms that executable bindings exactly realize the canonical portable contracts. */
     public void validateBindings() {
         if (!operations.keySet().equals(definition.operations().keySet())) {
             throw new IllegalArgumentException(
