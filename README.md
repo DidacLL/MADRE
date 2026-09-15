@@ -15,27 +15,27 @@ Start with:
 
 ## Native owner installation
 
-MADRE now has a native host foundation in addition to the Gradle developer distribution. The JDK 21 `jpackage` tool produces a Windows MSI and a Linux DEB. Both packages contain the MADRE application, shipped Module/reasoning artifacts and a bundled Java runtime, so an Owner does not install Java or Gradle to run the packaged product.
+MADRE has a native host foundation in addition to the Gradle developer distribution. The JDK 21 `jpackage` tool produces a Windows MSI and a Linux DEB. Both packages contain the MADRE application, shipped Module/reasoning artifacts and a bundled Java runtime, so an Owner does not install Java or Gradle to run the packaged product.
 
-The native launcher accepts zero arguments. On the first normal launch MADRE creates stable per-user product locations and persists an inspectable owner configuration. A second launch reuses the same configuration without rewriting it.
+The native launcher accepts zero arguments. On the first normal launch MADRE creates stable per-user product locations and persists an inspectable owner configuration. A second launch reuses the same configuration.
 
 Windows uses:
 
 ```text
-configuration  %APPDATA%\MADRE\madre.properties
-data           %LOCALAPPDATA%\MADRE
-state          %LOCALAPPDATA%\MADRE\state
-owner Modules  %LOCALAPPDATA%\MADRE\modules
+configuration   %APPDATA%\MADRE\madre.properties
+data            %LOCALAPPDATA%\MADRE
+state           %LOCALAPPDATA%\MADRE\state
+owner Modules   %LOCALAPPDATA%\MADRE\modules
 owner reasoning %LOCALAPPDATA%\MADRE\reasoning
 ```
 
 Linux follows the XDG base-directory convention:
 
 ```text
-configuration  ${XDG_CONFIG_HOME:-~/.config}/madre/madre.properties
-data           ${XDG_DATA_HOME:-~/.local/share}/madre
-state          ${XDG_STATE_HOME:-~/.local/state}/madre
-owner Modules  <data>/modules
+configuration   ${XDG_CONFIG_HOME:-~/.config}/madre/madre.properties
+data            ${XDG_DATA_HOME:-~/.local/share}/madre
+state           ${XDG_STATE_HOME:-~/.local/state}/madre
+owner Modules   <data>/modules
 owner reasoning <data>/reasoning
 ```
 
@@ -43,7 +43,71 @@ The Kernel durable database is written under the state location as `kernel-work.
 
 Shipped Module and reasoning-adapter JARs remain read-only program artifacts inside the application image. Normal packaged discovery scans those shipped directories plus the owner-writable Module/reasoning directories above. An explicit `modules.directory` or `reasoning.directory` still means exactly one explicitly selected directory, preserving deterministic developer/test isolation.
 
-The first-run bootstrap deliberately contains no enabled reasoning mechanism and does not invent an endpoint, model, credential, Privacy value or provider-specific setting. The shipped reasoning adapter artifacts may be present while zero mechanisms materialize; that is a valid MADRE state. The bootstrap currently preserves the shipped `roles.core` and `interaction.*` installation policy needed for the existing console behavior, without changing CORE privilege or semantics.
+The first-run bootstrap deliberately contains no configured or enabled reasoning mechanism and does not invent an endpoint, model, credential, Privacy value or provider-specific setting. Installed provider types with zero configured instances are a valid MADRE state. The bootstrap currently preserves the shipped `roles.core` and `interaction.*` installation policy needed for the existing console behavior, without changing CORE privilege or semantics.
+
+## Owner reasoning configuration
+
+Reasoning adapter installation and reasoning instance configuration are separate facts. Merely placing an adapter JAR in a discovered reasoning directory never enables a mechanism.
+
+Discover installed/configurable provider types:
+
+```text
+madre reasoning providers
+```
+
+This command works before any mechanism is configured. It displays each provider's stable provider-owned identity, display/help text and the small provider-owned field metadata needed by the generic host configurator. It does not derive identity from Java class name, JAR name, discovery order or shipped status.
+
+Configure a repeatable named instance non-interactively:
+
+```text
+madre reasoning configure openai-compatible local-compatible \
+  --set capability-id=compatible-text \
+  --set endpoint=http://127.0.0.1:8081/v1/ \
+  --set model=compatible-model \
+  --set privacy=SECRET \
+  --set location=LOCAL
+```
+
+The same command without `--set` arguments enters a simple interactive prompt rendered from the provider descriptor:
+
+```text
+madre reasoning configure openai-compatible local-compatible
+```
+
+The host does not know that this provider uses `endpoint`, `model`, `privacy`, or `location`. Those owner-facing names, their metadata, validation/defaults and their mapping onto the provider's persisted representation are all owned by the provider artifact.
+
+Inspect configured state without using raw internal property names:
+
+```text
+madre reasoning list
+madre reasoning inspect openai-compatible/local-compatible
+```
+
+Disable without deleting the instance configuration, re-enable it later, or remove exactly that instance's configuration:
+
+```text
+madre reasoning disable openai-compatible/local-compatible
+madre reasoning enable openai-compatible/local-compatible
+madre reasoning remove openai-compatible/local-compatible
+```
+
+Configuration writes preserve unrelated host, Module and other provider settings. The host writes through a same-directory temporary file and atomically replaces the configuration where the platform supports it, with a safe replacement fallback. Provider validation runs before persistence; a rejected change leaves the previously persisted configuration intact. Configuration validation is local and does not require an endpoint to be reachable.
+
+Privacy remains explicit. The shipped configurators never infer Privacy from endpoint, socket transport, provider identity or `ReasoningLocation`.
+
+Current shipped provider identities are:
+
+```text
+llamacpp-http
+llamacpp-unix
+openai-compatible
+```
+
+The two llama.cpp transports remain distinct provider types because their configuration requirements differ. OpenAI-compatible means an explicitly configured compatible HTTP endpoint; it is not an OpenAI account integration.
+
+This slice configures installed provider artifacts; it does not download, install, update or remove reasoning JARs. There is no credential vault, OAuth/account flow, graphical settings UI or generic Module configurator yet.
+
+## Diagnostics
 
 Run host diagnostics with:
 
@@ -51,7 +115,7 @@ Run host diagnostics with:
 madre doctor
 ```
 
-`doctor` reports the MADRE version, bundled Java runtime, resolved configuration/data/state locations, Module and reasoning artifact locations, configuration/discovery health, installed Module identities, CORE resolution and materialized reasoning-mechanism identities/count. It does not dump provider configuration or secrets.
+`doctor` reports the MADRE version, bundled Java runtime, resolved configuration/data/state locations, Module and reasoning artifact locations, configuration/discovery health, installed Module identities, CORE resolution, installed reasoning provider identities, configured provider-instance identities/state and successfully materialized reasoning-mechanism identities/count. It does not dump provider field values or raw provider configuration.
 
 For advanced operation or isolated tests, override the persistent configuration explicitly:
 
@@ -65,11 +129,9 @@ The historical developer form remains accepted:
 madre /absolute/path/madre.properties
 ```
 
-Native installation is the owner-facing packaging proof for this slice. It does not complete the entire owner-deployable product gate: provider-aware first-run configuration, Module/reasoning lifecycle management and the dedicated CORE-led owner-interaction UX remain separate product work.
-
 ## Developer build and package
 
-Source development still uses JDK 21 and the checked-in Gradle wrapper. `installDist`/`distZip` remain developer packaging and intentionally continue to support explicit temporary properties files for isolated acceptance.
+Source development uses JDK 21 and the checked-in Gradle wrapper. `installDist`/`distZip` remain developer packaging and intentionally continue to support explicit temporary properties files for isolated acceptance.
 
 Windows:
 
@@ -113,7 +175,7 @@ ModuleInstance create(ModuleContext context, ModuleProviderConfiguration configu
 
 `ModuleInstance` is one canonical `ModuleDefinition` plus exact executable bindings for every declared Operation. Shipped and owner-supplied Modules use the same discovery/registration path. Bundling, class-loader placement and CORE assignment confer no privilege.
 
-Current configuration remains provider-owned string configuration:
+Current Module configuration remains provider-owned string configuration:
 
 ```properties
 modules.config[<canonical ModuleId>].<module-owned-key>=<value>
@@ -121,7 +183,7 @@ modules.config[<canonical ModuleId>].<module-owned-key>=<value>
 
 `madre-app` only associates the exact canonical Module identity with an immutable string map. The Module provider owns supported-key validation, parsing, typed settings and defaults. An explicit setting for an uninstalled identity is rejected; duplicate providers, identity mismatch and invalid bindings fail before partial installation becomes reachable.
 
-This is executable configuration truth, not the final owner configurator contract. The native bootstrap does not create generic provider metadata or hard-code Module-owned setting vocabularies.
+The reasoning-provider metadata/configuration contract described above is intentionally reasoning-specific. This slice does not add `ModuleProvider` configuration metadata or a generic settings framework.
 
 ## Three invocation receivers
 
@@ -131,7 +193,7 @@ An installed Module receives caller-bound `ModuleDirectory`/`ModuleInvoker`. It 
 
 `OwnerModuleInvoker.invokeOwner` is the local host receiver. It executes the canonical Operation and returns Module-created Material unchanged at its actual Sensitivity.
 
-`PublicModuleInvoker.invokePublic` is the external/PUBLIC disclosure receiver. It requires the Module-owned semantic result transformer to create new declared Material able to reach `Privacy.PUBLIC`.
+`PublicModuleInvoker.invokePublic` is the external/PUBLIC disclosure receiver. It requires the Module-owned semantic result transformer to create new declared Material whose Sensitivity can reach `Privacy.PUBLIC`.
 
 The developer console exposes these generic boundaries through `/invoke-owner` and `/invoke-public`, and non-interactively through:
 
@@ -144,17 +206,28 @@ madre --config <properties> --invoke-public <module> <operation> <material-type>
 
 The present console remains a transitional application adapter. `interaction.*` selects the installed Module/Operations/Material types used by ordinary text, `/standard`, `/updates` and explicit `/sensitivity`. The shipped owner-interaction Module owns semantic immediate/durable reasoning behavior and delayed-result interpretation; `MadreMain` still owns presentation and the command loop.
 
+When no reasoning mechanism is materialized, normal startup remains valid and now points the Owner toward `madre reasoning providers`/`configure`. It does not force a startup wizard.
+
 `roles.core` is optional and non-privileged. When resolved, it identifies the ordinary installed Module intended to provide the default owner-interaction/coordinator role. It changes no Security Algebra value, Operation visibility, invocation authority, reasoning selection, scheduling, class-loader treatment or installation authority.
 
-The native packaging work does not redesign this interaction model. A later slice must make CORE lead ordinary owner interaction and natural delayed semantic follow-up without giving it host-only privileges.
+The provider-configuration work does not redesign this interaction model. A later slice must make CORE lead ordinary owner interaction and natural delayed semantic follow-up without giving it host-only privileges.
 
-## Reasoning-adapter installation
+## Reasoning-adapter public installation contract
 
 Reasoning mechanisms are independently installable from Modules. A reasoning adapter JAR provides `io.github.didacll.madre.reasoning.installation.ReasoningMechanismProvider` and depends on the public reasoning SPI plus the computation contracts it implements, not on `madre-app` or Kernel internals.
 
-Providers receive a read-only view of current `reasoning.*` string settings and own provider-specific parsing/validation. Installation never implies enablement, Privacy is explicit rather than inferred, and an absent/empty installation or zero materialized mechanisms is valid at boot.
+Each installed provider declares:
 
-As with Module configuration, these strings remain developer-facing executable behavior rather than a completed generic configurator surface.
+- a stable `ReasoningProviderId`;
+- a `ReasoningProviderDescriptor` containing only owner-facing display/help information and the provider's minimal configuration fields;
+- a `ReasoningProviderConfigurator` for listing configured named instances, configuring/enabling an instance, disabling/enabling it, and removing its configuration;
+- `materialize(...)` for producing enabled `ReasoningMechanism` values from the same read-only configuration.
+
+Configuration fields use only the value kinds needed by the shipped/independent providers today: `TEXT`, `INTEGER` and `CHOICE`, with required/default/allowed-value/help/display information and integer bounds where applicable. This is not JSON Schema, reflection, an annotation framework or a universal settings language.
+
+Providers own parsing, validation and raw persistence mapping. `madre-app` applies a provider-produced `ReasoningProviderConfigurationUpdate` generically and contains no concrete llama.cpp/OpenAI-compatible configuration key branches. Architecture checks reject compile-time app dependencies/imports on the shipped adapter implementations.
+
+The existing raw `reasoning.*` representation remains executable for compatibility and advanced developer use; owners of the native product no longer need to know it for normal reasoning setup.
 
 ## Developer configuration example
 
@@ -176,12 +249,18 @@ cp config/madre.properties.example /absolute/path/madre.properties
 madre-app/build/install/madre/bin/madre /absolute/path/madre.properties
 ```
 
-The example intentionally contains provider-specific disabled examples for development/reference. Native first-run bootstrap does not copy those provider values.
+The example intentionally retains provider-specific disabled raw examples as compatibility/reference material. Native first-run bootstrap does not copy those provider values; the generic reasoning commands are the owner-facing setup path.
 
 ## Verification evidence
 
-The existing Windows/Linux build workflow continues to exercise `check`, architecture guards, Javadocs/publication, developer packages, isolated SDK Module/reasoning builds, Module-to-Module interoperability, no-reasoning boot, owner-local versus external/PUBLIC semantics, Module configuration, CORE/interaction independence and durable restart/recovery.
+The Windows/Linux `Java 21 cross-platform build` workflow exercises `check`, architecture guards, Javadocs/publication, developer packages, isolated SDK Module/reasoning builds, Module-to-Module interoperability, no-reasoning boot, owner-local versus external/PUBLIC semantics, Module configuration, CORE/interaction independence and durable restart/recovery.
 
-A separate exact-head native-package workflow builds the platform-native package on each corresponding host, exercises the `jpackage` application image with the machine `java` removed from `PATH`, proves fresh zero-argument bootstrap/restart/`doctor`/clean shutdown, verifies shipped artifacts and zero enabled reasoning, then performs unattended native installer install/launch/uninstall on both hosts. The MSI/DEB is retained as a downloadable workflow artifact.
+The exact-head `Native owner package` workflow builds MSI/DEB on the corresponding host, exercises the `jpackage` application image with machine `java` removed from `PATH`, proves fresh zero-argument bootstrap/restart/`doctor`/clean shutdown, verifies shipped provider discovery, configures shipped providers through the generic CLI, verifies provider-owned validation leaves persisted configuration unchanged, proves disable/re-enable/remove across restart, and then performs unattended native installer install/launch/uninstall. The MSI/DEB is retained as a downloadable workflow artifact.
 
-Historical PR #47 runs also exercised live llama.cpp/model inference over the native AF_UNIX adapter. Native packaging does not change those reasoning or security boundaries.
+The exact-head `Reasoning owner configuration` workflow independently publishes the public artifacts, builds `verification/reasoning-consumer` in its isolated Gradle build, places that third-party provider JAR in the conventional owner reasoning directory of a packaged application image, and drives the same generic provider metadata/configure/restart/disable/enable/remove path on Windows and Linux. No cloud account or reachable model endpoint is needed.
+
+Historical PR #47 runs also exercised live llama.cpp/model inference over the native AF_UNIX adapter. The owner configurator does not change reasoning selection, execution or Security Algebra boundaries.
+
+## Remaining product gaps
+
+This slice deliberately does not complete generic Module configuration, Module install/remove/update management, reasoning JAR download/install/update/remove management, marketplace discovery, credential management, graphical settings, community SDK tooling/testkit, or the CORE-led owner-interaction redesign. Those remain separate product work rather than being hidden behind the reasoning-provider configurator.

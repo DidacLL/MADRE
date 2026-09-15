@@ -8,25 +8,55 @@ A Module may perform ordinary application I/O directly inside bounded Module beh
 
 ## Public reasoning-adapter SPI
 
-The published `madre-reasoning-spi` artifact is the boundary for independently built reasoning mechanisms. It exposes only the typed concepts a reasoning adapter needs: `ReasoningCapability`, capability identity/manifest, exact `ReasoningContract` and durable codecs, observed `ReasoningAvailability`, `ReasoningExecutionContext`, resource claims, typed failure reporting, and the minimal provider/materialization configuration boundary.
+The published `madre-reasoning-spi` artifact is the boundary for independently built reasoning mechanisms. It exposes the typed reasoning execution concepts an adapter needs plus the small installation/configuration contract required by the owner product: `ReasoningCapability`, capability identity/manifest, exact `ReasoningContract` and durable codecs, observed `ReasoningAvailability`, `ReasoningExecutionContext`, resource claims, typed failure reporting, `ReasoningProviderId`, provider descriptors/configurators and provider-owned configuration updates.
 
-It does not expose Module/Agent/Workflow/Operation semantics, Material, SQLite runtime objects, Kernel registries, schedulers, application assembly, generic tools/actions or semantic continuation.
+It does not expose Module/Agent/Workflow/Operation semantics, Material, SQLite runtime objects, Kernel registries, schedulers, application assembly, generic tools/actions, semantic continuation, provider accounts or a universal settings framework.
 
-A reasoning adapter can therefore be built independently from `madre-app` and Kernel runtime implementation classes while still implementing a published computation contract such as `madre-text-inference`.
+A reasoning adapter can therefore be built independently from `madre-app` and Kernel runtime implementation classes while still implementing a published computation contract such as `madre-text-inference` and participating in the same owner configuration journey as shipped providers.
 
-## Installation and provider materialization
+## Installation, discovery and provider configuration
 
-Reasoning adapter JARs expose `ReasoningMechanismProvider` through Java's service-provider mechanism. The application discovers them from the configured reasoning installation directory with JDK path/class-loader APIs. Installed distributions default to sibling `reasoning/`; `reasoning.directory` may override it.
+Reasoning adapter JARs expose `ReasoningMechanismProvider` through Java's service-provider mechanism. The application discovers them from the configured reasoning installation directories with JDK path/class-loader APIs. Packaged installations scan the shipped reasoning directory plus the conventional owner-writable reasoning directory; explicit `reasoning.directory` retains exact single-directory semantics for deterministic development/tests.
 
-Module and reasoning installation remain separate. Reasoning providers do not participate in Module registration, CORE role resolution or Module lifecycle.
+Module and reasoning installation remain separate. Reasoning providers do not participate in Module registration, CORE role resolution or Module lifecycle. Installing an adapter never enables a mechanism.
 
-The application supplies providers with an immutable read-only view of the generic `reasoning.*` owner configuration namespace. Provider-specific field names and parsing belong to the provider. A provider may materialize multiple named mechanism instances from one installed adapter artifact.
+Each provider declares a stable provider-owned `ReasoningProviderId` through `ReasoningProviderDescriptor`. Provider identity is not derived from implementation class name, JAR filename, discovery order, shipped status or mechanism identity. Duplicate provider identities are rejected during discovery.
 
-Installation does not imply enablement. An absent directory, empty directory, provider with no configured instances, or provider whose instances are all disabled produces zero registered `ReasoningCapability` values and does not prevent MADRE from booting.
+`ReasoningProviderDescriptor` contains only the owner-facing metadata demonstrated necessary by the current configurator: display name/help and a list of `ReasoningConfigurationField` values. Current field kinds are deliberately limited to `TEXT`, `INTEGER` and `CHOICE`; fields may declare required/default information, integer bounds, allowed choices, and display/help text. This is not JSON Schema, a reflection/annotation system, a dependency-expression language or a generic settings engine.
 
-Privacy is an explicit configured mechanism fact. It is never derived from endpoint, transport, process placement or `ReasoningLocation`. Invalid enabled provider configuration is a startup error; adapters must not silently substitute different mechanism semantics.
+`ReasoningProviderConfigurator` owns repeatable named-instance configuration. It lists configured instances and produces provider-owned `ReasoningProviderConfigurationUpdate` values for configure, enable/disable and remove. The host applies those updates generically. Provider-specific raw property names, instance-list representation, parsing, defaults and validation stay inside the provider artifact.
 
-Shipped llama.cpp AF_UNIX, explicit llama.cpp loopback-HTTP compatibility and OpenAI-compatible adapters use this same discovery/materialization path as independently supplied adapters. Bundled placement grants no selection privilege.
+The existing `reasoning.*` representation remains executable for compatibility and advanced developer use. `madre-app` does not need to know provider-specific keys such as endpoint, socket, model, Privacy, location or preference. Provider validation happens before host persistence, so a rejected update leaves the previously persisted configuration intact. Host persistence preserves unrelated configuration and replaces the owner properties file through a same-directory temporary file with atomic replacement where supported and safe replacement fallback otherwise.
+
+Configuration validation is structural/local and does not require network connectivity. A syntactically valid configured endpoint may therefore be unreachable at runtime without being treated as malformed configuration.
+
+Installation does not imply enablement. An absent directory, empty directory, installed provider with no configured instances, or provider whose instances are all disabled produces zero registered `ReasoningCapability` values and does not prevent MADRE from booting.
+
+Privacy is an explicit configured mechanism fact. It is never derived from endpoint, transport, process placement, provider identity or `ReasoningLocation`. Invalid enabled provider configuration is a startup error with provider-owned validation detail; adapters must not silently substitute different mechanism semantics.
+
+Shipped llama.cpp AF_UNIX, explicit llama.cpp loopback-HTTP compatibility and OpenAI-compatible adapters use this same discovery/configuration/materialization path as independently supplied adapters. The llama.cpp transports remain distinct provider identities because their configuration requirements differ. Bundled placement grants no selection privilege.
+
+Provider discovery for owner setup is independent of mechanism materialization: an installed adapter that currently materializes zero mechanisms remains discoverable and configurable. The application owns the provider/class-loader lifecycle and closes each provider once with its loader; setup does not require repeatedly instantiating ServiceLoader providers.
+
+## Owner host configuration surface
+
+The current generic owner commands are:
+
+```text
+madre reasoning providers
+madre reasoning list
+madre reasoning inspect <provider>/<instance>
+madre reasoning configure <provider> <instance> [--set <field>=<value>]...
+madre reasoning enable <provider>/<instance>
+madre reasoning disable <provider>/<instance>
+madre reasoning remove <provider>/<instance>
+```
+
+`configure` without `--set` arguments runs a simple interactive prompt from provider metadata. The repeated `--set` form is deterministic and scriptable. Disabling retains an instance's provider-owned configuration; removing deletes only that exact instance's owned configuration. Neither operation removes the adapter artifact.
+
+`madre doctor` distinguishes installed provider types, configured provider instances/state and successfully materialized mechanism identities/count. It does not dump raw provider properties. Zero providers or zero materialized mechanisms are valid host states.
+
+The host configuration surface is product-management behavior in `madre-app`; it is not a Kernel service and is not delegated to CORE.
 
 ## Module-created reasoning work
 
@@ -65,7 +95,7 @@ Its manifest contains only installed facts used by reasoning selection:
 - expected latency;
 - resource claims.
 
-It does not contain Material semantics, Module/Operation identities, Risk, action-realizer Integrity, provider-account authority or arbitrary metadata.
+It does not contain Material semantics, Module/Operation identities, configuration UI metadata, Risk, action-realizer Integrity, provider-account authority or arbitrary metadata.
 
 Kernel selection is deterministic and proceeds over mechanisms implementing the exact reasoning contract. A candidate is usable only when:
 
@@ -124,7 +154,7 @@ The Kernel cannot inspect persisted computation bytes as Module knowledge.
 
 Reasoning failures use stable reasoning categories such as unavailable, timeout, cancelled, connection, protocol, remote failure, internal and interrupted. Retry is bounded by the request's `ReasoningRetryPolicy`.
 
-The reasoning registry rejects duplicate capability identity and conflicting computation-contract identity/type declarations. Provider materialization rejects null/invalid mechanism values. Invalid enabled provider configuration fails startup. Application assembly rolls back registrations/loaders if reasoning installation startup fails, leaving no half-registered mechanism state.
+The reasoning registry rejects duplicate capability identity and conflicting computation-contract identity/type declarations. Provider discovery rejects duplicate provider identity and invalid provider descriptors/configurators. Provider materialization rejects null/invalid mechanism values. Invalid enabled provider configuration fails startup with provider-owned validation detail. Application assembly rolls back registrations/loaders if reasoning installation startup fails, leaving no half-registered mechanism state.
 
 Absence of an installed/available compatible mechanism is a reasoning-runtime condition, not a platform boot failure. MADRE can start with an empty reasoning registry. An immediate reasoning request fails as unavailable when no compatible available mechanism can execute it.
 
