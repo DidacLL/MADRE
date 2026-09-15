@@ -26,10 +26,13 @@ function Invoke-Madre([string[]]$arguments) {
     return $output
 }
 
-function Invoke-MadreFailure([string[]]$arguments) {
+function Assert-ManualRefusal([string[]]$arguments) {
     $output = (& $launcher @arguments 2>&1 | Out-String).Trim()
     if ($LASTEXITCODE -eq 0) { Write-Host $output; throw 'MADRE invocation unexpectedly succeeded' }
-    return $output
+    if ($output -notmatch 'manually placed owner JAR') {
+        Write-Host $output
+        throw "managed lifecycle did not identify manual artifact for: $($arguments -join ' ')"
+    }
 }
 
 try {
@@ -63,18 +66,10 @@ try {
         throw 'manually placed reasoning provider lost direct-placement discovery compatibility'
     }
 
-    foreach ($arguments in @(
-        @('modules', 'uninstall', 'phd.module'),
-        @('modules', 'install', $module, '--replace'),
-        @('reasoning', 'uninstall', 'independent-text'),
-        @('reasoning', 'install', $reasoning, '--replace')
-    )) {
-        $failure = Invoke-MadreFailure $arguments
-        if ($failure -notmatch 'manually placed owner JAR') {
-            Write-Host $failure
-            throw "managed lifecycle did not identify manual artifact for: $($arguments -join ' ')"
-        }
-    }
+    Assert-ManualRefusal @('modules', 'uninstall', 'phd.module')
+    Assert-ManualRefusal @('modules', 'install', $module, '--replace')
+    Assert-ManualRefusal @('reasoning', 'uninstall', 'independent-text')
+    Assert-ManualRefusal @('reasoning', 'install', $reasoning, '--replace')
 
     if (-not (Test-Path $manualModule) -or
             (Get-FileHash $manualModule -Algorithm SHA256).Hash -ne $moduleHash) {
