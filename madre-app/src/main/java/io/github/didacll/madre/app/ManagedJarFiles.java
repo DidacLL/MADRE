@@ -61,6 +61,24 @@ final class ManagedJarFiles {
         }
     }
 
+    static Path managedPath(Path ownerDirectory, String domain, String canonicalIdentity) {
+        Path directory = Objects.requireNonNull(ownerDirectory, "ownerDirectory")
+                .toAbsolutePath().normalize();
+        return directory.resolve(managedFileName(domain, canonicalIdentity));
+    }
+
+    static Path requireManagedPath(Path ownerDirectory, String domain, String canonicalIdentity,
+            Path artifact) {
+        Path actual = Objects.requireNonNull(artifact, "artifact").toAbsolutePath().normalize();
+        Path expected = managedPath(ownerDirectory, domain, canonicalIdentity);
+        if (!actual.equals(expected)) {
+            throw new IllegalArgumentException(domain + " " + canonicalIdentity
+                    + " is discovered from a manually placed owner JAR (" + actual.getFileName()
+                    + "); MADRE will not replace or delete it. Remove that file manually first if intended");
+        }
+        return actual;
+    }
+
     static String managedFileName(String domain, String canonicalIdentity) {
         String label = Objects.requireNonNull(domain, "domain");
         String identity = Objects.requireNonNull(canonicalIdentity, "canonicalIdentity");
