@@ -44,8 +44,10 @@ public record ModuleConfigurationField(
                 && minimum.getAsLong() > maximum.getAsLong()) {
             throw new IllegalArgumentException("minimum exceeds maximum for field " + name);
         }
-        defaultValue = defaultValue.map(value -> validate(kind, name, value, allowedValues,
-                minimum, maximum));
+        if (defaultValue.isPresent()) {
+            defaultValue = Optional.of(validate(kind, name, defaultValue.orElseThrow(), allowedValues,
+                    minimum, maximum));
+        }
     }
 
     public static ModuleConfigurationField text(String name, String displayName, String help,
