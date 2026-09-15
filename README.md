@@ -7,6 +7,7 @@ Windows and Linux run the same application, Kernel, SDK, Module installation/con
 Start with:
 
 - [MADRE.md](MADRE.md) for durable product meaning, Owner reasoning and product gates;
+- [SDK developer guide](docs/sdk-development.md) for the current independent Module developer journey;
 - [Platform Architecture](docs/architecture/MADRE-platform-architecture.md) for responsibility boundaries;
 - [Security Algebra](docs/architecture/MADRE-security-algebra.md) for composition;
 - [Module SDK and Interoperability](docs/architecture/MADRE-agent-interoperability.md) for the public executable Module model;
@@ -164,6 +165,30 @@ For deterministic source/developer execution, copy/review `config/madre.properti
 
 No container runtime, VM layer, hosted provider or external account is required for the mandatory build/test/package path.
 
+## SDK developer experimentation
+
+The first SDK tooling slice is now executable. The public artifact set adds:
+
+- `madre-bom` for dependency alignment;
+- stable `madre-sdk` unchanged as the ownership-demonstrated foundation;
+- `madre-sdk-testkit` for deterministic Module semantic tests over public contracts;
+- `madre-sdk-experimental` as an explicit 0.x incubation artifact;
+- existing `madre-reasoning-spi` and computation-contract artifacts such as `madre-text-inference` as separate public surfaces.
+
+`madre-sdk-testkit` has no `madre-app` or Kernel implementation dependency. Its programmable reasoning support is generic over arbitrary `ReasoningComputation<R>` and deliberately does not simulate Kernel scheduling, mechanism selection, Security Algebra receiver enforcement, resource coordination or SQLite durability.
+
+`madre-sdk-experimental` currently contains one typed `ModuleDefinitionBuilder`. It reduces repetitive collection assembly while producing the stable `ModuleDefinition` and preserving the stable containment model, including Agent-owned Workflows. Stable SDK, testkit, Kernel, application and reasoning SPI do not depend on it. Experimental APIs may change or disappear during 0.x; graduation is explicit and evidence-driven.
+
+The BOM aligns `madre-algebra`, `madre-sdk`, `madre-sdk-testkit`, `madre-sdk-experimental`, `madre-reasoning-spi` and `madre-text-inference`. It does not make adapters, Kernel or the installed application transitive Module dependencies.
+
+The current verification publication remains repository-local at `build/isolated-repository`. It is not yet a public remote 0.x release channel. The cross-platform `SDK developer acceptance` workflow publishes those artifacts, copies `verification/sdk-consumer` to a runner-temporary directory outside the checkout, runs its deterministic tests and JAR build there, installs only the resulting JAR in the normal owner-writable Module directory of a packaged MADRE application image, proves ServiceLoader discovery with `doctor`, and invokes it through owner-local and external/PUBLIC receiver paths.
+
+The independent fixture uses the experimental builder only from test scope. The built Module JAR therefore proves that experimental authoring can aid experimentation without becoming a production runtime requirement.
+
+A MADRE Gradle Module plugin was deliberately not added in this slice. After version alignment, the demonstrated build-specific requirements are Java 21 and standard Java ServiceLoader metadata. A plugin remains a future tooling increment if repeated external projects demonstrate enough additional packaging/validation friction to justify another public build API.
+
+See [docs/sdk-development.md](docs/sdk-development.md) for the runnable independent-project setup, Module anatomy, reasoning/testing patterns, composition and installation guidance.
+
 ## Module installation and configuration
 
 A MADRE Module is a complete executable application/domain boundary. Its JAR provides `io.github.didacll.madre.sdk.registration.ModuleProvider` through Java ServiceLoader metadata. The provider declares one canonical identity and materializes exactly that Module:
@@ -255,6 +280,8 @@ The example intentionally retains provider-specific disabled raw examples as com
 
 The Windows/Linux `Java 21 cross-platform build` workflow exercises `check`, architecture guards, Javadocs/publication, developer packages, isolated SDK Module/reasoning builds, Module-to-Module interoperability, no-reasoning boot, owner-local versus external/PUBLIC semantics, Module configuration, CORE/interaction independence and durable restart/recovery.
 
+The exact-head `SDK developer acceptance` workflow separately builds the independent Module project from a runner-temporary directory against the verification publication, executes its public-testkit tests (including arbitrary non-text durable reasoning), verifies its ServiceLoader packaging, installs the JAR in the packaged product's normal owner-writable Module directory, proves discovery and invokes both owner-local and external/PUBLIC receiver paths on Windows and Linux.
+
 The exact-head `Native owner package` workflow builds MSI/DEB on the corresponding host, exercises the `jpackage` application image with machine `java` removed from `PATH`, proves fresh zero-argument bootstrap/restart/`doctor`/clean shutdown, verifies shipped provider discovery, configures shipped providers through the generic CLI, verifies provider-owned validation leaves persisted configuration unchanged, proves disable/re-enable/remove across restart, and then performs unattended native installer install/launch/uninstall. The MSI/DEB is retained as a downloadable workflow artifact.
 
 The exact-head `Reasoning owner configuration` workflow independently publishes the public artifacts, builds `verification/reasoning-consumer` in its isolated Gradle build, places that third-party provider JAR in the conventional owner reasoning directory of a packaged application image, and drives the same generic provider metadata/configure/restart/disable/enable/remove path on Windows and Linux. No cloud account or reachable model endpoint is needed.
@@ -263,6 +290,8 @@ Historical PR #47 runs also exercised live llama.cpp/model inference over the na
 
 ## Remaining product gaps
 
-MADRE still lacks the solid public experimentation/developer environment described in `MADRE.md`: external/stable artifact publication/alignment, developer-facing documentation/tooling/testkit, authoring/packaging ergonomics, an explicit experimental SDK lifecycle and a complete unrelated-developer journey. That SDK foundation is the current development priority because it enables rigorous experimentation on owner UX and heterogeneous inference.
+This slice materially improves the public experimentation/developer environment, but MADRE is not yet a community-ready public SDK 0.x release.
 
-Generic Module configuration, Module install/remove/update management, reasoning JAR download/install/update/remove management, marketplace discovery, credential management, graphical settings, and the CORE-led owner-interaction redesign remain separate unfinished product work rather than being hidden behind the reasoning-provider configurator.
+The largest SDK release gaps are a real external artifact repository and release/version/signing mechanics, release-quality API compatibility policy, additional unrelated external-project feedback, and build/project-generation tooling if that feedback demonstrates enough remaining friction. The current verification repository and in-repository source fixture are acceptance infrastructure, not a distribution channel.
+
+Generic Module configuration, Module install/remove/update management, reasoning JAR download/install/update/remove management, marketplace discovery, credential management, graphical settings, and the CORE-led owner-interaction redesign remain separate unfinished product work. Production embeddings/multimodal computation contracts, semantic memory/RAG/planning frameworks, generic tool calling, audio/voice and MCP are also intentionally outside this SDK tooling slice.
