@@ -15,7 +15,6 @@ dependencies {
 
     testImplementation(platform("io.github.didacll:madre-bom:0.1.0-SNAPSHOT"))
     testImplementation("io.github.didacll:madre-sdk-testkit")
-    testImplementation("io.github.didacll:madre-sdk-experimental")
     testImplementation("io.github.didacll:madre-text-generation")
     testImplementation("io.github.didacll:madre-embeddings")
     testImplementation(platform("org.junit:junit-bom:5.11.4"))
