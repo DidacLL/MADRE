@@ -7,6 +7,7 @@ import io.github.didacll.madre.kernel.runtime.KernelRuntime;
 import io.github.didacll.madre.kernel.runtime.ReasoningCapabilityRegistry;
 import io.github.didacll.madre.reasoning.installation.ReasoningMechanism;
 import io.github.didacll.madre.reasoning.installation.ReasoningProviderConfiguration;
+import io.github.didacll.madre.reasoning.installation.ReasoningProviderDescriptor;
 import io.github.didacll.madre.sdk.identity.MaterialId;
 import io.github.didacll.madre.sdk.identity.MaterialTypeId;
 import io.github.didacll.madre.sdk.identity.ModuleId;
@@ -30,7 +31,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
-import java.util.TreeMap;
 import java.util.UUID;
 import java.util.concurrent.CompletionStage;
 
@@ -39,18 +39,22 @@ public final class MadreApplication implements AutoCloseable {
     private final KernelRuntime kernel;
     private final InstalledModuleLoader moduleLoader;
     private final InstalledReasoningLoader reasoningLoader;
+    private final ReasoningProviderConfiguration reasoningConfiguration;
     private final List<ModuleRegistration.Registration> moduleRegistrations;
     private final List<ReasoningCapabilityRegistry.Registration> reasoningRegistrations;
     private final Optional<LocalInteractionBinding> interactionBinding;
 
     private MadreApplication(KernelRuntime kernel, InstalledModuleLoader moduleLoader,
             InstalledReasoningLoader reasoningLoader,
+            ReasoningProviderConfiguration reasoningConfiguration,
             List<ModuleRegistration.Registration> moduleRegistrations,
             List<ReasoningCapabilityRegistry.Registration> reasoningRegistrations,
             Optional<LocalInteractionBinding> interactionBinding) {
         this.kernel = kernel;
         this.moduleLoader = moduleLoader;
         this.reasoningLoader = reasoningLoader;
+        this.reasoningConfiguration = Objects.requireNonNull(reasoningConfiguration,
+                "reasoningConfiguration");
         this.moduleRegistrations = List.copyOf(moduleRegistrations);
         this.reasoningRegistrations = List.copyOf(reasoningRegistrations);
         this.interactionBinding = Objects.requireNonNull(interactionBinding, "interactionBinding");
@@ -68,7 +72,7 @@ public final class MadreApplication implements AutoCloseable {
         try {
             reasoningLoader = new InstalledReasoningLoader(reasoningDirectory(properties));
             ReasoningProviderConfiguration reasoningConfiguration =
-                    reasoningConfiguration(properties);
+                    ReasoningConfigurationManager.configuration(properties);
             for (ReasoningMechanism<?, ?> mechanism
                     : reasoningLoader.materialize(reasoningConfiguration)) {
                 capabilities.add(registerReasoning(kernel.reasoningCapabilities(), mechanism));
@@ -83,8 +87,8 @@ public final class MadreApplication implements AutoCloseable {
                     properties, kernel.modules()));
             Optional<LocalInteractionBinding> interaction = LocalInteractionBinding.resolve(
                     properties, kernel.modules().definitions());
-            return new MadreApplication(kernel, moduleLoader, reasoningLoader, modules,
-                    capabilities, interaction);
+            return new MadreApplication(kernel, moduleLoader, reasoningLoader, reasoningConfiguration,
+                    modules, capabilities, interaction);
         } catch (IOException | RuntimeException exception) {
             closeAfterFailure(modules, exception);
             closeAfterFailure(capabilities, exception);
@@ -110,15 +114,6 @@ public final class MadreApplication implements AutoCloseable {
                 : Path.of(configured.strip()).toAbsolutePath().normalize();
     }
 
-    private static ReasoningProviderConfiguration reasoningConfiguration(Properties properties) {
-        Map<String, String> values = new TreeMap<>();
-        properties.stringPropertyNames().stream()
-                .filter(name -> name.startsWith("reasoning."))
-                .filter(name -> !name.equals("reasoning.directory"))
-                .forEach(name -> values.put(name, properties.getProperty(name)));
-        return new ReasoningProviderConfiguration(values);
-    }
-
     private static Path stateDirectory(Properties properties, Path database) {
         String configured = properties.getProperty("modules.state-directory");
         if (configured != null && !configured.isBlank()) {
@@ -137,6 +132,14 @@ public final class MadreApplication implements AutoCloseable {
     }
 
     public List<ModuleDefinition> installedModules() { return kernel.modules().definitions(); }
+
+    List<ReasoningProviderDescriptor> installedReasoningProviders() {
+        return reasoningLoader.providerDescriptors();
+    }
+
+    List<InstalledReasoningLoader.ProviderInstance> configuredReasoningInstances() {
+        return reasoningLoader.configuredInstances(reasoningConfiguration);
+    }
 
     /** External/public-boundary adapter for one Module-owned Material input. */
     public CompletionStage<Material<?>> invokePublicText(ModuleId moduleId, String operationName,

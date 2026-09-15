@@ -3,7 +3,9 @@ package io.github.didacll.madre.app;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.StringWriter;
 import java.net.URISyntaxException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
@@ -16,7 +18,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 
-/** Host-owned product locations and safe first-run configuration bootstrap. */
+/** Host-owned product locations and safe first-run/configuration persistence. */
 final class HostEnvironment {
     private static final String PRODUCT = "MADRE";
     private static final String UNIX_PRODUCT = "madre";
@@ -153,6 +155,41 @@ final class HostEnvironment {
         } finally {
             if (!moved) Files.deleteIfExists(temporary);
         }
+    }
+
+    static void replaceConfiguration(Path path, Properties properties) throws IOException {
+        Path destination = normalize(Objects.requireNonNull(path, "path"));
+        Properties values = Objects.requireNonNull(properties, "properties");
+        Path parent = destination.getParent();
+        if (parent == null) throw new IOException("configuration has no parent directory: " + destination);
+        Files.createDirectories(parent);
+        Path temporary = Files.createTempFile(parent, "madre-", ".properties.tmp");
+        boolean moved = false;
+        try {
+            Files.writeString(temporary, deterministicProperties(values), StandardCharsets.UTF_8);
+            try {
+                Files.move(temporary, destination, StandardCopyOption.ATOMIC_MOVE,
+                        StandardCopyOption.REPLACE_EXISTING);
+            } catch (AtomicMoveNotSupportedException exception) {
+                Files.move(temporary, destination, StandardCopyOption.REPLACE_EXISTING);
+            }
+            moved = true;
+        } finally {
+            if (!moved) Files.deleteIfExists(temporary);
+        }
+    }
+
+    private static String deterministicProperties(Properties properties) throws IOException {
+        Properties copy = new Properties();
+        properties.stringPropertyNames().stream().sorted()
+                .forEach(name -> copy.setProperty(name, properties.getProperty(name)));
+        StringWriter encoded = new StringWriter();
+        copy.store(encoded, null);
+        List<String> lines = encoded.toString().lines()
+                .filter(line -> !line.isBlank() && !line.startsWith("#"))
+                .sorted().toList();
+        return "# MADRE owner configuration. Provider-specific settings remain provider-owned.\n"
+                + String.join("\n", lines) + "\n";
     }
 
     boolean hasPackagedDefaults() { return Files.isRegularFile(packagedDefaultsFile); }

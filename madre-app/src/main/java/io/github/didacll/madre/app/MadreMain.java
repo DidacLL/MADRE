@@ -14,7 +14,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.CompletionException;
 
-/** Replaceable local console plus host-owned bootstrap and diagnostic entrypoints. */
+/** Replaceable local console plus host-owned bootstrap, diagnostics and product-management entrypoints. */
 public final class MadreMain {
     private MadreMain() { }
 
@@ -37,8 +37,26 @@ public final class MadreMain {
         }
         HostEnvironment.LoadedConfiguration loaded = host.loadConfiguration(parsed.configuration());
         Properties properties = loaded.properties();
-        try (MadreApplication application = MadreApplication.start(properties)) {
-            List<String> command = parsed.command();
+        List<String> command = parsed.command();
+        if (!command.isEmpty() && command.get(0).equals("reasoning")) {
+            try {
+                ReasoningCli.run(host, loaded, properties, command.subList(1, command.size()));
+            } catch (IllegalArgumentException | IllegalStateException exception) {
+                System.err.println("reasoning configuration failure: " + message(exception));
+                System.exit(2);
+            }
+            return;
+        }
+
+        final MadreApplication application;
+        try {
+            application = MadreApplication.start(properties);
+        } catch (RuntimeException exception) {
+            System.err.println("MADRE startup failure: " + message(exception));
+            System.exit(2);
+            return;
+        }
+        try (application) {
             if (command.isEmpty()) {
                 runConsole(application);
             } else if (command.size() == 1 && command.get(0).equals("doctor")) {
@@ -68,7 +86,7 @@ public final class MadreMain {
             configuration = Optional.of(Path.of(values.remove(1)));
             values.remove(0);
         } else if (!values.isEmpty() && !values.get(0).startsWith("--")
-                && !values.get(0).equals("doctor")) {
+                && !values.get(0).equals("doctor") && !values.get(0).equals("reasoning")) {
             configuration = Optional.of(Path.of(values.remove(0)));
         }
         return new ParsedArguments(configuration, List.copyOf(values));
@@ -106,6 +124,14 @@ public final class MadreMain {
             System.out.println("core\tconfigured but unresolved " + configuredCore.strip());
         }
         System.out.println("reasoning.discovery\tinitialized");
+        var providers = application.installedReasoningProviders();
+        System.out.println("reasoning.providers.count\t" + providers.size());
+        providers.forEach(provider -> System.out.println("reasoning.provider\t" + provider.id()));
+        var instances = application.configuredReasoningInstances();
+        System.out.println("reasoning.instances.count\t" + instances.size());
+        instances.forEach(item -> System.out.println("reasoning.instance\t" + item.providerId()
+                + "/" + item.instance().name() + "\t"
+                + (item.instance().enabled() ? "enabled" : "disabled")));
         var reasoningIds = application.kernel().reasoningCapabilities().installedIds();
         System.out.println("reasoning.mechanisms.count\t" + reasoningIds.size());
         reasoningIds.forEach(id -> System.out.println("reasoning.mechanism\t" + id.value()));
@@ -135,6 +161,11 @@ public final class MadreMain {
         Optional<LocalInteractionBinding> configured = application.interactionBinding();
         Sensitivity currentSensitivity = configured.map(LocalInteractionBinding::defaultSensitivity)
                 .orElse(Sensitivity.S1);
+        if (application.kernel().reasoningCapabilities().installedIds().isEmpty()
+                && !application.installedReasoningProviders().isEmpty()) {
+            System.out.println("No reasoning mechanisms are enabled. Run 'madre reasoning providers' "
+                    + "to inspect installed provider types and 'madre reasoning configure ...' to set one up.");
+        }
         if (configured.isPresent()) {
             LocalInteractionBinding binding = configured.orElseThrow();
             System.out.println("MADRE ready - local text -> " + binding.moduleId().value() + "/"
@@ -303,11 +334,20 @@ public final class MadreMain {
         return sensitivity;
     }
 
+    private static String message(Throwable failure) {
+        Throwable current = failure;
+        while (current.getCause() != null && (current.getMessage() == null
+                || current.getMessage().isBlank())) current = current.getCause();
+        return current.getMessage() == null || current.getMessage().isBlank()
+                ? current.getClass().getSimpleName() : current.getMessage();
+    }
+
     private static void usage() {
         System.err.println("usage: madre [--config <path-to-madre.properties>] "
-                + "[doctor | --list-modules | --invoke-public <module> <operation> "
+                + "[doctor | reasoning <command> | --list-modules | --invoke-public <module> <operation> "
                 + "<material-type> <S1..S5> <payload> | --invoke-owner <module> <operation> "
                 + "<material-type> <S1..S5> <payload>]");
+        ReasoningCli.usage();
         System.err.println("legacy developer usage: madre <path-to-madre.properties> ...");
     }
 

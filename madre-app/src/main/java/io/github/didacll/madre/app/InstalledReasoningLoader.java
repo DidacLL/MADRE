@@ -1,8 +1,11 @@
 package io.github.didacll.madre.app;
 
+import io.github.didacll.madre.reasoning.installation.ReasoningConfiguredInstance;
 import io.github.didacll.madre.reasoning.installation.ReasoningMechanism;
 import io.github.didacll.madre.reasoning.installation.ReasoningMechanismProvider;
 import io.github.didacll.madre.reasoning.installation.ReasoningProviderConfiguration;
+import io.github.didacll.madre.reasoning.installation.ReasoningProviderDescriptor;
+import io.github.didacll.madre.reasoning.installation.ReasoningProviderId;
 import java.io.IOException;
 import java.net.URISyntaxException;
 import java.net.URL;
@@ -11,14 +14,17 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.ServiceConfigurationError;
 import java.util.ServiceLoader;
+import java.util.TreeMap;
 
-/** Cross-platform JVM discovery of owner-installed reasoning-mechanism JARs. */
+/** Cross-platform JVM discovery of owner-installed reasoning-provider JARs. */
 final class InstalledReasoningLoader implements AutoCloseable {
     private final URLClassLoader classLoader;
-    private final List<ReasoningMechanismProvider> providers;
+    private final Map<ReasoningProviderId, ReasoningMechanismProvider> providers;
 
     InstalledReasoningLoader(Path directory) { this(installationDirectories(directory)); }
 
@@ -26,10 +32,25 @@ final class InstalledReasoningLoader implements AutoCloseable {
         List<Path> jars = jars(directories);
         URL[] urls = jars.stream().map(InstalledReasoningLoader::url).toArray(URL[]::new);
         classLoader = new URLClassLoader(urls, ReasoningMechanismProvider.class.getClassLoader());
+        List<ReasoningMechanismProvider> discovered = new ArrayList<>();
         try {
-            providers = ServiceLoader.load(ReasoningMechanismProvider.class, classLoader).stream()
-                    .map(ServiceLoader.Provider::get).toList();
+            ServiceLoader.load(ReasoningMechanismProvider.class, classLoader).stream()
+                    .map(ServiceLoader.Provider::get).forEach(discovered::add);
+            Map<ReasoningProviderId, ReasoningMechanismProvider> indexed = new TreeMap<>();
+            for (ReasoningMechanismProvider provider : discovered) {
+                ReasoningProviderDescriptor descriptor = Objects.requireNonNull(provider.descriptor(),
+                        "reasoning provider descriptor");
+                Objects.requireNonNull(provider.configurator(),
+                        "reasoning provider configurator for " + descriptor.id());
+                ReasoningMechanismProvider previous = indexed.putIfAbsent(descriptor.id(), provider);
+                if (previous != null) {
+                    throw new IllegalStateException("duplicate reasoning provider identity "
+                            + descriptor.id());
+                }
+            }
+            providers = Map.copyOf(indexed);
         } catch (ServiceConfigurationError | RuntimeException failure) {
+            closeProviders(discovered, failure);
             try {
                 classLoader.close();
             } catch (IOException closeFailure) {
@@ -39,20 +60,51 @@ final class InstalledReasoningLoader implements AutoCloseable {
         }
     }
 
+    List<ReasoningProviderDescriptor> providerDescriptors() {
+        return providers.values().stream().map(ReasoningMechanismProvider::descriptor).toList();
+    }
+
+    Optional<ReasoningMechanismProvider> provider(ReasoningProviderId id) {
+        return Optional.ofNullable(providers.get(Objects.requireNonNull(id, "id")));
+    }
+
+    List<ProviderInstance> configuredInstances(ReasoningProviderConfiguration configuration) {
+        Objects.requireNonNull(configuration, "configuration");
+        List<ProviderInstance> result = new ArrayList<>();
+        providers.forEach((id, provider) -> {
+            List<ReasoningConfiguredInstance> configured =
+                    provider.configurator().configuredInstances(configuration);
+            if (configured == null) {
+                throw new IllegalStateException("reasoning provider " + id
+                        + " returned null configured-instance list");
+            }
+            configured.forEach(instance -> result.add(new ProviderInstance(id,
+                    Objects.requireNonNull(instance,
+                            "reasoning provider " + id + " returned null configured instance"))));
+        });
+        return List.copyOf(result);
+    }
+
     List<ReasoningMechanism<?, ?>> materialize(ReasoningProviderConfiguration configuration) {
         Objects.requireNonNull(configuration, "configuration");
         List<ReasoningMechanism<?, ?>> mechanisms = new ArrayList<>();
-        for (ReasoningMechanismProvider provider : providers) {
-            List<ReasoningMechanism<?, ?>> provided = provider.materialize(configuration);
+        providers.forEach((id, provider) -> {
+            final List<ReasoningMechanism<?, ?>> provided;
+            try {
+                provided = provider.materialize(configuration);
+            } catch (IllegalArgumentException exception) {
+                throw new IllegalArgumentException("reasoning provider " + id + ": "
+                        + message(exception), exception);
+            }
             if (provided == null) {
-                throw new IllegalStateException(provider.getClass().getName()
+                throw new IllegalStateException("reasoning provider " + id
                         + " returned null reasoning materialization");
             }
             for (ReasoningMechanism<?, ?> mechanism : provided) {
                 mechanisms.add(Objects.requireNonNull(mechanism,
-                        provider.getClass().getName() + " returned a null reasoning mechanism"));
+                        "reasoning provider " + id + " returned a null reasoning mechanism"));
             }
-        }
+        });
         return List.copyOf(mechanisms);
     }
 
@@ -115,9 +167,10 @@ final class InstalledReasoningLoader implements AutoCloseable {
 
     @Override public void close() {
         RuntimeException failure = null;
-        for (int index = providers.size() - 1; index >= 0; index--) {
+        List<ReasoningMechanismProvider> values = new ArrayList<>(providers.values());
+        for (int index = values.size() - 1; index >= 0; index--) {
             try {
-                providers.get(index).close();
+                values.get(index).close();
             } catch (RuntimeException exception) {
                 if (failure == null) failure = exception;
                 else failure.addSuppressed(exception);
@@ -132,5 +185,27 @@ final class InstalledReasoningLoader implements AutoCloseable {
             else failure.addSuppressed(wrapped);
         }
         if (failure != null) throw failure;
+    }
+
+    private static void closeProviders(List<ReasoningMechanismProvider> providers, Throwable failure) {
+        for (int index = providers.size() - 1; index >= 0; index--) {
+            try {
+                providers.get(index).close();
+            } catch (RuntimeException closeFailure) {
+                failure.addSuppressed(closeFailure);
+            }
+        }
+    }
+
+    private static String message(Throwable failure) {
+        return failure.getMessage() == null || failure.getMessage().isBlank()
+                ? failure.getClass().getSimpleName() : failure.getMessage();
+    }
+
+    record ProviderInstance(ReasoningProviderId providerId, ReasoningConfiguredInstance instance) {
+        ProviderInstance {
+            Objects.requireNonNull(providerId, "providerId");
+            Objects.requireNonNull(instance, "instance");
+        }
     }
 }
