@@ -29,6 +29,7 @@ final class ManagedJarFilesTest {
         Path owner = temporary.resolve("owner/reasoning");
         Path managed = ManagedJarFiles.managedPath(owner, "reasoning", "fixture.provider");
 
+        assertTrue(ManagedJarFiles.isManagedPath(owner, "reasoning", "fixture.provider", managed));
         assertEquals(managed, ManagedJarFiles.requireManagedPath(
                 owner, "reasoning", "fixture.provider", managed));
     }
@@ -41,6 +42,16 @@ final class ManagedJarFilesTest {
                 () -> ManagedJarFiles.requireManagedPath(owner, "module", "phd.module", manual));
 
         assertTrue(failure.getMessage().contains("manually placed owner JAR"));
+        assertFalse(ManagedJarFiles.isManagedPath(owner, "module", "phd.module", manual));
+    }
+
+    @Test void managedSlotDoesNotTransferAcrossIdentityOrRoot() {
+        Path owner = temporary.resolve("owner/modules");
+        Path first = ManagedJarFiles.managedPath(owner, "module", "first.module");
+        Path otherRoot = temporary.resolve("other/modules");
+
+        assertFalse(ManagedJarFiles.isManagedPath(owner, "module", "second.module", first));
+        assertFalse(ManagedJarFiles.isManagedPath(otherRoot, "module", "first.module", first));
     }
 
     @Test void commitReplacesTheManagedSlotFromSameFilesystemStaging() throws Exception {
