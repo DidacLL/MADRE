@@ -45,7 +45,8 @@ final class ModuleInstaller {
                         "ModuleProvider returned null for " + entry.moduleId());
             } catch (RuntimeException exception) {
                 throw new IllegalStateException(
-                        "cannot materialize Module " + entry.moduleId(), exception);
+                        "cannot materialize Module " + entry.moduleId() + ": " + message(exception),
+                        exception);
             }
             if (!instance.definition().id().equals(entry.moduleId())) {
                 throw new IllegalStateException("ModuleProvider identity " + entry.moduleId()
@@ -56,7 +57,8 @@ final class ModuleInstaller {
                 instance.validateBindings();
             } catch (RuntimeException exception) {
                 throw new IllegalStateException(
-                        "cannot validate materialized Module " + entry.moduleId(), exception);
+                        "cannot validate materialized Module " + entry.moduleId() + ": "
+                                + message(exception), exception);
             }
             prepared.add(new PreparedModule(entry.moduleId(), instance));
         }
@@ -68,7 +70,8 @@ final class ModuleInstaller {
                     registrations.add(registry.register(module.instance()));
                 } catch (RuntimeException exception) {
                     throw new IllegalStateException(
-                            "cannot register Module " + module.moduleId(), exception);
+                            "cannot register Module " + module.moduleId() + ": "
+                                    + message(exception), exception);
                 }
             }
             return List.copyOf(registrations);
@@ -134,6 +137,12 @@ final class ModuleInstaller {
                 failure.addSuppressed(closeFailure);
             }
         }
+    }
+
+    private static String message(Throwable failure) {
+        String message = failure.getMessage();
+        return message == null || message.isBlank()
+                ? failure.getClass().getSimpleName() : message;
     }
 
     private record ProviderEntry(ModuleId moduleId, ModuleProvider provider) { }
