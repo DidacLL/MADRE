@@ -10,9 +10,10 @@ The execution-side Java model is:
 
 - `Module`: one semantic/application owner;
 - `Agent`: optional Module-owned intelligent semantic actor;
+- `StatefulAgent<S>`: optional execution-side specialization for typed Agent-owned state;
 - `MaterialType<T>` / `Material<T>`: Java typed semantic values;
 - `Operation<I,O>`: executable bounded behavior;
-- `OperationBinding<I,O>`: one exact executable binding and, for external/PUBLIC behavior, the Module-owned public result transformation;
+- `OperationBinding<I,O>`: one exact executable binding and, in the current 0.x external/PUBLIC wiring, an optional/required Module-owned public result transformation according to binding kind;
 - `OperationCall<I,O>`: one bounded typed Java invocation.
 
 The portable description model is:
@@ -29,9 +30,27 @@ The distinction is intentional. Portable descriptions contain semantic/security 
 
 `Module.definition()` projects the portable `ModuleDefinition`. `Module.instance()` creates the validated runtime `ModuleInstance` joining that portable contract to exact Java Material and Operation bindings. `ModuleInstance` is runtime/adaptor assembly, not the primary Java authoring API.
 
+## What an Operation is
+
+An Operation is one bounded piece of Module-owned semantic behavior. It is defined by what behavior the Module owns, which Material boundaries participate, which results may be produced, and which consequential execution variants exist.
+
+Three questions must remain separate:
+
+```text
+semantic behavior     -> Operation
+caller/surface access -> exposure / invocation boundary
+reasoning eligibility -> contextual Material Sensitivity vs mechanism receiving Privacy
+```
+
+An Operation does not become public because it uses a model. A PRIVATE Operation may request reasoning, including remote reasoning when its actual contextual Material can reach the selected mechanism. A PUBLIC Operation may perform no reasoning at all.
+
+Likewise, changing from local to remote reasoning does not mutate `OperationVisibility`. If a request's contextual Material cannot reach a mechanism's declared receiving Privacy, Kernel cannot select that mechanism. The Module may deliberately transform/minimize information into new Material and make a different bounded request when that is semantically justified. Runtime does not silently lower Sensitivity or change Operation exposure.
+
+The current two-state `OperationVisibility` is a 0.x installed-runtime exposure mechanism. Today, `PUBLIC` is used by generic Module-composition and host invocation wiring; `PRIVATE` is omitted from those generic installed invocation paths. That is executable truth, but it is not a confidentiality label, an external-publication label, an owner-visibility label, or the durable semantic definition of Operation.
+
 ## Portable types versus Java typing
 
-`OperationDefinition` is language-neutral and deliberately non-generic. Its facts are Operation identity/purpose/visibility, accepted Material type to receiving Privacy, produced Material type to maximum Sensitivity, and declared EffectProfiles.
+`OperationDefinition` is language-neutral and deliberately non-generic. Its facts are Operation identity/purpose/current visibility, accepted Material type to receiving Privacy, produced Material type to maximum Sensitivity, and declared EffectProfiles.
 
 Java `I,O` payload typing belongs to `Operation<I,O>`, `OperationCall<I,O>` and `OperationBinding<I,O>`, where actual Java values exist. A remotely decoded Operation contract therefore does not pretend to know Java payload classes.
 
@@ -43,7 +62,9 @@ This separation permits language-neutral discovery/adapters while retaining stro
 
 A Module may contain zero Agents. Agent is used only when the Module genuinely owns an intelligent semantic actor; it is not a mandatory wrapper around application code.
 
-An Agent defines no universal receive loop, planner, memory model, prompt format, tool loop or execution context. Its current public semantic facts are identity, purpose, Integrity, Skills, Workflows and exposed Operations. An unproven Java Agent defaults to `Integrity.I1`, the lowest ordinary value, rather than inventing stronger assurance. Stronger Integrity is an explicit claim that must be justified by the implementation context.
+An Agent defines no universal receive loop, planner, memory model, prompt format, tool loop or execution context. Its current public semantic facts are identity, purpose, Integrity, Skills, Workflows and associated Operations. An unproven Java Agent defaults to `Integrity.I1`, the lowest ordinary value, rather than inventing stronger assurance. Stronger Integrity is an explicit claim that must be justified by the implementation context.
+
+`StatefulAgent<S>` is an optional execution-side OOP convenience for a concrete Agent that owns typed state. It supplies serialized state reads/transitions and optional commit-before-publish persistence. The concrete Agent/Module owns state meaning, persistence representation and semantic use. It does not add a universal memory model or a second semantic execution route.
 
 `SkillDefinition` is lightweight Module-provided semantic ability/knowledge/instruction metadata. `WorkflowDefinition` is currently an Agent-owned ordered Operation description. Kernel does not interpret it as a scheduler or planner language.
 
@@ -84,11 +105,11 @@ The live registry can therefore treat a received `ModuleInstance` as a valid ass
 
 ## Caller-bound Module composition
 
-`ModuleContext` contains caller-bound `ModuleDirectory` and `ModuleInvoker` ports. It contains neither owner-local nor external/PUBLIC host invocation authority.
+`ModuleContext` contains caller-bound `ModuleDirectory` and `ModuleInvoker` ports. It contains neither generic owner-local nor external/PUBLIC host invocation authority.
 
 The caller identity is bound by installation/runtime assembly. `ReachabilityQuery` does not contain a caller identity or receiver Privacy. `ModuleInvoker.invoke(...)` receives only the exact bounded `OperationCall`. Module code therefore cannot forge its caller identity or choose a weaker receiver boundary.
 
-Directory reachability exposes only installed `PUBLIC` Operations compatible with the offered Material. `PRIVATE` Operations remain Module-internal.
+In the current runtime, directory reachability exposes only installed `PUBLIC` Operations compatible with the offered Material. `PRIVATE` Operations remain unavailable to generic Module-to-Module composition.
 
 The Module-to-Module receiver is fixed at `Privacy.MODULE`. A successful result crosses unchanged only when:
 
@@ -101,27 +122,33 @@ The exact callee Material identity, owner, type and Sensitivity are preserved. T
 
 This is ordinary installed application composition. It is not external publication and does not run the external/PUBLIC result transformer.
 
-## Owner-local and external/PUBLIC receivers
+## Owner interaction, owner-local invocation and external/PUBLIC disclosure
 
-The host owns two different invocation ports in addition to Module-to-Module composition.
+Owner interaction is not the same semantic boundary as Module-to-Module composition or external publication.
 
-Owner-local invocation resolves an installed externally callable Operation, executes the canonical bounded call and returns the valid Module-created Material unchanged. It does not lower Sensitivity because the receiver is local, shipped, CORE or same-process.
+A Module may own conversational or other owner-facing behavior that is internal to its application semantics. A local presentation surface can let the Owner use that behavior without implying that the same Operation is a public composition API for arbitrary Modules. MADRE has not yet frozen the final reusable interaction-surface contract.
 
-External/PUBLIC invocation additionally requires the Module's `PublicResultTransformer`. The transformer must create a new declared Material with new nominal identity and Sensitivity capable of reaching `Privacy.PUBLIC`. Runtime validates that transformation but does not invent it.
-
-The three boundaries therefore remain distinct:
+The current host implementation has two generic invocation ports in addition to Module-to-Module composition:
 
 ```text
-Module receiver  -> fixed Privacy.MODULE, no public transform
-Owner-local      -> host-only, valid Material unchanged
-External/PUBLIC  -> host-only, explicit Module-owned public transform
+current Module receiver -> PUBLIC Operation, fixed Privacy.MODULE, no public transform
+current Owner-local     -> PUBLIC Operation, host-only, valid Material unchanged
+current External/PUBLIC -> PUBLIC Operation, host-only, explicit Module-owned public transform
 ```
 
-CORE assignment changes none of them.
+This table is executable 0.x truth, not the target semantic definition of Operation exposure.
+
+The current `OwnerModuleInvoker` resolves an installed `PUBLIC` Operation, executes the canonical bounded call and returns valid Module-created Material unchanged. Requiring `PUBLIC` here is transitional host wiring. It must not be generalized into a rule that all owner-facing behavior must also be public to other Modules.
+
+The current `PublicModuleInvoker` also targets a `PUBLIC` Operation and requires its `PublicResultTransformer`. The transformer must create new declared Material with new nominal identity and Sensitivity capable of reaching `Privacy.PUBLIC`. The durable principle is explicit semantic transformation at an actual external/public disclosure boundary. Coupling that transformation to the same two-state visibility marker used for Module composition is not itself an architectural requirement.
+
+Do not solve owner interaction by making every PRIVATE Operation host-callable. That would erase Module encapsulation in the opposite direction. The correct reusable owner-interaction exposure should be recovered from real product experiments and remain non-privileged with respect to CORE.
 
 ## Security Algebra responsibility
 
 Security Algebra attaches only where responsibility applies. Material carries Sensitivity; accepted Operation inputs carry receiving Privacy; Agent carries/derives causal Integrity; consequential Operation variants carry Risk and Autonomy; reasoning mechanisms declare receiving Privacy.
+
+Operation exposure is not another Algebra carrier. `OperationVisibility.PUBLIC` does not mean Material is public, and `PRIVATE` does not imply that reasoning must stay inside one process or machine.
 
 The algebra governs MADRE-mediated semantic information/effect composition. It is not a general sandbox for installed Java code and does not infer values from locality, endpoint, provider, model, process, classloader placement, shipped status or CORE role.
 
@@ -141,7 +168,7 @@ Kernel owns compatible reasoning selection, resources, immediate/durable executi
 
 Durable Kernel work is physical reasoning state. Domain meaning of that work remains Module-owned.
 
-The shipped owner-interaction Module demonstrates this split: it keeps its WorkId-to-semantic pending association, Kernel keeps opaque durable reasoning work, and the Module later interprets a completed result into its own Material before acknowledgement/removal.
+The shipped owner-interaction Module demonstrates this split: it keeps its WorkId-to-semantic pending association and typed bounded conversation state, Kernel keeps opaque durable reasoning work, and the Module later interprets a completed result into its own Material before acknowledgement/removal.
 
 There is no generic Kernel callback/continuation object, semantic result router or workflow scheduler.
 
@@ -149,9 +176,9 @@ There is no generic Kernel callback/continuation object, semantic result router 
 
 CORE is an optional installation role assigned to one ordinary installed Module. It is expected to be an important owner-facing/coordinator reference consumer, but it has no private runtime authority.
 
-The current `interaction.*` console binding is independent from `roles.core`. This is a transitional product arrangement, not a universal SDK contract. The console may map ordinary text, `/standard` or `/updates` onto configured installed Operations, but the semantic behavior remains Module-owned.
+The current `interaction.*` console binding is independent from `roles.core`. This is a transitional product arrangement, not a universal SDK contract. The console currently maps ordinary text, `/standard` and `/updates` onto configured installed `PUBLIC` Operations, but that does not define the target interaction exposure model.
 
-The shipped owner-interaction Module is currently still single-turn for foreground reasoning. Its code-first conversion does not constitute a generic conversation/memory design.
+The shipped owner-interaction Module now owns bounded persisted multi-turn conversation state through a concrete `StatefulAgent<OwnerConversationState>`. Its semantic execution still occurs through ordinary Operation bindings/calls. This proves stateful Agent programming, not a generic conversation/memory API and not a requirement that conversation Operations remain `PUBLIC`.
 
 ## Installation/discovery
 
@@ -161,14 +188,16 @@ Managed lifecycle distinguishes shipped, lifecycle-managed owner, manual direct-
 
 ## Independent interoperability proof
 
-`verification/sdk-consumer` builds independently against published public artifacts and now implements the same code-first `Module` contract used by shipped Modules. It exercises stable testkit and heterogeneous reasoning contracts without application/Kernel implementation dependencies.
+`verification/sdk-consumer` builds independently against published public artifacts and implements the same code-first `Module` contract used by shipped Modules. It exercises stable testkit and heterogeneous reasoning contracts without application/Kernel implementation dependencies.
 
-`verification/module-interoperability` separately builds an installed caller and callee. It proves caller-bound reachability/invocation, preservation of valid foreign Material, caller-owned interpretation, S5 blocking at `Privacy.MODULE`, undeclared-foreign-type blocking, PRIVATE invisibility, owner-local raw receipt and external/PUBLIC transformation.
+`verification/module-interoperability` separately builds an installed caller and callee. It proves the current caller-bound reachability/invocation behavior, preservation of valid foreign Material, caller-owned interpretation, S5 blocking at `Privacy.MODULE`, undeclared-foreign-type blocking, PRIVATE invisibility to Module composition, current owner-local raw receipt and current external/PUBLIC transformation.
 
-These fixtures are architecture evidence, not special privileged Modules.
+These fixtures are architecture evidence for the boundaries they actually prove. They do not establish that one two-state Operation visibility marker must forever encode every owner/public presentation surface.
 
 ## Evolution rule
 
-Stable SDK concepts should be extracted from repeated real Module code, not invented to anticipate every possible agentic application. The explicit experimental artifact exists for higher-level incubation; it currently contains no public authoring helper after removal of the obsolete definition-first builder.
+Stable SDK concepts should be extracted from real Module code, with evidence proportional to abstraction scope, rather than invented to anticipate every possible agentic application. The explicit experimental artifact exists for higher-level incubation; it currently contains no public authoring helper after removal of the obsolete definition-first builder.
 
-A new inference capability, reusable library or implementation technique does not by itself justify a new Module, Material, Agent, Workflow or stable SDK abstraction. Semantic ownership defines Module boundaries; repeated demonstrated friction justifies convenience abstractions.
+A narrow optional OOP specialization can be stable when one substantial real consumer demonstrates a generic orthogonal responsibility and focused tests preserve the invariants. Broader semantic frameworks need broader/repeated evidence.
+
+A new inference capability, reusable library or implementation technique does not by itself justify a new Module, Material, Agent, Workflow or stable SDK abstraction. Semantic ownership defines Module boundaries; demonstrated programming friction justifies convenience abstractions.
