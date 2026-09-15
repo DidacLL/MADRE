@@ -39,7 +39,7 @@ public final class IndependentDefinition {
     static final OperationId REASON = new OperationId(ID, "reason");
     private static final OperationDefinition<String, String> INSPECT_OPERATION = operation(
             INSPECT, "Inspect independent Module input without reasoning");
-    private static final OperationDefinition<String, String> REASON_OPERATION = operation(
+    static final OperationDefinition<String, String> REASON_OPERATION = operation(
             REASON, "Interpret independently installed reasoning output");
     private static final ModuleDefinition DEFINITION = new ModuleDefinition(ID, "1.0.0",
             "Independent installation, reasoning and public-boundary fixture",

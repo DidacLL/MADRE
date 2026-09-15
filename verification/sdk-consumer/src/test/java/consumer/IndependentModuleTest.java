@@ -47,7 +47,7 @@ final class IndependentModuleTest {
                     new MaterialId(IndependentDefinition.ID, "reasoning-test-input"),
                     IndependentDefinition.REQUEST, "hello", Sensitivity.S2);
 
-            Material<String> result = module.invoke(IndependentDefinition.REASON, input)
+            Material<String> result = module.invoke(IndependentDefinition.REASON_OPERATION, input)
                     .toCompletableFuture().join();
 
             assertEquals("private:reasoned:fixture-model:hello", result.payload());
