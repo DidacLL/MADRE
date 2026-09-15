@@ -19,7 +19,7 @@ import io.github.didacll.madre.sdk.identity.OperationId;
 import io.github.didacll.madre.sdk.identity.SkillId;
 import io.github.didacll.madre.sdk.identity.WorkflowId;
 import io.github.didacll.madre.sdk.material.Material;
-import io.github.didacll.madre.sdk.material.MaterialCodec;
+import io.github.didacll.madre.sdk.material.MaterialCodecs;
 import io.github.didacll.madre.sdk.material.MaterialType;
 import io.github.didacll.madre.sdk.module.AgentDefinition;
 import io.github.didacll.madre.sdk.module.EffectProfile;
@@ -34,7 +34,6 @@ import io.github.didacll.madre.sdk.operation.Operation;
 import io.github.didacll.madre.sdk.operation.OperationCall;
 import io.github.didacll.madre.text.TextInferenceCommand;
 import io.github.didacll.madre.text.TextInferenceResult;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -79,24 +78,10 @@ public final class OwnerInteractionModule {
     private final ReasoningService reasoning;
     private final OwnerInteractionSettings settings;
     private final OwnerInteractionStateStore state;
-    private final Operation<String, String> standardOperation = new Operation<>() {
-        @Override protected CompletionStage<Material<String>> execute(
-                OperationCall<String, String> call) {
-            return executeStandardPrompt(call);
-        }
-    };
-    private final Operation<String, String> fastOperation = new Operation<>() {
-        @Override protected CompletionStage<Material<String>> execute(
-                OperationCall<String, String> call) {
-            return executeFastLane(call);
-        }
-    };
-    private final Operation<String, String> collectOperation = new Operation<>() {
-        @Override protected CompletionStage<Material<String>> execute(
-                OperationCall<String, String> call) {
-            return CompletableFuture.completedFuture(executeCollectBackground(call));
-        }
-    };
+    private final Operation<String, String> standardOperation = Operation.of(this::executeStandardPrompt);
+    private final Operation<String, String> fastOperation = Operation.of(this::executeFastLane);
+    private final Operation<String, String> collectOperation = Operation.of(call ->
+            CompletableFuture.completedFuture(executeCollectBackground(call)));
 
     public OwnerInteractionModule(ReasoningService reasoning, Path stateFile) {
         this(reasoning, stateFile, OwnerInteractionSettings.defaults());
@@ -298,14 +283,7 @@ public final class OwnerInteractionModule {
 
     private static MaterialType<String> textType(String name) {
         return new MaterialType<>(new MaterialTypeId(ID, name), String.class,
-                "text/plain; charset=utf-8", new MaterialCodec<>() {
-                    @Override public byte[] encode(String value) {
-                        return value.getBytes(StandardCharsets.UTF_8);
-                    }
-                    @Override public String decode(byte[] bytes) {
-                        return new String(bytes, StandardCharsets.UTF_8);
-                    }
-                });
+                "text/plain; charset=utf-8", MaterialCodecs.utf8String());
     }
 
     private static ModuleDefinition createDefinition() {

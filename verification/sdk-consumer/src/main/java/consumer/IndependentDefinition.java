@@ -11,7 +11,7 @@ import io.github.didacll.madre.sdk.identity.MaterialTypeId;
 import io.github.didacll.madre.sdk.identity.ModuleId;
 import io.github.didacll.madre.sdk.identity.OperationId;
 import io.github.didacll.madre.sdk.material.Material;
-import io.github.didacll.madre.sdk.material.MaterialCodec;
+import io.github.didacll.madre.sdk.material.MaterialCodecs;
 import io.github.didacll.madre.sdk.material.MaterialType;
 import io.github.didacll.madre.sdk.module.ModuleDefinition;
 import io.github.didacll.madre.sdk.module.ModuleInstance;
@@ -19,9 +19,7 @@ import io.github.didacll.madre.sdk.module.OperationBinding;
 import io.github.didacll.madre.sdk.module.OperationDefinition;
 import io.github.didacll.madre.sdk.module.OperationVisibility;
 import io.github.didacll.madre.sdk.operation.Operation;
-import io.github.didacll.madre.sdk.operation.OperationCall;
 import io.github.didacll.madre.text.TextInferenceCommand;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -51,25 +49,18 @@ public final class IndependentDefinition {
     static ModuleInstance instance(ReasoningService reasoning, String resultPrefix) {
         java.util.Objects.requireNonNull(reasoning, "reasoning");
         String prefix = java.util.Objects.requireNonNull(resultPrefix, "resultPrefix");
-        Operation<String, String> inspect = new Operation<>() {
-            @Override protected java.util.concurrent.CompletionStage<Material<String>> execute(
-                    OperationCall<String, String> call) {
-                return CompletableFuture.completedFuture(material(RESULT,
-                        "private:" + prefix + call.input().payload(), Sensitivity.S4));
-            }
-        };
-        Operation<String, String> reason = new Operation<>() {
-            @Override protected java.util.concurrent.CompletionStage<Material<String>> execute(
-                    OperationCall<String, String> call) {
-                ReasoningRequest<io.github.didacll.madre.text.TextInferenceResult,
-                        TextInferenceCommand> request = ReasoningRequest.immediate(call,
-                                new TextInferenceCommand(call.input().payload(), 32, List.of()),
-                                0, Duration.ofSeconds(5), ReasoningRetryPolicy.none(),
-                                Optional.empty(), ReasoningPreferences.unconstrained());
-                return reasoning.execute(request).thenApply(result -> material(RESULT,
-                        "private:reasoned:" + prefix + result.text(), Sensitivity.S4));
-            }
-        };
+        Operation<String, String> inspect = Operation.of(call ->
+                CompletableFuture.completedFuture(material(RESULT,
+                        "private:" + prefix + call.input().payload(), Sensitivity.S4)));
+        Operation<String, String> reason = Operation.of(call -> {
+            ReasoningRequest<io.github.didacll.madre.text.TextInferenceResult,
+                    TextInferenceCommand> request = ReasoningRequest.immediate(call,
+                            new TextInferenceCommand(call.input().payload(), 32, List.of()),
+                            0, Duration.ofSeconds(5), ReasoningRetryPolicy.none(),
+                            Optional.empty(), ReasoningPreferences.unconstrained());
+            return reasoning.execute(request).thenApply(result -> material(RESULT,
+                    "private:reasoned:" + prefix + result.text(), Sensitivity.S4));
+        });
         return new ModuleInstance(DEFINITION, Map.of(
                 INSPECT, OperationBinding.publicOperation(INSPECT_OPERATION, inspect,
                         IndependentDefinition::publicResult),
@@ -99,13 +90,6 @@ public final class IndependentDefinition {
 
     private static MaterialType<String> textType(String name) {
         return new MaterialType<>(new MaterialTypeId(ID, name), String.class,
-                "text/plain; charset=utf-8", new MaterialCodec<>() {
-                    @Override public byte[] encode(String value) {
-                        return value.getBytes(StandardCharsets.UTF_8);
-                    }
-                    @Override public String decode(byte[] bytes) {
-                        return new String(bytes, StandardCharsets.UTF_8);
-                    }
-                });
+                "text/plain; charset=utf-8", MaterialCodecs.utf8String());
     }
 }
