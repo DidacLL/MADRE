@@ -53,6 +53,7 @@ final class ReasoningArtifactLifecycle {
                     + "expected provider identity: " + destination.getFileName());
         }
 
+        String digest;
         Path staged = ManagedJarFiles.stage(candidateJar, ownerDirectory);
         try {
             ReasoningProviderId stagedId = inspectCandidate(staged, properties);
@@ -60,11 +61,12 @@ final class ReasoningArtifactLifecycle {
                 throw new IllegalStateException("staged reasoning provider identity changed from "
                         + candidateId + " to " + stagedId);
             }
+            digest = ManagedJarFiles.sha256(staged);
             ManagedJarFiles.commit(staged, destination);
         } finally {
             Files.deleteIfExists(staged);
         }
-        return new InstallResult(candidateId, destination, ManagedJarFiles.sha256(destination), replace);
+        return new InstallResult(candidateId, destination, digest, replace);
     }
 
     static UninstallResult uninstall(HostEnvironment host, HostEnvironment.LoadedConfiguration loaded,
