@@ -75,6 +75,8 @@ Owner-local invocation is another receiver boundary. The owner receiving contrac
 
 Reasoning selection is another use: carried request Sensitivity must be able to reach the selected reasoning mechanism's explicit receiving Privacy.
 
+When Module-owned semantic context combines multiple source values before reasoning, the context itself must be represented as actual Material at the combined maximum Sensitivity. The `ReasoningRequest` is then derived structurally from a bounded `OperationCall` over that contextual Material. Historical S4 information combined with a current S2 prompt therefore yields at least S4 contextual Material; no raw carried-Sensitivity override exists.
+
 ## Bounded consequential Operation execution
 
 For one exact EffectProfile:
@@ -90,7 +92,7 @@ Only that EffectProfile contributes Risk and Autonomy. Another profile is an ind
 
 The current public `OperationCall` checks this causal composition before bounded behavior executes. Module-to-Module, owner-local and external/PUBLIC invocation all use the same real `OperationCall`; none may bypass this composition. A host caller supplies only actual non-user causal participants rather than fabricating Integrity values for a user or CLI.
 
-Reasoning computation alone does not justify an EffectProfile. The shipped owner-interaction `standard-prompt` therefore has no profile. Its `fast-lane` profile is justified by durable/persistent write consequences, and its `collect-background` profile is justified by acknowledgement/cleanup consequences rather than by inference.
+Reasoning computation alone does not justify an EffectProfile. Consequential Module behavior does. In the shipped stateful owner-interaction experiment, `standard-prompt` declares `WRITE + LIVE_INTERACTION` because it commits completed conversation state; `fast-lane` declares a write/autonomy profile because it persists independently continuing background work as well as conversation state; and `collect-background` declares its cleanup profile because it acknowledges Kernel work and removes pending Module state. Those profiles are justified by the exact consequences, not by the fact that the Operations request inference.
 
 No Kernel policy authority is involved.
 
