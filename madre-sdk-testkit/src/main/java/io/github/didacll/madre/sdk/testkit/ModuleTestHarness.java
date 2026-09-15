@@ -3,6 +3,7 @@ package io.github.didacll.madre.sdk.testkit;
 import io.github.didacll.madre.sdk.identity.ModuleId;
 import io.github.didacll.madre.sdk.identity.OperationId;
 import io.github.didacll.madre.sdk.material.Material;
+import io.github.didacll.madre.sdk.module.Module;
 import io.github.didacll.madre.sdk.module.ModuleInstance;
 import io.github.didacll.madre.sdk.module.OperationBinding;
 import io.github.didacll.madre.sdk.module.OperationDefinition;
@@ -47,15 +48,14 @@ public final class ModuleTestHarness {
         if (!providerId.equals(exactConfiguration.moduleId())) {
             throw new IllegalArgumentException("Module configuration identity does not match provider");
         }
-        ModuleInstance created = Objects.requireNonNull(
+        Module module = Objects.requireNonNull(
                 exactProvider.create(exactContext, exactConfiguration),
                 "ModuleProvider.create returned null");
-        if (!providerId.equals(created.definition().id())) {
+        if (!providerId.equals(module.id())) {
             throw new IllegalArgumentException(
                     "materialized Module identity does not match ModuleProvider identity");
         }
-        created.validateBindings();
-        return new ModuleTestHarness(created);
+        return new ModuleTestHarness(ModuleInstance.from(module));
     }
 
     public ModuleInstance instance() { return instance; }
