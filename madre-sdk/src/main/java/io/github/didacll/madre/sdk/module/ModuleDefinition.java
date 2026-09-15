@@ -14,7 +14,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 
-/** Canonical immutable declaration of one owner-installed Module. */
+/** Canonical immutable portable declaration of one owner-installed Module. */
 public final class ModuleDefinition {
     private final ModuleId id;
     private final String version;
@@ -23,14 +23,14 @@ public final class ModuleDefinition {
     private final Set<MaterialTypeId> publicMaterialReferences;
     private final Map<AgentId, AgentDefinition> agents;
     private final Map<SkillId, SkillDefinition> skills;
-    private final Map<OperationId, OperationDefinition<?, ?>> operations;
+    private final Map<OperationId, OperationDefinition> operations;
 
     public ModuleDefinition(ModuleId id, String version, String purpose,
             Map<MaterialTypeId, MaterialType<?>> materialTypes,
             Set<MaterialTypeId> publicMaterialReferences,
             Map<AgentId, AgentDefinition> agents,
             Map<SkillId, SkillDefinition> skills,
-            Map<OperationId, OperationDefinition<?, ?>> operations) {
+            Map<OperationId, OperationDefinition> operations) {
         this.id = Objects.requireNonNull(id, "id");
         this.version = requireText(version, "version");
         this.purpose = requireText(purpose, "purpose");
@@ -75,7 +75,7 @@ public final class ModuleDefinition {
     }
 
     private void validateReferences() {
-        for (OperationDefinition<?, ?> operation : operations.values()) {
+        for (OperationDefinition operation : operations.values()) {
             if (!operation.acceptedMaterial().keySet().stream()
                     .allMatch(type -> materialTypes.containsKey(type)
                             || publicMaterialReferences.contains(type))
@@ -108,7 +108,7 @@ public final class ModuleDefinition {
     public Set<MaterialTypeId> publicMaterialReferences() { return publicMaterialReferences; }
     public Map<AgentId, AgentDefinition> agents() { return agents; }
     public Map<SkillId, SkillDefinition> skills() { return skills; }
-    public Map<OperationId, OperationDefinition<?, ?>> operations() { return operations; }
+    public Map<OperationId, OperationDefinition> operations() { return operations; }
 
     /** Derives exact current sensitivity from reachable Material and public promised outputs. */
     public Optional<Sensitivity> effectiveSensitivity(

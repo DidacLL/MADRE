@@ -10,13 +10,13 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
-/** One intrinsically composable call to bounded Module-owned behavior. */
+/** One intrinsically composable typed Java call to bounded Module-owned behavior. */
 public final class OperationCall<I, O> {
-    private final OperationDefinition<I, O> operation;
+    private final OperationDefinition operation;
     private final Optional<EffectProfile> effectProfile;
     private final Material<I> input;
 
-    private OperationCall(OperationDefinition<I, O> operation,
+    private OperationCall(OperationDefinition operation,
             Optional<EffectProfile> effectProfile, Material<I> input,
             List<Integrity> nonUserCausalParticipants) {
         this.operation = Objects.requireNonNull(operation, "operation");
@@ -57,19 +57,19 @@ public final class OperationCall<I, O> {
 
     /** Constructs a call for an Operation that has no consequential execution profile. */
     public static <I, O> OperationCall<I, O> withoutEffect(
-            OperationDefinition<I, O> operation, Material<I> input) {
+            OperationDefinition operation, Material<I> input) {
         return new OperationCall<>(operation, Optional.empty(), input, List.of());
     }
 
     /** Constructs a call for one exact consequential variant and its actual causal values. */
     public static <I, O> OperationCall<I, O> withEffect(
-            OperationDefinition<I, O> operation, EffectProfile effectProfile,
+            OperationDefinition operation, EffectProfile effectProfile,
             Material<I> input, List<Integrity> nonUserCausalParticipants) {
         return new OperationCall<>(operation, Optional.of(effectProfile), input,
                 nonUserCausalParticipants);
     }
 
-    public OperationDefinition<I, O> operation() { return operation; }
+    public OperationDefinition operation() { return operation; }
     public Optional<EffectProfile> effectProfile() { return effectProfile; }
     public Material<I> input() { return input; }
 

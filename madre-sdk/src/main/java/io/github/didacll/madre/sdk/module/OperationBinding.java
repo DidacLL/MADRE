@@ -8,13 +8,13 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletionStage;
 
-/** Executable binding for one exact declared Operation contract. */
+/** Executable Java binding for one exact portable Operation contract. */
 public final class OperationBinding<I, O> {
-    private final OperationDefinition<I, O> definition;
+    private final OperationDefinition definition;
     private final Operation<I, O> implementation;
     private final Optional<PublicResultTransformer<O>> publicResultTransformer;
 
-    private OperationBinding(OperationDefinition<I, O> definition,
+    private OperationBinding(OperationDefinition definition,
             Operation<I, O> implementation,
             Optional<PublicResultTransformer<O>> publicResultTransformer) {
         this.definition = Objects.requireNonNull(definition, "definition");
@@ -25,7 +25,7 @@ public final class OperationBinding<I, O> {
 
     /** Binds a PUBLIC declaration and its mandatory external-boundary transformation. */
     public static <I, O> OperationBinding<I, O> publicOperation(
-            OperationDefinition<I, O> definition, Operation<I, O> implementation,
+            OperationDefinition definition, Operation<I, O> implementation,
             PublicResultTransformer<O> publicResultTransformer) {
         if (Objects.requireNonNull(definition, "definition").visibility()
                 != OperationVisibility.PUBLIC) {
@@ -38,7 +38,7 @@ public final class OperationBinding<I, O> {
 
     /** Binds a PRIVATE declaration that is not invocable through the public runtime port. */
     public static <I, O> OperationBinding<I, O> privateOperation(
-            OperationDefinition<I, O> definition, Operation<I, O> implementation) {
+            OperationDefinition definition, Operation<I, O> implementation) {
         if (Objects.requireNonNull(definition, "definition").visibility()
                 != OperationVisibility.PRIVATE) {
             throw new IllegalArgumentException("a private binding requires a PRIVATE declaration");
@@ -46,7 +46,7 @@ public final class OperationBinding<I, O> {
         return new OperationBinding<>(definition, implementation, Optional.empty());
     }
 
-    public OperationDefinition<I, O> definition() { return definition; }
+    public OperationDefinition definition() { return definition; }
 
     /** Executes inside the owning Module. The Operation owns its single output-validation path. */
     public CompletionStage<Material<O>> invoke(OperationCall<I, O> call) {

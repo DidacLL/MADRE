@@ -11,11 +11,12 @@ import java.util.Objects;
 /**
  * Portable contract for one bounded callable piece of Module behavior.
  *
- * <p>This value is deliberately structural: independently decoded/adapted contracts with the
- * same canonical facts represent the same Operation. Executable Java behavior is attached by
- * {@link OperationBinding}; object identity is never part of the runtime contract.</p>
+ * <p>This value is deliberately language-neutral and structural: independently decoded/adapted
+ * contracts with the same canonical facts represent the same Operation. Java payload typing lives
+ * on {@link OperationBinding}, {@code OperationCall} and {@code Operation}; it is not encoded by
+ * phantom type parameters on this portable contract.</p>
  */
-public final class OperationDefinition<I, O> {
+public final class OperationDefinition {
     private final OperationId id;
     private final String purpose;
     private final OperationVisibility visibility;
@@ -64,7 +65,7 @@ public final class OperationDefinition<I, O> {
 
     @Override public boolean equals(Object other) {
         if (this == other) return true;
-        if (!(other instanceof OperationDefinition<?, ?> that)) return false;
+        if (!(other instanceof OperationDefinition that)) return false;
         return id.equals(that.id)
                 && purpose.equals(that.purpose)
                 && visibility == that.visibility

@@ -53,7 +53,7 @@ public final class ModuleInstance {
                 throw new IllegalArgumentException(
                         "Operation binding key does not match its declaration: " + id);
             }
-            OperationDefinition<?, ?> declared = definition.operations().get(id);
+            OperationDefinition declared = definition.operations().get(id);
             if (!declared.equals(binding.definition())) {
                 throw new IllegalArgumentException(
                         "Operation binding contract differs from the Module declaration: " + id);

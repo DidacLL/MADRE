@@ -11,7 +11,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
-/** Module-owned intelligent actor with learned Skills, owned Workflows and Operations. */
+/** Portable semantic description of one Module-owned intelligent actor. */
 public record AgentDefinition(AgentId id, String purpose, Integrity integrity, Set<SkillId> skills,
         Map<WorkflowId, WorkflowDefinition> workflows, Set<OperationId> operations) {
     public AgentDefinition {
@@ -45,7 +45,7 @@ public record AgentDefinition(AgentId id, String purpose, Integrity integrity, S
         operations = copiedOperations;
     }
 
-    public Privacy effectivePrivacy(Map<OperationId, OperationDefinition<?, ?>> definitions) {
+    public Privacy effectivePrivacy(Map<OperationId, OperationDefinition> definitions) {
         return operations.stream()
                 .map(operationId -> Objects.requireNonNull(definitions.get(operationId),
                         "unresolved Operation " + operationId))
@@ -54,7 +54,7 @@ public record AgentDefinition(AgentId id, String purpose, Integrity integrity, S
     }
 
     public java.util.Optional<Sensitivity> effectiveSensitivity(
-            Map<OperationId, OperationDefinition<?, ?>> definitions) {
+            Map<OperationId, OperationDefinition> definitions) {
         return operations.stream()
                 .map(operationId -> Objects.requireNonNull(definitions.get(operationId),
                         "unresolved Operation " + operationId))

@@ -63,10 +63,10 @@ public interface Module {
             }
         }
 
-        Map<OperationId, OperationDefinition<?, ?>> operationDefinitions = new LinkedHashMap<>();
+        Map<OperationId, OperationDefinition> operationDefinitions = new LinkedHashMap<>();
         for (OperationBinding<?, ?> binding : operations()) {
             OperationBinding<?, ?> value = Objects.requireNonNull(binding, "operation");
-            OperationDefinition<?, ?> definition = value.definition();
+            OperationDefinition definition = value.definition();
             if (operationDefinitions.putIfAbsent(definition.id(), definition) != null) {
                 throw new IllegalArgumentException(
                         "duplicate Operation identity: " + definition.id());
