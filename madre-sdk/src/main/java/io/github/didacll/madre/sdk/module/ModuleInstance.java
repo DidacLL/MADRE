@@ -4,7 +4,7 @@ import io.github.didacll.madre.sdk.identity.OperationId;
 import java.util.Map;
 import java.util.Objects;
 
-/** One installed executable Module: its canonical definition plus all Operation bindings. */
+/** One installed executable Module: its portable definition plus all Operation bindings. */
 public final class ModuleInstance {
     private final ModuleDefinition definition;
     private final Map<OperationId, OperationBinding<?, ?>> operations;
@@ -19,7 +19,7 @@ public final class ModuleInstance {
     public Map<OperationId, OperationBinding<?, ?>> operations() { return operations; }
 
     /**
-     * Validates the executable surface against the exact canonical declarations. Runtime
+     * Validates the executable surface against the canonical portable contracts. Runtime
      * registration invokes this before the Module becomes reachable.
      */
     public void validateBindings() {
@@ -33,9 +33,9 @@ public final class ModuleInstance {
                         "Operation binding key does not match its declaration: " + id);
             }
             OperationDefinition<?, ?> declared = definition.operations().get(id);
-            if (declared != binding.definition()) {
+            if (!declared.equals(binding.definition())) {
                 throw new IllegalArgumentException(
-                        "Operation binding must use the Module's exact canonical declaration: " + id);
+                        "Operation binding contract differs from the Module declaration: " + id);
             }
             if (!id.moduleId().equals(definition.id())) {
                 throw new IllegalArgumentException(
