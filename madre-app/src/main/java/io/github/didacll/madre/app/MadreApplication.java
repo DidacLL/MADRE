@@ -27,7 +27,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
@@ -172,7 +171,7 @@ public final class MadreApplication implements AutoCloseable {
         Objects.requireNonNull(definition, "definition");
         OperationSelection selection = operationSelection(operationSpec);
         ModuleId moduleId = definition.id();
-        OperationDefinition<?, ?> operation = definition.operations().get(
+        OperationDefinition operation = definition.operations().get(
                 new OperationId(moduleId, selection.operationName()));
         if (operation == null || operation.visibility() != OperationVisibility.PUBLIC) {
             throw new IllegalArgumentException("PUBLIC Operation is not installed: "
@@ -214,12 +213,10 @@ public final class MadreApplication implements AutoCloseable {
 
     @SuppressWarnings("unchecked")
     private CompletionStage<Material<?>> invokeExact(InvocationBoundary boundary,
-            OperationDefinition<?, ?> operation, Material<?> input,
+            OperationDefinition operation, Material<?> input,
             Optional<String> effectProfileName) {
-        OperationDefinition<Object, Object> typedOperation =
-                (OperationDefinition<Object, Object>) operation;
         Material<Object> typedInput = (Material<Object>) input;
-        OperationCall<Object, Object> call = operationCall(typedOperation, typedInput,
+        OperationCall<Object, Object> call = operationCall(operation, typedInput,
                 effectProfileName);
         CompletionStage<Material<Object>> result = switch (boundary) {
             case PUBLIC -> kernel.modules().invokePublic(call);
@@ -229,16 +226,16 @@ public final class MadreApplication implements AutoCloseable {
     }
 
     private static <I, O> OperationCall<I, O> operationCall(
-            OperationDefinition<I, O> operation, Material<I> input,
+            OperationDefinition operation, Material<I> input,
             Optional<String> effectProfileName) {
         Optional<EffectProfile> selected = selectedEffectProfile(operation, effectProfileName);
         if (selected.isEmpty()) return OperationCall.withoutEffect(operation, input);
         return OperationCall.withEffect(operation, selected.orElseThrow(), input, List.of());
     }
 
-    private static Optional<EffectProfile> selectedEffectProfile(OperationDefinition<?, ?> operation,
+    private static Optional<EffectProfile> selectedEffectProfile(OperationDefinition operation,
             Optional<String> effectProfileName) {
-        Map<?, EffectProfile> profiles = operation.effectProfiles();
+        var profiles = operation.effectProfiles();
         if (profiles.isEmpty()) {
             if (effectProfileName.isPresent()) {
                 throw new IllegalArgumentException("Operation has no EffectProfile: "
@@ -335,6 +332,6 @@ public final class MadreApplication implements AutoCloseable {
 
     private record OperationSelection(String operationName, Optional<String> effectProfileName) { }
 
-    record ResolvedTextOperation(OperationDefinition<?, ?> operation, MaterialType<?> inputType,
+    record ResolvedTextOperation(OperationDefinition operation, MaterialType<?> inputType,
             Optional<String> effectProfileName) { }
 }
