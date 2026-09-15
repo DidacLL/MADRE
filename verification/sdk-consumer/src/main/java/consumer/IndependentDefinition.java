@@ -14,7 +14,6 @@ import io.github.didacll.madre.sdk.material.Material;
 import io.github.didacll.madre.sdk.material.MaterialCodecs;
 import io.github.didacll.madre.sdk.material.MaterialType;
 import io.github.didacll.madre.sdk.module.Module;
-import io.github.didacll.madre.sdk.module.ModuleInstance;
 import io.github.didacll.madre.sdk.module.OperationBinding;
 import io.github.didacll.madre.sdk.module.OperationDefinition;
 import io.github.didacll.madre.sdk.module.OperationVisibility;
@@ -64,8 +63,8 @@ public final class IndependentDefinition implements Module {
                 IndependentDefinition::publicResult);
     }
 
-    static ModuleInstance instance(ReasoningService reasoning, String resultPrefix) {
-        return new IndependentDefinition(reasoning, resultPrefix).instance();
+    static Module create(ReasoningService reasoning, String resultPrefix) {
+        return new IndependentDefinition(reasoning, resultPrefix);
     }
 
     @Override public ModuleId id() { return ID; }
