@@ -23,7 +23,6 @@ import io.github.didacll.madre.sdk.module.ModuleInstance;
 import io.github.didacll.madre.sdk.module.OperationBinding;
 import io.github.didacll.madre.sdk.module.OperationDefinition;
 import io.github.didacll.madre.sdk.module.OperationVisibility;
-import io.github.didacll.madre.sdk.operation.ModuleInvoker;
 import io.github.didacll.madre.sdk.operation.Operation;
 import io.github.didacll.madre.sdk.operation.OperationCall;
 import java.nio.charset.StandardCharsets;
@@ -163,30 +162,31 @@ final class LiveModuleRegistryTest {
         assertEquals(ordinaryOwner.sensitivity(), coreOwner.sensitivity());
     }
 
-    @Test void registrationRejectsMissingUndeclaredAndMismatchedBindings() {
+    @Test void moduleAssemblyRejectsMissingUndeclaredAndMismatchedBindings() {
         Fixture fixture = fixture();
-        LiveModuleRegistry registry = new LiveModuleRegistry();
-        assertThrows(IllegalArgumentException.class, () -> registry.register(
-                new ModuleInstance(fixture.definition(), Map.of())));
+        Map<MaterialTypeId, MaterialType<?>> types = Map.of(
+                fixture.input().id(), fixture.input(), fixture.output().id(), fixture.output());
+        assertThrows(IllegalArgumentException.class, () ->
+                new ModuleInstance(fixture.definition(), types, Map.of()));
 
-        OperationDefinition<String, String> impostor = new OperationDefinition<>(
+        OperationDefinition impostor = new OperationDefinition(
                 fixture.publicOperation().id(), "Impostor", OperationVisibility.PUBLIC,
                 fixture.publicOperation().acceptedMaterial(),
                 fixture.publicOperation().producedMaterial(), Map.of());
         OperationBinding<String, String> impostorBinding = OperationBinding.publicOperation(
                 impostor, fixture.implementation(), fixture.transformer());
-        assertThrows(IllegalArgumentException.class, () -> registry.register(
-                new ModuleInstance(fixture.definition(), Map.of(impostor.id(), impostorBinding))));
+        assertThrows(IllegalArgumentException.class, () -> new ModuleInstance(
+                fixture.definition(), types, Map.of(impostor.id(), impostorBinding)));
 
         OperationId undeclaredId = new OperationId(fixture.moduleId(), "undeclared");
-        OperationDefinition<String, String> undeclared = new OperationDefinition<>(undeclaredId,
+        OperationDefinition undeclared = new OperationDefinition(undeclaredId,
                 "Undeclared", OperationVisibility.PUBLIC,
                 Map.of(fixture.input().id(), Privacy.UNKNOWN),
                 Map.of(fixture.output().id(), Sensitivity.S4), Map.of());
         OperationBinding<String, String> undeclaredBinding = OperationBinding.publicOperation(
                 undeclared, fixture.implementation(), fixture.transformer());
-        assertThrows(IllegalArgumentException.class, () -> registry.register(
-                new ModuleInstance(fixture.definition(), Map.of(undeclaredId, undeclaredBinding))));
+        assertThrows(IllegalArgumentException.class, () -> new ModuleInstance(
+                fixture.definition(), types, Map.of(undeclaredId, undeclaredBinding)));
     }
 
     @Test void invocationRejectsPrivateAndForgedCallsAtAllReceiverBoundaries() {
@@ -205,7 +205,7 @@ final class LiveModuleRegistryTest {
         assertThrows(IllegalArgumentException.class,
                 () -> registry.invokerFor(callerId).invoke(privateCall));
 
-        OperationDefinition<String, String> forged = new OperationDefinition<>(
+        OperationDefinition forged = new OperationDefinition(
                 fixture.publicOperation().id(), "Forged call", OperationVisibility.PUBLIC,
                 fixture.publicOperation().acceptedMaterial(),
                 fixture.publicOperation().producedMaterial(), Map.of());
@@ -218,10 +218,12 @@ final class LiveModuleRegistryTest {
 
     @Test void publicBoundaryRejectsTransformerThatReturnsRawOrNonPublicMaterial() {
         Fixture fixture = fixture();
+        Map<MaterialTypeId, MaterialType<?>> types = Map.of(
+                fixture.input().id(), fixture.input(), fixture.output().id(), fixture.output());
         LiveModuleRegistry rawRegistry = new LiveModuleRegistry();
         OperationBinding<String, String> rawBinding = OperationBinding.publicOperation(
                 fixture.publicOperation(), fixture.implementation(), internal -> internal);
-        rawRegistry.register(new ModuleInstance(fixture.definition(),
+        rawRegistry.register(new ModuleInstance(fixture.definition(), types,
                 Map.of(fixture.publicOperation().id(), rawBinding)));
         Material<String> input = new Material<>(new MaterialId(fixture.moduleId(), "input"),
                 fixture.input(), "secret", Sensitivity.S2);
@@ -235,7 +237,7 @@ final class LiveModuleRegistryTest {
                 fixture.publicOperation(), fixture.implementation(), internal ->
                         new Material<>(new MaterialId(fixture.moduleId(), "new-sensitive"),
                                 fixture.output(), internal.payload(), Sensitivity.S2));
-        sensitiveRegistry.register(new ModuleInstance(fixture.definition(),
+        sensitiveRegistry.register(new ModuleInstance(fixture.definition(), types,
                 Map.of(fixture.publicOperation().id(), sensitiveBinding)));
         assertThrows(java.util.concurrent.CompletionException.class,
                 () -> sensitiveRegistry.invokePublic(call).toCompletableFuture().join());
@@ -256,7 +258,7 @@ final class LiveModuleRegistryTest {
         MaterialType<String> output = new MaterialType<>(new MaterialTypeId(moduleId, "output"),
                 String.class, "text/plain", STRINGS);
         OperationId publicId = new OperationId(moduleId, "receive");
-        OperationDefinition<String, String> publicOperation = new OperationDefinition<>(publicId,
+        OperationDefinition publicOperation = new OperationDefinition(publicId,
                 "Receive text", OperationVisibility.PUBLIC,
                 Map.of(input.id(), Privacy.UNKNOWN), Map.of(output.id(), outputSensitivity), Map.of());
         Operation<String, String> implementation = new Operation<>() {
@@ -271,12 +273,12 @@ final class LiveModuleRegistryTest {
                 internal -> new Material<>(new MaterialId(moduleId,
                         "external-" + internal.id().value()), output,
                         internal.payload().replaceFirst("^internal:", "public:"), Sensitivity.S1);
-        Map<OperationId, OperationDefinition<?, ?>> declarations;
+        Map<OperationId, OperationDefinition> declarations;
         Map<OperationId, OperationBinding<?, ?>> bindings;
-        OperationDefinition<String, String> privateOperation = null;
+        OperationDefinition privateOperation = null;
         if (includePrivate) {
             OperationId privateId = new OperationId(moduleId, "private");
-            privateOperation = new OperationDefinition<>(privateId, "Private text",
+            privateOperation = new OperationDefinition(privateId, "Private text",
                     OperationVisibility.PRIVATE, Map.of(input.id(), Privacy.UNKNOWN),
                     Map.of(output.id(), outputSensitivity), Map.of());
             declarations = Map.of(publicId, publicOperation, privateId, privateOperation);
@@ -290,24 +292,26 @@ final class LiveModuleRegistryTest {
         }
         AgentId agentId = new AgentId(moduleId, "interaction");
         ModuleDefinition definition = new ModuleDefinition(moduleId, "1", "Ordinary module",
-                Map.of(input.id(), input, output.id(), output), Set.of(),
+                Map.of(input.id(), input.definition(), output.id(), output.definition()), Set.of(),
                 Map.of(agentId, new AgentDefinition(agentId, "Interaction", Integrity.I5,
                         Set.of(), Map.of(), declarations.keySet())),
                 Map.of(), declarations);
+        Map<MaterialTypeId, MaterialType<?>> types = Map.of(
+                input.id(), input, output.id(), output);
         return new Fixture(moduleId, input, output, publicOperation, privateOperation,
                 implementation, transformer, definition,
-                new ModuleInstance(definition, bindings));
+                new ModuleInstance(definition, types, bindings));
     }
 
     private static ModuleInstance receiver(ModuleId moduleId, Set<MaterialTypeId> references) {
         ModuleDefinition definition = new ModuleDefinition(moduleId, "1", "Receiving module",
                 Map.of(), references, Map.of(), Map.of(), Map.of());
-        return new ModuleInstance(definition, Map.of());
+        return new ModuleInstance(definition, Map.of(), Map.of());
     }
 
     private record Fixture(ModuleId moduleId, MaterialType<String> input,
-            MaterialType<String> output, OperationDefinition<String, String> publicOperation,
-            OperationDefinition<String, String> privateOperation,
+            MaterialType<String> output, OperationDefinition publicOperation,
+            OperationDefinition privateOperation,
             Operation<String, String> implementation,
             io.github.didacll.madre.sdk.module.PublicResultTransformer<String> transformer,
             ModuleDefinition definition, ModuleInstance instance) { }
