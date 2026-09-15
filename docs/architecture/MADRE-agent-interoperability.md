@@ -1,207 +1,174 @@
 # MADRE Module SDK and Interoperability
 
-## Public object model
+This document defines the public Module programming boundary. `MADRE.md` remains authoritative for product meaning; the Security Algebra document defines the algebra itself.
 
-The SDK is a public Java 21 library under the Owner's namespace. It contains immutable objects with nominal identities and constructor-enforced invariants.
+## Programming model
 
-The core Module model is:
+A MADRE Module is an owner-installed semantic/application boundary implemented with ordinary software. A Java Module does not begin as a metadata graph: the executable `Module` object is the Java author's source of truth and MADRE derives a portable description from it.
 
-- `ModuleDefinition`: identity, version, declared Material types, Agents, Module-provided Skills, Operations and references to public Material type declarations owned by other Modules;
-- `ModuleInstance`: one executable installation of the canonical definition plus exact executable binding for every declared Operation;
-- `AgentDefinition`: identity, purpose, applicable Integrity, learned Skills, owned Workflows and exposed Operations;
-- `SkillDefinition`: reusable Module-provided ability, knowledge or instruction;
-- `WorkflowDefinition`: Agent-owned semantic behavior, currently an ordered sequence of Operations;
-- `OperationDefinition`: one bounded callable Module behavior, accepted Material/Privacy, produced Material/maximum Sensitivity and applicable EffectProfiles;
-- `OperationBinding`: exact executable implementation of one canonical Operation declaration, including the external/PUBLIC result transformation for `PUBLIC` behavior;
-- `EffectProfile`: one consequential Operation variant with Risk and Autonomy;
-- `MaterialType<T>` and `Material<T>`: Module-owned semantic values.
+The execution-side Java model is:
 
-Module, Agent, Operation, Skill, Workflow, EffectProfile, Material and MaterialType use nominal identity types where real independent identity exists. Definitions reject unknown/conflicting references; executable Module instances additionally reject missing, undeclared, foreign or non-canonical Operation bindings.
+- `Module`: one semantic/application owner;
+- `Agent`: optional Module-owned intelligent semantic actor;
+- `MaterialType<T>` / `Material<T>`: Java typed semantic values;
+- `Operation<I,O>`: executable bounded behavior;
+- `OperationBinding<I,O>`: one exact executable binding and, for external/PUBLIC behavior, the Module-owned public result transformation;
+- `OperationCall<I,O>`: one bounded typed Java invocation.
 
-`ModuleDefinition.publicMaterialReferences` names public type declarations owned elsewhere; `public` in this name does not classify all values of that type as S1. The same declaration is the structural opt-in that permits an installed Module receiver to accept contract-valid Material of that foreign type, subject to the fixed `Privacy.MODULE` receiving boundary.
+The portable description model is:
 
-## Executable Module boundary
+- `ModuleDefinition`;
+- `AgentDefinition`;
+- `MaterialTypeDefinition`;
+- `OperationDefinition`;
+- `SkillDefinition`;
+- `WorkflowDefinition`;
+- `EffectProfile`.
 
-A Module is a complete application/domain boundary implemented with ordinary Java. An Operation is one bounded callable function of that application. Definitions contain no executable class names, scripts, prompts, provider payloads or arbitrary metadata bags.
+The distinction is intentional. Portable descriptions contain semantic/security facts needed for discovery, composition, adapters and validation. They do not encode Java classes, codecs, executable class names, prompts, scripts or arbitrary metadata bags.
 
-Runtime behavior is bound through responsibility-specific SDK interfaces:
+`Module.definition()` projects the portable `ModuleDefinition`. `Module.instance()` creates the validated runtime `ModuleInstance` joining that portable contract to exact Java Material and Operation bindings. `ModuleInstance` is runtime/adaptor assembly, not the primary Java authoring API.
 
-- `Operation<I,O>` implements one bounded declared Operation;
-- `ModuleInstance` associates one `ModuleDefinition` with exact executable bindings;
-- `ModuleProvider` declares one canonical installable `ModuleId` and materializes that executable Module from `ModuleContext` plus identity-scoped `ModuleProviderConfiguration`;
-- `ModuleRegistration` registers executable Module behavior;
-- `ModuleDirectory` exposes currently reachable `PUBLIC` declarations through a caller-bound facade;
-- `ModuleInvoker` invokes an exact installed `PUBLIC` Operation with another installed Module as the receiver;
-- `PublicModuleInvoker` is the host-side external/PUBLIC invocation port that requires semantic public transformation;
-- `OwnerModuleInvoker` is the host/application owner-local invocation port over an exact installed externally callable Operation;
-- `ReasoningService` is the Module-facing port only for reasoning work.
+## Portable types versus Java typing
 
-There is no universal `receive` method, Agent loop, assistant turn, planner, policy engine, workflow interpreter, interaction surface or generic Kernel action dispatcher.
+`OperationDefinition` is language-neutral and deliberately non-generic. Its facts are Operation identity/purpose/visibility, accepted Material type to receiving Privacy, produced Material type to maximum Sensitivity, and declared EffectProfiles.
 
-Ordinary application I/O stays inside Module behavior unless a concrete shared-Kernel responsibility is established. In particular, search is not required to route through Kernel.
+Java `I,O` payload typing belongs to `Operation<I,O>`, `OperationCall<I,O>` and `OperationBinding<I,O>`, where actual Java values exist. A remotely decoded Operation contract therefore does not pretend to know Java payload classes.
 
-## Module installation and discovery
+Likewise, `MaterialTypeDefinition` contains only nominal `MaterialTypeId` plus content type. Java `MaterialType<T>` adds `Class<T>` and `MaterialCodec<T>` as execution bindings. `ModuleDefinitionJsonCodec` format version 2 serializes the portable description without needing a Java Material resolver.
 
-An installable Module is an ordinary JVM JAR containing a Java service provider for `ModuleProvider`. MADRE discovers JARs from the configured Module directory using JDK class-loading and `ServiceLoader` APIs.
+This separation permits language-neutral discovery/adapters while retaining strong Java typing at executable boundaries.
 
-Shipped and independently built Modules use the same provider/registration route. Bundling, process placement, class-loader placement and CORE assignment confer no privilege.
+## Module and Agent authorship
 
-The independent verification Module is built in a separate Gradle build against published MADRE artifacts. CI installs its JAR into a built distribution, discovers it and invokes its public Operation on both Windows and Linux.
+A Module may contain zero Agents. Agent is used only when the Module genuinely owns an intelligent semantic actor; it is not a mandatory wrapper around application code.
 
-A separate `verification/module-interoperability` Gradle build produces an independently compiled caller JAR and callee JAR. Both depend only on the published SDK. CI installs both into the built distribution and exercises real in-process Module-to-Module composition on Windows and Linux.
+An Agent defines no universal receive loop, planner, memory model, prompt format, tool loop or execution context. Its current public semantic facts are identity, purpose, Integrity, Skills, Workflows and exposed Operations. An unproven Java Agent defaults to `Integrity.I1`, the lowest ordinary value, rather than inventing stronger assurance. Stronger Integrity is an explicit claim that must be justified by the implementation context.
 
-## Module provider configuration contract
+`SkillDefinition` is lightweight Module-provided semantic ability/knowledge/instruction metadata. `WorkflowDefinition` is currently an Agent-owned ordered Operation description. Kernel does not interpret it as a scheduler or planner language.
 
-`ModuleProvider` has two installation responsibilities that are deliberately public and small:
+Unknown or experimental behavior remains valid software. Lack of semantic proof reduces the trust/composability claims the Module should make; it is not a reason to fabricate certainty or to make arbitrary local code impossible.
+
+## Module provider boundary
+
+One installable Module artifact exposes a `ModuleProvider` through Java `ServiceLoader`.
+
+Its stable responsibilities are:
 
 ```text
 moduleId() -> canonical ModuleId
-create(ModuleContext, ModuleProviderConfiguration) -> ModuleInstance
+configurationDescriptor() -> owner-facing installation metadata
+validateConfiguration(configuration) -> validated/canonicalized same-identity configuration
+create(context, configuration) -> executable Module
 ```
 
-The declared identity is used before materialization. It is not derived from provider class name, JAR name, service discovery order, bundled/shipped status or CORE assignment. The returned `ModuleInstance.definition().id()` must equal the declared identity.
+`ModuleProvider.create(...)` returns the executable Module. Host/testkit code derives and validates the `ModuleInstance`. The materialized Module identity must equal the provider identity.
 
-`ModuleProviderConfiguration` is immutable and carries exactly one `ModuleId` plus read-only string key/value settings. It is not a schema language, secret store, dependency-injection container, account/session model or dynamic configuration service. The SDK imposes no Module-specific key names.
+Provider configuration is immutable and identity-scoped. The host does not know Module-specific setting keys or semantic meaning. Configuration metadata is not part of Module semantic definitions or Security Algebra.
 
-Application properties use the generic form:
+Duplicate provider identities, configuration for an uninstalled identity, provider/materialized identity mismatch and invalid runtime assemblies fail before semantic use.
+
+## Runtime assembly invariants
+
+`ModuleInstance` validates by construction that:
+
+- Java Material bindings exactly match the portable Material declarations;
+- every Java Material binding is owned by the Module;
+- executable Operation bindings exactly match the portable Operations;
+- every executable binding is owned by the Module;
+- no declared executable Operation is missing and no undeclared binding is present.
+
+The live registry can therefore treat a received `ModuleInstance` as a valid assembly and focus on registration/reachability/invocation responsibility.
+
+`Material` construction itself validates ordinary Sensitivity, Java payload compatibility and that `MaterialId` and `MaterialTypeId` belong to the same Module. Operation output validation remains separate: the result type must be declared by the Operation, owned by its Module and no more sensitive than the declared maximum.
+
+## Caller-bound Module composition
+
+`ModuleContext` contains caller-bound `ModuleDirectory` and `ModuleInvoker` ports. It contains neither owner-local nor external/PUBLIC host invocation authority.
+
+The caller identity is bound by installation/runtime assembly. `ReachabilityQuery` does not contain a caller identity or receiver Privacy. `ModuleInvoker.invoke(...)` receives only the exact bounded `OperationCall`. Module code therefore cannot forge its caller identity or choose a weaker receiver boundary.
+
+Directory reachability exposes only installed `PUBLIC` Operations compatible with the offered Material. `PRIVATE` Operations remain Module-internal.
+
+The Module-to-Module receiver is fixed at `Privacy.MODULE`. A successful result crosses unchanged only when:
 
 ```text
-modules.config[<canonical ModuleId>].<module-owned-key>=<value>
+caller declares the returned foreign Material type in publicMaterialReferences
+and returned Sensitivity can reach Privacy.MODULE
 ```
 
-The exact identity appears between `[` and `]`. This delimiter is safe for every valid current `ModuleId`: the identity grammar permits letters, digits, dots, dashes and underscores but not square brackets. Consequently dotted identities are never split into guessed namespace segments, and identities that are prefixes of other identities remain independent.
+The exact callee Material identity, owner, type and Sensitivity are preserved. The caller may then create a new caller-owned Material representing its own interpretation.
 
-`madre-app` extracts only this generic namespace and hands each installed provider the keys inside its exact identity scope. Each provider owns supported-key validation, value parsing, typed configuration and omitted-value defaults. A key for an uninstalled Module identity is a startup error rather than an ignored typo.
+This is ordinary installed application composition. It is not external publication and does not run the external/PUBLIC result transformer.
 
-Provider identities are canonicalized before any materialization. Duplicate provider identities fail before provider code runs. For each canonical provider identity the application obtains a Module-specific `ModuleContext`; the runtime binds that exact identity into the supplied `ModuleDirectory` and `ModuleInvoker`. Providers are materialized in canonical identity order and every returned instance validates its bindings before registration begins. A materialized identity mismatch is rejected, so a provider cannot turn a context bound for one identity into authority for another installed Module. Materialization/configuration failure leaves no Module registered. If registration later fails, already-created registrations are closed in reverse order.
+## Owner-local and external/PUBLIC receivers
 
-CORE and local interaction presentation are not inputs to this contract. Changing `roles.core` or adding/removing `interaction.*` cannot change which Module configuration is delivered or which caller identity is bound into a Module context.
+The host owns two different invocation ports in addition to Module-to-Module composition.
 
-The independently compiled `verification/sdk-consumer` consumes the contract directly and changes its observable `phd.module/inspect` output when `modules.config[phd.module].result-prefix` is present. With that configuration omitted it preserves the previous output exactly. It has no `madre-app` or Kernel implementation dependency.
+Owner-local invocation resolves an installed externally callable Operation, executes the canonical bounded call and returns the valid Module-created Material unchanged. It does not lower Sensitivity because the receiver is local, shipped, CORE or same-process.
 
-## Canonical Operation execution
+External/PUBLIC invocation additionally requires the Module's `PublicResultTransformer`. The transformer must create a new declared Material with new nominal identity and Sensitivity capable of reaching `Privacy.PUBLIC`. Runtime validates that transformation but does not invent it.
 
-`OperationBinding.invoke` accepts only an `OperationCall` that references the exact installed canonical declaration. The Module-owned implementation executes, then the internal result is contract-validated before any receiver-specific boundary: output Material type must be declared, its owner must be the Operation's Module, and its Sensitivity must not exceed the declared maximum.
-
-A real `OperationCall` structurally enforces accepted Material/Privacy, exact EffectProfile selection where applicable and causal Integrity composition before bounded behavior executes. Host adapters and Module invokers do not replace this call with a weaker convenience envelope.
-
-## Module-to-Module receiver boundary
-
-`ModuleContext` contains a caller-bound `ModuleDirectory` and `ModuleInvoker`. It contains neither `OwnerModuleInvoker` nor `PublicModuleInvoker`, and it never exposes the concrete live registry.
-
-Caller identity is established by installation/runtime assembly. `ReachabilityQuery` contains only the Material type and Sensitivity being offered; it contains no `ModuleId` field. `ModuleInvoker.invoke` contains only the exact `OperationCall`; it contains no caller-identity or receiver-Privacy argument. The bound facade therefore supplies the actual calling Module identity structurally rather than trusting Module code to claim one.
-
-Directory reachability still applies the target Operation's declared accepted-Material Privacy and only exposes `PUBLIC` Operations. A caller may offer one of its own Material types, or a foreign Material type already declared by its canonical `publicMaterialReferences` and able to reach the Module receiver boundary. `PRIVATE` Operations are never returned.
-
-For invocation, the live registry resolves the exact installed target binding and rejects non-canonical or `PRIVATE` calls. The callee Operation executes through ordinary `OperationBinding.invoke`, not `invokePublic`, so its contract-valid internal Material is not semantically rewritten merely because another installed Module called it.
-
-Before completing the caller-facing stage, the registry verifies that the calling Module's canonical `publicMaterialReferences` contains the returned foreign Material type and that the returned Sensitivity can reach the fixed Module receiver Privacy:
+The three boundaries therefore remain distinct:
 
 ```text
-returned type is declared by caller as a foreign reference
-and returned Sensitivity <= Privacy.MODULE
+Module receiver  -> fixed Privacy.MODULE, no public transform
+Owner-local      -> host-only, valid Material unchanged
+External/PUBLIC  -> host-only, explicit Module-owned public transform
 ```
 
-The calling Module cannot supply or relax that Privacy value. If the check succeeds, the exact callee Material object crosses the receiver boundary with the same identity, owner and Sensitivity. If the type is undeclared or the value is S5, the stage fails before Material is exposed to caller code. The caller may then semantically interpret that foreign Material and create a new caller-owned Material with a new identity and an explicit Sensitivity.
+CORE assignment changes none of them.
 
-This is ordinary installed application composition, not owner-local authority and not external/public disclosure. It introduces no new Operation visibility, Security Algebra value, policy evaluator, transport or CORE privilege.
+## Security Algebra responsibility
 
-## Owner-local invocation boundary
+Security Algebra attaches only where responsibility applies. Material carries Sensitivity; accepted Operation inputs carry receiving Privacy; Agent carries/derives causal Integrity; consequential Operation variants carry Risk and Autonomy; reasoning mechanisms declare receiving Privacy.
 
-`OwnerModuleInvoker.invokeOwner` resolves the exact installed Module and canonical Operation binding. It is a host/application receiver boundary for the owner using the local MADRE installation.
+The algebra governs MADRE-mediated semantic information/effect composition. It is not a general sandbox for installed Java code and does not infer values from locality, endpoint, provider, model, process, classloader placement, shipped status or CORE role.
 
-Only Operations declared `PUBLIC` are owner-callable. `PRIVATE` remains Module-internal; owner locality does not confer implementation authority.
+The Owner explicitly chooses software to install. Such software can perform ordinary application/OS behavior inside its responsibility. MADRE's contracts constrain what enters the MADRE composition model; they do not pretend to make arbitrary installed code safe.
 
-The owner-local route executes the canonical `OperationCall`, returns the contract-valid Material created by the Module and does not call `PublicResultTransformer`. Result Sensitivity is not lowered merely because the owner receives it locally. No Privacy value is inferred from localhost, same-process execution, class-loader placement, shipped placement or CORE assignment.
+## Reasoning boundary
 
-`OwnerModuleInvoker` is deliberately not present in `ModuleContext`. Installed Modules receive only their caller-bound Module receiver ports plus reasoning and state-directory access. Application assembly never hands Module code the owner-local host port.
+Bounded Module behavior creates a typed `ReasoningComputation<R>` and `ReasoningRequest` from an existing valid `OperationCall`.
 
-The current application/console generic adapter decodes input through the exact installed `MaterialType` codec and constructs the canonical call. An Operation with no EffectProfile uses `OperationCall.withoutEffect`. A single declared EffectProfile can be selected without extra ceremony; if multiple variants exist the generic selector uses `<operation>@<effect-profile>`. The host supplies only actual non-user causal participants and does not ask a user to invent Integrity values.
+The request derives originating Module and carried Sensitivity structurally from that call. It carries only reasoning computation plus execution controls such as priority, timeout, eligibility, cancellation, retry and typed preferences. It does not contain semantic continuation, Material identity/type, Agent/Workflow identity, concrete mechanism identity or Operation Risk.
 
-## Application-local interaction presentation
+If several semantic values are combined before reasoning, the Module must create the actual combined/contextual Material with the combined Sensitivity and derive the reasoning request from a call over that Material. The SDK provides no arbitrary carried-Sensitivity override.
 
-Convenient local text interaction is deliberately not part of the SDK contract. `madre-app` owns an optional immutable presentation binding that maps console conventions onto the existing installed canonical Operation machinery.
+Kernel owns compatible reasoning selection, resources, immediate/durable execution, retry/cancellation and opaque persistence. Module owns semantic interpretation, association and continuation. Provider/adapter owns concrete mechanism/model/runtime tuning.
 
-The binding is configured with nominal installed identities in `interaction.*`. Resolution happens after Module discovery and reuses the generic operation/profile-selection rules. It validates that the configured Module exists; each configured Operation exists and is `PUBLIC`; each configured input Material type is Module-owned, declared and accepted; prompt/update Sensitivities are ordinary and reachable at the exact receiving Privacy; and all input and declared output Material used by the presentation are String/text types. A configured update path also requires its complete operation/material/payload/sensitivity tuple and validates that the payload decodes through the configured Material codec. Invalid bindings fail application startup.
+## Durable interpretation
 
-This validation is intentionally local to one presentation binding. It is not Module certification, a role hierarchy or a new SDK base type. `madre-app` production Java contains no concrete owner-interaction implementation reference or hard-coded shipped owner-interaction Module, Operation, Material, EffectProfile identity or configuration field. The shipped example configuration may name those identities and Module-owned settings as installation policy.
+Durable Kernel work is physical reasoning state. Domain meaning of that work remains Module-owned.
 
-When configured, ordinary non-command console text passes through the same canonical decode/call path and then `OwnerModuleInvoker`, so it remains owner-local. `/standard` is another configured owner-local mapping. `/updates` invokes only the configured Module-specific Operation; it does not expose Kernel result bytes or move interpretation into the application. The application performs no destructive update polling.
+The shipped owner-interaction Module demonstrates this split: it keeps its WorkId-to-semantic pending association, Kernel keeps opaque durable reasoning work, and the Module later interprets a completed result into its own Material before acknowledgement/removal.
 
-The current prompt Sensitivity is explicit console state initialized from configuration. `/sensitivity S1..S5` changes it explicitly; no automatic classifier is implied and `SYSTEM_RESERVED` remains rejected. Returned owner-local Material is rendered at its actual Sensitivity.
+There is no generic Kernel callback/continuation object, semantic result router or workflow scheduler.
 
-The generic `/invoke-owner` and `/invoke-public` paths remain distinct and available. Ordinary text does not alias PUBLIC. The legacy `/invoke` alias remains PUBLIC. With no configured interaction binding, the generic console remains the complete application surface.
+## Owner interaction and CORE
 
-`interaction.module` and `roles.core` are independent. CORE does not supply the owner-local port and is not consulted by binding resolution. A Module's use as the local presentation target therefore creates no Module-facing authority or subtype. Neither setting changes the provider configuration delivered to that Module.
+CORE is an optional installation role assigned to one ordinary installed Module. It is expected to be an important owner-facing/coordinator reference consumer, but it has no private runtime authority.
 
-## External/PUBLIC Operation boundary
+The current `interaction.*` console binding is independent from `roles.core`. This is a transitional product arrangement, not a universal SDK contract. The console may map ordinary text, `/standard` or `/updates` onto configured installed Operations, but the semantic behavior remains Module-owned.
 
-`PublicModuleInvoker.invokePublic` is the host-side external/public receiver boundary. It resolves the installed Module and exact canonical Operation binding. Missing Modules, undeclared bindings, forged/non-canonical calls and private Operations are rejected.
+The shipped owner-interaction Module is currently still single-turn for foreground reasoning. Its code-first conversion does not constitute a generic conversation/memory design.
 
-A `PUBLIC` binding must provide a Module-owned `PublicResultTransformer`. Internal result Material is validated first; before crossing the external boundary, the transformer must create new declared Material with a new nominal identity and Sensitivity able to reach `Privacy.PUBLIC`.
+## Installation/discovery
 
-The transformed Material must still satisfy declared output type, owner and maximum Sensitivity. Returning raw internal Material or a replacement that remains too sensitive is rejected.
+A Module is currently an ordinary JVM JAR with one canonical `ModuleProvider` for managed installation. Shipped and independently built Modules use the same provider/registration path; bundling, classloader placement and CORE status confer no privilege.
 
-Semantic transformation remains Module behavior. Runtime enforcement only prevents bypass of the external/public boundary. Module-to-Module and owner-local invocation never transform first and attempt to reconstruct sensitive information later; all three receiver boundaries execute the same bounded Operation contract but apply the receiver semantics that actually correspond to that call.
+Managed lifecycle distinguishes shipped, lifecycle-managed owner, manual direct-placement and development override sources. Artifact administration is a host responsibility and is absent from `ModuleContext`.
 
-## Independent installed interoperability proof
+## Independent interoperability proof
 
-`verification/module-interoperability/callee` and `verification/module-interoperability/caller` are separate Gradle subprojects built against `io.github.didacll:madre-sdk` from the isolated published repository. They import neither `madre-app` nor Kernel implementation classes and are installed as separate ServiceLoader JARs into the built distribution.
+`verification/sdk-consumer` builds independently against published public artifacts and now implements the same code-first `Module` contract used by shipped Modules. It exercises stable testkit and heterogeneous reasoning contracts without application/Kernel implementation dependencies.
 
-The caller owns `interop.caller/request` and passes that Material into the callee's exact installed `PUBLIC` `sensitive` Operation. The callee declares that foreign input type, creates `interop.callee/sensitive-result` at S4 and returns it internally. The caller canonically references that foreign result type, receives the same callee identity/owner/S4 Material through its bound `ModuleInvoker`, interprets `classified:hello`, and creates a new S4 `interop.caller/adapted-result` with a different caller-owned Material identity.
+`verification/module-interoperability` separately builds an installed caller and callee. It proves caller-bound reachability/invocation, preservation of valid foreign Material, caller-owned interpretation, S5 blocking at `Privacy.MODULE`, undeclared-foreign-type blocking, PRIVATE invisibility, owner-local raw receipt and external/PUBLIC transformation.
 
-The same callee `sensitive` Operation invoked through the owner-local host path yields its raw S4 `classified:hello` result. Invoked through the external/PUBLIC host path, its mandatory transformer yields only new S1 `public:callee-summary` Material. The caller's own adapted S4 result likewise becomes only `public:caller-summary` on its external/PUBLIC path.
+These fixtures are architecture evidence, not special privileged Modules.
 
-Negative installed cases are part of the same acceptance. A callee S5 result of a canonically referenced foreign type fails the fixed `Privacy.MODULE` reachability check before caller exposure. A lower-sensitivity result of an undeclared foreign type is also blocked. The caller's bound directory cannot discover the callee's `PRIVATE` Operation. Kernel tests additionally prove a canonical PRIVATE call is rejected at the Module receiver port and that two differently bound invokers cannot substitute one caller's declaration for another's. Because neither `ReachabilityQuery` nor `ModuleInvoker.invoke` contains a caller identity parameter, Module code has no public API surface on which to forge that identity.
+## Evolution rule
 
-The acceptance runs against the same built distribution on Windows and Linux together with the existing independent Module, reasoning, owner-local/PUBLIC, durable-restart and smoke acceptance.
+Stable SDK concepts should be extracted from repeated real Module code, not invented to anticipate every possible agentic application. The explicit experimental artifact exists for higher-level incubation; it currently contains no public authoring helper after removal of the obsolete definition-first builder.
 
-## Structural algebra in definitions
-
-An Operation directly declares accepted Material types and receiving Privacy. It directly declares produced Material types and maximum Sensitivity. An Agent derives effective Privacy from its exposed Operations. A Module derives effective Sensitivity for exact state from reachable Material and declared outputs.
-
-A Workflow adds no independent security decision. Every Operation call composes from the actual Material entering that Operation.
-
-For one consequential call, `OperationCall.withEffect` binds one exact EffectProfile and the Integrity values of actual non-user causal participants. The causal requirement is `min(Risk, Autonomy)`. If there are no non-user causal participants the existing algebra uses I5. EffectProfile Risk is not forwarded into reasoning work.
-
-Reasoning computation alone does not justify an EffectProfile. The shipped owner-interaction Module therefore declares `standard-prompt` as no-effect. `fast-lane` has `WRITE/AUTONOMOUS` because it creates durable work plus Module-owned persistent pending state that continues after foreground interaction. Its Module-specific `collect-background` has `DELETE/LIVE_INTERACTION` because explicit owner collection acknowledges completed durable work and removes completed pending semantic state.
-
-The presentation binding selects these profiles only through the same generic declared-profile rule. It has no EffectProfile identity knowledge of its own.
-
-## Reasoning port
-
-When bounded Module behavior needs reasoning, it constructs a nominal `ReasoningComputation<R>` and creates a `ReasoningRequest` from an existing valid `OperationCall`.
-
-The request derives originating Module and carried Sensitivity from the call. Module code supplies only the reasoning computation plus ordinary execution controls such as priority, timeout, eligibility, cancellation, retry and typed location/latency preferences.
-
-The request does not expose Material identities/types, semantic continuation, a concrete reasoning-mechanism identity or Operation Risk.
-
-This compile-time restriction is intentional: the SDK does not present a generic command envelope that ordinary application effects can reuse accidentally.
-
-## Durable Module interpretation
-
-Kernel durable reasoning stores opaque runtime bytes and stable reasoning-contract/runtime state. Semantic meaning of a pending result remains Module-owned.
-
-The shipped owner-interaction fast lane demonstrates the composition: the Module persists WorkId-to-semantic-state association, Kernel persists opaque reasoning work, process restart rebuilds Module/reasoning installations, a compatible independent reasoning mechanism resumes work, and the installed Module's `collect-background` Operation interprets the completed result into Module Material, acknowledges Kernel work and removes its pending state.
-
-The application-level `/updates` presentation does not change that ownership. It constructs the configured bounded request, invokes the Module owner-locally and renders returned Material. There is no generic Kernel callback, continuation object, background result router or scheduler language.
-
-## CORE assignment
-
-CORE is an optional installation role containing one ordinary `ModuleId`. If configured and installed, the live registry resolves it. If absent or unresolved, MADRE still boots.
-
-CORE changes no Module definition, visibility, Module/owner-local/external-PUBLIC invocation authority, local-presentation authority, Module configuration semantics, algebraic value, reasoning privilege, scheduling privilege or class hierarchy.
-
-## Codecs
-
-Explicit versioned codecs map declarative definitions to JSON boundary representations. Domain classes do not inherit from codec/HTTP framework classes and expose no `Map<String,Object>` extension bag. Executable behavior is never serialized.
-
-Definition codec version 2 nests Workflow declarations inside their owning Agent and preserves Operation order. `publicMaterialReferences` remains a set of foreign public type identities in that format; Module receiver Privacy is an SDK/runtime rule and therefore is not caller-provided codec data. There is no installed-base compatibility obligation for discarded development formats.
-
-## Search interoperability
-
-`madre-web-search` is a reusable typed value library. `madre-adapter-searxng` is an ordinary Java SearXNG client over that value model.
-
-Neither belongs to the Kernel reasoning SPI. The SearXNG client has no Kernel dependency and does not implement `ReasoningCapability`. The previous standalone WebSearch Module is intentionally removed.
-
-A future domain Module may use the search client directly and own the semantics of search, synthesis, persistence and continuation itself.
+A new inference capability, reusable library or implementation technique does not by itself justify a new Module, Material, Agent, Workflow or stable SDK abstraction. Semantic ownership defines Module boundaries; repeated demonstrated friction justifies convenience abstractions.
