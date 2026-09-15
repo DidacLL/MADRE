@@ -61,9 +61,9 @@ public final class ModuleTestHarness {
     public ModuleInstance instance() { return instance; }
 
     /** Invokes one exact typed effect-free declared Operation. */
-    public <I, O> CompletionStage<Material<O>> invoke(OperationDefinition<I, O> operation,
+    public <I, O> CompletionStage<Material<O>> invoke(OperationDefinition operation,
             Material<I> input) {
-        OperationDefinition<I, O> exactOperation = Objects.requireNonNull(operation, "operation");
+        OperationDefinition exactOperation = Objects.requireNonNull(operation, "operation");
         if (!exactOperation.effectProfiles().isEmpty()) {
             throw new IllegalArgumentException(
                     "Operation requires an explicit EffectProfile; construct an OperationCall instead");
@@ -75,12 +75,10 @@ public final class ModuleTestHarness {
     /** Invokes one exact effect-free declared Operation by canonical identity. */
     public <I, O> CompletionStage<Material<O>> invoke(OperationId operationId, Material<I> input) {
         OperationId exactId = Objects.requireNonNull(operationId, "operationId");
-        OperationDefinition<?, ?> rawDefinition = instance.definition().operations().get(exactId);
-        if (rawDefinition == null) {
+        OperationDefinition definition = instance.definition().operations().get(exactId);
+        if (definition == null) {
             throw new IllegalArgumentException("unknown Module Operation: " + exactId);
         }
-        @SuppressWarnings("unchecked")
-        OperationDefinition<I, O> definition = (OperationDefinition<I, O>) rawDefinition;
         return invoke(definition, input);
     }
 
