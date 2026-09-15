@@ -169,7 +169,7 @@ public final class MadreMain {
         if (configured.isPresent()) {
             LocalInteractionBinding binding = configured.orElseThrow();
             System.out.println("MADRE ready - local text -> " + binding.moduleId().value() + "/"
-                    + binding.defaultOperation() + " (owner-local, " + currentSensitivity
+                    + binding.defaultOperation() + " (owner interaction, " + currentSensitivity
                     + "); /standard <text>; /updates; /sensitivity <S1..S5>; /modules; "
                     + "/invoke-owner ...; /invoke-public ...; /exit");
         } else {
@@ -178,7 +178,11 @@ public final class MadreMain {
                     + "/invoke-owner <module> <operation> <material-type> <S1..S5> <payload>; /exit");
         }
 
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(System.in))) {
+        OwnerInteractionPresentation presentation = configured.map(binding ->
+                new OwnerInteractionPresentation(application, binding,
+                        text -> System.out.println("follow-up\t" + text))).orElse(null);
+        try (presentation;
+                BufferedReader reader = new BufferedReader(new InputStreamReader(System.in))) {
             String line;
             while ((line = reader.readLine()) != null) {
                 String input = line.strip();
@@ -230,7 +234,7 @@ public final class MadreMain {
                         continue;
                     }
                     LocalInteractionBinding binding = configured.orElseThrow();
-                    invoke(application, Invocation.OWNER_LOCAL, binding.moduleId().value(),
+                    invoke(application, Invocation.INTERACTION, binding.moduleId().value(),
                             binding.standardOperation(), binding.promptMaterialType(),
                             currentSensitivity.name(), text, false);
                     continue;
@@ -246,7 +250,7 @@ public final class MadreMain {
                         continue;
                     }
                     LocalInteractionBinding.UpdatesBinding updates = binding.updates().orElseThrow();
-                    invoke(application, Invocation.OWNER_LOCAL, binding.moduleId().value(),
+                    invoke(application, Invocation.INTERACTION, binding.moduleId().value(),
                             updates.operation(), updates.materialType(), updates.sensitivity().name(),
                             updates.payload(), false);
                     continue;
@@ -260,7 +264,7 @@ public final class MadreMain {
                     continue;
                 }
                 LocalInteractionBinding binding = configured.orElseThrow();
-                invoke(application, Invocation.OWNER_LOCAL, binding.moduleId().value(),
+                invoke(application, Invocation.INTERACTION, binding.moduleId().value(),
                         binding.defaultOperation(), binding.promptMaterialType(),
                         currentSensitivity.name(), input, false);
             }
@@ -302,11 +306,13 @@ public final class MadreMain {
                         materialType, sensitivity, payload).toCompletableFuture().join();
                 case OWNER_LOCAL -> application.invokeOwnerText(new ModuleId(module), operation,
                         materialType, sensitivity, payload).toCompletableFuture().join();
+                case INTERACTION -> application.invokeInteractionText(new ModuleId(module), operation,
+                        materialType, sensitivity, payload).toCompletableFuture().join();
             };
-            if (invocation == Invocation.OWNER_LOCAL) {
-                System.out.println(result.sensitivity().name() + "\t" + result.payload());
-            } else {
+            if (invocation == Invocation.PUBLIC) {
                 System.out.println(result.payload());
+            } else {
+                System.out.println(result.sensitivity().name() + "\t" + result.payload());
             }
         } catch (RuntimeException exception) {
             Throwable cause = exception instanceof CompletionException
@@ -352,5 +358,5 @@ public final class MadreMain {
     }
 
     private record ParsedArguments(Optional<Path> configuration, List<String> command) { }
-    private enum Invocation { PUBLIC, OWNER_LOCAL }
+    private enum Invocation { PUBLIC, OWNER_LOCAL, INTERACTION }
 }
