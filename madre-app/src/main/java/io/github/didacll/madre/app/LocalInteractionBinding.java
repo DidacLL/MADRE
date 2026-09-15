@@ -4,7 +4,7 @@ import io.github.didacll.madre.algebra.Privacy;
 import io.github.didacll.madre.algebra.Sensitivity;
 import io.github.didacll.madre.sdk.identity.ModuleId;
 import io.github.didacll.madre.sdk.material.MaterialType;
-import io.github.didacll.madre.sdk.module.ModuleDefinition;
+import io.github.didacll.madre.sdk.module.ModuleInstance;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Locale;
@@ -13,7 +13,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 
-/** Immutable application-local binding from console presentation to installed Module declarations. */
+/** Immutable application-local binding from console presentation to installed Module contracts. */
 record LocalInteractionBinding(ModuleId moduleId, String defaultOperation,
         String standardOperation, String promptMaterialType, Sensitivity defaultSensitivity,
         Optional<UpdatesBinding> updates) {
@@ -43,7 +43,7 @@ record LocalInteractionBinding(ModuleId moduleId, String defaultOperation,
     }
 
     static Optional<LocalInteractionBinding> resolve(Properties properties,
-            List<ModuleDefinition> installedModules) {
+            List<ModuleInstance> installedModules) {
         Objects.requireNonNull(properties, "properties");
         Objects.requireNonNull(installedModules, "installedModules");
         List<String> configuredKeys = properties.stringPropertyNames().stream()
@@ -55,7 +55,8 @@ record LocalInteractionBinding(ModuleId moduleId, String defaultOperation,
                 });
 
         ModuleId moduleId = new ModuleId(required(properties, MODULE));
-        ModuleDefinition module = installedModules.stream().filter(item -> item.id().equals(moduleId))
+        ModuleInstance module = installedModules.stream()
+                .filter(item -> item.definition().id().equals(moduleId))
                 .findFirst().orElseThrow(() -> new IllegalArgumentException(
                         "configured interaction Module is not installed: " + moduleId));
         String defaultOperation = required(properties, DEFAULT_OPERATION);
@@ -95,14 +96,14 @@ record LocalInteractionBinding(ModuleId moduleId, String defaultOperation,
     }
 
     private static MadreApplication.ResolvedTextOperation validateTextOperation(
-            ModuleDefinition module, String property, String operationSpec, String materialType,
+            ModuleInstance module, String property, String operationSpec, String materialType,
             Sensitivity sensitivity) {
         final MadreApplication.ResolvedTextOperation resolved;
         try {
             resolved = MadreApplication.resolveTextOperation(module, operationSpec, materialType);
         } catch (IllegalArgumentException exception) {
             throw new IllegalArgumentException(property + " is incompatible with installed Module "
-                    + module.id() + ": " + exception.getMessage(), exception);
+                    + module.definition().id() + ": " + exception.getMessage(), exception);
         }
         requireConsoleText(resolved.inputType(), property + " input");
         if (resolved.operation().producedMaterial().isEmpty()) {
@@ -112,7 +113,7 @@ record LocalInteractionBinding(ModuleId moduleId, String defaultOperation,
             MaterialType<?> type = module.materialTypes().get(typeId);
             if (type == null) {
                 throw new IllegalArgumentException(property
-                        + " produces Material not declared by configured Module: " + typeId);
+                        + " produces Material without a local Java binding: " + typeId);
             }
             requireConsoleText(type, property + " output");
         });
