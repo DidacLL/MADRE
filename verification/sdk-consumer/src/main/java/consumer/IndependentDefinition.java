@@ -13,7 +13,7 @@ import io.github.didacll.madre.sdk.identity.OperationId;
 import io.github.didacll.madre.sdk.material.Material;
 import io.github.didacll.madre.sdk.material.MaterialCodecs;
 import io.github.didacll.madre.sdk.material.MaterialType;
-import io.github.didacll.madre.sdk.module.ModuleDefinition;
+import io.github.didacll.madre.sdk.module.Module;
 import io.github.didacll.madre.sdk.module.ModuleInstance;
 import io.github.didacll.madre.sdk.module.OperationBinding;
 import io.github.didacll.madre.sdk.module.OperationDefinition;
@@ -21,15 +21,15 @@ import io.github.didacll.madre.sdk.module.OperationVisibility;
 import io.github.didacll.madre.sdk.operation.Operation;
 import io.github.didacll.madre.text.TextInferenceCommand;
 import java.time.Duration;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 /** Independent executable Module compiled only against published MADRE artifacts. */
-public final class IndependentDefinition {
+public final class IndependentDefinition implements Module {
     static final ModuleId ID = new ModuleId("phd.module");
     static final MaterialType<String> REQUEST = textType("request");
     static final MaterialType<String> RESULT = textType("result");
@@ -39,20 +39,17 @@ public final class IndependentDefinition {
             INSPECT, "Inspect independent Module input without reasoning");
     static final OperationDefinition<String, String> REASON_OPERATION = operation(
             REASON, "Interpret independently installed reasoning output");
-    private static final ModuleDefinition DEFINITION = new ModuleDefinition(ID, "1.0.0",
-            "Independent installation, reasoning and public-boundary fixture",
-            Map.of(REQUEST.id(), REQUEST, RESULT.id(), RESULT), Set.of(), Map.of(), Map.of(),
-            Map.of(INSPECT, INSPECT_OPERATION, REASON, REASON_OPERATION));
 
-    private IndependentDefinition() { }
+    private final OperationBinding<String, String> inspect;
+    private final OperationBinding<String, String> reason;
 
-    static ModuleInstance instance(ReasoningService reasoning, String resultPrefix) {
+    private IndependentDefinition(ReasoningService reasoning, String resultPrefix) {
         java.util.Objects.requireNonNull(reasoning, "reasoning");
         String prefix = java.util.Objects.requireNonNull(resultPrefix, "resultPrefix");
-        Operation<String, String> inspect = Operation.of(call ->
+        Operation<String, String> inspectBehavior = Operation.of(call ->
                 CompletableFuture.completedFuture(material(RESULT,
                         "private:" + prefix + call.input().payload(), Sensitivity.S4)));
-        Operation<String, String> reason = Operation.of(call -> {
+        Operation<String, String> reasonBehavior = Operation.of(call -> {
             ReasoningRequest<io.github.didacll.madre.text.TextInferenceResult,
                     TextInferenceCommand> request = ReasoningRequest.immediate(call,
                             new TextInferenceCommand(call.input().payload(), 32, List.of()),
@@ -61,11 +58,26 @@ public final class IndependentDefinition {
             return reasoning.execute(request).thenApply(result -> material(RESULT,
                     "private:reasoned:" + prefix + result.text(), Sensitivity.S4));
         });
-        return new ModuleInstance(DEFINITION, Map.of(
-                INSPECT, OperationBinding.publicOperation(INSPECT_OPERATION, inspect,
-                        IndependentDefinition::publicResult),
-                REASON, OperationBinding.publicOperation(REASON_OPERATION, reason,
-                        IndependentDefinition::publicResult)));
+        inspect = OperationBinding.publicOperation(INSPECT_OPERATION, inspectBehavior,
+                IndependentDefinition::publicResult);
+        reason = OperationBinding.publicOperation(REASON_OPERATION, reasonBehavior,
+                IndependentDefinition::publicResult);
+    }
+
+    static ModuleInstance instance(ReasoningService reasoning, String resultPrefix) {
+        return new IndependentDefinition(reasoning, resultPrefix).instance();
+    }
+
+    @Override public ModuleId id() { return ID; }
+    @Override public String version() { return "1.0.0"; }
+    @Override public String purpose() {
+        return "Independent installation, reasoning and public-boundary fixture";
+    }
+    @Override public Collection<? extends MaterialType<?>> materialTypes() {
+        return List.of(REQUEST, RESULT);
+    }
+    @Override public Collection<? extends OperationBinding<?, ?>> operations() {
+        return List.of(inspect, reason);
     }
 
     private static OperationDefinition<String, String> operation(OperationId id,
