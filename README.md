@@ -1,12 +1,12 @@
 # MADRE
 
-MADRE is personal, owner-sovereign, local-first software for modular agentic applications. It is being built both as an owner-installed product and as a public Module-development platform. The active implementation is Java 21.
+MADRE is personal, owner-sovereign, local-first software for modular agentic applications. It is being built both as an owner-installed product and as a public Module-development and experimentation platform. The active implementation is Java 21.
 
 Windows and Linux run the same application, Kernel, SDK, Module installation/configuration and reasoning-mechanism installation architecture.
 
 Start with:
 
-- [MADRE.md](MADRE.md) for durable product meaning and product gates;
+- [MADRE.md](MADRE.md) for durable product meaning, Owner reasoning and product gates;
 - [Platform Architecture](docs/architecture/MADRE-platform-architecture.md) for responsibility boundaries;
 - [Security Algebra](docs/architecture/MADRE-security-algebra.md) for composition;
 - [Module SDK and Interoperability](docs/architecture/MADRE-agent-interoperability.md) for the public executable Module model;
@@ -206,11 +206,11 @@ madre --config <properties> --invoke-public <module> <operation> <material-type>
 
 The present console remains a transitional application adapter. `interaction.*` selects the installed Module/Operations/Material types used by ordinary text, `/standard`, `/updates` and explicit `/sensitivity`. The shipped owner-interaction Module owns semantic immediate/durable reasoning behavior and delayed-result interpretation; `MadreMain` still owns presentation and the command loop.
 
-When no reasoning mechanism is materialized, normal startup remains valid and now points the Owner toward `madre reasoning providers`/`configure`. It does not force a startup wizard.
+When no reasoning mechanism is materialized, normal startup remains valid and points the Owner toward `madre reasoning providers`/`configure`. It does not force a startup wizard.
 
 `roles.core` is optional and non-privileged. When resolved, it identifies the ordinary installed Module intended to provide the default owner-interaction/coordinator role. It changes no Security Algebra value, Operation visibility, invocation authority, reasoning selection, scheduling, class-loader treatment or installation authority.
 
-The provider-configuration work does not redesign this interaction model. A later slice must make CORE lead ordinary owner interaction and natural delayed semantic follow-up without giving it host-only privileges.
+The current interaction model remains unfinished, but it is now treated as a major SDK/inference experimentation target rather than the next universal API to freeze. CORE should eventually lead ordinary owner interaction and natural delayed semantic follow-up without host-only privilege; the stable structural contract should be recovered from repeated successful experiments rather than standardized directly from the current console/Operation names.
 
 ## Reasoning-adapter public installation contract
 
@@ -223,7 +223,7 @@ Each installed provider declares:
 - a `ReasoningProviderConfigurator` for listing configured named instances, configuring/enabling an instance, disabling/enabling it, and removing its configuration;
 - `materialize(...)` for producing enabled `ReasoningMechanism` values from the same read-only configuration.
 
-Configuration fields use only the value kinds needed by the shipped/independent providers today: `TEXT`, `INTEGER` and `CHOICE`, with required/default/allowed-value/help/display information and integer bounds where applicable. This is not JSON Schema, reflection, an annotation framework or a universal settings language.
+Configuration fields use only the value kinds needed by the shipped/independent providers today: `TEXT`, `INTEGER` and `CHOICE`, with required/default/allowed-value/help/display information and integer bounds where applicable. This is the current executable baseline, not a universal settings language or a claim that all future engine/model controls fit these kinds.
 
 Providers own parsing, validation and raw persistence mapping. `madre-app` applies a provider-produced `ReasoningProviderConfigurationUpdate` generically and contains no concrete llama.cpp/OpenAI-compatible configuration key branches. Architecture checks reject compile-time app dependencies/imports on the shipped adapter implementations.
 
@@ -263,4 +263,6 @@ Historical PR #47 runs also exercised live llama.cpp/model inference over the na
 
 ## Remaining product gaps
 
-This slice deliberately does not complete generic Module configuration, Module install/remove/update management, reasoning JAR download/install/update/remove management, marketplace discovery, credential management, graphical settings, community SDK tooling/testkit, or the CORE-led owner-interaction redesign. Those remain separate product work rather than being hidden behind the reasoning-provider configurator.
+MADRE still lacks the solid public experimentation/developer environment described in `MADRE.md`: external/stable artifact publication/alignment, developer-facing documentation/tooling/testkit, authoring/packaging ergonomics, an explicit experimental SDK lifecycle and a complete unrelated-developer journey. That SDK foundation is the current development priority because it enables rigorous experimentation on owner UX and heterogeneous inference.
+
+Generic Module configuration, Module install/remove/update management, reasoning JAR download/install/update/remove management, marketplace discovery, credential management, graphical settings, and the CORE-led owner-interaction redesign remain separate unfinished product work rather than being hidden behind the reasoning-provider configurator.
