@@ -9,17 +9,16 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * Portable contract for one bounded piece of Module-owned semantic behavior.
+ * Portable contract for one bounded execution of Module logic through MADRE.
  *
- * <p>An Operation describes the semantic boundary of behavior: what Material it may accept, what
- * Material it may produce, and which consequential variants it declares. It does not become an
- * Operation because it is remotely callable, owner-facing, public, or reasoning-backed. A PRIVATE
- * Operation may request reasoning; a PUBLIC Operation may request none. Reasoning locality and
- * receiving Privacy are evaluated independently when an Operation submits a reasoning request.</p>
+ * <p>An Operation exists so one piece of Module execution can participate in MADRE's ordinary
+ * typed, modular and Security-Algebra-aware arbitration. The Module still owns the implementation
+ * and meaning of the execution. Exposure, presentation, reasoning use/locality and transport are
+ * orthogonal concerns; none of them defines whether something is an Operation.</p>
  *
  * <p>{@link OperationVisibility} is the current 0.x installed-runtime exposure marker. It is not
  * an information-classification field and must not be used to infer Material Sensitivity,
- * reasoning-mechanism Privacy, or external disclosure semantics.</p>
+ * reasoning-mechanism Privacy, external disclosure semantics or owner interaction.</p>
  *
  * <p>This value is deliberately language-neutral and structural: independently decoded/adapted
  * contracts with the same canonical facts represent the same Operation. Java payload typing lives
