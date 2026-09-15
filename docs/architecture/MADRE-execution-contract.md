@@ -6,6 +6,22 @@ Kernel execution is intentionally restricted to reasoning. It is not a universal
 
 A Module may perform ordinary application I/O directly inside bounded Module behavior. File, database, network, search, device and similar effects do not enter Kernel merely because they are external.
 
+## Model-agnostic inference extensibility
+
+`Model-agnostic` describes Kernel independence from concrete models, providers and inference runtimes. It does not require every public computation contract to expose only the smallest common denominator.
+
+MADRE separates three categories deliberately:
+
+1. **portable request/result semantics** belong to a nominal typed reasoning computation contract when they are meaningful across multiple implementations of that contract;
+2. **mechanism/model/runtime tuning** belongs to the independently installed reasoning provider/adapter and its owner configuration;
+3. **shared execution mechanics** belong to Kernel: compatible selection, information reach, availability/resources, immediate/durable scheduling, retry, cancellation, persistence and result delivery.
+
+The current `madre-text-inference` computation is a minimal proven text-inference contract, not an architectural ceiling. Experiments may justify richer portable generation controls or materially different computation families such as embeddings or multimodal inference. Such additions should be expressed as typed public computation contracts without teaching Kernel about text tokens, vectors, images, particular model families or provider protocols.
+
+Conversely, engine-specific controls used to optimize constrained local inference do not become common computation fields merely because performance matters. Threading, device placement, memory mapping, batching, runtime/model loading or similar controls belong to a provider when their semantics are specific to that mechanism/runtime. Provider configuration should expose the model/runtime controls required by real experiments without moving those details into Kernel.
+
+This separation is how MADRE can support heterogeneous inference and low-resource SLM optimization while keeping the runtime model-independent.
+
 ## Public reasoning-adapter SPI
 
 The published `madre-reasoning-spi` artifact is the boundary for independently built reasoning mechanisms. It exposes the typed reasoning execution concepts an adapter needs plus the small installation/configuration contract required by the owner product: `ReasoningCapability`, capability identity/manifest, exact `ReasoningContract` and durable codecs, observed `ReasoningAvailability`, `ReasoningExecutionContext`, resource claims, typed failure reporting, `ReasoningProviderId`, provider descriptors/configurators and provider-owned configuration updates.
@@ -22,7 +38,7 @@ Module and reasoning installation remain separate. Reasoning providers do not pa
 
 Each provider declares a stable provider-owned `ReasoningProviderId` through `ReasoningProviderDescriptor`. Provider identity is not derived from implementation class name, JAR filename, discovery order, shipped status or mechanism identity. Duplicate provider identities are rejected during discovery.
 
-`ReasoningProviderDescriptor` contains only the owner-facing metadata demonstrated necessary by the current configurator: display name/help and a list of `ReasoningConfigurationField` values. Current field kinds are deliberately limited to `TEXT`, `INTEGER` and `CHOICE`; fields may declare required/default information, integer bounds, allowed choices, and display/help text. This is not JSON Schema, a reflection/annotation system, a dependency-expression language or a generic settings engine.
+`ReasoningProviderDescriptor` contains only the owner-facing metadata demonstrated necessary by the current configurator: display name/help and a list of `ReasoningConfigurationField` values. Current field kinds are deliberately limited to `TEXT`, `INTEGER` and `CHOICE`; fields may declare required/default information, integer bounds, allowed choices, and display/help text. This is the current executable baseline, not a claim that every future model/runtime control fits those kinds. Extend the vocabulary only when a concrete provider experiment demonstrates the need. It must not become JSON Schema, a reflection/annotation system, a dependency-expression language or a generic settings engine.
 
 `ReasoningProviderConfigurator` owns repeatable named-instance configuration. It lists configured instances and produces provider-owned `ReasoningProviderConfigurationUpdate` values for configure, enable/disable and remove. The host applies those updates generically. Provider-specific raw property names, instance-list representation, parsing, defaults and validation stay inside the provider artifact.
 
@@ -76,6 +92,8 @@ The request contains no Material identity or Material type, Agent, Workflow, con
 
 Operation Risk is deliberately absent. A reasoning mechanism computes information; it does not thereby realize the external effect described by a Module Operation's EffectProfile.
 
+Computation-specific request semantics belong inside the nominal computation value, not in a generic Kernel options bag. If future text generation needs richer portable controls, those controls belong to the text-generation computation contract. If embeddings require dimensions/input families or another inference family requires its own semantics, that family should define its own typed computation/result contract.
+
 ## Reasoning contract and mechanism selection
 
 A `ReasoningCapability<R,C>` exposes:
@@ -112,7 +130,7 @@ No rejected security-decision object is created. A non-composable mechanism is s
 
 Kernel reserves the selected resources and invokes the adapter with only the typed computation and execution mechanics needed for timeout/cancellation/attempt handling.
 
-The adapter owns provider-specific protocol translation. Provider request/response structures, endpoint details and transport behavior stay inside the adapter.
+The adapter owns provider-specific protocol translation and mechanism-specific tuning. Provider request/response structures, endpoint details, model/runtime settings and transport behavior stay inside the adapter unless a specific semantic has deliberately been standardized by the computation contract.
 
 Current shipped reasoning realizations are text inference through:
 

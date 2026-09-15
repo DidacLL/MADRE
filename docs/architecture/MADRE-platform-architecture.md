@@ -44,6 +44,23 @@ The Security Algebra is cross-cutting behavior of values and contracts in this g
 
 The current console does not yet realize this complete product layering. `MadreMain` and `interaction.*` currently own presentation/command mechanics independently of `roles.core`. That is transitional executable behavior documented in `docs/implementation-baseline.md`, not a reason to redefine the target responsibilities above.
 
+## Experimentation architecture and SDK lifecycle
+
+MADRE is intentionally both an installed owner product and a software/inference experimentation environment. The architecture must make it inexpensive to try alternative semantic-agentic designs and heterogeneous inference mechanisms without turning each experiment into Kernel architecture.
+
+Semantic experimentation belongs primarily above Kernel: Module behavior, Agent definitions, Skills, Workflows, context/request construction, semantic memory/stores, knowledge graphs, retrieval, coordination and application-specific interpretation. Those experiments should consume the same stable Module/Material/Operation/ReasoningService contracts as deployed software.
+
+The public SDK therefore has two lifecycle levels conceptually:
+
+- **stable contracts**: small public types whose ownership/interoperability semantics are already demonstrated and that independent Modules may rely on;
+- **experimental facilities**: higher-level authoring, testing, harness and semantic-engineering helpers that are intentionally allowed to evolve during 0.x while evidence is gathered.
+
+Experimental facilities may depend on stable SDK contracts. Stable SDK, Kernel and the reasoning SPI must not depend on experimental facilities. Exact artifact names/package boundaries are implementation choices until materialized, but experimental code must have an explicit public lifecycle rather than silently becoming stable by being convenient.
+
+Graduation is evidence-driven. A technique becomes stable only after repeated real use shows that it is broadly reusable, has a clear responsibility owner and does not leak one Module/provider's private semantics.
+
+This experimentation model is not permission to create a universal Agent loop, workflow language, generic tool system, arbitrary metadata framework or speculative semantic database abstraction. The point is to make concrete experiments cheap and rigorous.
+
 ## Host product boundary
 
 The host product owns mechanics required to operate MADRE as installed software rather than as a source checkout:
@@ -69,6 +86,8 @@ An Operation is bounded callable Module behavior. It declares accepted Material 
 An EffectProfile represents actual consequential behavior of one exact Operation variant. Reasoning computation is not itself an action realizer and does not create Risk merely because an Operation requested reasoning.
 
 A Module does not become a Kernel extension merely because one Operation performs file, HTTP, database, device, search, MCP or other application I/O.
+
+Semantic memory, semantic databases, knowledge graphs, retrieval/context construction and request optimization likewise do not become Kernel responsibilities merely because they contribute to agentic quality. They belong in Modules or reusable SDK/application libraries unless a concrete shared-runtime requirement establishes otherwise.
 
 `ModuleDefinition` is the canonical declarative surface. `ModuleInstance` binds it to exact executable `OperationBinding` values. Registration validates declared/executable identities and contracts before reachability.
 
@@ -141,7 +160,7 @@ CORE is not merely an authorization flag and is not a privileged runtime class. 
 
 Target CORE behavior is semantic: lead foreground owner conversation, make ordinary reasoning choices, turn completed durable reasoning into useful delayed semantic follow-up, and coordinate/routinely compose with other installed Modules. Those actions must use ordinary public Module behavior and the same Kernel reasoning port available to other Modules.
 
-The exact structural qualification for CORE is deferred until the real owner interaction is moved under this role. The implementation should recover the smallest contract demonstrated by the shipped owner-interaction Module and product surface. This document deliberately does not freeze exact CORE Operation names, a surface interface or a generic UI API.
+CORE is also a primary experimentation consumer and owner-UX benchmark. The exact structural qualification for CORE should be stabilized only after interaction experiments demonstrate the smallest reusable contract worth freezing. The shipped owner-interaction Module and current console are evidence, not a universal assistant protocol. This document deliberately does not freeze exact CORE Operation names, a surface interface or a generic UI API.
 
 The current runtime only resolves the configured identity and tolerates absence/unresolved assignment. Current console binding remains separately configured through `interaction.*`. That is a transitional implementation detail, not the target semantic definition of CORE.
 
@@ -153,9 +172,25 @@ The current runtime only resolves the configured identity and tolerates absence/
 
 The shipped example maps ordinary text to the owner-interaction Module's fast path. `/updates` invokes the Module-specific collection Operation; the application does not inspect Kernel reasoning output or perform semantic continuation. The Module itself owns foreground/background reasoning choices, its pending semantic state, interpretation, acknowledgement and any visible follow-up Material.
 
-This proves the correct semantic/runtime separation but not the completed owner product. The target is for CORE to lead the ordinary owner interaction semantics while host product surfaces retain only host/product-management mechanics and presentation/adaptation. Natural delayed follow-up should not require the owner to understand the diagnostic `/updates` collection mechanism.
+This proves the correct semantic/runtime separation but not the completed owner product. The target remains for CORE to lead ordinary owner interaction semantics while host product surfaces retain host/product-management mechanics and presentation/adaptation. However, the exact interaction contract should emerge from SDK/inference experiments rather than from mechanically standardizing the present console wiring. Natural delayed follow-up remains an important UX benchmark, not a command name to freeze.
 
 Do not implement that target by giving CORE privileged host ports or by turning Kernel into a conversation/router service.
+
+## Heterogeneous inference boundary
+
+MADRE's `model-agnostic` property is a separation-of-responsibility rule, not a requirement for impoverished inference contracts.
+
+The architecture distinguishes three layers of inference variability:
+
+1. **portable request/result semantics** belong to nominal typed reasoning computation-contract artifacts when multiple mechanisms can implement the same semantics;
+2. **mechanism/model/runtime tuning** belongs to independently installed provider/adapter configuration and implementation;
+3. **shared execution mechanics** belong to Kernel: compatible selection, information reach, availability/resources, immediate/durable scheduling, retry, cancellation, persistence and result delivery.
+
+The current text-inference contract is one proven computation family, not the upper bound of MADRE inference. Future experiments may establish richer text-generation semantics or materially different common contracts such as embeddings or multimodal inference. New computation families should become typed contracts without adding model-specific branches to Kernel.
+
+Low-resource local inference is a first-order product concern. A llama.cpp provider, for example, may eventually need controls for engine/model execution that have no meaning for an OpenAI-compatible endpoint or another runtime. Such controls should remain provider-owned. Conversely, request parameters that experiments demonstrate are portable across multiple text-generation implementations belong in the common text-generation computation contract rather than being duplicated as provider-private knobs.
+
+This boundary lets MADRE expose enough control to optimize SLMs and heterogeneous engines while preserving a narrow model-independent Kernel.
 
 ## Reasoning-mechanism installation, configuration and discovery
 
@@ -168,6 +203,8 @@ Each provider declares a stable `ReasoningProviderId`, a `ReasoningProviderDescr
 `madre-app` owns generic discovery, rendering of provider descriptors, the provider/list/inspect/configure/enable/disable/remove host commands, and transactional persistence of provider-produced configuration updates. Provider-specific parsing, validation, defaults, raw property names and representation remain inside each adapter. There are no concrete llama.cpp/OpenAI-compatible configuration branches in application production code.
 
 The raw `reasoning.*` string representation remains executable for compatibility and advanced developer use; it is not the ordinary owner configuration surface. The implemented reasoning-provider descriptor/configurator is intentionally reasoning-specific and must not be treated as the unfinished generic Module configurator or expanded into a universal settings framework without demonstrated need.
+
+Provider configuration is expected to grow only when real engine/model experiments demand more expressiveness. The current field kinds are an executable baseline, not a claim that all future runtime/model controls fit `TEXT`/`INTEGER`/`CHOICE` forever.
 
 These host configuration mechanics remain outside Kernel and outside CORE. Kernel receives only successfully materialized reasoning mechanisms; `ReasoningCapability` remains mechanism-only and contains no configuration UI/product-management responsibility.
 
@@ -186,7 +223,7 @@ Kernel owns only shared runtime responsibilities that require central coordinati
 - durable reasoning persistence and opaque result delivery;
 - ordinary runtime logging.
 
-Kernel does not own Module/domain state, Material semantics, semantic workflows, artifact meaning, ordinary application I/O, search, model interpretation, continuation, owner conversation semantics, product installation or host product-management UX.
+Kernel does not own Module/domain state, Material semantics, semantic workflows, artifact meaning, ordinary application I/O, search, semantic stores, knowledge graphs, model interpretation, model/runtime tuning, continuation, owner conversation semantics, product installation or host product-management UX.
 
 The runtime may boot with zero reasoning mechanisms. A Module that uses no reasoning remains executable. An Operation requesting unavailable reasoning fails or waits according to the reasoning contract rather than making mechanism presence a boot invariant.
 
@@ -212,7 +249,7 @@ Its current bounded behavior proves:
 - `fast-lane`: immediate foreground reasoning plus durable background reasoning and Module-owned pending-state persistence;
 - `collect-background`: Module interpretation of terminal reasoning, optional visible follow-up, acknowledgement of Kernel work and pending-state cleanup.
 
-The exact names above are implementation evidence, not universal CORE API names.
+The exact names above are implementation and experimentation evidence, not universal CORE API names.
 
 Kernel SQLite stores opaque durable reasoning state. The Module stores only the semantic association it needs to interpret eventual results. On restart these persistence domains recover independently and rejoin through `ReasoningService`.
 
@@ -220,7 +257,7 @@ Kernel SQLite stores opaque durable reasoning state. The Module stores only the 
 
 Search is ordinary application/domain I/O. `madre-web-search` supplies reusable typed values and `madre-adapter-searxng` supplies an ordinary client with no Kernel dependency.
 
-A future domain Module may use search, files, databases, HTTP, MCP or devices directly or through optional SDK libraries. Such standard libraries may improve developer ergonomics without turning those facilities into Kernel services.
+A future domain Module may use search, files, databases, semantic databases, knowledge graphs, HTTP, MCP or devices directly or through optional SDK libraries. Such standard/experimental libraries may improve developer ergonomics without turning those facilities into Kernel services.
 
 ## Storage
 

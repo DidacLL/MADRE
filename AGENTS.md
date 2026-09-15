@@ -1,8 +1,8 @@
 # MADRE Agent Harness
 
-MADRE is personal, owner-sovereign, local-first software for modular agentic applications. It has two equally important product identities: an owner-installed application that must be usable without understanding its implementation machinery, and a public development platform on which unrelated developers can build independently installable Modules and reasoning mechanisms.
+MADRE is personal, owner-sovereign, local-first software for modular agentic applications. It has two equally important product identities: an owner-installed application that must be usable without understanding its implementation machinery, and a public development/experimentation platform on which unrelated developers can build independently installable Modules and reasoning mechanisms.
 
-Optimize for one coherent usable product and durable public contracts, not architecture demonstrations or framework growth.
+Optimize for one coherent usable product, fast experimentation and durable public contracts, not architecture demonstrations or framework growth.
 
 ## Authority
 
@@ -11,7 +11,7 @@ Use the current Owner request as the task goal and `MADRE.md` as the durable pro
 The authority hierarchy is:
 
 1. the Owner's current instruction;
-2. `MADRE.md` for durable product meaning and responsibility;
+2. `MADRE.md` for durable product meaning, Owner reasoning/rationale and responsibility;
 3. `docs/architecture/*` for focused architectural boundaries;
 4. `docs/implementation-baseline.md` for what actually executes now;
 5. code, tests and history as implementation evidence.
@@ -19,6 +19,22 @@ The authority hierarchy is:
 `docs/master-development-plan.md` is the historical/completed foundation-plan record, not an immutable roadmap. Historical code, tests, deleted documents and familiar software patterns are evidence only. Recover Owner intent rather than preserving a sequencing decision because it is detailed or tested.
 
 Third-party libraries, protocols, providers, models and runtimes may constrain an adapter implementation, but they do not define MADRE architecture. Research on external systems is evidence only unless the Owner explicitly accepts a direction.
+
+## Owner reasoning and interpretation discipline
+
+The `Owner reasoning` section in `MADRE.md` is normative causal context, not explanatory prose that may be compressed into a different roadmap slogan. Preserve that reasoning when resolving ambiguity.
+
+The intended chain is:
+
+- acceptable owner UX cannot be specified reliably before substantial experimentation in both semantic agentic engineering and inference/runtime behavior;
+- therefore making experiments cheap, typed, modular, testable and independently consumable is itself a product requirement;
+- the SDK is the primary software-engineering surface for semantic experiments such as Agent definitions, Skills, Workflows, context/request construction, semantic memory/knowledge structures and Module composition;
+- typed reasoning computation contracts and independently installed providers are the experimentation surface for heterogeneous inference origins;
+- successful experimental patterns may graduate into stable SDK/contract artifacts only after real use demonstrates that they are worth freezing;
+- `model-agnostic` means Kernel is independent of concrete model/runtime implementations, not that public inference contracts must remain lowest-common-denominator or under-configurable;
+- portable request semantics belong to typed computation contracts, mechanism/model/runtime-specific tuning belongs to providers/adapters, and shared scheduling/selection/resource/durability mechanics belong to Kernel.
+
+Do not recursively reinterpret this into "finish CORE before SDK", "keep inference surfaces minimal because MADRE is model-agnostic", "put model knobs into Kernel", or "promote every experiment to stable API". CORE remains an important owner-facing reference Module and UX benchmark, but its current interaction shape is evidence to experiment with rather than a reason to freeze a universal assistant contract prematurely.
 
 ## Product and responsibility boundary
 
@@ -45,7 +61,7 @@ A CORE Module remains an ordinary installed Module. CORE assignment must not cha
 
 The target owner experience is semantically led by CORE: foreground conversation, reasoning choices, useful delayed semantic follow-up, and ordinary coordination/routing to installed Modules. The host product still owns product-management mechanics. CORE does not install artifacts, own global configuration, manage process lifecycle, become Kernel, or receive host-only invocation ports through `ModuleContext`.
 
-Do not freeze speculative CORE Operation names, a universal surface interface or a UI framework. Recover the smallest public structural contract from actual owner-interaction behavior when implementation pressure requires it. The present `roles.core` lookup, `interaction.*` binding and `MadreMain` console split are executable transitional behavior, not the final product contract.
+Do not freeze speculative CORE Operation names, a universal surface interface or a UI framework. Use CORE as an important reference consumer for SDK/inference experimentation. Recover stable structural contracts only when repeated real interaction experiments demonstrate that the abstraction deserves to graduate. The present `roles.core` lookup, `interaction.*` binding and `MadreMain` console split are executable transitional behavior, not the final product contract.
 
 ## Installation and configuration
 
@@ -85,6 +101,8 @@ Windows and Linux are first-class hosts for the same application, Kernel, SDK, M
 
 Module developers may depend on published SDK and relevant computation-contract artifacts, but not on `madre-app` or Kernel runtime implementation classes merely to receive installation configuration, discover/invoke compatible installed Modules or execute bounded Module behavior. Reasoning-adapter developers may depend on the public reasoning SPI and relevant computation contracts, but not on application/Kernel implementation merely to register a mechanism.
 
+The SDK has two lifecycle levels conceptually. Stable public contracts are the small set already justified by durable architecture and compatibility needs. Higher-level semantic authoring/test/optimization facilities may incubate in an explicitly experimental public boundary, where change is expected during 0.x. Experimental code may depend on stable SDK; stable SDK, Kernel and reasoning SPI must not depend on experimental facilities. Promotion into a stable SDK or dedicated stable contract artifact must be explicit and justified by repeated use.
+
 The existing independent SDK/reasoning fixtures prove strong contract isolation. They do not by themselves make MADRE a community-ready development platform. Treat stable consumable publication, documentation, tooling/testkit, packaging conventions and a complete independent developer journey as a product gate to be proven explicitly.
 
 Module-to-Module invocation is proven infrastructure and must remain available. Do not remove it because its generalization preceded real CORE use. Equally, do not keep expanding its public shape without concrete product demand before 1.0.
@@ -99,18 +117,19 @@ Tests establish mathematical invariants, public contracts, failure mechanics and
 
 Native Windows/Linux owner deployment and the generic reasoning-provider configurator are implemented foundations. Preserve them as proven product behavior rather than reopening them as future architecture work.
 
-After the current product-contract recovery, prioritize concrete product proof rather than new abstractions:
+Current priority is to make MADRE a solid experimentation/development substrate before freezing more owner-interaction semantics. Prioritize outcomes in this dependency order, subject to live evidence:
 
-1. a meaningful CORE-led owner interaction experience, including natural delayed semantic follow-up rather than a diagnostic collection command as the primary UX;
-2. generic Module configuration proven by the actual owner configurator, with Module-provider-owned typed metadata introduced only to satisfy demonstrated configurator needs;
-3. a genuinely public SDK/tooling/testkit/developer journey in which an unrelated developer can consume stable artifacts, build/test/package an independent Module, install it and expose domain behavior without application/Kernel implementation dependencies;
-4. only then broader community integration surfaces such as UI extraction, Skills/MCP standard libraries, audio/multimodal support or similar facilities when concrete use demonstrates the need.
+1. a genuinely usable SDK experimentation foundation: aligned consumable artifacts, documentation, testkit/harness support, packaging/authoring ergonomics, explicit stable-versus-experimental lifecycle and a complete independent developer journey;
+2. heterogeneous inference experimentation through typed common computation contracts plus provider-owned model/runtime tuning, including low-resource local-model optimization where concrete engines demonstrate the need;
+3. iterate CORE and owner UX as major reference experiments using those facilities, then graduate only interaction patterns that prove stable/useful across real experiments;
+4. generic Module configuration proven by the actual owner configurator, with Module-provider-owned typed metadata introduced only when that product journey requires it;
+5. broader integration surfaces such as semantic stores/knowledge graphs, Skills/MCP libraries, audio/multimodal UX or other facilities only as concrete experiments demonstrate reusable value.
 
-Do not convert these gates into speculative API design. A later gate may be reordered only when live dependency analysis shows that doing so is necessary to complete an earlier product outcome.
+This is not permission to build speculative frameworks. SDK-first means making experiments cheap and rigorous, not pre-implementing every possible agentic feature. A later outcome may move earlier when a concrete experiment proves it is prerequisite to the current one.
 
 ## Delivery discipline
 
-Current executable truth belongs in `docs/implementation-baseline.md`; durable product meaning belongs in `MADRE.md`; focused architecture belongs in `docs/architecture/`; runnable current instructions belong in `README.md`.
+Current executable truth belongs in `docs/implementation-baseline.md`; durable product meaning and Owner reasoning belong in `MADRE.md`; focused architecture belongs in `docs/architecture/`; runnable current instructions belong in `README.md`.
 
 For each coherent change:
 
