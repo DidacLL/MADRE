@@ -87,11 +87,16 @@ final class ModuleCli {
                             "cannot resolve source JAR for Module " + provider.moduleId()));
             ModuleArtifactLifecycle.Source source = ModuleArtifactLifecycle.classify(host,
                     discovered.sourceJar());
-            String artifact = source == ModuleArtifactLifecycle.Source.OWNER
+            boolean managedOwner = source == ModuleArtifactLifecycle.Source.OWNER
+                    && ManagedJarFiles.isManagedPath(host.ownerModuleDirectory(), "module",
+                            provider.moduleId().value(), discovered.sourceJar());
+            String sourceLabel = source == ModuleArtifactLifecycle.Source.OWNER && !managedOwner
+                    ? "manual" : source.label();
+            String artifact = managedOwner
                     ? "\tartifact=" + discovered.sourceJar().getFileName() : "";
             System.out.println("module\t" + provider.moduleId() + "\t" + descriptor.displayName()
                     + "\tconfigurable-fields=" + descriptor.fields().size()
-                    + "\tsource=" + source.label() + artifact);
+                    + "\tsource=" + sourceLabel + artifact);
         }
     }
 
