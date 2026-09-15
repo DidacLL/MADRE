@@ -6,6 +6,7 @@ import io.github.didacll.madre.sdk.identity.ModuleId;
 import io.github.didacll.madre.sdk.identity.OperationId;
 import io.github.didacll.madre.sdk.identity.SkillId;
 import io.github.didacll.madre.sdk.material.MaterialType;
+import io.github.didacll.madre.sdk.material.MaterialTypeDefinition;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -25,6 +26,7 @@ public interface Module {
     String version();
     String purpose();
 
+    /** Java payload bindings owned by this executable Module. */
     Collection<? extends MaterialType<?>> materialTypes();
 
     default Set<MaterialTypeId> publicMaterialReferences() { return Set.of(); }
@@ -54,10 +56,10 @@ public interface Module {
 
     /** Derives the portable semantic/security contract from executable Java objects. */
     default ModuleDefinition definition() {
-        Map<MaterialTypeId, MaterialType<?>> materialDefinitions = new LinkedHashMap<>();
+        Map<MaterialTypeId, MaterialTypeDefinition> materialDefinitions = new LinkedHashMap<>();
         for (MaterialType<?> materialType : materialTypes()) {
             MaterialType<?> value = Objects.requireNonNull(materialType, "materialType");
-            if (materialDefinitions.putIfAbsent(value.id(), value) != null) {
+            if (materialDefinitions.putIfAbsent(value.id(), value.definition()) != null) {
                 throw new IllegalArgumentException(
                         "duplicate MaterialType identity: " + value.id());
             }

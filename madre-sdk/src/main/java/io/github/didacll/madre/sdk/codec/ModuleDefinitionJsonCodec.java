@@ -17,7 +17,7 @@ import io.github.didacll.madre.sdk.identity.ModuleId;
 import io.github.didacll.madre.sdk.identity.OperationId;
 import io.github.didacll.madre.sdk.identity.SkillId;
 import io.github.didacll.madre.sdk.identity.WorkflowId;
-import io.github.didacll.madre.sdk.material.MaterialType;
+import io.github.didacll.madre.sdk.material.MaterialTypeDefinition;
 import io.github.didacll.madre.sdk.module.AgentDefinition;
 import io.github.didacll.madre.sdk.module.EffectProfile;
 import io.github.didacll.madre.sdk.module.ModuleDefinition;
@@ -34,16 +34,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-/** Explicit version-two JSON mapping for immutable Module declarations. */
+/** Explicit version-two JSON mapping for language-neutral Module declarations. */
 public final class ModuleDefinitionJsonCodec {
     private static final int FORMAT_VERSION = 2;
-    private final ObjectMapper mapper;
-    private final MaterialTypeResolver materialTypes;
-
-    public ModuleDefinitionJsonCodec(MaterialTypeResolver materialTypes) {
-        mapper = new ObjectMapper();
-        this.materialTypes = java.util.Objects.requireNonNull(materialTypes, "materialTypes");
-    }
+    private final ObjectMapper mapper = new ObjectMapper();
 
     public String encode(ModuleDefinition definition) {
         ObjectNode root = mapper.createObjectNode();
@@ -150,7 +144,7 @@ public final class ModuleDefinitionJsonCodec {
                 throw new CodecException("unsupported formatVersion");
             }
             ModuleId module = new ModuleId(requiredText(root, "module"));
-            Map<MaterialTypeId, MaterialType<?>> typeDefinitions = decodeTypes(root, module);
+            Map<MaterialTypeId, MaterialTypeDefinition> typeDefinitions = decodeTypes(root, module);
             Set<MaterialTypeId> references = new HashSet<>();
             for (JsonNode node : requiredArray(root, "publicMaterialReferences")) {
                 references.add(parseMaterialTypeId(requiredTextNode(node), module));
@@ -167,18 +161,14 @@ public final class ModuleDefinitionJsonCodec {
         }
     }
 
-    private Map<MaterialTypeId, MaterialType<?>> decodeTypes(ObjectNode root, ModuleId module) {
-        Map<MaterialTypeId, MaterialType<?>> values = new HashMap<>();
+    private static Map<MaterialTypeId, MaterialTypeDefinition> decodeTypes(
+            ObjectNode root, ModuleId module) {
+        Map<MaterialTypeId, MaterialTypeDefinition> values = new HashMap<>();
         for (JsonNode raw : requiredArray(root, "materialTypes")) {
             ObjectNode node = object(raw, "material type");
             exactFields(node, Set.of("name", "contentType"));
             MaterialTypeId id = new MaterialTypeId(module, requiredText(node, "name"));
-            String contentType = requiredText(node, "contentType");
-            MaterialType<?> type = materialTypes.resolve(id, contentType);
-            if (type == null || !type.id().equals(id) || !type.contentType().equals(contentType)) {
-                throw new CodecException("unresolved or conflicting Material type: " + id);
-            }
-            putUnique(values, id, type);
+            putUnique(values, id, new MaterialTypeDefinition(id, requiredText(node, "contentType")));
         }
         return values;
     }

@@ -7,26 +7,26 @@ import io.github.didacll.madre.sdk.identity.ModuleId;
 import io.github.didacll.madre.sdk.identity.OperationId;
 import io.github.didacll.madre.sdk.identity.SkillId;
 import io.github.didacll.madre.sdk.material.Material;
-import io.github.didacll.madre.sdk.material.MaterialType;
+import io.github.didacll.madre.sdk.material.MaterialTypeDefinition;
 import java.util.Collection;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 
-/** Canonical immutable portable declaration of one owner-installed Module. */
+/** Canonical immutable language-neutral declaration of one owner-installed Module. */
 public final class ModuleDefinition {
     private final ModuleId id;
     private final String version;
     private final String purpose;
-    private final Map<MaterialTypeId, MaterialType<?>> materialTypes;
+    private final Map<MaterialTypeId, MaterialTypeDefinition> materialTypes;
     private final Set<MaterialTypeId> publicMaterialReferences;
     private final Map<AgentId, AgentDefinition> agents;
     private final Map<SkillId, SkillDefinition> skills;
     private final Map<OperationId, OperationDefinition> operations;
 
     public ModuleDefinition(ModuleId id, String version, String purpose,
-            Map<MaterialTypeId, MaterialType<?>> materialTypes,
+            Map<MaterialTypeId, MaterialTypeDefinition> materialTypes,
             Set<MaterialTypeId> publicMaterialReferences,
             Map<AgentId, AgentDefinition> agents,
             Map<SkillId, SkillDefinition> skills,
@@ -104,7 +104,7 @@ public final class ModuleDefinition {
     public ModuleId id() { return id; }
     public String version() { return version; }
     public String purpose() { return purpose; }
-    public Map<MaterialTypeId, MaterialType<?>> materialTypes() { return materialTypes; }
+    public Map<MaterialTypeId, MaterialTypeDefinition> materialTypes() { return materialTypes; }
     public Set<MaterialTypeId> publicMaterialReferences() { return publicMaterialReferences; }
     public Map<AgentId, AgentDefinition> agents() { return agents; }
     public Map<SkillId, SkillDefinition> skills() { return skills; }
@@ -118,8 +118,9 @@ public final class ModuleDefinition {
                 .flatMap(operation -> operation.producedMaterial().values().stream())
                 .reduce(Sensitivity::combine);
         for (Material<?> material : reachableMaterial) {
-            if (!material.id().moduleId().equals(id)
-                    || !materialTypes.containsKey(material.type().id())) {
+            MaterialTypeDefinition declared = materialTypes.get(material.type().id());
+            if (!material.id().moduleId().equals(id) || declared == null
+                    || !declared.equals(material.type().definition())) {
                 throw new IllegalArgumentException("reachable Material must belong to this Module");
             }
             value = Optional.of(value.map(current -> current.combine(material.sensitivity()))
