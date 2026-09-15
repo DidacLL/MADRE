@@ -50,7 +50,7 @@ CORE is an optional ordinary Module role for owner interaction/coordination. It 
 
 ## Code-first Module SDK
 
-Java Module authors now implement ordinary executable `Module` objects. Optional `Agent` objects live inside the Module when the domain genuinely has intelligent semantic actors.
+Java Module authors implement ordinary executable `Module` objects. Optional `Agent` objects live inside the Module when the domain genuinely has intelligent semantic actors. Agents that genuinely own typed state may optionally extend `StatefulAgent<S>`; this does not create another execution model.
 
 MADRE derives portable descriptions from executable objects rather than requiring a parallel hand-maintained definition graph:
 
@@ -59,6 +59,7 @@ Java execution side             Portable description side
 -------------------             -------------------------
 Module                          ModuleDefinition
 Agent                           AgentDefinition
+StatefulAgent<S>                (execution-side specialization only)
 MaterialType<T>                 MaterialTypeDefinition
 Operation<I,O>                  OperationDefinition
 OperationBinding<I,O>           SkillDefinition
@@ -72,7 +73,9 @@ OperationCall<I,O>              WorkflowDefinition
 
 An Agent whose causal Integrity has not been established defaults conservatively to `Integrity.I1`; generated or experimental code is not required to invent stronger assurance. A Module may contain zero Agents.
 
-The stable SDK deliberately remains small. `madre-sdk-experimental` remains an explicit incubation artifact but currently exposes no public authoring helper. The previous definition-first builder was removed after code-first authoring made it redundant.
+`StatefulAgent<S>` supplies serialized typed state reads/transitions and optional commit-before-publish persistence. The concrete Module still owns the state model, persistence format and semantic use, and all MADRE semantic execution remains Operation-bound.
+
+The stable SDK deliberately remains small. `madre-sdk-experimental` remains an explicit incubation artifact for higher-level facilities whose ownership or semantics are not yet ready to stabilize. The previous definition-first builder was removed after code-first authoring made it redundant.
 
 See [docs/sdk-development.md](docs/sdk-development.md) for examples.
 
@@ -175,16 +178,19 @@ Installing a provider makes a provider type discoverable; it does not invent or 
 
 ## Current owner interaction
 
-The shipped `io.github.didacll.madre.owner-interaction` artifact is an ordinary Module and an important reference consumer. It currently demonstrates:
+The shipped `io.github.didacll.madre.owner-interaction` artifact is an ordinary Module and an important reference consumer. Its interaction actor is a concrete `StatefulAgent<OwnerConversationState>` and currently demonstrates:
 
+- bounded persisted multi-turn owner conversation state;
+- contextual Material whose Sensitivity is the maximum of all participating current/historical values;
 - immediate foreground reasoning;
 - independently durable background reasoning;
 - Module-owned pending WorkId association and restart recovery;
 - explicit Module interpretation of completed reasoning;
 - optional visible follow-up;
-- explicit external/PUBLIC minimization.
+- explicit external/PUBLIC minimization;
+- semantic execution through declared `OperationBinding` / `OperationCall` contracts rather than an `Agent.execute(...)` bypass.
 
-This is not yet the target owner interaction product. The current console still owns the presentation loop, `interaction.*` is independent from `roles.core`, delayed follow-up is primarily pulled through `/updates`, and foreground reasoning is still single-turn rather than a security-preserving multi-turn conversation.
+This is not yet the target owner interaction product. The current console still owns the presentation loop, `interaction.*` is independent from `roles.core`, and delayed follow-up is primarily pulled through `/updates` rather than naturally re-entering owner interaction.
 
 Those limitations are experiment opportunities, not reasons to move semantic behavior into Kernel.
 
@@ -197,7 +203,7 @@ Source development uses JDK 21 and the checked-in Gradle wrapper:
 ./gradlew --no-daemon publish
 ```
 
-The repository contains independent verification projects for Module SDK consumption, Module-to-Module interoperability and reasoning-provider SPI consumption. The external SDK consumer builds only against published public MADRE artifacts and now uses the same code-first `Module` surface as shipped code.
+The repository contains independent verification projects for Module SDK consumption, Module-to-Module interoperability and reasoning-provider SPI consumption. The external SDK consumer builds only against published public MADRE artifacts and uses the same code-first `Module` surface as shipped code.
 
 Automatic pull-request validation is intentionally the lightweight Ubuntu root `check`. Cross-platform SDK/native/reasoning installed-product journeys are explicit manual verification workflows used for relevant boundary changes and release checkpoints rather than continuous development scheduling.
 
@@ -205,6 +211,6 @@ Automatic pull-request validation is intentionally the lightweight Ubuntu root `
 
 MADRE should make it cheap for a developer—or generated code—to build many different semantic Modules and experiments over heterogeneous inference/ML machinery without understanding Kernel internals.
 
-That flexibility does not mean a universal agent framework. Stable abstractions should be extracted only after repeated real implementations prove that they are generic, ownership-correct and materially reduce authoring friction.
+That flexibility does not mean a universal agent framework. Stable SDK surface should remain small but may include narrow optional OOP abstractions when a real substantial consumer proves a generic programming responsibility, focused tests preserve the invariants, and the abstraction does not impose domain semantics on unrelated code. It need not describe every Agent to be useful SDK.
 
 Do not infer architecture from fashionable mechanisms. Embeddings, RAG, memory, semantic stores, planners, tool systems, macros, application wrappers and multimodal pipelines can all be legitimate experiments without becoming mandatory Kernel services or one universal Module taxonomy.
