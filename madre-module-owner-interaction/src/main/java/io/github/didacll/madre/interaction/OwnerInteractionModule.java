@@ -74,19 +74,19 @@ public final class OwnerInteractionModule implements Module {
             new EffectProfileId(COLLECT_BACKGROUND, "acknowledge-completed-background"), Risk.DELETE,
             Autonomy.LIVE_INTERACTION);
 
-    private static final OperationDefinition<String, String> STANDARD_OPERATION =
-            new OperationDefinition<>(STANDARD_PROMPT,
+    private static final OperationDefinition STANDARD_OPERATION =
+            new OperationDefinition(STANDARD_PROMPT,
                     "Produce one interpreted response to owner prompt Material",
                     OperationVisibility.PUBLIC, Map.of(OWNER_PROMPT.id(), Privacy.SECRET),
                     Map.of(IMMEDIATE_ANSWER.id(), Sensitivity.S5), Map.of());
-    private static final OperationDefinition<String, String> FAST_OPERATION =
-            new OperationDefinition<>(FAST_LANE,
+    private static final OperationDefinition FAST_OPERATION =
+            new OperationDefinition(FAST_LANE,
                     "Return a foreground response and persist independently continuing background reasoning",
                     OperationVisibility.PUBLIC, Map.of(OWNER_PROMPT.id(), Privacy.SECRET),
                     Map.of(IMMEDIATE_ANSWER.id(), Sensitivity.S5),
                     Map.of(FAST_PROFILE.id(), FAST_PROFILE));
-    private static final OperationDefinition<String, String> COLLECT_OPERATION =
-            new OperationDefinition<>(COLLECT_BACKGROUND,
+    private static final OperationDefinition COLLECT_OPERATION =
+            new OperationDefinition(COLLECT_BACKGROUND,
                     "Interpret completed durable reasoning, acknowledge it, and return Module updates",
                     OperationVisibility.PUBLIC,
                     Map.of(BACKGROUND_COLLECTION_REQUEST.id(), Privacy.SECRET),
