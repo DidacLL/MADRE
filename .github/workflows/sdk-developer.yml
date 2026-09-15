@@ -27,13 +27,13 @@ jobs:
         with:
           gradle-version: '8.12'
 
-      - name: Publish public verification artifacts
+      - name: Publish public artifacts and build developer installation
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $gradle = if ($IsWindows) { '.\\gradlew.bat' } else { './gradlew' }
-          & $gradle --no-daemon --build-cache publish
-          if ($LASTEXITCODE -ne 0) { throw 'MADRE verification publication failed' }
+          & $gradle --no-daemon --build-cache publish :madre-app:installDist
+          if ($LASTEXITCODE -ne 0) { throw 'MADRE publication or developer installation failed' }
 
       - name: Build SDK consumer outside the MADRE checkout
         shell: pwsh
@@ -47,6 +47,30 @@ jobs:
           $repository = (Resolve-Path 'build/isolated-repository').Path
           & $gradle --no-daemon --build-cache -p $external "-PmadreRepository=$repository" clean test jar
           if ($LASTEXITCODE -ne 0) { throw 'external Module build/test failed' }
-          if (-not (Test-Path (Join-Path $external 'build/libs/independent-module.jar'))) {
-            throw 'external Module JAR was not produced'
-          }
+          $jar = Join-Path $external 'build/libs/independent-module.jar'
+          if (-not (Test-Path $jar)) { throw 'external Module JAR was not produced' }
+          "EXTERNAL_MODULE_JAR=$jar" >> $env:GITHUB_ENV
+
+      - name: Build independent reasoning fixture
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $gradle = if ($IsWindows) { '.\\gradlew.bat' } else { './gradlew' }
+          & $gradle --no-daemon --build-cache -p verification/reasoning-consumer jar
+          if ($LASTEXITCODE -ne 0) { throw 'independent reasoning provider build failed' }
+
+      - name: Prove installed owner lifecycle and semantic boundaries
+        shell: pwsh
+        run: |
+          $target = 'verification/sdk-consumer/build/libs/independent-module.jar'
+          New-Item -ItemType Directory -Force -Path (Split-Path $target -Parent) | Out-Null
+          Copy-Item $env:EXTERNAL_MODULE_JAR $target -Force
+          ./verification/installed-owner-acceptance.ps1
+
+      - name: Prove manual-placement compatibility is non-destructive
+        shell: pwsh
+        run: |
+          ./verification/manual-artifact-protection-acceptance.ps1 `
+            -AppRoot 'madre-app/build/install/madre' `
+            -ModuleJar $env:EXTERNAL_MODULE_JAR `
+            -ReasoningJar 'verification/reasoning-consumer/build/libs/independent-reasoning.jar'
