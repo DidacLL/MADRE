@@ -18,11 +18,12 @@ final class OwnerInteractionSettingsTest {
         assertEquals(OwnerInteractionSettings.defaults(), settings);
     }
 
-    @Test void parsesAllModuleOwnedReasoningControls() {
+    @Test void parsesAllModuleOwnedReasoningAndStateControls() {
         OwnerInteractionSettings settings = OwnerInteractionSettings.fromInstallation(
                 new ModuleProviderConfiguration(OwnerInteractionModule.ID, Map.of(
                         "foreground-maximum-tokens", "17",
                         "background-maximum-tokens", "29",
+                        "conversation-history-exchanges", "6",
                         "foreground-timeout-ms", "1100",
                         "background-timeout-ms", "2200",
                         "background-retry-attempts", "4",
@@ -34,6 +35,7 @@ final class OwnerInteractionSettingsTest {
 
         assertEquals(17, settings.foregroundMaximumTokens());
         assertEquals(29, settings.backgroundMaximumTokens());
+        assertEquals(6, settings.conversationHistoryExchanges());
         assertEquals(Duration.ofMillis(1100), settings.foregroundTimeout());
         assertEquals(Duration.ofMillis(2200), settings.backgroundTimeout());
         assertEquals(4, settings.backgroundRetry().maximumAttempts());
@@ -54,6 +56,12 @@ final class OwnerInteractionSettingsTest {
                         new ModuleProviderConfiguration(OwnerInteractionModule.ID,
                                 Map.of("foreground-maximum-tokens", "zero"))));
         assertTrue(malformed.getMessage().contains("foreground-maximum-tokens"));
+
+        IllegalArgumentException history = assertThrows(IllegalArgumentException.class,
+                () -> OwnerInteractionSettings.fromInstallation(
+                        new ModuleProviderConfiguration(OwnerInteractionModule.ID,
+                                Map.of("conversation-history-exchanges", "0"))));
+        assertTrue(history.getMessage().contains("conversation-history-exchanges"));
 
         IllegalArgumentException unknown = assertThrows(IllegalArgumentException.class,
                 () -> OwnerInteractionSettings.fromInstallation(

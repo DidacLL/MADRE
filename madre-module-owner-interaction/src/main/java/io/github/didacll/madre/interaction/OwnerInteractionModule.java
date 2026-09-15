@@ -28,6 +28,7 @@ import io.github.didacll.madre.sdk.module.OperationBinding;
 import io.github.didacll.madre.sdk.module.OperationDefinition;
 import io.github.didacll.madre.sdk.module.OperationVisibility;
 import io.github.didacll.madre.sdk.module.SkillDefinition;
+import io.github.didacll.madre.sdk.module.StatefulAgent;
 import io.github.didacll.madre.sdk.module.WorkflowDefinition;
 import io.github.didacll.madre.sdk.operation.Operation;
 import io.github.didacll.madre.sdk.operation.OperationCall;
@@ -35,10 +36,8 @@ import io.github.didacll.madre.text.TextInferenceCommand;
 import io.github.didacll.madre.text.TextInferenceResult;
 import java.nio.file.Path;
 import java.time.Instant;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Deque;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -62,7 +61,6 @@ public final class OwnerInteractionModule implements Module {
     public static final OperationId COLLECT_BACKGROUND =
             new OperationId(ID, "collect-background");
 
-    private static final int MAXIMUM_CONVERSATION_EXCHANGES = 4;
     private static final AgentId INTERACTION_AGENT = new AgentId(ID, "interaction");
     private static final SkillId PROMPTING_SKILL = new SkillId(ID, "bounded-prompting");
     private static final SkillId ANALYSIS_SKILL = new SkillId(ID, "background-interpretation");
@@ -82,7 +80,7 @@ public final class OwnerInteractionModule implements Module {
 
     private static final OperationDefinition STANDARD_OPERATION =
             new OperationDefinition(STANDARD_PROMPT,
-                    "Produce one interpreted response and retain bounded runtime conversation state",
+                    "Produce one interpreted response and retain bounded Agent conversation state",
                     OperationVisibility.PUBLIC, Map.of(OWNER_PROMPT.id(), Privacy.SECRET),
                     Map.of(IMMEDIATE_ANSWER.id(), Sensitivity.S5),
                     Map.of(STANDARD_PROFILE.id(), STANDARD_PROFILE));
@@ -104,7 +102,7 @@ public final class OwnerInteractionModule implements Module {
     private static final SkillDefinition ANALYSIS = new SkillDefinition(ANALYSIS_SKILL,
             "Interpret background reasoning text as analysis and an optional visible follow-up");
     private static final WorkflowDefinition STANDARD_FLOW = new WorkflowDefinition(STANDARD_WORKFLOW,
-            "Respond using a bounded runtime conversation window and retain the completed exchange",
+            "Respond using bounded Agent-owned conversation state and retain the completed exchange",
             List.of(STANDARD_PROMPT));
     private static final WorkflowDefinition FAST_FLOW = new WorkflowDefinition(FAST_WORKFLOW,
             "Return contextual foreground inference, then collect independently durable reasoning",
@@ -155,11 +153,10 @@ public final class OwnerInteractionModule implements Module {
     public List<BackgroundUpdate> collectBackground() { return interaction.collectBackground(); }
     public int pendingBackgroundCount() { return interaction.pendingBackgroundCount(); }
 
-    private static final class InteractionAgent implements Agent {
+    private static final class InteractionAgent extends StatefulAgent<OwnerConversationState> {
         private final ReasoningService reasoning;
         private final OwnerInteractionSettings settings;
         private final OwnerInteractionStateStore state;
-        private final Deque<ConversationExchange> conversation = new ArrayDeque<>();
         private final Operation<String, String> standard = Operation.of(this::executeStandardPrompt);
         private final Operation<String, String> fast = Operation.of(this::executeFastLane);
         private final Operation<String, String> collect = Operation.of(call ->
@@ -170,9 +167,19 @@ public final class OwnerInteractionModule implements Module {
 
         private InteractionAgent(ReasoningService reasoning, Path stateFile,
                 OwnerInteractionSettings settings) {
+            this(reasoning, stateFile, settings,
+                    new OwnerConversationStore(conversationStateFile(stateFile)));
+        }
+
+        private InteractionAgent(ReasoningService reasoning, Path stateFile,
+                OwnerInteractionSettings settings, OwnerConversationStore conversationStore) {
+            super(java.util.Objects.requireNonNull(conversationStore, "conversationStore").load()
+                            .limited(java.util.Objects.requireNonNull(settings, "settings")
+                                    .conversationHistoryExchanges()),
+                    conversationStore::save);
             this.reasoning = java.util.Objects.requireNonNull(reasoning, "reasoning");
             this.state = new OwnerInteractionStateStore(stateFile);
-            this.settings = java.util.Objects.requireNonNull(settings, "settings");
+            this.settings = settings;
             standardBinding = OperationBinding.publicOperation(STANDARD_OPERATION, standard,
                     OwnerInteractionModule::minimizePublicResult);
             fastBinding = OperationBinding.publicOperation(FAST_OPERATION, fast,
@@ -183,7 +190,7 @@ public final class OwnerInteractionModule implements Module {
 
         @Override public AgentId id() { return INTERACTION_AGENT; }
         @Override public String purpose() {
-            return "Owner-facing interaction through bounded multi-turn standard and fast-lane behavior";
+            return "Owner-facing stateful conversation through bounded MADRE Operations";
         }
         @Override public Integrity integrity() { return Integrity.I5; }
         @Override public Collection<? extends SkillDefinition> skills() {
@@ -263,10 +270,7 @@ public final class OwnerInteractionModule implements Module {
         }
 
         private Material<String> contextualPrompt(Material<String> current) {
-            List<ConversationExchange> history;
-            synchronized (conversation) {
-                history = List.copyOf(conversation);
-            }
+            List<OwnerConversationExchange> history = readState(OwnerConversationState::exchanges);
             if (history.isEmpty()) return current;
 
             Sensitivity sensitivity = current.sensitivity();
@@ -275,7 +279,7 @@ public final class OwnerInteractionModule implements Module {
 
                     """);
             int turn = 1;
-            for (ConversationExchange exchange : history) {
+            for (OwnerConversationExchange exchange : history) {
                 sensitivity = sensitivity.combine(exchange.ownerSensitivity())
                         .combine(exchange.assistantSensitivity());
                 text.append("OWNER TURN ").append(turn).append(":\n")
@@ -289,13 +293,9 @@ public final class OwnerInteractionModule implements Module {
         }
 
         private void rememberExchange(Material<String> ownerPrompt, Material<String> answer) {
-            synchronized (conversation) {
-                conversation.addLast(new ConversationExchange(ownerPrompt.payload(),
-                        ownerPrompt.sensitivity(), answer.payload(), answer.sensitivity()));
-                while (conversation.size() > MAXIMUM_CONVERSATION_EXCHANGES) {
-                    conversation.removeFirst();
-                }
-            }
+            updateState(conversation -> conversation.remember(ownerPrompt.payload(),
+                    ownerPrompt.sensitivity(), answer.payload(), answer.sensitivity(),
+                    settings.conversationHistoryExchanges()));
         }
 
         private void submitBackground(
@@ -352,8 +352,11 @@ public final class OwnerInteractionModule implements Module {
         private int pendingBackgroundCount() { return state.snapshot().size(); }
     }
 
-    private record ConversationExchange(String ownerPrompt, Sensitivity ownerSensitivity,
-            String assistantAnswer, Sensitivity assistantSensitivity) { }
+    private static Path conversationStateFile(Path backgroundStateFile) {
+        Path source = java.util.Objects.requireNonNull(backgroundStateFile, "backgroundStateFile")
+                .toAbsolutePath();
+        return source.resolveSibling(source.getFileName() + ".conversation");
+    }
 
     private static String renderBackgroundUpdates(List<BackgroundUpdate> updates) {
         if (updates.isEmpty()) return "no completed background updates";

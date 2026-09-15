@@ -14,7 +14,7 @@ import java.util.OptionalLong;
 public final class OwnerInteractionModuleProvider implements ModuleProvider {
     private static final ModuleConfigurationDescriptor CONFIGURATION =
             new ModuleConfigurationDescriptor(OwnerInteractionModule.ID, "Owner interaction",
-                    "Controls foreground and durable-background reasoning preferences used by the shipped owner-interaction Module.",
+                    "Controls conversation state plus foreground and durable-background reasoning preferences used by the shipped owner-interaction Module.",
                     List.of(
                             ModuleConfigurationField.integer("foreground-maximum-tokens",
                                     "Foreground maximum tokens", "Maximum generated tokens for foreground requests.",
@@ -22,6 +22,9 @@ public final class OwnerInteractionModuleProvider implements ModuleProvider {
                             ModuleConfigurationField.integer("background-maximum-tokens",
                                     "Background maximum tokens", "Maximum generated tokens for durable background requests.",
                                     false, "512", OptionalLong.of(1), OptionalLong.of(Integer.MAX_VALUE)),
+                            ModuleConfigurationField.integer("conversation-history-exchanges",
+                                    "Conversation history exchanges", "Maximum completed owner/assistant exchanges retained by this Agent and reused as semantic context.",
+                                    false, "4", OptionalLong.of(1), OptionalLong.of(Integer.MAX_VALUE)),
                             ModuleConfigurationField.integer("foreground-timeout-ms",
                                     "Foreground timeout (ms)", "Foreground reasoning timeout in integer milliseconds.",
                                     false, "90000", OptionalLong.of(1), OptionalLong.empty()),

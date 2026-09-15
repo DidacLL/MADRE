@@ -10,15 +10,17 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 
-/** Reasoning controls chosen by the shipped Module's bounded behavior. */
+/** Reasoning and semantic-state controls chosen by the shipped Module's bounded behavior. */
 public record OwnerInteractionSettings(int foregroundMaximumTokens,
-        int backgroundMaximumTokens, Duration foregroundTimeout,
-        Duration backgroundTimeout, ReasoningRetryPolicy backgroundRetry,
+        int backgroundMaximumTokens, int conversationHistoryExchanges,
+        Duration foregroundTimeout, Duration backgroundTimeout,
+        ReasoningRetryPolicy backgroundRetry,
         ReasoningPreferences foregroundPreferences,
         ReasoningPreferences backgroundPreferences) {
     private static final Set<String> INSTALLATION_KEYS = Set.of(
             "foreground-maximum-tokens",
             "background-maximum-tokens",
+            "conversation-history-exchanges",
             "foreground-timeout-ms",
             "background-timeout-ms",
             "background-retry-attempts",
@@ -32,6 +34,9 @@ public record OwnerInteractionSettings(int foregroundMaximumTokens,
         if (foregroundMaximumTokens < 1 || backgroundMaximumTokens < 1) {
             throw new IllegalArgumentException("generation limits must be positive");
         }
+        if (conversationHistoryExchanges < 1) {
+            throw new IllegalArgumentException("conversation history must retain at least one exchange");
+        }
         Objects.requireNonNull(foregroundTimeout, "foregroundTimeout");
         Objects.requireNonNull(backgroundTimeout, "backgroundTimeout");
         if (foregroundTimeout.isNegative() || foregroundTimeout.isZero()
@@ -44,7 +49,7 @@ public record OwnerInteractionSettings(int foregroundMaximumTokens,
     }
 
     public static OwnerInteractionSettings defaults() {
-        return new OwnerInteractionSettings(256, 512, Duration.ofSeconds(90),
+        return new OwnerInteractionSettings(256, 512, 4, Duration.ofSeconds(90),
                 Duration.ofMinutes(5), new ReasoningRetryPolicy(3, Duration.ofSeconds(5)),
                 ReasoningPreferences.unconstrained(), ReasoningPreferences.unconstrained());
     }
@@ -68,6 +73,8 @@ public record OwnerInteractionSettings(int foregroundMaximumTokens,
                 defaults.foregroundMaximumTokens());
         int backgroundTokens = positiveInt(configuration, "background-maximum-tokens",
                 defaults.backgroundMaximumTokens());
+        int conversationHistory = positiveInt(configuration, "conversation-history-exchanges",
+                defaults.conversationHistoryExchanges());
         Duration foregroundTimeout = positiveDuration(configuration, "foreground-timeout-ms",
                 defaults.foregroundTimeout());
         Duration backgroundTimeout = positiveDuration(configuration, "background-timeout-ms",
@@ -81,7 +88,7 @@ public record OwnerInteractionSettings(int foregroundMaximumTokens,
         ReasoningPreferences backgroundPreferences = preferences(configuration, "background",
                 defaults.backgroundPreferences());
         return new OwnerInteractionSettings(foregroundTokens, backgroundTokens,
-                foregroundTimeout, backgroundTimeout,
+                conversationHistory, foregroundTimeout, backgroundTimeout,
                 new ReasoningRetryPolicy(retryAttempts, retryDelay), foregroundPreferences,
                 backgroundPreferences);
     }

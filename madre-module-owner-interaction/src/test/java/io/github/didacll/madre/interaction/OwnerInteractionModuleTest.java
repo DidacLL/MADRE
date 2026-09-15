@@ -92,7 +92,7 @@ final class OwnerInteractionModuleTest {
                 .prompt().contains("Sensitive first question"));
     }
 
-    @Test void runtimeConversationWindowIsBoundedAndNotDurableMemory() {
+    @Test void conversationStateIsBoundedAndDurableAcrossRestart() {
         RecordingReasoning reasoning = new RecordingReasoning();
         reasoning.immediate.complete(result("Repeated answer"));
         Path state = temporary.resolve("state");
@@ -110,10 +110,15 @@ final class OwnerInteractionModuleTest {
         RecordingReasoning restartedReasoning = new RecordingReasoning();
         restartedReasoning.immediate.complete(result("Fresh runtime"));
         OwnerInteractionModule restarted = new OwnerInteractionModule(restartedReasoning, state);
-        restarted.standardPrompt(restarted.ownerPrompt("after restart", Sensitivity.S2))
+        restarted.standardPrompt(restarted.ownerPrompt("after restart", Sensitivity.S1))
                 .toCompletableFuture().join();
-        assertEquals("after restart",
-                ((TextInferenceCommand) restartedReasoning.immediateRequest.computation()).prompt());
+        String persisted = ((TextInferenceCommand) restartedReasoning.immediateRequest.computation())
+                .prompt();
+        assertFalse(persisted.contains("turn-1"));
+        assertTrue(persisted.contains("turn-2"));
+        assertTrue(persisted.contains("turn-5"));
+        assertTrue(persisted.contains("after restart"));
+        assertEquals(Sensitivity.S2, restartedReasoning.immediateRequest.carriedSensitivity());
     }
 
     @Test void effectProfilesDescribeConversationAndBackgroundConsequences() {
