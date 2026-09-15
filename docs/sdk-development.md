@@ -8,7 +8,7 @@ A Java Module is ordinary software first. Its executable `Module` and optional `
 
 The public split is deliberate:
 
-- `Module`, `Agent`, `MaterialType<T>`, `Operation<I,O>`, `OperationCall<I,O>` and `OperationBinding<I,O>` are Java execution-side objects;
+- `Module`, `Agent`, optional `StatefulAgent<S>`, `MaterialType<T>`, `Operation<I,O>`, `OperationCall<I,O>` and `OperationBinding<I,O>` are Java execution-side objects;
 - `ModuleDefinition`, `AgentDefinition`, `MaterialTypeDefinition`, `OperationDefinition`, `SkillDefinition`, `WorkflowDefinition` and `EffectProfile` are portable semantic/security descriptions;
 - `OperationDefinition` is intentionally non-generic. Java payload typing belongs to executable Java bindings, not to a language-neutral declaration;
 - `MaterialTypeDefinition` contains nominal identity and content type. Java `Class<T>` and codecs belong to `MaterialType<T>`;
@@ -22,9 +22,9 @@ Use only the artifacts the Module genuinely needs:
 
 - `madre-bom`: compatible public artifact versions;
 - `madre-algebra`: Security Algebra carriers;
-- `madre-sdk`: stable Module authoring, composition and reasoning-facing contracts;
+- `madre-sdk`: stable Module authoring, composition and reasoning-facing contracts, including optional typed Agent state through `StatefulAgent<S>`;
 - `madre-sdk-testkit`: deterministic semantic tests without Kernel/application internals;
-- `madre-sdk-experimental`: explicit 0.x incubation namespace. It currently exposes no public authoring helper;
+- `madre-sdk-experimental`: explicit 0.x incubation namespace for higher-level facilities that are not yet suitable for the stable SDK;
 - `madre-reasoning-spi`: independently installed reasoning-provider SPI, not an ordinary Module dependency;
 - `madre-text-inference`, `madre-text-generation`, `madre-embeddings`: provider-independent reasoning computation contracts.
 
@@ -122,9 +122,9 @@ final class ExampleModule implements Module {
 
 `Material` validates Java payload type, ordinary Sensitivity and identity/type ownership at construction. `OperationCall` validates the input receiver boundary and selected effect profile. `Operation.invoke(...)` validates produced Material against the declared output contract.
 
-## Agents, Skills and Workflows
+## Agents, typed state, Skills and Workflows
 
-Use an `Agent` when the Module genuinely owns an intelligent semantic actor. It is optional and defines no universal loop, memory model, planner, prompt format or execution context.
+Use an `Agent` when the Module genuinely owns an intelligent semantic actor. It is optional and defines no universal loop, planner, memory model, prompt format or execution context.
 
 ```java
 final class ExampleAgent implements Agent {
@@ -135,6 +135,32 @@ final class ExampleAgent implements Agent {
 ```
 
 If the author cannot justify a stronger causal-integrity claim, `Agent.integrity()` defaults conservatively to `Integrity.I1`. A Module may explicitly return a stronger value when that claim is actually established.
+
+When a concrete Agent genuinely owns state, it may extend the optional `StatefulAgent<S>` base rather than reimplementing synchronization and commit-before-publish semantics:
+
+```java
+final class StatefulExampleAgent extends StatefulAgent<ExampleState> {
+    StatefulExampleAgent(ExampleState initial, Consumer<ExampleState> persist) {
+        super(initial, persist);
+    }
+
+    ExampleState snapshot() {
+        return readState(state -> state);
+    }
+
+    void remember(String value) {
+        updateState(state -> state.remember(value));
+    }
+
+    @Override public AgentId id() { return new AgentId(ExampleModule.ID, "stateful"); }
+    @Override public String purpose() { return "Own example semantic state"; }
+    @Override public Set<OperationId> operations() { return Set.of(ExampleModule.INSPECT); }
+}
+```
+
+`StatefulAgent<S>` deliberately says nothing about what `S` means, how it is serialized, whether it represents conversation, memory, knowledge or another application concept, or which Operations use it. The concrete Module owns those choices. It is an OOP authoring convenience, not a generic memory subsystem.
+
+Most importantly, state does not create another execution route. Agent behavior that is part of MADRE semantics is still exposed and executed through declared `OperationDefinition`, `OperationBinding` and `OperationCall` contracts. `StatefulAgent<S>` provides state ownership only; there is no `Agent.execute(...)` bypass around Operation validation, EffectProfiles or Security Algebra.
 
 `SkillDefinition` remains lightweight semantic ability/knowledge/instruction metadata. `WorkflowDefinition` is currently only an Agent-owned ordered Operation description; it is not a Kernel scheduler or universal agent-loop language.
 
@@ -233,6 +259,8 @@ Reasoning-provider installation/configuration remains a separate product domain 
 
 ## Current experimentation posture
 
-The stable SDK should stay small. Add a stable abstraction only after repeated real Module code demonstrates that it is generic, ownership-correct and materially reduces friction. `madre-sdk-experimental` exists so higher-level ideas can incubate without contaminating stable SDK or Kernel; it currently contains no public authoring helper.
+The stable SDK should stay small, but small does not mean only lowest-common-denominator interfaces. A narrow optional OOP abstraction can belong in the stable SDK when it has one clear owner, does not impose semantics on unrelated Modules, materially removes ordinary Java ceremony, preserves MADRE's execution/security invariants, and is validated by real product code plus focused tests. It does not need to describe every Agent or every semantic application.
 
-Do not introduce a universal Agent loop, planner/tool framework, memory model, semantic database, workflow scheduler, arbitrary metadata tree or new Module merely because an experiment uses one of those techniques. Build the semantic application first; extract only what repeated implementations prove to be reusable.
+`StatefulAgent<S>` is the current example: it captures typed Agent-owned state mechanics without defining conversation, memory or execution semantics. Higher-level facilities whose ownership or semantics are still unclear should incubate in `madre-sdk-experimental` or remain ordinary Module code until stronger evidence exists.
+
+Do not introduce a universal Agent loop, planner/tool framework, memory model, semantic database, workflow scheduler, arbitrary metadata tree or new Module merely because an experiment uses one of those techniques. Build substantial semantic applications first, then extract the smallest orthogonal SDK concepts that make those applications easier to author without turning one experiment into the framework.
