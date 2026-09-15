@@ -10,7 +10,15 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
-/** One intrinsically composable typed Java call to bounded Module-owned behavior. */
+/**
+ * One typed invocation of an Operation after applying the MADRE facts declared for that bounded
+ * execution: accepted Material/Privacy and, when consequential, one exact EffectProfile plus the
+ * actual non-user causal Integrity values.
+ *
+ * <p>The call does not care whether the Operation implementation is arithmetic, file/network I/O,
+ * a script/process, reasoning-backed behavior or any other Module-owned code. It is the generic
+ * arbitration boundary for the invocation, not a description of the implementation technique.</p>
+ */
 public final class OperationCall<I, O> {
     private final OperationDefinition operation;
     private final Optional<EffectProfile> effectProfile;
@@ -55,7 +63,7 @@ public final class OperationCall<I, O> {
         }
     }
 
-    /** Constructs a call for an Operation that has no consequential execution profile. */
+    /** Constructs a call for an Operation that declares no consequential execution profile. */
     public static <I, O> OperationCall<I, O> withoutEffect(
             OperationDefinition operation, Material<I> input) {
         return new OperationCall<>(operation, Optional.empty(), input, List.of());
