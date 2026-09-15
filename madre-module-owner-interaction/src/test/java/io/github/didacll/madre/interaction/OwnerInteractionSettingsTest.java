@@ -20,18 +20,18 @@ final class OwnerInteractionSettingsTest {
 
     @Test void parsesAllModuleOwnedReasoningAndStateControls() {
         OwnerInteractionSettings settings = OwnerInteractionSettings.fromInstallation(
-                new ModuleProviderConfiguration(OwnerInteractionModule.ID, Map.of(
-                        "foreground-maximum-tokens", "17",
-                        "background-maximum-tokens", "29",
-                        "conversation-history-exchanges", "6",
-                        "foreground-timeout-ms", "1100",
-                        "background-timeout-ms", "2200",
-                        "background-retry-attempts", "4",
-                        "background-retry-delay-ms", "300",
-                        "foreground-location", "LOCAL",
-                        "foreground-maximum-latency-ms", "400",
-                        "background-location", "REMOTE",
-                        "background-maximum-latency-ms", "500")));
+                new ModuleProviderConfiguration(OwnerInteractionModule.ID, Map.ofEntries(
+                        Map.entry("foreground-maximum-tokens", "17"),
+                        Map.entry("background-maximum-tokens", "29"),
+                        Map.entry("conversation-history-exchanges", "6"),
+                        Map.entry("foreground-timeout-ms", "1100"),
+                        Map.entry("background-timeout-ms", "2200"),
+                        Map.entry("background-retry-attempts", "4"),
+                        Map.entry("background-retry-delay-ms", "300"),
+                        Map.entry("foreground-location", "LOCAL"),
+                        Map.entry("foreground-maximum-latency-ms", "400"),
+                        Map.entry("background-location", "REMOTE"),
+                        Map.entry("background-maximum-latency-ms", "500"))));
 
         assertEquals(17, settings.foregroundMaximumTokens());
         assertEquals(29, settings.backgroundMaximumTokens());
