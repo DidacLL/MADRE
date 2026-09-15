@@ -106,6 +106,7 @@ public final class ReasoningCapabilityRegistry {
         ReasoningCapabilityManifest<?, ?> manifest = entry.capability().manifest();
         if (!manifest.contract().computationType().equals(computation.getClass())
                 || !manifest.contract().resultType().equals(resultType)) return false;
+        if (!supports(entry.capability(), computation)) return false;
         if (!carriedSensitivity.canReach(manifest.receivingPrivacy())) return false;
         if (entry.capability().availability() != ReasoningAvailability.AVAILABLE) return false;
         if (preferences.location().isPresent()
@@ -114,6 +115,16 @@ public final class ReasoningCapabilityRegistry {
                 && manifest.expectedLatency().compareTo(
                         preferences.maximumLatency().orElseThrow()) > 0) return false;
         return resources.canReserve(manifest.resources());
+    }
+
+    private static boolean supports(ReasoningCapability<?, ?> capability, Object computation) {
+        return supportsCaptured(capability, computation);
+    }
+
+    private static <R, C extends ReasoningComputation<R>> boolean supportsCaptured(
+            ReasoningCapability<R, C> capability, Object computation) {
+        C typed = capability.manifest().contract().computationType().cast(computation);
+        return capability.supports(typed);
     }
 
     private Optional<Selection<?, ?>> reserve(Installed<?, ?> entry) {

@@ -11,6 +11,8 @@ dependencies {
         api(project(":madre-sdk-testkit"))
         api(project(":madre-reasoning-spi"))
         api(project(":madre-text-inference"))
+        api(project(":madre-text-generation"))
+        api(project(":madre-embeddings"))
     }
 }
 

@@ -9,6 +9,8 @@ include(
     "madre-reasoning-spi",
     "madre-kernel",
     "madre-text-inference",
+    "madre-text-generation",
+    "madre-embeddings",
     "madre-web-search",
     "madre-adapter-llamacpp",
     "madre-adapter-openai-compatible",

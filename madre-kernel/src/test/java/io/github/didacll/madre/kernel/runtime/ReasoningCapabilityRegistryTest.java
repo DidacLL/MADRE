@@ -22,6 +22,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Predicate;
 import org.junit.jupiter.api.Test;
 
 final class ReasoningCapabilityRegistryTest {
@@ -70,6 +71,24 @@ final class ReasoningCapabilityRegistryTest {
         assertTrue(registry.select(request).isPresent());
     }
 
+    @Test void mechanismValueCompatibilityParticipatesBeforePreference() {
+        ReasoningCapabilityRegistry registry = new ReasoningCapabilityRegistry(
+                new ResourceCoordinator(Map.of(SLOT, 1L)));
+        registry.register(capability("wrong-space", Privacy.SECRET,
+                ReasoningAvailability.AVAILABLE,
+                computation -> computation.value().startsWith("other:")), 100);
+        registry.register(capability("compatible", Privacy.SECRET,
+                ReasoningAvailability.AVAILABLE,
+                computation -> computation.value().startsWith("space:")), 1);
+        var request = TestReasoningRequests.immediate("space:input", Sensitivity.S1, 1,
+                Duration.ofSeconds(2), ReasoningRetryPolicy.none(),
+                ReasoningPreferences.unconstrained());
+
+        try (var selection = registry.select(request).orElseThrow()) {
+            assertEquals("compatible", selection.capability().manifest().id().value());
+        }
+    }
+
     @Test void manifestRejectsSystemReservedPrivacy() {
         assertThrows(IllegalArgumentException.class,
                 () -> new ReasoningCapabilityManifest<>(
@@ -93,10 +112,16 @@ final class ReasoningCapabilityRegistryTest {
 
     private static ReasoningCapability<String, TestReasoningRequests.FixtureComputation>
             capability(String id, Privacy privacy, ReasoningAvailability availability) {
+        return capability(id, privacy, availability, computation -> true);
+    }
+
+    private static ReasoningCapability<String, TestReasoningRequests.FixtureComputation>
+            capability(String id, Privacy privacy, ReasoningAvailability availability,
+                    Predicate<TestReasoningRequests.FixtureComputation> compatibility) {
         return capability(new ReasoningCapabilityManifest<>(
                 new ReasoningCapabilityId(id), CONTRACT, privacy,
                 ReasoningLocation.LOCAL, Duration.ofMillis(10),
-                List.of(new ResourceClaim(SLOT, 1))), availability);
+                List.of(new ResourceClaim(SLOT, 1))), availability, compatibility);
     }
 
     private static ReasoningCapability<String, TestReasoningRequests.FixtureComputation>
@@ -105,17 +130,28 @@ final class ReasoningCapabilityRegistryTest {
         return capability(new ReasoningCapabilityManifest<>(new ReasoningCapabilityId(id),
                 contract, Privacy.SECRET, ReasoningLocation.LOCAL,
                 Duration.ofMillis(10), List.of(new ResourceClaim(SLOT, 1))),
-                ReasoningAvailability.AVAILABLE);
+                ReasoningAvailability.AVAILABLE, computation -> true);
     }
 
     private static ReasoningCapability<String, TestReasoningRequests.FixtureComputation>
             capability(ReasoningCapabilityManifest<String,
                     TestReasoningRequests.FixtureComputation> manifest,
                     ReasoningAvailability availability) {
+        return capability(manifest, availability, computation -> true);
+    }
+
+    private static ReasoningCapability<String, TestReasoningRequests.FixtureComputation>
+            capability(ReasoningCapabilityManifest<String,
+                    TestReasoningRequests.FixtureComputation> manifest,
+                    ReasoningAvailability availability,
+                    Predicate<TestReasoningRequests.FixtureComputation> compatibility) {
         return new ReasoningCapability<>() {
             @Override public ReasoningCapabilityManifest<String,
                     TestReasoningRequests.FixtureComputation> manifest() { return manifest; }
             @Override public ReasoningAvailability availability() { return availability; }
+            @Override public boolean supports(TestReasoningRequests.FixtureComputation computation) {
+                return compatibility.test(computation);
+            }
             @Override public String execute(TestReasoningRequests.FixtureComputation computation,
                     ReasoningExecutionContext context) { return computation.value(); }
         };
