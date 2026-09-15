@@ -41,11 +41,13 @@ try {
     if ($IsWindows) {
         $env:APPDATA = Join-Path $temp 'roaming'
         $env:LOCALAPPDATA = Join-Path $temp 'local'
+        $configuration = Join-Path $env:APPDATA 'MADRE/madre.properties'
         $data = Join-Path $env:LOCALAPPDATA 'MADRE'
     } else {
         $env:XDG_CONFIG_HOME = Join-Path $temp 'config'
         $env:XDG_DATA_HOME = Join-Path $temp 'data'
         $env:XDG_STATE_HOME = Join-Path $temp 'state'
+        $configuration = Join-Path $env:XDG_CONFIG_HOME 'madre/madre.properties'
         $data = Join-Path $env:XDG_DATA_HOME 'madre'
     }
 
@@ -70,9 +72,15 @@ try {
         throw 'manually placed reasoning provider was not discoverable and classified as manual'
     }
 
-    Assert-ManualRefusal @('modules', 'uninstall', 'phd.module')
+    Invoke-Madre @('modules', 'configure', 'phd.module', '--set', 'result-prefix=manual-') | Out-Null
+    Invoke-Madre @('reasoning', 'configure', 'independent-text', 'preserved',
+        '--set', 'capability-id=independent-preserved', '--set', 'privacy=SECRET',
+        '--set', 'location=LOCAL') | Out-Null
+    $configurationHash = (Get-FileHash $configuration -Algorithm SHA256).Hash
+
+    Assert-ManualRefusal @('modules', 'uninstall', 'phd.module', '--purge-configuration')
     Assert-ManualRefusal @('modules', 'install', $module, '--replace')
-    Assert-ManualRefusal @('reasoning', 'uninstall', 'independent-text')
+    Assert-ManualRefusal @('reasoning', 'uninstall', 'independent-text', '--purge-configuration')
     Assert-ManualRefusal @('reasoning', 'install', $reasoning, '--replace')
 
     if (-not (Test-Path $manualModule) -or
@@ -82,6 +90,9 @@ try {
     if (-not (Test-Path $manualReasoning) -or
             (Get-FileHash $manualReasoning -Algorithm SHA256).Hash -ne $reasoningHash) {
         throw 'managed lifecycle changed the manually placed reasoning JAR'
+    }
+    if ((Get-FileHash $configuration -Algorithm SHA256).Hash -ne $configurationHash) {
+        throw 'refused manual-artifact lifecycle operation changed owner configuration'
     }
 } finally {
     foreach ($name in $saved.Keys) {
