@@ -67,6 +67,14 @@ jobs:
           Copy-Item $env:EXTERNAL_MODULE_JAR $target -Force
           ./verification/installed-owner-acceptance.ps1
 
+      - name: Prove failed replacement preserves active artifacts
+        shell: pwsh
+        run: |
+          ./verification/artifact-replacement-failure-acceptance.ps1 `
+            -AppRoot 'madre-app/build/install/madre' `
+            -ModuleJar $env:EXTERNAL_MODULE_JAR `
+            -ReasoningJar 'verification/reasoning-consumer/build/libs/independent-reasoning.jar'
+
       - name: Prove manual-placement compatibility is non-destructive
         shell: pwsh
         run: |
