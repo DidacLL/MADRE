@@ -42,13 +42,43 @@ owner reasoning <data>/reasoning
 
 The Kernel durable database is written under the state location as `kernel-work.sqlite`; Module-owned state is rooted at `<state>/module-state`. Normal product state therefore does not depend on the current working directory or on a writable installation directory.
 
-Shipped Module and reasoning-adapter JARs remain read-only program artifacts inside the application image. Normal packaged discovery scans those shipped directories plus the owner-writable Module/reasoning directories above. An explicit `modules.directory` or `reasoning.directory` still means exactly one explicitly selected directory, preserving deterministic developer/test isolation.
+Shipped Module and reasoning-adapter JARs remain read-only program artifacts inside the application image. Normal packaged discovery scans those shipped directories plus the owner-writable Module/reasoning directories above. An explicit `modules.directory` or `reasoning.directory` still means exactly one explicitly selected directory, preserving deterministic developer/test isolation. Those explicit discovery overrides are not owner-managed installation roots: lifecycle commands always mutate the conventional owner-writable roots and never shipped package files or an arbitrary developer directory.
 
 The first-run bootstrap deliberately contains no configured or enabled reasoning mechanism and does not invent an endpoint, model, credential, Privacy value or provider-specific setting. Installed provider types with zero configured instances are a valid MADRE state. The bootstrap currently preserves the shipped `roles.core` and `interaction.*` installation policy needed for the existing console behavior, without changing CORE privilege or semantics.
 
+## Owner local artifact lifecycle
+
+The packaged product installs owner-selected local JARs directly. Module and reasoning-provider artifacts remain separate installation domains:
+
+```text
+madre modules install <jar>
+madre modules install <jar> --replace
+madre modules uninstall <module-id> [--purge-configuration]
+
+madre reasoning install <jar>
+madre reasoning install <jar> --replace
+madre reasoning uninstall <provider-id> [--purge-configuration]
+```
+
+`install` accepts a local filesystem JAR only. There is no URL download, Maven/GitHub resolution, marketplace, update feed or automatic upgrade. The current managed 0.x packaging contract is one ordinary JAR exposing exactly one canonical provider entrypoint for its installation domain. A managed Module JAR exposes one `ModuleProvider`; a managed reasoning JAR exposes one `ReasoningMechanismProvider`. A candidate with no provider, multiple providers, the wrong provider domain or both installation domains is rejected. Direct JAR placement remains supported as an advanced/developer discovery compatibility path, but MADRE will not delete an artifact discovered outside its owner-managed root.
+
+Installation validates the provider before committing bytes. Module installation obtains the canonical `ModuleId`, validates its configuration descriptor and runs `ModuleProvider.validateConfiguration(...)` against any already-persisted identity-scoped configuration without calling `create(...)`. Reasoning installation obtains the stable provider descriptor/configurator and validates existing provider-owned configuration without materializing a mechanism or probing an endpoint/model/server. Installation therefore does not execute Operations, configure reasoning instances, enable mechanisms, assign CORE or create `interaction.*` bindings.
+
+Canonical identities, not filenames or class names, control collision and replacement. A shipped identity cannot be overridden. An existing owner identity fails by default; `--replace` explicitly replaces only the same canonical identity. MADRE stages the candidate in the owner directory, revalidates the staged bytes, closes temporary discovery classloaders, and then uses a same-filesystem atomic move where supported with the same safe replacement fallback used by configuration persistence. This close-before-mutation discipline is required for Windows JAR locks.
+
+`madre modules list` and `madre reasoning providers` classify providers as `shipped`, `owner` or `development`; owner-managed entries also show their managed filename. Install/replacement output includes a SHA-256 digest as a diagnostic/integrity identifier only. It is not a signature or trust decision. The host reconstructs provider-to-source-JAR ownership from ServiceLoader discovery and the provider class code source; there is no artifact registry database.
+
+Uninstall is deliberately conservative. A Module with retained `modules.config[<id>].*` refuses plain uninstall; `--purge-configuration` removes only that exact Module prefix. A Module required by the current `interaction.module` binding also refuses uninstall until the binding is changed. The current unresolved-CORE behavior is preserved: `roles.core` is not silently rewritten or purged. Module semantic state under `<state>/module-state` is never deleted by artifact uninstall.
+
+A reasoning provider with configured instances likewise refuses plain provider uninstall. `--purge-configuration` asks that provider's own configurator to remove each configured instance, rather than guessing provider raw-property namespaces. The existing `madre reasoning remove <provider>/<instance>` remains exactly one configured-instance removal and is not an artifact operation. Provider uninstall does not delete Kernel durable reasoning work.
+
+Configuration and artifact files are different physical resources, so MADRE does not claim global atomicity. Purge-and-uninstall validates before mutation, persists the configuration candidate safely, closes provider/classloader resources before deleting the JAR, and restores the previous configuration if artifact deletion then fails. Replacement leaves the old artifact untouched until the new candidate has been staged and fully validated.
+
+MADRE's existing trust model is unchanged: locally validating a JAR does not sandbox or make untrusted code safe. The Owner is explicitly choosing software to install.
+
 ## Owner reasoning configuration
 
-Reasoning adapter installation and reasoning instance configuration are separate facts. Merely placing an adapter JAR in a discovered reasoning directory never enables a mechanism.
+Reasoning artifact installation and reasoning instance configuration are separate facts. Installing an adapter makes its provider discoverable but never configures or enables a mechanism.
 
 Discover installed/configurable provider types:
 
@@ -108,11 +138,11 @@ openai-compatible
 
 The two llama.cpp transports remain distinct provider types because their configuration requirements differ. OpenAI-compatible means an explicitly configured compatible HTTP endpoint; it is not an OpenAI account integration.
 
-This slice configures installed provider artifacts; it does not download, install, update or remove reasoning JARs. There is no credential vault, OAuth/account flow or graphical settings UI.
+Artifact lifecycle remains separate from configuration lifecycle. `reasoning install/uninstall` manages owner JARs; `reasoning configure/enable/disable/remove` manages provider-owned instances. There is still no credential vault, OAuth/account flow, graphical settings UI or remote provider catalog.
 
 ## Owner Module configuration
 
-Module installation and Module configuration are separate facts. Placing a JAR in the shipped or owner-writable Module directory makes its `ModuleProvider` discoverable; configuration does not enable/disable or install/uninstall the artifact.
+Module artifact installation and Module configuration are separate facts. `madre modules install <jar>` makes an owner-selected provider discoverable; configuration does not enable/disable or install/uninstall the artifact.
 
 Discover installed Module providers without materializing Modules:
 
@@ -123,14 +153,14 @@ madre modules list
 Inspect one provider-owned configuration contract and its currently configured values:
 
 ```text
-madre modules inspect owner.interaction
+madre modules inspect io.github.didacll.madre.owner-interaction
 madre modules inspect phd.module
 ```
 
 Configure deterministically with repeated field assignments:
 
 ```text
-madre modules configure owner.interaction \
+madre modules configure io.github.didacll.madre.owner-interaction \
   --set foreground-maximum-tokens=256 \
   --set foreground-location=LOCAL
 
@@ -149,7 +179,7 @@ modules.config[<canonical ModuleId>].<module-owned-key>=<value>
 
 The host replaces only the exact canonical Module prefix, preserves unrelated host/reasoning/other-Module settings, writes through the same safe same-directory replacement mechanism as reasoning configuration and updates in-memory configuration only after persistence succeeds. A rejected edit leaves the previous file unchanged. A subsequent normal startup receives the persisted values through the existing `ModuleProviderConfiguration` route.
 
-There is intentionally no Module enable/disable or configuration `remove` command: Module artifact lifecycle and clearing settings are different responsibilities. JAR download/install/update/uninstall remains a separate future product slice.
+There is intentionally no Module enable/disable command. Module artifact uninstall and configuration purge remain separate responsibilities, and uninstall never deletes Module semantic state.
 
 ## Diagnostics
 
@@ -204,7 +234,7 @@ Windows: madre-app\build\install\madre\bin\madre.bat
 Linux:   madre-app/build/install/madre/bin/madre
 ```
 
-For deterministic source/developer execution, copy/review `config/madre.properties.example` and pass it explicitly. Its relative paths are developer conveniences; native first-run startup does not copy this template and instead persists conventional absolute host locations.
+For deterministic source/developer execution, copy/review `config/madre.properties.example` and pass it explicitly. Its relative paths are developer conveniences; native first-run startup does not copy this template and instead persists conventional absolute host locations. Explicit `modules.directory`/`reasoning.directory` remain useful for direct-placement development compatibility, but they do not redirect the owner-managed lifecycle roots.
 
 No container runtime, VM layer, hosted provider or external account is required for the mandatory build/test/package path.
 
@@ -227,7 +257,7 @@ The BOM aligns `madre-algebra`, `madre-sdk`, `madre-sdk-testkit`, `madre-sdk-exp
 
 Computation-contract artifacts do not define Module domains. A Module depends on one only when its own semantic behavior genuinely requires that inference computation. Adding an inference family is not an instruction to create a corresponding Module, Material model or stable high-level SDK abstraction.
 
-The current verification publication remains repository-local at `build/isolated-repository`. It is not yet a public remote 0.x release channel. The cross-platform `SDK developer acceptance` workflow publishes those artifacts, copies `verification/sdk-consumer` to a runner-temporary directory outside the checkout, runs its deterministic tests and JAR build there, installs only the resulting JAR in the normal owner-writable Module directory of a packaged MADRE application image, discovers its provider through the generic `madre modules` path, configures its real `result-prefix`, proves rejected configuration rollback, restarts the host and invokes it through owner-local and external/PUBLIC receiver paths.
+The current verification publication remains repository-local at `build/isolated-repository`. It is not yet a public remote 0.x release channel. The cross-platform `SDK developer acceptance` workflow publishes those artifacts, copies `verification/sdk-consumer` to a runner-temporary directory outside the checkout, runs its deterministic tests and JAR build there, passes only the resulting external JAR path to packaged MADRE, installs it with `madre modules install`, discovers its provider through the generic `madre modules` path, inspects/configures its real `result-prefix`, proves explicit staged replacement, rejected plain uninstall with retained configuration, configuration-purge uninstall, semantic-state retention, shipped-artifact protection, restart, and configured owner-local plus external/PUBLIC receiver behavior.
 
 The independent fixture uses the experimental builder only from test scope. The built Module JAR therefore proves that experimental authoring can aid experimentation without becoming a production runtime requirement. Its tests also resolve the newer computation-contract artifacts through the BOM without turning them into runtime dependencies of the installable fixture Module.
 
@@ -237,7 +267,7 @@ See [docs/sdk-development.md](docs/sdk-development.md) for the runnable independ
 
 ## Module installation and configuration
 
-A MADRE Module is a complete executable application/domain boundary. Its JAR provides `io.github.didacll.madre.sdk.registration.ModuleProvider` through Java ServiceLoader metadata. The provider declares canonical identity and can expose owner-facing installation metadata before materializing exactly that Module:
+A MADRE Module is a complete executable application/domain boundary. Its JAR provides `io.github.didacll.madre.sdk.registration.ModuleProvider` through Java ServiceLoader metadata. The provider declares canonical identity and can expose owner-facing configuration metadata before materializing exactly that Module:
 
 ```java
 ModuleId moduleId();
@@ -252,6 +282,8 @@ A Module should exist because it owns coherent semantic/application behavior. Re
 
 The stable configuration descriptor is Module-specific, not a shared settings type system with reasoning providers. `ModuleConfigurationDescriptor` owns the canonical Module identity, display/help text and immutable fields. `ModuleConfigurationField` supports only `TEXT`, `INTEGER` and `CHOICE`, plus required/default information, finite allowed values for choices and optional integer bounds. `ModuleProvider.validateConfiguration(...)` receives one complete identity-scoped candidate and may reject or canonicalize it without materializing the Module.
 
+For owner-managed installation, the provider is also the artifact identity proof. The current managed contract accepts a single JAR with exactly one `ModuleProvider` whose provider class is actually supplied by that JAR. Direct developer placement remains discoverable even where historical classloader packaging is less strict; the managed command deliberately does not broaden that legacy compatibility into the owner lifecycle contract.
+
 The raw representation remains valid:
 
 ```properties
@@ -260,7 +292,7 @@ modules.config[<canonical ModuleId>].<module-owned-key>=<value>
 
 Normal startup still passes these strings through `ModuleProviderConfiguration` to `create(...)`. An explicit setting for an uninstalled identity is rejected; duplicate providers, descriptor/provider identity mismatch, provider/materialized identity mismatch and invalid executable bindings fail before partial installation becomes reachable.
 
-The reasoning-provider metadata/configuration contract remains intentionally reasoning-specific. Reasoning providers have repeatable named mechanism instances and enable/disable state; Modules have one canonical installed identity. No cross-domain `SettingsSchema`, `ConfigurableProvider` or generic property-tree service was introduced.
+The reasoning-provider metadata/configuration contract remains intentionally reasoning-specific. Reasoning providers have repeatable named mechanism instances and enable/disable state; Modules have one canonical installed identity. No cross-domain `SettingsSchema`, `ConfigurableProvider`, universal `Artifact` API or generic property-tree service was introduced.
 
 ## Three invocation receivers
 
@@ -295,7 +327,7 @@ Reasoning mechanisms are independently installable from Modules. A reasoning ada
 
 Each installed provider declares a stable `ReasoningProviderId`, a provider-owned descriptor, a configurator for named mechanism instances and `materialize(...)` for enabled `ReasoningMechanism` values. Providers own parsing, validation and raw persistence mapping. `madre-app` applies provider-produced updates generically and contains no concrete llama.cpp/OpenAI-compatible configuration-key branches.
 
-The existing raw `reasoning.*` representation remains executable for compatibility and advanced developer use; owners of the native product no longer need to know it for normal reasoning setup.
+The managed owner installer currently accepts one reasoning JAR containing exactly one reasoning-provider entrypoint and no Module provider. Installation only proves local package validity/configuration compatibility; it never materializes a mechanism. The existing raw `reasoning.*` representation remains executable for compatibility and advanced developer use; owners of the native product no longer need to know it for normal reasoning setup.
 
 ## Developer configuration example
 
@@ -323,11 +355,11 @@ The example intentionally retains provider-specific disabled raw examples as com
 
 The Windows/Linux `Java 21 cross-platform build` workflow exercises `check`, architecture guards, Javadocs/publication, developer packages, isolated SDK Module/reasoning builds, Module-to-Module interoperability, no-reasoning boot, owner-local versus external/PUBLIC semantics, raw Module configuration compatibility, CORE/interaction independence, durable restart/recovery, and the shipped heterogeneous generation/embedding protocol and configuration tests.
 
-The exact-head `SDK developer acceptance` workflow separately builds the independent Module project from a runner-temporary directory against the verification publication, executes its public-testkit tests, verifies its ServiceLoader packaging, installs the JAR in the packaged product's normal owner-writable Module directory, discovers the provider without materializing the Module, inspects/configures `result-prefix`, proves invalid-edit rollback, restarts, and verifies configured owner-local plus external/PUBLIC behavior on Windows and Linux.
+The exact-head `SDK developer acceptance` workflow separately builds the independent Module project from a runner-temporary directory against the verification publication, executes its public-testkit tests, verifies its ServiceLoader packaging, installs the external JAR through packaged MADRE's `modules install` command into an isolated conventional owner root, discovers the provider without materializing the Module, inspects/configures `result-prefix`, proves staged same-identity replacement and shipped-artifact protection, restarts, verifies configured owner-local plus external/PUBLIC behavior, and finally proves refusal/purge uninstall semantics plus semantic-state retention on Windows and Linux.
 
 The exact-head `Native owner package` workflow builds MSI/DEB on the corresponding host, exercises the `jpackage` application image with machine `java` removed from `PATH`, proves fresh zero-argument bootstrap/restart/`doctor`/clean shutdown, verifies shipped reasoning-provider discovery/configuration and then performs unattended native installer install/launch/uninstall. The MSI/DEB is retained as a downloadable workflow artifact.
 
-The exact-head `Reasoning owner configuration` workflow independently publishes the public artifacts, builds `verification/reasoning-consumer` in its isolated Gradle build, places that third-party provider JAR in the conventional owner reasoning directory of a packaged application image, and drives the same generic provider metadata/configure/restart/disable/enable/remove path on Windows and Linux. No cloud account or reachable model endpoint is needed.
+The exact-head `Reasoning owner configuration` workflow independently publishes the public artifacts, builds `verification/reasoning-consumer` in its isolated Gradle build, installs that third-party provider through packaged MADRE's `reasoning install` command, proves installation alone materializes zero mechanisms, exercises generic provider metadata/configure/restart/disable/enable/remove, protects shipped reasoning JARs, proves staged replacement, and verifies refusal/provider-owned purge uninstall semantics on Windows and Linux. No cloud account or reachable model endpoint is needed.
 
 Historical PR #47 runs also exercised live llama.cpp/model inference over the native AF_UNIX adapter. The owner configurator does not change reasoning selection, execution or Security Algebra boundaries.
 
@@ -337,4 +369,4 @@ The current work materially improves the public experimentation/developer enviro
 
 The largest SDK release gaps are a real external artifact repository and release/version/signing mechanics, release-quality API compatibility policy, additional unrelated external-project feedback, and build/project-generation tooling if that feedback demonstrates enough remaining friction. The current verification repository and in-repository source fixture are acceptance infrastructure, not a distribution channel.
 
-Module JAR download/install/remove/update management, reasoning JAR download/install/update/remove management, marketplace discovery, credential management, graphical settings, and the CORE-led owner-interaction evolution remain separate unfinished product work. Multimodal computation, semantic-memory/RAG/planning frameworks, generic tool calling, audio/voice and MCP are also intentionally not implied by the current foundation. They should be pursued only when real semantic or inference experiments establish a concrete need and correct responsibility boundary.
+Remote artifact acquisition/catalogs, marketplace discovery, dependency/bundle packaging beyond the demonstrated single-JAR contract, automatic update policy, credential management, graphical settings, and the CORE-led owner-interaction evolution remain separate unfinished product work. Multimodal computation, semantic-memory/RAG/planning frameworks, generic tool calling, audio/voice and MCP are also intentionally not implied by the current foundation. They should be pursued only when real semantic or inference experiments establish a concrete need and correct responsibility boundary.
