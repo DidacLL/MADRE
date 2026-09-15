@@ -88,9 +88,9 @@ public final class ModuleTestHarness {
     public <I, O> CompletionStage<Material<O>> invoke(OperationCall<I, O> call) {
         OperationCall<I, O> exactCall = Objects.requireNonNull(call, "call");
         OperationBinding<?, ?> rawBinding = instance.operations().get(exactCall.operation().id());
-        if (rawBinding == null || rawBinding.definition() != exactCall.operation()) {
+        if (rawBinding == null || !rawBinding.definition().equals(exactCall.operation())) {
             throw new IllegalArgumentException(
-                    "OperationCall does not reference this materialized Module's canonical declaration");
+                    "OperationCall contract differs from this materialized Module binding");
         }
         @SuppressWarnings("unchecked")
         OperationBinding<I, O> binding = (OperationBinding<I, O>) rawBinding;
