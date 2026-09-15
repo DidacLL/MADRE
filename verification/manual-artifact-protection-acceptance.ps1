@@ -59,11 +59,15 @@ try {
     $moduleHash = (Get-FileHash $manualModule -Algorithm SHA256).Hash
     $reasoningHash = (Get-FileHash $manualReasoning -Algorithm SHA256).Hash
 
-    if ((Invoke-Madre @('modules', 'list')) -notmatch 'module\s+phd\.module') {
-        throw 'manually placed Module lost direct-placement discovery compatibility'
+    $modules = Invoke-Madre @('modules', 'list')
+    if ($modules -notmatch 'module\s+phd\.module.*source=manual') {
+        Write-Host $modules
+        throw 'manually placed Module was not discoverable and classified as manual'
     }
-    if ((Invoke-Madre @('reasoning', 'providers')) -notmatch 'reasoning\.provider\s+independent-text') {
-        throw 'manually placed reasoning provider lost direct-placement discovery compatibility'
+    $providers = Invoke-Madre @('reasoning', 'providers')
+    if ($providers -notmatch 'reasoning\.provider\s+independent-text.*source=manual') {
+        Write-Host $providers
+        throw 'manually placed reasoning provider was not discoverable and classified as manual'
     }
 
     Assert-ManualRefusal @('modules', 'uninstall', 'phd.module')
