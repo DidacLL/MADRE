@@ -211,9 +211,9 @@ public final class LiveModuleRegistry
         }
         OperationBinding<?, ?> binding = entry.instance().operations().get(
                 requested.operation().id());
-        if (binding == null || binding.definition() != requested.operation()) {
+        if (binding == null || !binding.definition().equals(requested.operation())) {
             throw new IllegalArgumentException(
-                    "OperationCall does not identify the exact installed Operation binding");
+                    "OperationCall contract differs from the installed Operation binding");
         }
         return binding;
     }
