@@ -19,11 +19,18 @@ import java.util.stream.Collectors;
  * Implementations are ordinary Module objects and may keep whatever private state and algorithms
  * their domain requires. MADRE only asks them for the semantic facts needed to derive the
  * portable {@link AgentDefinition} used by discovery and adapters.</p>
+ *
+ * <p>An Agent that has not established a stronger causal-integrity claim is still a valid MADRE
+ * Agent. The Java authoring surface therefore defaults to the lowest ordinary Integrity rather
+ * than forcing experimental or generated code to invent assurance it does not have. Portable
+ * descriptions remain explicit because {@link #definition()} materializes the resulting value.</p>
  */
 public interface Agent {
     AgentId id();
     String purpose();
-    Integrity integrity();
+
+    /** Conservative default for an Agent whose causal integrity has not been established. */
+    default Integrity integrity() { return Integrity.I1; }
 
     default Collection<? extends SkillDefinition> skills() { return Set.of(); }
     default Collection<? extends WorkflowDefinition> workflows() { return Set.of(); }
