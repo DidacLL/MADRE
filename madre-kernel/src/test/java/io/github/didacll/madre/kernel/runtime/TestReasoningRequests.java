@@ -64,7 +64,7 @@ final class TestReasoningRequests {
                 "text/plain", CODEC);
         Material<String> input = new Material<>(new MaterialId(MODULE, suffix), inputType,
                 "fixture", sensitivity);
-        OperationDefinition<String, String> operation = new OperationDefinition<>(
+        OperationDefinition operation = new OperationDefinition(
                 new OperationId(MODULE, "operation-" + suffix), "Fixture reasoning",
                 OperationVisibility.PRIVATE, Map.of(inputType.id(), Privacy.SECRET),
                 Map.of(), Map.of());
