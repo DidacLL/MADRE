@@ -32,8 +32,8 @@ final class ProgrammableReasoningServiceTest {
     private static final ModuleId MODULE = new ModuleId("test.module");
     private static final MaterialType<String> INPUT = textType("input");
     private static final MaterialType<String> OUTPUT = textType("output");
-    private static final OperationDefinition<String, String> OPERATION =
-            new OperationDefinition<>(new OperationId(MODULE, "compute"), "test computation",
+    private static final OperationDefinition OPERATION =
+            new OperationDefinition(new OperationId(MODULE, "compute"), "test computation",
                     OperationVisibility.PRIVATE, Map.of(INPUT.id(), Privacy.SECRET),
                     Map.of(OUTPUT.id(), Sensitivity.S3), Map.of());
 
