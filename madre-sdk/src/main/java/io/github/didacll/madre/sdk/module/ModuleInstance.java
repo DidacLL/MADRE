@@ -1,18 +1,39 @@
 package io.github.didacll.madre.sdk.module;
 
 import io.github.didacll.madre.sdk.identity.OperationId;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 
-/** One installed executable Module: its portable definition plus all Operation bindings. */
+/** Validated runtime assembly of a Module's portable contract and executable Operation bindings. */
 public final class ModuleInstance {
     private final ModuleDefinition definition;
     private final Map<OperationId, OperationBinding<?, ?>> operations;
 
+    /**
+     * Adapter-oriented assembly path for an already available portable definition.
+     * Native Java Modules should normally implement {@link Module} and use {@link #from(Module)}.
+     */
     public ModuleInstance(ModuleDefinition definition,
             Map<OperationId, OperationBinding<?, ?>> operations) {
         this.definition = Objects.requireNonNull(definition, "definition");
         this.operations = Map.copyOf(operations);
+    }
+
+    /** Derives the portable description and canonical binding map from one Java Module object. */
+    public static ModuleInstance from(Module module) {
+        Module executable = Objects.requireNonNull(module, "module");
+        Map<OperationId, OperationBinding<?, ?>> bindings = new LinkedHashMap<>();
+        for (OperationBinding<?, ?> binding : executable.operations()) {
+            OperationBinding<?, ?> value = Objects.requireNonNull(binding, "operation");
+            OperationId id = value.definition().id();
+            if (bindings.putIfAbsent(id, value) != null) {
+                throw new IllegalArgumentException("duplicate Operation identity: " + id);
+            }
+        }
+        ModuleInstance instance = new ModuleInstance(executable.definition(), bindings);
+        instance.validateBindings();
+        return instance;
     }
 
     public ModuleDefinition definition() { return definition; }
