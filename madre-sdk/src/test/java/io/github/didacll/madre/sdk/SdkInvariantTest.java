@@ -25,6 +25,7 @@ import io.github.didacll.madre.sdk.identity.WorkflowId;
 import io.github.didacll.madre.sdk.material.Material;
 import io.github.didacll.madre.sdk.material.MaterialCodec;
 import io.github.didacll.madre.sdk.material.MaterialType;
+import io.github.didacll.madre.sdk.module.Agent;
 import io.github.didacll.madre.sdk.module.AgentDefinition;
 import io.github.didacll.madre.sdk.module.EffectProfile;
 import io.github.didacll.madre.sdk.module.ModuleDefinition;
@@ -71,7 +72,7 @@ final class SdkInvariantTest {
         OperationId operationId = new OperationId(owner, "run");
         EffectProfile profile = new EffectProfile(new EffectProfileId(operationId, "bounded"),
                 Risk.DELETE, Autonomy.ASK_ALWAYS);
-        OperationDefinition<String, String> operation = new OperationDefinition<>(operationId,
+        OperationDefinition operation = new OperationDefinition(operationId,
                 "Run bounded behavior", OperationVisibility.PUBLIC,
                 Map.of(type.id(), Privacy.LOCAL), Map.of(type.id(), Sensitivity.S3),
                 Map.of(profile.id(), profile));
@@ -94,7 +95,7 @@ final class SdkInvariantTest {
                 String.class, "text/plain", STRINGS);
         Material<String> input = new Material<>(new MaterialId(owner, "input"), type,
                 "hello", Sensitivity.S3);
-        OperationDefinition<String, String> operation = new OperationDefinition<>(
+        OperationDefinition operation = new OperationDefinition(
                 new OperationId(owner, "read"), "Read text", OperationVisibility.PRIVATE,
                 Map.of(type.id(), Privacy.LOCAL), Map.of(type.id(), Sensitivity.S3), Map.of());
         OperationCall<String, String> call = OperationCall.withoutEffect(operation, input);
@@ -130,6 +131,19 @@ final class SdkInvariantTest {
                 codec.encode(definition).replaceFirst("\\{", "{\"metadata\":{},")));
     }
 
+    @Test void unprovenJavaAgentDefaultsToLowestOrdinaryIntegrity() {
+        ModuleId owner = new ModuleId("owner.module");
+        Agent agent = new Agent() {
+            @Override public AgentId id() { return new AgentId(owner, "experimental"); }
+            @Override public String purpose() { return "Experimental generated agent"; }
+            @Override public Set<OperationId> operations() {
+                return Set.of(new OperationId(owner, "run"));
+            }
+        };
+        assertEquals(Integrity.I1, agent.integrity());
+        assertEquals(Integrity.I1, agent.definition().integrity());
+    }
+
     @Test void systemReservedValuesAreRejectedByOrdinarySdkObjects() {
         ModuleId owner = new ModuleId("owner.module");
         MaterialType<String> type = new MaterialType<>(new MaterialTypeId(owner, "text"),
@@ -138,11 +152,11 @@ final class SdkInvariantTest {
 
         assertThrows(IllegalArgumentException.class, () -> new Material<>(
                 new MaterialId(owner, "system"), type, "value", Sensitivity.SYSTEM_RESERVED));
-        assertThrows(IllegalArgumentException.class, () -> new OperationDefinition<>(operationId,
+        assertThrows(IllegalArgumentException.class, () -> new OperationDefinition(operationId,
                 "Reserved input", OperationVisibility.PRIVATE,
                 Map.of(type.id(), Privacy.SYSTEM_RESERVED), Map.of(type.id(), Sensitivity.S1),
                 Map.of()));
-        assertThrows(IllegalArgumentException.class, () -> new OperationDefinition<>(operationId,
+        assertThrows(IllegalArgumentException.class, () -> new OperationDefinition(operationId,
                 "Reserved output", OperationVisibility.PRIVATE,
                 Map.of(type.id(), Privacy.PUBLIC),
                 Map.of(type.id(), Sensitivity.SYSTEM_RESERVED), Map.of()));
@@ -184,7 +198,7 @@ final class SdkInvariantTest {
         MaterialType<String> type = new MaterialType<>(new MaterialTypeId(owner, "text"),
                 String.class, "text/plain", STRINGS);
         OperationId operationId = new OperationId(owner, "answer");
-        OperationDefinition<String, String> operation = new OperationDefinition<>(operationId,
+        OperationDefinition operation = new OperationDefinition(operationId,
                 "Answer text", OperationVisibility.PUBLIC, Map.of(type.id(), Privacy.LOCAL),
                 Map.of(type.id(), Sensitivity.S4), Map.of());
         AgentId agentId = new AgentId(owner, "interaction");
