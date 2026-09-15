@@ -99,6 +99,54 @@ ModuleDefinition definition = ModuleDefinitionBuilder
 
 The result is the same stable `ModuleDefinition`; there is no experimental runtime model.
 
+## Stable mechanical authoring conveniences
+
+`madre-sdk` includes two small stable conveniences recovered from repeated code in the shipped owner-interaction Module and the independently built SDK consumer. They remove Java ceremony only; neither introduces semantic defaults or bypasses the canonical stable objects.
+
+Use `MaterialCodecs.utf8String()` instead of reimplementing the same UTF-8 codec for ordinary String payloads. The `MaterialTypeId`, Java type and content type remain explicit:
+
+```java
+// Before
+MaterialCodec<String> strings = new MaterialCodec<>() {
+    @Override public byte[] encode(String value) {
+        return value.getBytes(StandardCharsets.UTF_8);
+    }
+    @Override public String decode(byte[] bytes) {
+        return new String(bytes, StandardCharsets.UTF_8);
+    }
+};
+MaterialType<String> request = new MaterialType<>(
+        new MaterialTypeId(MODULE_ID, "request"), String.class,
+        "text/plain; charset=utf-8", strings);
+
+// After
+MaterialType<String> request = new MaterialType<>(
+        new MaterialTypeId(MODULE_ID, "request"), String.class,
+        "text/plain; charset=utf-8", MaterialCodecs.utf8String());
+```
+
+Use `Operation.of(...)` when an executable Operation needs no subclass state beyond its functional body:
+
+```java
+// Before
+Operation<String, String> inspect = new Operation<>() {
+    @Override protected CompletionStage<Material<String>> execute(
+            OperationCall<String, String> call) {
+        return CompletableFuture.completedFuture(
+                material(RESULT, call.input().payload(), Sensitivity.S4));
+    }
+};
+
+// After
+Operation<String, String> inspect = Operation.of(call ->
+        CompletableFuture.completedFuture(
+                material(RESULT, call.input().payload(), Sensitivity.S4)));
+```
+
+`Operation.of(...)` still executes through final `Operation.invoke(...)`, so the declared output type, Module ownership and maximum Sensitivity are validated normally. It does not create an `OperationCall`, select an EffectProfile or alter causal composition. PUBLIC behavior still requires an explicit Module-owned `PublicResultTransformer` when the `Operation` is placed in `OperationBinding.publicOperation(...)`.
+
+These stable helpers deliberately stop short of a text-Material factory, generated Material identity policy, Module-instance builder or reasoning-request builder. Material identity and Sensitivity remain explicit; `ModuleDefinition`, `OperationBinding`, `ModuleInstance` and `ReasoningRequest` remain the canonical stable contracts. The experimental surface remains `ModuleDefinitionBuilder` only.
+
 ## ModuleProvider lifecycle and configuration ownership
 
 Every installable JAR provides one or more `ModuleProvider` implementations. A provider declares canonical identity before materialization:

@@ -26,11 +26,12 @@ This does not finish the whole owner product. Generic Module configuration metad
 The first SDK-first experimentation slice is now executable rather than only architectural intent.
 
 - `madre-bom` aligns compatible versions of the public algebra, stable SDK, public testkit, experimental SDK, reasoning SPI and stable computation-contract artifacts, including text inference v1, text generation v2 and text embeddings v1.
-- `madre-sdk` remains the stable ownership-demonstrated public foundation; it did not acquire experimental semantic helpers.
+- `madre-sdk` remains the stable ownership-demonstrated public foundation. It now includes two syntax-only authoring conveniences demonstrated by repeated semantic code: `MaterialCodecs.utf8String()` for the standard UTF-8 String codec and `Operation.of(...)` for functional Operation bodies that still execute through final `Operation.invoke(...)` validation.
 - `madre-sdk-testkit` is a separately consumable public semantic/Module test artifact. It depends on public SDK contracts and has no `madre-app` or Kernel implementation dependency.
 - `madre-sdk-experimental` is a separately consumable 0.x incubation artifact. It depends on stable SDK; stable SDK, testkit, Kernel, application and reasoning SPI do not depend on it.
 - The experimental artifact is non-empty and currently contains one `ModuleDefinitionBuilder`. It only assembles the existing stable `ModuleDefinition`; it does not introduce another runtime/domain model. Workflows remain Agent-owned exactly as in the stable SDK.
 - Architecture checks reject dependency inversion from stable/runtime surfaces into the experimental artifact.
+- The shipped owner-interaction Module and the external `verification/sdk-consumer` both use the stable codec and functional Operation conveniences; neither gains an experimental-SDK runtime dependency, and their Material/Operation/Security Algebra declarations are unchanged.
 - The external `verification/sdk-consumer` build uses the BOM, stable SDK and `madre-text-inference` at production scope, public testkit plus text-generation/embeddings at test scope, and the experimental builder only at test scope. The resulting Module JAR therefore has no experimental or new inference-contract runtime requirement merely because its tests exercise them.
 - Its normal `jar` task executes deterministic SDK tests and verifies the Java ServiceLoader provider descriptor before producing `independent-module.jar`.
 - The public testkit includes `ModuleTestContext`, `ModuleTestHarness` and `ProgrammableReasoningService`. The latter is generic over arbitrary `ReasoningComputation<R>` and exposes deterministic immediate reasoning plus explicitly controlled queued/running/succeeded/failed/cancelled durable-work states.
@@ -57,7 +58,7 @@ Other transitional behavior remains unchanged:
 ## Artifact boundaries
 
 - `madre-algebra`: dependency-free nominal Security Algebra carriers;
-- `madre-sdk`: stable typed Material, Module/Agent/Skill/Workflow/Operation model, executable Module binding/registration/provider contracts, immutable Module-provider configuration, codecs, caller-bound Module interoperability, host-only owner-local/external-PUBLIC invocation ports and the Module-facing reasoning port;
+- `madre-sdk`: stable typed Material, Module/Agent/Skill/Workflow/Operation model, executable Module binding/registration/provider contracts, immutable Module-provider configuration, codecs including the standard UTF-8 String codec, functional Operation authoring through `Operation.of(...)`, caller-bound Module interoperability, host-only owner-local/external-PUBLIC invocation ports and the Module-facing reasoning port;
 - `madre-sdk-testkit`: deterministic public semantic Module-testing utilities over stable SDK contracts, with no Kernel/application implementation dependency;
 - `madre-sdk-experimental`: 0.x incubation artifact for higher-level authoring facilities; currently only typed `ModuleDefinitionBuilder`, which produces the stable domain object;
 - `madre-bom`: Java-platform version alignment for public MADRE artifacts; it does not make adapters, Kernel or application mandatory SDK dependencies;
@@ -136,7 +137,7 @@ The current CORE/console shape is now an experimentation target rather than the 
 
 ## Shipped owner-interaction Module baseline
 
-The shipped owner-interaction Module remains an ordinary installed Module using the same provider/configuration/discovery path as independent Modules. Its existing bounded Operations continue to prove immediate reasoning, durable background reasoning with Module-owned pending state, and Module interpretation/acknowledgement/cleanup after restart. Owner-local sensitive results remain sensitive; external/PUBLIC results require semantic minimization.
+The shipped owner-interaction Module remains an ordinary installed Module using the same provider/configuration/discovery path as independent Modules. Its existing bounded Operations continue to prove immediate reasoning, durable background reasoning with Module-owned pending state, and Module interpretation/acknowledgement/cleanup after restart. Owner-local sensitive results remain sensitive; external/PUBLIC results require semantic minimization. Its adoption of `MaterialCodecs.utf8String()` and `Operation.of(...)` is an authoring-only refactor: Module identity, Material type identities, Operation declarations/visibility, Privacy/Sensitivity, EffectProfiles, Agents, Skills, Workflows, configuration, persistence, reasoning modes and public transformation remain unchanged.
 
 Kernel SQLite and Module semantic persistence remain separate domains.
 
