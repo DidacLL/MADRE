@@ -1,7 +1,7 @@
 package io.github.didacll.madre.interaction;
 
 import io.github.didacll.madre.sdk.identity.ModuleId;
-import io.github.didacll.madre.sdk.module.ModuleInstance;
+import io.github.didacll.madre.sdk.module.Module;
 import io.github.didacll.madre.sdk.registration.ModuleConfigurationDescriptor;
 import io.github.didacll.madre.sdk.registration.ModuleConfigurationField;
 import io.github.didacll.madre.sdk.registration.ModuleContext;
@@ -57,12 +57,11 @@ public final class OwnerInteractionModuleProvider implements ModuleProvider {
         return configuration;
     }
 
-    @Override public ModuleInstance create(ModuleContext context,
+    @Override public Module create(ModuleContext context,
             ModuleProviderConfiguration configuration) {
         java.util.Objects.requireNonNull(context, "context");
         OwnerInteractionSettings settings = OwnerInteractionSettings.fromInstallation(configuration);
         return new OwnerInteractionModule(context.reasoning(),
-                context.stateDirectory().resolve("owner-interaction-background.state"), settings)
-                .instance();
+                context.stateDirectory().resolve("owner-interaction-background.state"), settings);
     }
 }
