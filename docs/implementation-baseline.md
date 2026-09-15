@@ -86,9 +86,11 @@ The existing `madre reasoning remove <provider>/<instance>` remains configured-i
 
 Lifecycle mutation always targets `HostEnvironment.ownerModuleDirectory()` or `HostEnvironment.ownerReasoningDirectory()`. Shipped application-image directories are read-only inputs to discovery/protection checks. An explicit `modules.directory` or `reasoning.directory` remains a discovery/development override and is never treated as a persistent owner-managed mutation root. If an identity exists only in such an external development directory, managed uninstall refuses and tells the operator to remove that developer artifact manually.
 
-The filesystem remains the artifact registry. No SQLite/metadata registry was added. Loader discovery now retains host-internal provider-to-code-source information, allowing the host to classify a discovered provider as `shipped`, `owner`, or `development` and to identify the exact owner JAR to replace/delete. No filesystem path was added to the public SDK or reasoning SPI.
+Direct placement in the conventional owner directories also remains discovery compatibility rather than implicit lifecycle ownership. MADRE-installed artifacts occupy a deterministic managed filename derived from installation domain plus canonical identity. A JAR copied there manually under another filename remains discoverable, is reported as `manual`, and cannot be replaced or deleted by managed lifecycle commands; the operator must remove that file manually. The deterministic managed filenames are therefore reserved host slots, not filenames that developers should choose for direct-placement compatibility.
 
-`modules list` and `reasoning providers` expose that concise source classification. Owner-managed providers also show the managed artifact filename. Successful install/replacement output includes a SHA-256 digest as a diagnostic/integrity identifier only; it has no signing/trust meaning.
+The filesystem remains the artifact registry. No SQLite/metadata registry was added. Loader discovery retains host-internal provider-to-code-source information, allowing the host to distinguish `shipped`, lifecycle-managed `owner`, manually placed `manual`, and external-override `development` discovery while identifying the exact managed owner JAR eligible for replacement/deletion. No filesystem path was added to the public SDK or reasoning SPI.
+
+`modules list` and `reasoning providers` expose that concise source classification. Lifecycle-managed owner providers also show the managed artifact filename. Successful install/replacement output includes a SHA-256 digest as a diagnostic/integrity identifier only; it has no signing/trust meaning.
 
 ### Managed 0.x packaging rule
 
@@ -108,9 +110,9 @@ Fresh reasoning installation therefore makes only the provider type discoverable
 
 ### Collision and replacement rules
 
-Canonical provider identity is authoritative. Filename, Java class name and discovery order never define replacement identity.
+Canonical provider identity is authoritative. Source filename, Java class name and discovery order never define replacement identity; the managed destination filename is derived only after canonical identity is obtained.
 
-A candidate colliding with a shipped Module/reasoning identity is rejected. Shipped artifacts cannot be removed through owner lifecycle commands. An owner identity already present rejects normal install. `--replace` is required and succeeds only when the candidate's canonical identity exactly equals an already owner-installed identity.
+A candidate colliding with a shipped Module/reasoning identity is rejected. Shipped artifacts cannot be removed through owner lifecycle commands. An existing lifecycle-managed owner identity rejects normal install. `--replace` is required and succeeds only when the candidate's canonical identity exactly equals that owner-installed identity and the existing source JAR occupies its exact deterministic managed slot. A manual same-identity JAR still causes collision but is not eligible for `--replace`.
 
 The candidate is first copied to a temporary file inside the owner directory, so staging and the destination share a filesystem. Staged bytes are re-discovered/revalidated before mutation. All temporary discovery/provider classloaders are closed before the active JAR is replaced. Commit uses `ATOMIC_MOVE + REPLACE_EXISTING` when supported and a same-filesystem replacement fallback otherwise. This close-before-replace discipline is required for Windows file-lock correctness.
 
@@ -146,12 +148,12 @@ The Module's Operations, Agents, Skills, Workflows, pending-state persistence, r
 
 `verification/sdk-consumer` remains an independently buildable Java project that resolves published public MADRE artifacts rather than depending on `madre-app` or Kernel internals. Its real `result-prefix` setting is declared through the stable Module configuration contract.
 
-The cross-platform `SDK developer acceptance`/installed-owner journey now proves:
+The manually invoked cross-platform `Extended SDK developer acceptance`/installed-owner journey proves:
 
 1. the independent project builds outside the MADRE checkout against published verification artifacts;
 2. its JAR is initially absent from the isolated conventional owner Module directory;
 3. packaged MADRE installs it with `modules install <external-jar>`;
-4. `modules list` discovers `phd.module` and classifies it as `owner`;
+4. `modules list` discovers `phd.module` and classifies it as lifecycle-managed `owner`;
 5. `modules inspect` exposes `result-prefix`;
 6. `modules configure` persists `result-prefix=configured-`;
 7. normal owner/PUBLIC invocation uses the configured Module behavior;
@@ -161,19 +163,20 @@ The cross-platform `SDK developer acceptance`/installed-owner journey now proves
 11. `--purge-configuration` removes only the exact independent Module configuration and owner artifact;
 12. unrelated shipped-Module configuration and `roles.core` survive;
 13. the Module semantic-state marker survives;
-14. the provider is no longer discoverable.
+14. the provider is no longer discoverable;
+15. direct placement of the same Module under a manual owner-directory filename remains discoverable as `manual`, while managed replace/uninstall refuse it and leave its hash unchanged.
 
 The previous owner-local/PUBLIC, CORE/interaction independence, zero-reasoning and durable restart/recovery proofs remain in the same acceptance rather than being replaced by lifecycle-only checks.
 
 ## Independent reasoning-provider proof
 
-`verification/reasoning-consumer` remains the existing independent public-SPI provider fixture. The reasoning owner-configuration acceptance now uses the packaged product command rather than copying its JAR into the owner directory.
+`verification/reasoning-consumer` remains the existing independent public-SPI provider fixture. The reasoning owner-configuration acceptance uses the packaged product command rather than copying its JAR into the owner directory.
 
-On both Windows and Ubuntu it proves:
+On both Windows and Ubuntu the manually invoked extended acceptance proves:
 
 1. the owner reasoning directory starts without the independent JAR;
 2. `reasoning install <jar>` installs `independent-text` into the conventional owner root;
-3. `reasoning providers` classifies it as `owner`;
+3. `reasoning providers` classifies it as lifecycle-managed `owner`;
 4. installation alone leaves configured-instance/mechanism counts at zero;
 5. a byte-different same-identity JAR is accepted only with explicit `--replace`;
 6. each shipped reasoning provider rejects owner uninstall and a shipped reasoning JAR cannot be installed as an owner override; shipped hashes are unchanged;
@@ -181,7 +184,8 @@ On both Windows and Ubuntu it proves:
 8. provider-backed mechanism materialization/restart evidence remains intact;
 9. plain provider uninstall refuses while a preserved configured instance remains;
 10. `--purge-configuration` invokes provider-owned removal semantics, removes the owner JAR, and preserves unrelated Module configuration;
-11. the provider becomes undiscoverable.
+11. the provider becomes undiscoverable;
+12. direct placement under a manual owner-directory filename remains discoverable as `manual`, while managed replace/uninstall refuse it and leave its hash unchanged.
 
 `reasoning remove <provider>/<instance>` and `reasoning uninstall <provider>` are therefore independently exercised as distinct product responsibilities.
 
@@ -207,14 +211,15 @@ Reasoning artifact lifecycle is outside Kernel. Kernel continues to see configur
 
 ## Verification coverage
 
-Focused and cross-platform evidence now covers:
+Focused tests and deliberately invoked cross-platform acceptance cover:
 
 - ordinary ServiceLoader discovery compatibility plus strict managed one-JAR provider provenance;
 - candidate-domain rejection through separate Module/reasoning managed loaders;
 - canonical identity collision/replacement semantics;
-- source classification (`shipped`, `owner`, `development`);
+- source classification (`shipped`, lifecycle-managed `owner`, `manual`, `development`);
+- deterministic managed-slot ownership and refusal to mutate manually placed owner-directory JARs;
 - staged same-filesystem replacement after classloader closure;
-- Windows and Ubuntu replacement/deletion of discovered JARs;
+- Windows and Ubuntu replacement/deletion of managed discovered JARs;
 - plain uninstall refusal when configuration remains;
 - exact Module-prefix purge;
 - reasoning provider-owned configuration purge;
@@ -224,7 +229,7 @@ Focused and cross-platform evidence now covers:
 - reasoning install creating no mechanism;
 - existing invalid-configuration rollback, Module receiver boundaries, interoperability, zero-reasoning startup and durable recovery.
 
-Cross-platform PR workflows remain the authoritative installed/package evidence: Java 21 Windows/Ubuntu build, SDK developer acceptance, native owner package, and reasoning owner configuration.
+Automatic PR validation is intentionally only the lightweight Linux root `check`. The extended SDK, reasoning-owner and native-package Windows/Linux workflows are explicit `workflow_dispatch` acceptance tools used when their product evidence is relevant; they are not continuous development gates.
 
 ## Current intentional limitations
 
@@ -232,4 +237,4 @@ Local lifecycle is deliberately narrow. It does not implement remote URL install
 
 The managed 0.x contract is a single independently built JAR with one canonical provider for exactly one installation domain. Richer dependency packaging should be introduced only if real independent projects demonstrate that the current public-artifact packaging is insufficient.
 
-Direct JAR placement remains an advanced/developer compatibility path. MADRE intentionally will not delete arbitrary files outside its conventional owner-managed roots.
+Direct JAR placement remains an advanced/developer compatibility path. MADRE does not take lifecycle ownership merely because a JAR resides in an owner discovery directory: only the deterministic managed slot produced by `install` is eligible for managed replace/uninstall. Manual files remain the operator's responsibility.
