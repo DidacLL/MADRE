@@ -8,7 +8,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletionStage;
 
-/** Executable binding for one exact declared Operation. */
+/** Executable binding for one exact declared Operation contract. */
 public final class OperationBinding<I, O> {
     private final OperationDefinition<I, O> definition;
     private final Operation<I, O> implementation;
@@ -48,14 +48,14 @@ public final class OperationBinding<I, O> {
 
     public OperationDefinition<I, O> definition() { return definition; }
 
-    /** Executes inside the owning Module and validates the Module-created output contract. */
+    /** Executes inside the owning Module. The Operation owns its single output-validation path. */
     public CompletionStage<Material<O>> invoke(OperationCall<I, O> call) {
         OperationCall<I, O> exactCall = Objects.requireNonNull(call, "call");
-        if (exactCall.operation() != definition) {
+        if (!definition.equals(exactCall.operation())) {
             throw new IllegalArgumentException(
-                    "OperationCall must use the exact installed Operation declaration");
+                    "OperationCall contract differs from the installed Operation binding");
         }
-        return implementation.invoke(exactCall).thenApply(exactCall::acceptOutput);
+        return implementation.invoke(exactCall);
     }
 
     /**
