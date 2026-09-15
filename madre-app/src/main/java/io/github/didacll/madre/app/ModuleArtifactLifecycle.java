@@ -55,17 +55,24 @@ final class ModuleArtifactLifecycle {
         }
 
         Path staged = ManagedJarFiles.stage(candidateJar, ownerDirectory);
+        final String digest;
         try {
             ModuleId stagedId = inspectCandidate(staged, properties);
             if (!stagedId.equals(candidateId)) {
                 throw new IllegalStateException("staged Module identity changed from " + candidateId
                         + " to " + stagedId);
             }
+            digest = ManagedJarFiles.sha256(staged);
             ManagedJarFiles.commit(staged, destination);
-        } finally {
-            Files.deleteIfExists(staged);
+        } catch (IOException | RuntimeException failure) {
+            try {
+                Files.deleteIfExists(staged);
+            } catch (IOException cleanupFailure) {
+                failure.addSuppressed(cleanupFailure);
+            }
+            throw failure;
         }
-        return new InstallResult(candidateId, destination, ManagedJarFiles.sha256(destination), replace);
+        return new InstallResult(candidateId, destination, digest, replace);
     }
 
     static UninstallResult uninstall(HostEnvironment host, HostEnvironment.LoadedConfiguration loaded,
