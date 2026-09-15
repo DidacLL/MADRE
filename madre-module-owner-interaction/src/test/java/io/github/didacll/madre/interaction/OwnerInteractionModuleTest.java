@@ -127,8 +127,7 @@ final class OwnerInteractionModuleTest {
     @Test void publicDefinitionRoundTripsWithoutBehavior() {
         OwnerInteractionModule module = new OwnerInteractionModule(
                 new RecordingReasoning(), temporary.resolve("state"));
-        ModuleDefinitionJsonCodec codec = new ModuleDefinitionJsonCodec((id, contentType) ->
-                module.definition().materialTypes().get(id));
+        ModuleDefinitionJsonCodec codec = new ModuleDefinitionJsonCodec();
         String encoded = codec.encode(module.definition());
         var decoded = codec.decode(encoded);
 
