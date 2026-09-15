@@ -1,13 +1,13 @@
-name: Reasoning owner configuration
+name: Extended reasoning owner configuration
 
 on:
-  pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: reasoning-owner-config-${{ github.event.pull_request.number || github.ref }}
+  group: reasoning-owner-config-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -19,9 +19,6 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 0
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
@@ -34,7 +31,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $gradle = if ($IsWindows) { '.\gradlew.bat' } else { './gradlew' }
+          $gradle = if ($IsWindows) { '.\\gradlew.bat' } else { './gradlew' }
           & $gradle --no-daemon --build-cache publish :madre-app:jpackageAppImage
           if ($LASTEXITCODE -ne 0) { throw 'MADRE public artifacts/application image build failed' }
 
@@ -42,7 +39,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $gradle = if ($IsWindows) { '.\gradlew.bat' } else { './gradlew' }
+          $gradle = if ($IsWindows) { '.\\gradlew.bat' } else { './gradlew' }
           & $gradle --no-daemon --build-cache -p verification/reasoning-consumer jar
           if ($LASTEXITCODE -ne 0) { throw 'independent reasoning provider build failed' }
 
