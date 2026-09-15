@@ -12,6 +12,7 @@ on:
       - 'madre-bom/**'
       - 'madre-text-inference/**'
       - 'madre-app/**'
+      - 'madre-module-owner-interaction/**'
       - 'verification/sdk-consumer/**'
       - '.github/workflows/sdk-developer.yml'
 
@@ -79,7 +80,7 @@ jobs:
           if (-not (Test-Path $jar)) { throw 'external Module JAR was not produced' }
           "EXTERNAL_MODULE_JAR=$jar" >> $env:GITHUB_ENV
 
-      - name: Install external JAR in normal owner Module directory and invoke it
+      - name: Install, configure and invoke external JAR through packaged MADRE
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -110,11 +111,13 @@ jobs:
               $env:APPDATA = Join-Path $temp 'roaming'
               $env:LOCALAPPDATA = Join-Path $temp 'local'
               $dataDirectory = Join-Path $env:LOCALAPPDATA 'MADRE'
+              $configurationFile = Join-Path (Join-Path $env:APPDATA 'MADRE') 'madre.properties'
             } else {
               $env:XDG_CONFIG_HOME = Join-Path $temp 'config'
               $env:XDG_DATA_HOME = Join-Path $temp 'data'
               $env:XDG_STATE_HOME = Join-Path $temp 'state'
               $dataDirectory = Join-Path $env:XDG_DATA_HOME 'madre'
+              $configurationFile = Join-Path (Join-Path $env:XDG_CONFIG_HOME 'madre') 'madre.properties'
             }
 
             $bootstrap = (& $launcher doctor 2>&1 | Out-String)
@@ -126,27 +129,57 @@ jobs:
             }
             Copy-Item $env:EXTERNAL_MODULE_JAR (Join-Path $ownerModules 'independent-module.jar') -Force
 
+            $modules = (& $launcher modules list 2>&1 | Out-String)
+            if ($LASTEXITCODE -ne 0) { Write-Host $modules; throw 'modules list failed' }
+            Write-Host $modules
+            if ($modules -notmatch 'module\s+phd\.module') {
+              throw 'packaged MADRE did not discover the independently built owner Module provider'
+            }
+
+            $inspect = (& $launcher modules inspect phd.module 2>&1 | Out-String)
+            if ($LASTEXITCODE -ne 0) { Write-Host $inspect; throw 'modules inspect failed' }
+            Write-Host $inspect
+            if ($inspect -notmatch 'module\.field\s+result-prefix\s+TEXT') {
+              throw 'independent Module result-prefix metadata was not exposed'
+            }
+
+            $configured = (& $launcher modules configure phd.module --set 'result-prefix=configured-' 2>&1 | Out-String)
+            if ($LASTEXITCODE -ne 0) { Write-Host $configured; throw 'modules configure failed' }
+            Write-Host $configured
+            $persisted = Get-Content $configurationFile -Raw
+            if ($persisted -notmatch 'modules\.config\[phd\.module\]\.result-prefix=configured-') {
+              throw 'host did not persist the exact Module-scoped raw compatibility property'
+            }
+
+            $beforeInvalid = Get-Content $configurationFile -Raw
+            $invalid = (& $launcher modules configure phd.module --set 'result-prefix=bad value' 2>&1 | Out-String)
+            if ($LASTEXITCODE -eq 0) { Write-Host $invalid; throw 'invalid result-prefix configuration was accepted' }
+            $afterInvalid = Get-Content $configurationFile -Raw
+            if ($afterInvalid -ne $beforeInvalid) {
+              throw 'rejected Module configuration modified the persisted owner configuration'
+            }
+
             $doctor = (& $launcher doctor 2>&1 | Out-String)
-            if ($LASTEXITCODE -ne 0) { Write-Host $doctor; throw 'doctor failed after owner Module installation' }
+            if ($LASTEXITCODE -ne 0) { Write-Host $doctor; throw 'doctor failed after owner Module configuration' }
             Write-Host $doctor
             if ($doctor -notmatch 'module\s+phd\.module') {
-              throw 'packaged MADRE did not discover the independently built owner Module'
+              throw 'configured independently built owner Module did not materialize on normal startup'
             }
 
             $owner = (& $launcher --invoke-owner phd.module inspect request S4 hello 2>&1 | Out-String)
             if ($LASTEXITCODE -ne 0) { Write-Host $owner; throw 'owner-local external Module invocation failed' }
             Write-Host $owner
-            if ($owner -notmatch 'S4\s+private:hello') {
-              throw 'owner-local invocation did not preserve Module-created sensitive Material'
+            if ($owner -notmatch 'S4\s+private:configured-hello') {
+              throw 'owner-local invocation did not observe the persisted independent Module setting'
             }
 
             $public = (& $launcher --invoke-public phd.module inspect request S4 hello 2>&1 | Out-String)
             if ($LASTEXITCODE -ne 0) { Write-Host $public; throw 'PUBLIC external Module invocation failed' }
             Write-Host $public
-            if ($public -notmatch 'public:hello') {
-              throw 'PUBLIC invocation did not return semantic public transformation'
+            if ($public -notmatch 'public:configured-hello') {
+              throw 'PUBLIC invocation did not observe configured semantic public transformation'
             }
-            if ($public -match 'private:hello') {
+            if ($public -match 'private:configured-hello') {
               throw 'raw Module Material crossed the external PUBLIC receiver boundary'
             }
           } finally {

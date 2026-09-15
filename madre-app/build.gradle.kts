@@ -35,7 +35,7 @@ dependencies {
 }
 
 application {
-    mainClass = "io.github.didacll.madre.app.MadreMain"
+    mainClass = "io.github.didacll.madre.app.MadreLauncher"
     applicationName = "madre"
 }
 
@@ -110,7 +110,7 @@ val jpackageAppImage by tasks.registering(Exec::class) {
             "--name", "madre",
             "--input", jpackageInput.get().asFile.absolutePath,
             "--main-jar", mainJar,
-            "--main-class", "io.github.didacll.madre.app.MadreMain",
+            "--main-class", "io.github.didacll.madre.app.MadreLauncher",
             "--app-version", nativeAppVersion,
             "--vendor", "DidacLL",
             "--description", "MADRE local-first modular agentic system"
@@ -136,7 +136,7 @@ val nativePackage by tasks.registering(Exec::class) {
             "--name", "madre",
             "--input", jpackageInput.get().asFile.absolutePath,
             "--main-jar", mainJar,
-            "--main-class", "io.github.didacll.madre.app.MadreMain",
+            "--main-class", "io.github.didacll.madre.app.MadreLauncher",
             "--app-version", nativeAppVersion,
             "--vendor", "DidacLL",
             "--description", "MADRE local-first modular agentic system"
