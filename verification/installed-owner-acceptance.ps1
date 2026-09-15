@@ -18,14 +18,8 @@ if (-not (Test-Path $dist)) { throw 'built MADRE distribution is missing' }
 if (-not (Test-Path $independentModule)) { throw 'independent Module fixture is missing' }
 if (-not (Test-Path $independentReasoning)) { throw 'independent reasoning fixture is missing' }
 
-Copy-Item $independentModule (Join-Path $moduleDir 'independent-module.jar') -Force
-Copy-Item $independentReasoning (Join-Path $reasoningDir 'independent-reasoning.jar') -Force
-
 $ownerJar = @(Get-ChildItem $moduleDir -Filter 'madre-module-owner-interaction*.jar')
 if ($ownerJar.Count -lt 1) { throw 'shipped owner-interaction Module is missing from modules/' }
-if (-not (Test-Path (Join-Path $reasoningDir 'independent-reasoning.jar'))) {
-    throw 'independent reasoning adapter is missing from reasoning/'
-}
 
 if ($IsWindows) {
     $launcher = Join-Path $dist 'bin/madre.bat'
@@ -35,6 +29,17 @@ if ($IsWindows) {
 
 $temp = Join-Path ([System.IO.Path]::GetTempPath()) ('madre-owner-acceptance-' + [guid]::NewGuid())
 New-Item -ItemType Directory -Force -Path $temp | Out-Null
+$oldLocalAppData = $env:LOCALAPPDATA
+$oldXdgData = $env:XDG_DATA_HOME
+if ($IsWindows) {
+    $env:LOCALAPPDATA = Join-Path $temp 'local-app-data'
+    $ownerModuleDir = Join-Path $env:LOCALAPPDATA 'MADRE/modules'
+    $ownerReasoningDir = Join-Path $env:LOCALAPPDATA 'MADRE/reasoning'
+} else {
+    $env:XDG_DATA_HOME = Join-Path $temp 'xdg-data'
+    $ownerModuleDir = Join-Path $env:XDG_DATA_HOME 'madre/modules'
+    $ownerReasoningDir = Join-Path $env:XDG_DATA_HOME 'madre/reasoning'
+}
 
 function Write-Config {
     param(
@@ -50,15 +55,13 @@ function Write-Config {
         [bool]$ownerModuleConfiguration = $true,
         [string]$independentResultPrefix = ''
     )
-    if ([string]::IsNullOrWhiteSpace($configuredReasoningDir)) {
-        $configuredReasoningDir = $reasoningDir
-    }
     $lines = @(
         "kernel.database=$(Slash $database)",
-        "modules.directory=$(Slash $moduleDir)",
-        "modules.state-directory=$(Slash $stateDirectory)",
-        "reasoning.directory=$(Slash $configuredReasoningDir)"
+        "modules.state-directory=$(Slash $stateDirectory)"
     )
+    if (-not [string]::IsNullOrWhiteSpace($configuredReasoningDir)) {
+        $lines += "reasoning.directory=$(Slash $configuredReasoningDir)"
+    }
     if ($ownerModuleConfiguration) {
         $lines += @(
             "modules.config[$ownerModuleId].foreground-maximum-tokens=$ownerForegroundTokens",
@@ -138,6 +141,116 @@ function Invoke-MadreExpectFailure([string]$config, [string[]]$arguments) {
 }
 
 try {
+    # Product lifecycle installs the independently built artifacts into isolated owner roots.
+    if ((Test-Path $ownerModuleDir) -and @(Get-ChildItem $ownerModuleDir -Filter '*.jar').Count -ne 0) {
+        throw 'owner Module directory was not initially empty'
+    }
+    if ((Test-Path $ownerReasoningDir) -and @(Get-ChildItem $ownerReasoningDir -Filter '*.jar').Count -ne 0) {
+        throw 'owner reasoning directory was not initially empty'
+    }
+    $lifecycleState = Join-Path $temp 'lifecycle-state'
+    $lifecycleConfig = Join-Path $temp 'lifecycle.properties'
+    Write-Config -path $lifecycleConfig -database (Join-Path $temp 'lifecycle.sqlite') `
+        -stateDirectory $lifecycleState -interaction $false -reasoning $false `
+        -coreModule 'phd.module'
+
+    $moduleInstall = Invoke-Madre $lifecycleConfig @('modules', 'install', $independentModule)
+    if ($moduleInstall -notmatch 'module\.installed\s+phd\.module' -or
+            $moduleInstall -notmatch 'source=owner') {
+        throw 'product Module install did not report the independent Module as owner-installed'
+    }
+    $reasoningInstall = Invoke-Madre $lifecycleConfig @('reasoning', 'install', $independentReasoning)
+    if ($reasoningInstall -notmatch 'reasoning\.provider\.installed\s+independent-text' -or
+            $reasoningInstall -notmatch 'source=owner') {
+        throw 'product reasoning install did not report the independent provider as owner-installed'
+    }
+    $ownerModules = @(Get-ChildItem $ownerModuleDir -Filter '*.jar')
+    $ownerReasoning = @(Get-ChildItem $ownerReasoningDir -Filter '*.jar')
+    if ($ownerModules.Count -ne 1 -or $ownerReasoning.Count -ne 1) {
+        throw 'managed install did not produce exactly one JAR in each isolated owner root'
+    }
+
+    $moduleList = Invoke-Madre $lifecycleConfig @('modules', 'list')
+    if ($moduleList -notmatch 'module\s+phd\.module.*source=owner') {
+        throw 'Module list did not expose owner source classification for the installed artifact'
+    }
+    $moduleInspect = Invoke-Madre $lifecycleConfig @('modules', 'inspect', 'phd.module')
+    if ($moduleInspect -notmatch 'module\.field\s+result-prefix') {
+        throw 'Module inspect did not expose independent provider configuration metadata'
+    }
+    Invoke-Madre $lifecycleConfig @('modules', 'configure', 'phd.module',
+        '--set', 'result-prefix=configured-') | Out-Null
+    $configuredLifecycle = Invoke-Madre $lifecycleConfig @(
+        '--invoke-public', 'phd.module', 'inspect', 'request', 'S4', 'hello')
+    if ($configuredLifecycle -notmatch 'public:configured-hello') {
+        throw 'managed Module configuration did not reach normal semantic startup/invocation'
+    }
+
+    $providersAfterInstall = Invoke-Madre $lifecycleConfig @('reasoning', 'providers')
+    if ($providersAfterInstall -notmatch 'reasoning\.provider\s+independent-text.*source=owner') {
+        throw 'reasoning provider listing did not expose owner source classification'
+    }
+    $installOnlyDoctor = Invoke-Madre $lifecycleConfig @('doctor')
+    if ($installOnlyDoctor -notmatch 'reasoning\.mechanisms\.count\s+0') {
+        throw 'reasoning artifact installation alone materialized a mechanism'
+    }
+
+    # Explicit replacement changes bytes while retaining the same canonical Module identity.
+    $replacementJar = Join-Path $temp 'independent-module-replacement.jar'
+    Copy-Item $independentModule $replacementJar
+    $replacementStream = [System.IO.File]::Open($replacementJar,
+        [System.IO.FileMode]::Open, [System.IO.FileAccess]::ReadWrite)
+    try {
+        $archive = [System.IO.Compression.ZipArchive]::new(
+            $replacementStream, [System.IO.Compression.ZipArchiveMode]::Update, $true)
+        try {
+            $entry = $archive.CreateEntry('META-INF/madre-replacement-marker.txt')
+            $writer = [System.IO.StreamWriter]::new($entry.Open())
+            try { $writer.Write('replacement') } finally { $writer.Dispose() }
+        } finally {
+            $archive.Dispose()
+        }
+    } finally {
+        $replacementStream.Dispose()
+    }
+    $beforeReplacementPath = $ownerModules[0].FullName
+    $beforeReplacementHash = (Get-FileHash $beforeReplacementPath -Algorithm SHA256).Hash
+    $replacement = Invoke-Madre $lifecycleConfig @('modules', 'install', $replacementJar, '--replace')
+    if ($replacement -notmatch 'module\.replaced\s+phd\.module') {
+        throw 'explicit Module replacement was not reported'
+    }
+    $afterReplacementModules = @(Get-ChildItem $ownerModuleDir -Filter '*.jar')
+    if ($afterReplacementModules.Count -ne 1 -or
+            $afterReplacementModules[0].FullName -ne $beforeReplacementPath) {
+        throw 'Module replacement changed the managed canonical artifact slot'
+    }
+    $afterReplacementHash = (Get-FileHash $afterReplacementModules[0].FullName -Algorithm SHA256).Hash
+    $replacementSourceHash = (Get-FileHash $replacementJar -Algorithm SHA256).Hash
+    if ($afterReplacementHash -eq $beforeReplacementHash -or $afterReplacementHash -ne $replacementSourceHash) {
+        throw 'Module replacement did not atomically commit the supplied replacement bytes'
+    }
+    $configuredAfterReplace = Invoke-Madre $lifecycleConfig @(
+        '--invoke-public', 'phd.module', 'inspect', 'request', 'S4', 'hello')
+    if ($configuredAfterReplace -notmatch 'public:configured-hello') {
+        throw 'replacement did not preserve and validate existing Module configuration'
+    }
+
+    # Shipped artifacts are immutable through the owner lifecycle surface.
+    $shippedHash = (Get-FileHash $ownerJar[0].FullName -Algorithm SHA256).Hash
+    $shippedInstall = Invoke-MadreExpectFailure $lifecycleConfig @(
+        'modules', 'install', $ownerJar[0].FullName)
+    if ($shippedInstall -notmatch 'shipped with MADRE' -or $shippedInstall -notmatch 'cannot be overridden') {
+        throw 'owner install did not reject a canonical identity collision with a shipped Module'
+    }
+    $shippedUninstall = Invoke-MadreExpectFailure $lifecycleConfig @(
+        'modules', 'uninstall', $ownerModuleId)
+    if ($shippedUninstall -notmatch 'shipped Module cannot be uninstalled') {
+        throw 'owner uninstall did not protect the shipped owner-interaction Module'
+    }
+    if ((Get-FileHash $ownerJar[0].FullName -Algorithm SHA256).Hash -ne $shippedHash) {
+        throw 'shipped owner-interaction Module bytes changed during rejected lifecycle operations'
+    }
+
     # Independently compiled SDK consumer: omitted configuration keeps its documented old behavior.
     $independentDefaultConfig = Join-Path $temp 'independent-default.properties'
     Write-Config -path $independentDefaultConfig -database (Join-Path $temp 'independent-default.sqlite') `
@@ -355,6 +468,39 @@ try {
     if ($restarted -notmatch 'S1\s+no completed background updates') {
         throw 'second /updates did not prove acknowledgement and cleanup'
     }
+
+    # Uninstall is configuration-safe and does not erase semantic Module state.
+    $semanticMarker = Join-Path $lifecycleState 'module-state/phd.module/lifecycle-marker.txt'
+    New-Item -ItemType Directory -Force -Path (Split-Path $semanticMarker -Parent) | Out-Null
+    Set-Content -Path $semanticMarker -Value 'keep semantic state' -Encoding utf8
+    $plainUninstall = Invoke-MadreExpectFailure $lifecycleConfig @(
+        'modules', 'uninstall', 'phd.module')
+    if ($plainUninstall -notmatch 'retained owner configuration' -or
+            -not (Test-Path $afterReplacementModules[0].FullName)) {
+        throw 'plain Module uninstall did not refuse safely while owner configuration was retained'
+    }
+    Invoke-Madre $lifecycleConfig @(
+        'modules', 'uninstall', 'phd.module', '--purge-configuration') | Out-Null
+    if (Test-Path $afterReplacementModules[0].FullName) {
+        throw 'purge uninstall did not remove the owner-managed Module artifact'
+    }
+    $lifecycleText = Get-Content $lifecycleConfig -Raw
+    if ($lifecycleText -match 'modules\.config\[phd\.module\]\.') {
+        throw 'purge uninstall retained exact independent Module configuration'
+    }
+    if ($lifecycleText -notmatch [regex]::Escape("modules.config[$ownerModuleId].foreground-maximum-tokens=$ownerForegroundTokens") -or
+            $lifecycleText -notmatch 'roles\.core=phd\.module') {
+        throw 'Module purge uninstall changed unrelated Module/role configuration'
+    }
+    if (-not (Test-Path $semanticMarker)) {
+        throw 'Module artifact uninstall deleted semantic Module state'
+    }
+    $afterUninstallList = Invoke-Madre $lifecycleConfig @('modules', 'list')
+    if ($afterUninstallList -match 'module\s+phd\.module') {
+        throw 'uninstalled independent Module remained discoverable'
+    }
 } finally {
+    $env:LOCALAPPDATA = $oldLocalAppData
+    $env:XDG_DATA_HOME = $oldXdgData
     Remove-Item -Recurse -Force $temp -ErrorAction SilentlyContinue
 }
