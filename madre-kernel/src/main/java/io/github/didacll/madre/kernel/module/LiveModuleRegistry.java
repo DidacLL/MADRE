@@ -50,7 +50,6 @@ public final class LiveModuleRegistry
 
     @Override public Registration register(ModuleInstance instance) {
         ModuleInstance executable = Objects.requireNonNull(instance, "instance");
-        executable.validateBindings();
         Entry entry = new Entry(executable);
         ModuleId moduleId = executable.definition().id();
         if (entries.putIfAbsent(moduleId, entry) != null) {
