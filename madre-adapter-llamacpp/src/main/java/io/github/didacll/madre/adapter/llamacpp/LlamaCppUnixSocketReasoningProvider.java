@@ -61,7 +61,7 @@ public final class LlamaCppUnixSocketReasoningProvider
 
     @Override public List<ReasoningConfiguredInstance> configuredInstances(
             ReasoningProviderConfiguration configuration) {
-        return LlamaCppOwnerConfiguration.configuredInstances(configuration, PREFIX,
+        return LlamaCppOwnerConfiguration.configuredInstances(configuration, PREFIX, DESCRIPTOR,
                 "socket", "socket");
     }
 

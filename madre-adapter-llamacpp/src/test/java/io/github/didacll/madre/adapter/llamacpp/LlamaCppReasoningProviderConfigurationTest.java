@@ -1,6 +1,7 @@
 package io.github.didacll.madre.adapter.llamacpp;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -34,6 +35,28 @@ final class LlamaCppReasoningProviderConfigurationTest {
                 provider.configurator().setEnabled("local", false, configured));
         assertEquals(0, provider.materialize(disabled).size());
         assertTrue(disabled.value("reasoning.llamacpp-http.local.model").isPresent());
+    }
+
+    @Test void unixSummaryExposesOnlyFieldsDeclaredByUnixProvider() {
+        LlamaCppUnixSocketReasoningProvider provider = new LlamaCppUnixSocketReasoningProvider();
+        ReasoningProviderConfiguration configuration = new ReasoningProviderConfiguration(Map.of(
+                "reasoning.llamacpp-unix.instances", "local",
+                "reasoning.llamacpp-unix.local.id", "unix-text",
+                "reasoning.llamacpp-unix.local.socket", "/tmp/llama.sock",
+                "reasoning.llamacpp-unix.local.model", "local-model",
+                "reasoning.llamacpp-unix.local.computation", "madre.text-embedding.v1",
+                "reasoning.llamacpp-unix.local.embedding-space-id", "foreign-space",
+                "reasoning.llamacpp-unix.local.embedding-dimensions", "3",
+                "reasoning.llamacpp-unix.local.privacy", "SECRET",
+                "reasoning.llamacpp-unix.local.expected-latency-ms", "10",
+                "reasoning.llamacpp-unix.local.preference", "0"));
+
+        Map<String, String> values = provider.configurator().configuredInstances(configuration)
+                .getFirst().values();
+        assertFalse(values.containsKey("computation"));
+        assertFalse(values.containsKey("embedding-space-id"));
+        assertFalse(values.containsKey("embedding-dimensions"));
+        assertEquals("/tmp/llama.sock", values.get("socket"));
     }
 
     @Test void loopbackValidationRemainsProviderOwned() {

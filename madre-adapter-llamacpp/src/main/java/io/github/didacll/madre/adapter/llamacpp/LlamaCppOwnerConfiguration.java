@@ -20,21 +20,31 @@ final class LlamaCppOwnerConfiguration {
 
     static List<ReasoningConfiguredInstance> configuredInstances(
             ReasoningProviderConfiguration configuration, String providerPrefix,
-            String transportRawName, String transportFieldName) {
+            ReasoningProviderDescriptor descriptor, String transportRawName,
+            String transportFieldName) {
+        Set<String> supported = descriptor.fields().stream().map(ReasoningConfigurationField::name)
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
         List<ReasoningConfiguredInstance> result = new ArrayList<>();
         for (String instance : LlamaCppProviderConfiguration.instances(configuration, providerPrefix)) {
             String prefix = instancePrefix(providerPrefix, instance);
             Map<String, String> values = new LinkedHashMap<>();
-            copy(configuration, prefix + ".id", values, "capability-id");
-            copy(configuration, prefix + "." + transportRawName, values, transportFieldName);
-            copy(configuration, prefix + ".model", values, "model");
-            copy(configuration, prefix + ".computation", values, "computation");
-            copy(configuration, prefix + ".embedding-space-id", values, "embedding-space-id");
-            copy(configuration, prefix + ".embedding-dimensions", values, "embedding-dimensions");
-            copy(configuration, prefix + ".privacy", values, "privacy");
-            copy(configuration, prefix + ".expected-latency-ms", values, "expected-latency-ms");
-            copy(configuration, prefix + ".preference", values, "preference");
-            copy(configuration, prefix + ".resource.model-slot", values, "model-slot-units");
+            copyIfSupported(configuration, supported, prefix + ".id", values, "capability-id");
+            copyIfSupported(configuration, supported, prefix + "." + transportRawName,
+                    values, transportFieldName);
+            copyIfSupported(configuration, supported, prefix + ".model", values, "model");
+            copyIfSupported(configuration, supported, prefix + ".computation", values,
+                    "computation");
+            copyIfSupported(configuration, supported, prefix + ".embedding-space-id", values,
+                    "embedding-space-id");
+            copyIfSupported(configuration, supported, prefix + ".embedding-dimensions", values,
+                    "embedding-dimensions");
+            copyIfSupported(configuration, supported, prefix + ".privacy", values, "privacy");
+            copyIfSupported(configuration, supported, prefix + ".expected-latency-ms", values,
+                    "expected-latency-ms");
+            copyIfSupported(configuration, supported, prefix + ".preference", values,
+                    "preference");
+            copyIfSupported(configuration, supported, prefix + ".resource.model-slot", values,
+                    "model-slot-units");
             result.add(new ReasoningConfiguredInstance(instance,
                     LlamaCppProviderConfiguration.enabled(configuration, prefix), values));
         }
@@ -48,8 +58,8 @@ final class LlamaCppOwnerConfiguration {
             Consumer<ReasoningProviderConfiguration> validator) {
         String name = instanceName(instance);
         Map<String, String> values = new TreeMap<>();
-        configuredInstances(configuration, providerPrefix, transportRawName, transportFieldName)
-                .stream().filter(item -> item.name().equals(name)).findFirst()
+        configuredInstances(configuration, providerPrefix, descriptor, transportRawName,
+                transportFieldName).stream().filter(item -> item.name().equals(name)).findFirst()
                 .ifPresent(item -> values.putAll(item.values()));
         Set<String> supported = descriptor.fields().stream().map(ReasoningConfigurationField::name)
                 .collect(java.util.stream.Collectors.toUnmodifiableSet());
@@ -147,9 +157,11 @@ final class LlamaCppOwnerConfiguration {
         return providerPrefix + "." + instance;
     }
 
-    private static void copy(ReasoningProviderConfiguration configuration, String rawKey,
-            Map<String, String> values, String field) {
-        configuration.value(rawKey).ifPresent(value -> values.put(field, value));
+    private static void copyIfSupported(ReasoningProviderConfiguration configuration,
+            Set<String> supported, String rawKey, Map<String, String> values, String field) {
+        if (supported.contains(field)) {
+            configuration.value(rawKey).ifPresent(value -> values.put(field, value));
+        }
     }
 
     private static void optionalWrite(Map<String, String> values, Map<String, String> writes,

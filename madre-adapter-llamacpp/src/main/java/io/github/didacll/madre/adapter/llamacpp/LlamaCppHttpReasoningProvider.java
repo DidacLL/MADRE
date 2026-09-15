@@ -87,7 +87,7 @@ public final class LlamaCppHttpReasoningProvider
 
     @Override public List<ReasoningConfiguredInstance> configuredInstances(
             ReasoningProviderConfiguration configuration) {
-        return LlamaCppOwnerConfiguration.configuredInstances(configuration, PREFIX,
+        return LlamaCppOwnerConfiguration.configuredInstances(configuration, PREFIX, DESCRIPTOR,
                 "endpoint", "endpoint");
     }
 
