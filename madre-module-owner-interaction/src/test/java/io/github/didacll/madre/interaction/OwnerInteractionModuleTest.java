@@ -47,19 +47,85 @@ final class OwnerInteractionModuleTest {
         assertEquals(ExecutionMode.IMMEDIATE, reasoning.immediateRequest.mode());
         assertEquals("Explain the invariant",
                 ((TextInferenceCommand) reasoning.immediateRequest.computation()).prompt());
+        assertEquals(Sensitivity.S4, reasoning.immediateRequest.carriedSensitivity());
         assertEquals(OwnerInteractionModule.IMMEDIATE_ANSWER, answer.type());
         assertEquals(Sensitivity.S4, answer.sensitivity());
         assertNotEquals(prompt.id(), answer.id());
     }
 
-    @Test void effectProfilesDescribeConsequencesRatherThanReasoning() {
+    @Test void laterTurnsUseActualContextMaterialAtCombinedSensitivity() {
+        RecordingReasoning reasoning = new RecordingReasoning();
+        reasoning.immediate.complete(result("Sensitive first answer"));
+        OwnerInteractionModule module = new OwnerInteractionModule(reasoning,
+                temporary.resolve("state"));
+        module.standardPrompt(module.ownerPrompt("Sensitive first question", Sensitivity.S4))
+                .toCompletableFuture().join();
+
+        Material<String> second = module.standardPrompt(
+                module.ownerPrompt("Low-labelled follow-up", Sensitivity.S2))
+                .toCompletableFuture().join();
+        TextInferenceCommand computation =
+                (TextInferenceCommand) reasoning.immediateRequest.computation();
+
+        assertTrue(computation.prompt().contains("Sensitive first question"));
+        assertTrue(computation.prompt().contains("Sensitive first answer"));
+        assertTrue(computation.prompt().contains("Low-labelled follow-up"));
+        assertEquals(Sensitivity.S4, reasoning.immediateRequest.carriedSensitivity());
+        assertEquals(Sensitivity.S4, second.sensitivity());
+    }
+
+    @Test void fastLaneUsesCombinedContextSensitivityForForegroundAndBackground() {
+        RecordingReasoning reasoning = new RecordingReasoning();
+        reasoning.immediate.complete(result("Sensitive first answer"));
+        OwnerInteractionModule module = new OwnerInteractionModule(reasoning,
+                temporary.resolve("state"));
+        module.standardPrompt(module.ownerPrompt("Sensitive first question", Sensitivity.S4))
+                .toCompletableFuture().join();
+
+        Material<String> answer = module.fastLane(
+                module.ownerPrompt("Continue cheaply", Sensitivity.S2)).toCompletableFuture().join();
+
+        assertEquals(Sensitivity.S4, reasoning.immediateRequest.carriedSensitivity());
+        assertEquals(Sensitivity.S4, reasoning.durableRequests.get(0).carriedSensitivity());
+        assertEquals(Sensitivity.S4, answer.sensitivity());
+        assertTrue(((TextInferenceCommand) reasoning.durableRequests.get(0).computation())
+                .prompt().contains("Sensitive first question"));
+    }
+
+    @Test void runtimeConversationWindowIsBoundedAndNotDurableMemory() {
+        RecordingReasoning reasoning = new RecordingReasoning();
+        reasoning.immediate.complete(result("Repeated answer"));
+        Path state = temporary.resolve("state");
+        OwnerInteractionModule module = new OwnerInteractionModule(reasoning, state);
+        for (int turn = 0; turn < 6; turn++) {
+            module.standardPrompt(module.ownerPrompt("turn-" + turn, Sensitivity.S2))
+                    .toCompletableFuture().join();
+        }
+        String bounded = ((TextInferenceCommand) reasoning.immediateRequest.computation()).prompt();
+        assertFalse(bounded.contains("turn-0"));
+        assertTrue(bounded.contains("turn-1"));
+        assertTrue(bounded.contains("turn-4"));
+        assertTrue(bounded.contains("turn-5"));
+
+        RecordingReasoning restartedReasoning = new RecordingReasoning();
+        restartedReasoning.immediate.complete(result("Fresh runtime"));
+        OwnerInteractionModule restarted = new OwnerInteractionModule(restartedReasoning, state);
+        restarted.standardPrompt(restarted.ownerPrompt("after restart", Sensitivity.S2))
+                .toCompletableFuture().join();
+        assertEquals("after restart",
+                ((TextInferenceCommand) restartedReasoning.immediateRequest.computation()).prompt());
+    }
+
+    @Test void effectProfilesDescribeConversationAndBackgroundConsequences() {
         OwnerInteractionModule module = new OwnerInteractionModule(new RecordingReasoning(),
                 temporary.resolve("state"));
         var standard = module.definition().operations().get(OwnerInteractionModule.STANDARD_PROMPT);
         var fast = module.definition().operations().get(OwnerInteractionModule.FAST_LANE);
         var collect = module.definition().operations().get(OwnerInteractionModule.COLLECT_BACKGROUND);
 
-        assertTrue(standard.effectProfiles().isEmpty());
+        var standardProfile = standard.effectProfiles().values().iterator().next();
+        assertEquals(Risk.WRITE, standardProfile.risk());
+        assertEquals(Autonomy.LIVE_INTERACTION, standardProfile.autonomy());
         var fastProfile = fast.effectProfiles().values().iterator().next();
         assertEquals(Risk.WRITE, fastProfile.risk());
         assertEquals(Autonomy.AUTONOMOUS, fastProfile.autonomy());
