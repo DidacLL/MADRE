@@ -11,6 +11,8 @@ import io.github.didacll.madre.kernel.reasoning.ReasoningExecutionContext;
 import io.github.didacll.madre.reasoning.installation.ReasoningMechanism;
 import io.github.didacll.madre.reasoning.installation.ReasoningMechanismProvider;
 import io.github.didacll.madre.reasoning.installation.ReasoningProviderConfiguration;
+import io.github.didacll.madre.reasoning.installation.ReasoningProviderConfigurator;
+import io.github.didacll.madre.reasoning.installation.ReasoningProviderDescriptor;
 import io.github.didacll.madre.sdk.execution.ReasoningComputation;
 import io.github.didacll.madre.sdk.execution.ReasoningLocation;
 import java.nio.charset.StandardCharsets;
@@ -43,6 +45,14 @@ public final class DuplicateMaterializationTestProvider implements ReasoningMech
 
     public DuplicateMaterializationTestProvider() {
         CLOSED.set(false);
+    }
+
+    @Override public ReasoningProviderDescriptor descriptor() {
+        return TestReasoningProviderSupport.descriptor("test-duplicate-materialization");
+    }
+
+    @Override public ReasoningProviderConfigurator configurator() {
+        return TestReasoningProviderSupport.EMPTY_CONFIGURATOR;
     }
 
     @Override public List<ReasoningMechanism<?, ?>> materialize(

@@ -49,6 +49,24 @@ $oldXdgConfig = $env:XDG_CONFIG_HOME
 $oldXdgData = $env:XDG_DATA_HOME
 $oldXdgState = $env:XDG_STATE_HOME
 
+function Invoke-Madre([string[]]$arguments) {
+    $output = (& $launcher @arguments 2>&1 | Out-String).Trim()
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host $output
+        throw "MADRE invocation failed with exit code $LASTEXITCODE"
+    }
+    Write-Host $output
+    return $output
+}
+
+function Invoke-MadreFailure([string[]]$arguments) {
+    $output = (& $launcher @arguments 2>&1 | Out-String).Trim()
+    $status = $LASTEXITCODE
+    Write-Host $output
+    if ($status -eq 0) { throw 'MADRE invocation unexpectedly succeeded' }
+    return $output
+}
+
 try {
     $env:PATH = $emptyPath
     $env:HOME = Join-Path $temp 'home'
@@ -81,6 +99,9 @@ try {
     Write-Host $first
     if ($firstStatus -ne 0) { throw "fresh zero-argument packaged launch failed with $firstStatus" }
     if ($first -notmatch 'MADRE ready') { throw 'fresh zero-argument packaged launch did not reach the console' }
+    if ($first -notmatch 'No reasoning mechanisms are enabled') {
+        throw 'fresh zero-reasoning startup did not point the owner toward generic reasoning setup'
+    }
     if (-not (Test-Path $configuration)) { throw 'first run did not persist owner configuration' }
     if (-not (Test-Path (Join-Path $stateDirectory 'kernel-work.sqlite'))) {
         throw 'first run did not create the Kernel durable database in the product state location'
@@ -102,10 +123,7 @@ try {
     }
 
     $configurationBefore = (Get-FileHash $configuration -Algorithm SHA256).Hash
-    $doctor = (& $launcher doctor 2>&1 | Out-String)
-    $doctorStatus = $LASTEXITCODE
-    Write-Host $doctor
-    if ($doctorStatus -ne 0) { throw "madre doctor failed with $doctorStatus" }
+    $doctor = Invoke-Madre @('doctor')
     if ($doctor -notmatch 'configuration.status\s+loaded \(existing\)') {
         throw 'doctor did not report reusing the persisted configuration'
     }
@@ -121,24 +139,119 @@ try {
     if ($doctor -notmatch 'reasoning.discovery\s+initialized') {
         throw 'doctor did not report reasoning discovery initialization'
     }
-    if ($doctor -notmatch 'reasoning\.mechanisms\.count\s+0') {
-        throw 'fresh install silently materialized a reasoning mechanism'
+    if ($doctor -notmatch 'reasoning\.providers\.count\s+3' -or
+            $doctor -notmatch 'reasoning\.provider\s+llamacpp-http' -or
+            $doctor -notmatch 'reasoning\.provider\s+llamacpp-unix' -or
+            $doctor -notmatch 'reasoning\.provider\s+openai-compatible') {
+        throw 'doctor did not distinguish the shipped configurable provider types'
+    }
+    if ($doctor -notmatch 'reasoning\.instances\.count\s+0' -or
+            $doctor -notmatch 'reasoning\.mechanisms\.count\s+0') {
+        throw 'fresh install silently configured or materialized a reasoning mechanism'
     }
     if ($doctor -notmatch [regex]::Escape((Resolve-Path $runtime).Path)) {
         throw 'doctor does not show the packaged Java runtime as java.home'
     }
-    if ($doctor -match 'reasoning\..*(endpoint|model|credential|token|secret)') {
+    if ($doctor -match 'reasoning\..*(endpoint|model|credential|token|secret|privacy|latency|preference)') {
         throw 'doctor exposed provider configuration details'
     }
 
-    $doctorAgain = (& $launcher doctor 2>&1 | Out-String)
-    if ($LASTEXITCODE -ne 0) { throw 'second doctor launch failed' }
+    $doctorAgain = Invoke-Madre @('doctor')
     $configurationAfter = (Get-FileHash $configuration -Algorithm SHA256).Hash
     if ($configurationAfter -ne $configurationBefore) {
         throw 'second launch rewrote established owner configuration'
     }
     if ($doctorAgain -notmatch [regex]::Escape($configuration)) {
         throw 'second launch did not resolve the same owner configuration location'
+    }
+
+    $providers = Invoke-Madre @('reasoning', 'providers')
+    if ($providers -notmatch 'reasoning\.provider\s+llamacpp-http\s+llama\.cpp loopback HTTP' -or
+            $providers -notmatch 'field\s+endpoint\s+TEXT\s+required') {
+        throw 'shipped llama.cpp HTTP provider did not expose provider-owned generic metadata'
+    }
+    if ($providers -notmatch 'reasoning\.provider\s+llamacpp-unix\s+llama\.cpp Unix socket' -or
+            $providers -notmatch 'field\s+socket\s+TEXT\s+required') {
+        throw 'shipped llama.cpp Unix provider did not expose its distinct configuration shape'
+    }
+    if ($providers -notmatch 'reasoning\.provider\s+openai-compatible\s+OpenAI-compatible HTTP' -or
+            $providers -notmatch 'field\s+location\s+CHOICE\s+required') {
+        throw 'shipped OpenAI-compatible provider did not expose provider-owned generic metadata'
+    }
+
+    Invoke-Madre @('reasoning', 'configure', 'openai-compatible', 'preserved',
+        '--set', 'capability-id=packaged-compatible',
+        '--set', 'endpoint=http://127.0.0.1:65534/v1/',
+        '--set', 'model=acceptance-model', '--set', 'privacy=SECRET', '--set', 'location=LOCAL') | Out-Null
+    Invoke-Madre @('reasoning', 'disable', 'openai-compatible/preserved') | Out-Null
+
+    Invoke-Madre @('reasoning', 'configure', 'llamacpp-http', 'packaged-probe',
+        '--set', 'capability-id=packaged-llama',
+        '--set', 'endpoint=http://127.0.0.1:65535/',
+        '--set', 'model=acceptance-model', '--set', 'privacy=SECRET', '--set', 'model-slot-units=1') | Out-Null
+
+    $validHash = (Get-FileHash $configuration -Algorithm SHA256).Hash
+    $invalid = Invoke-MadreFailure @('reasoning', 'configure', 'llamacpp-http', 'packaged-probe',
+        '--set', 'endpoint=https://example.com/')
+    if ($invalid -notmatch 'loopback') {
+        throw 'invalid shipped-provider input did not return provider-owned validation'
+    }
+    if ((Get-FileHash $configuration -Algorithm SHA256).Hash -ne $validHash) {
+        throw 'failed provider validation changed the persisted owner configuration'
+    }
+
+    $inspect = Invoke-Madre @('reasoning', 'inspect', 'llamacpp-http/packaged-probe')
+    if ($inspect -notmatch 'reasoning\.state\s+enabled' -or
+            $inspect -notmatch 'reasoning\.field\s+privacy\s+SECRET') {
+        throw 'generic inspection did not expose configured shipped-provider state'
+    }
+    if ($inspect -match 'reasoning\.llamacpp-http\.') {
+        throw 'generic inspection leaked raw provider property names'
+    }
+
+    $configuredDoctor = Invoke-Madre @('doctor')
+    if ($configuredDoctor -notmatch 'reasoning\.instance\s+llamacpp-http/packaged-probe\s+enabled' -or
+            $configuredDoctor -notmatch 'reasoning\.instance\s+openai-compatible/preserved\s+disabled' -or
+            $configuredDoctor -notmatch 'reasoning\.mechanisms\.count\s+1' -or
+            $configuredDoctor -notmatch 'reasoning\.mechanism\s+packaged-llama') {
+        throw 'configured shipped provider did not materialize after restart'
+    }
+
+    Invoke-Madre @('reasoning', 'disable', 'llamacpp-http/packaged-probe') | Out-Null
+    $disabledHash = (Get-FileHash $configuration -Algorithm SHA256).Hash
+    Invoke-Madre @('reasoning', 'disable', 'llamacpp-http/packaged-probe') | Out-Null
+    if ((Get-FileHash $configuration -Algorithm SHA256).Hash -ne $disabledHash) {
+        throw 'repeating an identical reasoning configuration update was not deterministic'
+    }
+    $disabledDoctor = Invoke-Madre @('doctor')
+    if ($disabledDoctor -notmatch 'reasoning\.mechanisms\.count\s+0') {
+        throw 'disabled shipped provider instance materialized after restart'
+    }
+
+    Invoke-Madre @('reasoning', 'enable', 'llamacpp-http/packaged-probe') | Out-Null
+    $enabledDoctor = Invoke-Madre @('doctor')
+    if ($enabledDoctor -notmatch 'reasoning\.mechanisms\.count\s+1') {
+        throw 'generic enable did not re-materialize the shipped provider instance'
+    }
+
+    Invoke-Madre @('reasoning', 'remove', 'llamacpp-http/packaged-probe') | Out-Null
+    $remaining = Invoke-Madre @('reasoning', 'list')
+    if ($remaining -notmatch 'reasoning\.instances\.count\s+1' -or
+            $remaining -notmatch 'openai-compatible/preserved\s+disabled' -or
+            $remaining -match 'llamacpp-http/packaged-probe') {
+        throw 'removal did not delete exactly the selected provider instance configuration'
+    }
+    $propertiesText = Get-Content $configuration -Raw
+    if ($propertiesText -match 'reasoning\.llamacpp-http\.packaged-probe\.') {
+        throw 'removed provider instance left owned raw configuration behind'
+    }
+    if ($propertiesText -notmatch 'roles\.core=io\.github\.didacll\.madre\.owner-interaction' -or
+            $propertiesText -notmatch 'resources\.model-slot=1') {
+        throw 'reasoning configuration updates discarded unrelated host configuration'
+    }
+    $afterRemoveDoctor = Invoke-Madre @('doctor')
+    if ($afterRemoveDoctor -notmatch 'reasoning\.mechanisms\.count\s+0') {
+        throw 'removing the enabled instance did not return materialization to zero'
     }
 
     Write-Host "Native package: $($native[0].FullName)"

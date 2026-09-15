@@ -13,6 +13,7 @@ import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -48,7 +49,7 @@ final class InstalledReasoningLoader implements AutoCloseable {
                             + descriptor.id());
                 }
             }
-            providers = Map.copyOf(indexed);
+            providers = Collections.unmodifiableMap(new TreeMap<>(indexed));
         } catch (ServiceConfigurationError | RuntimeException failure) {
             closeProviders(discovered, failure);
             try {

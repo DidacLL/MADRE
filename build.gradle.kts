@@ -69,9 +69,9 @@ tasks.register("architectureCheck") {
             }
         }
         val appBuild = file("madre-app/build.gradle.kts")
-        if (Regex("implementation\\(project\\(\":madre-adapter-(llamacpp|openai-compatible)\"\\)\\)")
+        if (Regex("(implementation|api|compileOnly)\\(project\\(\":madre-adapter-(llamacpp|openai-compatible)\"\\)\\)")
                 .containsMatchIn(appBuild.readText())) {
-            violations += "madre-app/build.gradle.kts: application has a concrete reasoning-adapter implementation dependency"
+            violations += "madre-app/build.gradle.kts: application has a concrete reasoning-adapter compile dependency"
         }
         if (Regex("implementation\\(project\\(\":madre-module-owner-interaction\"\\)\\)")
                 .containsMatchIn(appBuild.readText())) {
@@ -80,6 +80,8 @@ tasks.register("architectureCheck") {
         fileTree(rootDir) { include("madre-app/src/main/**/*.java") }.forEach { source ->
             val text = source.readText()
             listOf(
+                "io.github.didacll.madre.adapter.llamacpp",
+                "io.github.didacll.madre.adapter.openai",
                 "LlamaCppReasoningCapability",
                 "LlamaCppUnixSocketReasoningCapability",
                 "OpenAiCompatibleReasoningCapability",
