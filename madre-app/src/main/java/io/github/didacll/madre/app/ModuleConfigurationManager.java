@@ -93,14 +93,6 @@ final class ModuleConfigurationManager {
             }
             candidateValues.put(name, field.canonicalize(value));
         });
-        for (String name : List.copyOf(candidateValues.keySet())) {
-            ModuleConfigurationField field = fields.get(name);
-            if (field == null) {
-                throw new IllegalArgumentException("Module " + provider.moduleId()
-                        + " does not declare configuration field: " + name);
-            }
-            candidateValues.put(name, field.canonicalize(candidateValues.get(name)));
-        }
         descriptor.fields().stream().filter(ModuleConfigurationField::required)
                 .filter(field -> !candidateValues.containsKey(field.name()))
                 .forEach(field -> {
@@ -122,14 +114,11 @@ final class ModuleConfigurationManager {
                     + provider.moduleId() + " to " + validated.moduleId());
         }
         Map<String, String> validatedValues = values(validated);
-        for (Map.Entry<String, String> entry : validatedValues.entrySet()) {
-            ModuleConfigurationField field = fields.get(entry.getKey());
-            if (field == null) {
-                throw new IllegalStateException("Module configuration validation returned undeclared field: "
-                        + entry.getKey());
-            }
-            field.canonicalize(entry.getValue());
-        }
+        validatedValues.keySet().stream().filter(name -> !fields.containsKey(name)).findFirst()
+                .ifPresent(name -> {
+                    throw new IllegalStateException(
+                            "Module configuration validation returned undeclared field: " + name);
+                });
         persist(provider.moduleId(), validatedValues);
     }
 

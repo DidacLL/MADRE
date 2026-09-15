@@ -108,7 +108,48 @@ openai-compatible
 
 The two llama.cpp transports remain distinct provider types because their configuration requirements differ. OpenAI-compatible means an explicitly configured compatible HTTP endpoint; it is not an OpenAI account integration.
 
-This slice configures installed provider artifacts; it does not download, install, update or remove reasoning JARs. There is no credential vault, OAuth/account flow, graphical settings UI or generic Module configurator yet.
+This slice configures installed provider artifacts; it does not download, install, update or remove reasoning JARs. There is no credential vault, OAuth/account flow or graphical settings UI.
+
+## Owner Module configuration
+
+Module installation and Module configuration are separate facts. Placing a JAR in the shipped or owner-writable Module directory makes its `ModuleProvider` discoverable; configuration does not enable/disable or install/uninstall the artifact.
+
+Discover installed Module providers without materializing Modules:
+
+```text
+madre modules list
+```
+
+Inspect one provider-owned configuration contract and its currently configured values:
+
+```text
+madre modules inspect owner.interaction
+madre modules inspect phd.module
+```
+
+Configure deterministically with repeated field assignments:
+
+```text
+madre modules configure owner.interaction \
+  --set foreground-maximum-tokens=256 \
+  --set foreground-location=LOCAL
+
+madre modules configure phd.module --set result-prefix=configured-
+```
+
+Calling `madre modules configure <module-id>` without `--set` enters the same simple descriptor-driven prompt style used by the reasoning configurator. The host knows only the stable Module configuration field kinds currently demonstrated by real Modules: `TEXT`, `INTEGER` and `CHOICE`, including integer bounds/defaults and finite choices where declared. It contains no owner-interaction-specific or verification-fixture-specific key branches.
+
+The provider owns its display/help text, field vocabulary, parsing, defaults, semantic validation and optional canonicalization through the stable `madre-sdk` `ModuleProvider` configuration contract. Configuration discovery and validation do not call `ModuleProvider.create(...)` and do not start the semantic application, so the commands can be used to repair Module settings even when normal Module materialization would fail.
+
+Successful writes preserve the raw compatibility representation:
+
+```properties
+modules.config[<canonical ModuleId>].<module-owned-key>=<value>
+```
+
+The host replaces only the exact canonical Module prefix, preserves unrelated host/reasoning/other-Module settings, writes through the same safe same-directory replacement mechanism as reasoning configuration and updates in-memory configuration only after persistence succeeds. A rejected edit leaves the previous file unchanged. A subsequent normal startup receives the persisted values through the existing `ModuleProviderConfiguration` route.
+
+There is intentionally no Module enable/disable or configuration `remove` command: Module artifact lifecycle and clearing settings are different responsibilities. JAR download/install/update/uninstall remains a separate future product slice.
 
 ## Diagnostics
 
@@ -118,7 +159,7 @@ Run host diagnostics with:
 madre doctor
 ```
 
-`doctor` reports the MADRE version, bundled Java runtime, resolved configuration/data/state locations, Module and reasoning artifact locations, configuration/discovery health, installed Module identities, CORE resolution, installed reasoning provider identities, configured provider-instance identities/state and successfully materialized reasoning-mechanism identities/count. It does not dump provider field values or raw provider configuration.
+`doctor` reports the MADRE version, bundled Java runtime, resolved configuration/data/state locations, Module and reasoning artifact locations, configuration/discovery health, installed Module identities, CORE resolution, installed reasoning provider identities, configured provider-instance identities/state and successfully materialized reasoning-mechanism identities/count. It does not dump Module/reasoning field values or raw provider configuration.
 
 For advanced operation or isolated tests, override the persistent configuration explicitly:
 
@@ -186,20 +227,22 @@ The BOM aligns `madre-algebra`, `madre-sdk`, `madre-sdk-testkit`, `madre-sdk-exp
 
 Computation-contract artifacts do not define Module domains. A Module depends on one only when its own semantic behavior genuinely requires that inference computation. Adding an inference family is not an instruction to create a corresponding Module, Material model or stable high-level SDK abstraction.
 
-The current verification publication remains repository-local at `build/isolated-repository`. It is not yet a public remote 0.x release channel. The cross-platform `SDK developer acceptance` workflow publishes those artifacts, copies `verification/sdk-consumer` to a runner-temporary directory outside the checkout, runs its deterministic tests and JAR build there, installs only the resulting JAR in the normal owner-writable Module directory of a packaged MADRE application image, proves ServiceLoader discovery with `doctor`, and invokes it through owner-local and external/PUBLIC receiver paths.
+The current verification publication remains repository-local at `build/isolated-repository`. It is not yet a public remote 0.x release channel. The cross-platform `SDK developer acceptance` workflow publishes those artifacts, copies `verification/sdk-consumer` to a runner-temporary directory outside the checkout, runs its deterministic tests and JAR build there, installs only the resulting JAR in the normal owner-writable Module directory of a packaged MADRE application image, discovers its provider through the generic `madre modules` path, configures its real `result-prefix`, proves rejected configuration rollback, restarts the host and invokes it through owner-local and external/PUBLIC receiver paths.
 
 The independent fixture uses the experimental builder only from test scope. The built Module JAR therefore proves that experimental authoring can aid experimentation without becoming a production runtime requirement. Its tests also resolve the newer computation-contract artifacts through the BOM without turning them into runtime dependencies of the installable fixture Module.
 
 A MADRE Gradle Module plugin was deliberately not added in this slice. After version alignment, the demonstrated build-specific requirements are Java 21 and standard Java ServiceLoader metadata. A plugin remains a future tooling increment if repeated external projects demonstrate enough additional packaging/validation friction to justify another public build API.
 
-See [docs/sdk-development.md](docs/sdk-development.md) for the runnable independent-project setup, Module anatomy, reasoning/testing patterns, composition and installation guidance.
+See [docs/sdk-development.md](docs/sdk-development.md) for the runnable independent-project setup, Module anatomy, owner-configuration contract, reasoning/testing patterns, composition and installation guidance.
 
 ## Module installation and configuration
 
-A MADRE Module is a complete executable application/domain boundary. Its JAR provides `io.github.didacll.madre.sdk.registration.ModuleProvider` through Java ServiceLoader metadata. The provider declares one canonical identity and materializes exactly that Module:
+A MADRE Module is a complete executable application/domain boundary. Its JAR provides `io.github.didacll.madre.sdk.registration.ModuleProvider` through Java ServiceLoader metadata. The provider declares canonical identity and can expose owner-facing installation metadata before materializing exactly that Module:
 
 ```java
 ModuleId moduleId();
+ModuleConfigurationDescriptor configurationDescriptor();
+ModuleProviderConfiguration validateConfiguration(ModuleProviderConfiguration configuration);
 ModuleInstance create(ModuleContext context, ModuleProviderConfiguration configuration);
 ```
 
@@ -207,15 +250,17 @@ ModuleInstance create(ModuleContext context, ModuleProviderConfiguration configu
 
 A Module should exist because it owns coherent semantic/application behavior. Reusable technical facilities—search clients, embedding computations, storage libraries, transports, databases or model APIs—may be used by Modules without becoming Modules themselves.
 
-Current Module configuration remains provider-owned string configuration:
+The stable configuration descriptor is Module-specific, not a shared settings type system with reasoning providers. `ModuleConfigurationDescriptor` owns the canonical Module identity, display/help text and immutable fields. `ModuleConfigurationField` supports only `TEXT`, `INTEGER` and `CHOICE`, plus required/default information, finite allowed values for choices and optional integer bounds. `ModuleProvider.validateConfiguration(...)` receives one complete identity-scoped candidate and may reject or canonicalize it without materializing the Module.
+
+The raw representation remains valid:
 
 ```properties
 modules.config[<canonical ModuleId>].<module-owned-key>=<value>
 ```
 
-`madre-app` only associates the exact canonical Module identity with an immutable string map. The Module provider owns supported-key validation, parsing, typed settings and defaults. An explicit setting for an uninstalled identity is rejected; duplicate providers, identity mismatch and invalid bindings fail before partial installation becomes reachable.
+Normal startup still passes these strings through `ModuleProviderConfiguration` to `create(...)`. An explicit setting for an uninstalled identity is rejected; duplicate providers, descriptor/provider identity mismatch, provider/materialized identity mismatch and invalid executable bindings fail before partial installation becomes reachable.
 
-The reasoning-provider metadata/configuration contract described above is intentionally reasoning-specific. This slice does not add `ModuleProvider` configuration metadata or a generic settings framework.
+The reasoning-provider metadata/configuration contract remains intentionally reasoning-specific. Reasoning providers have repeatable named mechanism instances and enable/disable state; Modules have one canonical installed identity. No cross-domain `SettingsSchema`, `ConfigurableProvider` or generic property-tree service was introduced.
 
 ## Three invocation receivers
 
@@ -236,7 +281,7 @@ madre --config <properties> --invoke-public <module> <operation> <material-type>
 
 ## Current local text interaction and CORE
 
-The present console remains a transitional application adapter. `interaction.*` selects the installed Module/Operations/Material types used by ordinary text, `/standard`, `/updates` and explicit `/sensitivity`. The shipped owner-interaction Module owns semantic immediate/durable reasoning behavior and delayed-result interpretation; `MadreMain` still owns presentation and the command loop.
+The present console remains a transitional application adapter. `interaction.*` selects the installed Module/Operations/Material types used by ordinary text, `/standard`, `/updates` and explicit `/sensitivity`. The shipped owner-interaction Module owns semantic immediate/durable reasoning behavior and delayed-result interpretation; `MadreMain` still owns presentation and the command loop while `MadreLauncher` routes host-management commands that deliberately run before semantic application startup.
 
 When no reasoning mechanism is materialized, normal startup remains valid and points the Owner toward `madre reasoning providers`/`configure`. It does not force a startup wizard.
 
@@ -248,18 +293,7 @@ The current interaction model remains unfinished, but it is treated as a major S
 
 Reasoning mechanisms are independently installable from Modules. A reasoning adapter JAR provides `io.github.didacll.madre.reasoning.installation.ReasoningMechanismProvider` and depends on the public reasoning SPI plus the computation contracts it implements, not on `madre-app` or Kernel internals.
 
-Each installed provider declares:
-
-- a stable `ReasoningProviderId`;
-- a `ReasoningProviderDescriptor` containing only owner-facing display/help information and the provider's minimal configuration fields;
-- a `ReasoningProviderConfigurator` for listing configured named instances, configuring/enabling an instance, disabling/enabling it, and removing its configuration;
-- `materialize(...)` for producing enabled `ReasoningMechanism` values from the same read-only configuration.
-
-Configuration fields use only the value kinds needed by the shipped/independent providers today: `TEXT`, `INTEGER` and `CHOICE`, with required/default/allowed-value/help/display information and integer bounds where applicable. This is the current executable baseline, not a universal settings language or a claim that all future engine/model controls fit these kinds.
-
-`ReasoningCapability.supports(C computation)` is the generic local compatibility hook for value-level mechanism constraints. Existing implementations remain compatible through the default accepting behavior. Kernel may use it when filtering candidates, but Kernel does not interpret why a mechanism rejects a computation; for example, embedding-space compatibility remains mechanism-owned rather than becoming Kernel embedding logic.
-
-Providers own parsing, validation and raw persistence mapping. `madre-app` applies a provider-produced `ReasoningProviderConfigurationUpdate` generically and contains no concrete llama.cpp/OpenAI-compatible configuration key branches. Architecture checks reject compile-time app dependencies/imports on the shipped adapter implementations.
+Each installed provider declares a stable `ReasoningProviderId`, a provider-owned descriptor, a configurator for named mechanism instances and `materialize(...)` for enabled `ReasoningMechanism` values. Providers own parsing, validation and raw persistence mapping. `madre-app` applies provider-produced updates generically and contains no concrete llama.cpp/OpenAI-compatible configuration-key branches.
 
 The existing raw `reasoning.*` representation remains executable for compatibility and advanced developer use; owners of the native product no longer need to know it for normal reasoning setup.
 
@@ -283,15 +317,15 @@ cp config/madre.properties.example /absolute/path/madre.properties
 madre-app/build/install/madre/bin/madre /absolute/path/madre.properties
 ```
 
-The example intentionally retains provider-specific disabled raw examples as compatibility/reference material. Native first-run bootstrap does not copy those provider values; the generic reasoning commands are the owner-facing setup path.
+The example intentionally retains provider-specific disabled raw examples as compatibility/reference material. Native first-run bootstrap does not copy those provider values; the generic reasoning and Module commands are the owner-facing setup paths.
 
 ## Verification evidence
 
-The Windows/Linux `Java 21 cross-platform build` workflow exercises `check`, architecture guards, Javadocs/publication, developer packages, isolated SDK Module/reasoning builds, Module-to-Module interoperability, no-reasoning boot, owner-local versus external/PUBLIC semantics, Module configuration, CORE/interaction independence, durable restart/recovery, and the shipped heterogeneous generation/embedding protocol and configuration tests.
+The Windows/Linux `Java 21 cross-platform build` workflow exercises `check`, architecture guards, Javadocs/publication, developer packages, isolated SDK Module/reasoning builds, Module-to-Module interoperability, no-reasoning boot, owner-local versus external/PUBLIC semantics, raw Module configuration compatibility, CORE/interaction independence, durable restart/recovery, and the shipped heterogeneous generation/embedding protocol and configuration tests.
 
-The exact-head `SDK developer acceptance` workflow separately builds the independent Module project from a runner-temporary directory against the verification publication, executes its public-testkit tests including arbitrary non-text reasoning and current computation-contract consumption, verifies its ServiceLoader packaging, installs the JAR in the packaged product's normal owner-writable Module directory, proves discovery and invokes both owner-local and external/PUBLIC receiver paths on Windows and Linux.
+The exact-head `SDK developer acceptance` workflow separately builds the independent Module project from a runner-temporary directory against the verification publication, executes its public-testkit tests, verifies its ServiceLoader packaging, installs the JAR in the packaged product's normal owner-writable Module directory, discovers the provider without materializing the Module, inspects/configures `result-prefix`, proves invalid-edit rollback, restarts, and verifies configured owner-local plus external/PUBLIC behavior on Windows and Linux.
 
-The exact-head `Native owner package` workflow builds MSI/DEB on the corresponding host, exercises the `jpackage` application image with machine `java` removed from `PATH`, proves fresh zero-argument bootstrap/restart/`doctor`/clean shutdown, verifies shipped provider discovery, configures shipped providers through the generic CLI, verifies provider-owned validation leaves persisted configuration unchanged, proves disable/re-enable/remove across restart, and then performs unattended native installer install/launch/uninstall. The MSI/DEB is retained as a downloadable workflow artifact.
+The exact-head `Native owner package` workflow builds MSI/DEB on the corresponding host, exercises the `jpackage` application image with machine `java` removed from `PATH`, proves fresh zero-argument bootstrap/restart/`doctor`/clean shutdown, verifies shipped reasoning-provider discovery/configuration and then performs unattended native installer install/launch/uninstall. The MSI/DEB is retained as a downloadable workflow artifact.
 
 The exact-head `Reasoning owner configuration` workflow independently publishes the public artifacts, builds `verification/reasoning-consumer` in its isolated Gradle build, places that third-party provider JAR in the conventional owner reasoning directory of a packaged application image, and drives the same generic provider metadata/configure/restart/disable/enable/remove path on Windows and Linux. No cloud account or reachable model endpoint is needed.
 
@@ -303,4 +337,4 @@ The current work materially improves the public experimentation/developer enviro
 
 The largest SDK release gaps are a real external artifact repository and release/version/signing mechanics, release-quality API compatibility policy, additional unrelated external-project feedback, and build/project-generation tooling if that feedback demonstrates enough remaining friction. The current verification repository and in-repository source fixture are acceptance infrastructure, not a distribution channel.
 
-Generic Module configuration, Module install/remove/update management, reasoning JAR download/install/update/remove management, marketplace discovery, credential management, graphical settings, and the CORE-led owner-interaction evolution remain separate unfinished product work. Multimodal computation, semantic-memory/RAG/planning frameworks, generic tool calling, audio/voice and MCP are also intentionally not implied by the current foundation. They should be pursued only when real semantic or inference experiments establish a concrete need and correct responsibility boundary.
+Module JAR download/install/remove/update management, reasoning JAR download/install/update/remove management, marketplace discovery, credential management, graphical settings, and the CORE-led owner-interaction evolution remain separate unfinished product work. Multimodal computation, semantic-memory/RAG/planning frameworks, generic tool calling, audio/voice and MCP are also intentionally not implied by the current foundation. They should be pursued only when real semantic or inference experiments establish a concrete need and correct responsibility boundary.
