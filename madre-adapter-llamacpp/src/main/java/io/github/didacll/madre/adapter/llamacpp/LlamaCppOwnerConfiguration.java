@@ -28,6 +28,9 @@ final class LlamaCppOwnerConfiguration {
             copy(configuration, prefix + ".id", values, "capability-id");
             copy(configuration, prefix + "." + transportRawName, values, transportFieldName);
             copy(configuration, prefix + ".model", values, "model");
+            copy(configuration, prefix + ".computation", values, "computation");
+            copy(configuration, prefix + ".embedding-space-id", values, "embedding-space-id");
+            copy(configuration, prefix + ".embedding-dimensions", values, "embedding-dimensions");
             copy(configuration, prefix + ".privacy", values, "privacy");
             copy(configuration, prefix + ".expected-latency-ms", values, "expected-latency-ms");
             copy(configuration, prefix + ".preference", values, "preference");
@@ -79,11 +82,19 @@ final class LlamaCppOwnerConfiguration {
         writes.put(prefix + ".expected-latency-ms", values.get("expected-latency-ms"));
         writes.put(prefix + ".preference", values.get("preference"));
         Set<String> removals = new LinkedHashSet<>();
-        if (values.containsKey("model-slot-units")) {
-            writes.put(prefix + ".resource.model-slot", values.get("model-slot-units"));
-        } else {
-            removals.add(prefix + ".resource.model-slot");
+        if (supported.contains("computation")) {
+            writes.put(prefix + ".computation", values.get("computation"));
         }
+        if (supported.contains("embedding-space-id")) {
+            optionalWrite(values, writes, removals, "embedding-space-id",
+                    prefix + ".embedding-space-id");
+        }
+        if (supported.contains("embedding-dimensions")) {
+            optionalWrite(values, writes, removals, "embedding-dimensions",
+                    prefix + ".embedding-dimensions");
+        }
+        optionalWrite(values, writes, removals, "model-slot-units",
+                prefix + ".resource.model-slot");
         ReasoningProviderConfigurationUpdate update =
                 new ReasoningProviderConfigurationUpdate(writes, removals);
         validator.accept(configuration.applying(update));
@@ -139,6 +150,13 @@ final class LlamaCppOwnerConfiguration {
     private static void copy(ReasoningProviderConfiguration configuration, String rawKey,
             Map<String, String> values, String field) {
         configuration.value(rawKey).ifPresent(value -> values.put(field, value));
+    }
+
+    private static void optionalWrite(Map<String, String> values, Map<String, String> writes,
+            Set<String> removals, String field, String rawKey) {
+        String value = values.get(field);
+        if (value == null) removals.add(rawKey);
+        else writes.put(rawKey, value);
     }
 
     private static Set<String> ownedInstanceKeys(ReasoningProviderConfiguration configuration,

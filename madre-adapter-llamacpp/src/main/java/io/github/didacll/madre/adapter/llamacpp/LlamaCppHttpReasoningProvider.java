@@ -1,5 +1,8 @@
 package io.github.didacll.madre.adapter.llamacpp;
 
+import io.github.didacll.madre.embedding.EmbeddingSpace;
+import io.github.didacll.madre.embedding.TextEmbeddingCodecs;
+import io.github.didacll.madre.generation.TextGenerationCodecs;
 import io.github.didacll.madre.reasoning.installation.ReasoningConfigurationField;
 import io.github.didacll.madre.reasoning.installation.ReasoningConfiguredInstance;
 import io.github.didacll.madre.reasoning.installation.ReasoningMechanism;
@@ -9,6 +12,7 @@ import io.github.didacll.madre.reasoning.installation.ReasoningProviderConfigura
 import io.github.didacll.madre.reasoning.installation.ReasoningProviderConfigurator;
 import io.github.didacll.madre.reasoning.installation.ReasoningProviderDescriptor;
 import io.github.didacll.madre.reasoning.installation.ReasoningProviderId;
+import io.github.didacll.madre.text.TextInferenceCodecs;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
@@ -19,6 +23,7 @@ import java.util.OptionalLong;
 public final class LlamaCppHttpReasoningProvider
         implements ReasoningMechanismProvider, ReasoningProviderConfigurator {
     private static final String PREFIX = "reasoning.llamacpp-http";
+    private static final String DEFAULT_COMPUTATION = TextInferenceCodecs.CONTRACT_ID;
     private static final ReasoningProviderDescriptor DESCRIPTOR = new ReasoningProviderDescriptor(
             new ReasoningProviderId("llamacpp-http"),
             "llama.cpp loopback HTTP",
@@ -30,6 +35,16 @@ public final class LlamaCppHttpReasoningProvider
                             "Absolute loopback HTTP or HTTPS URI for the llama.cpp server.", true, null),
                     ReasoningConfigurationField.text("model", "Model alias",
                             "Model alias expected by the configured llama.cpp server.", true, null),
+                    ReasoningConfigurationField.choice("computation", "Computation contract",
+                            "Public reasoning contract implemented by this configured model instance.", true,
+                            DEFAULT_COMPUTATION, List.of(TextInferenceCodecs.CONTRACT_ID,
+                                    TextGenerationCodecs.CONTRACT_ID,
+                                    TextEmbeddingCodecs.CONTRACT_ID)),
+                    ReasoningConfigurationField.text("embedding-space-id", "Embedding space identity",
+                            "Required only for text-embedding mechanisms; identifies the coordinate space produced by this model/configuration.", false, null),
+                    ReasoningConfigurationField.integer("embedding-dimensions", "Embedding dimensions",
+                            "Required only for text-embedding mechanisms; exact vector dimensionality produced by this space.", false, null,
+                            OptionalLong.of(1), OptionalLong.empty()),
                     ReasoningConfigurationField.choice("privacy", "Privacy",
                             "Explicit receiving Privacy. It is never inferred from loopback transport.", true,
                             null, List.of("PUBLIC", "UNKNOWN", "LOCAL", "MODULE", "SECRET")),
@@ -52,9 +67,20 @@ public final class LlamaCppHttpReasoningProvider
         for (String instance : LlamaCppProviderConfiguration.instances(configuration, PREFIX)) {
             String prefix = PREFIX + "." + instance;
             if (!LlamaCppProviderConfiguration.enabled(configuration, prefix)) continue;
-            mechanisms.add(new ReasoningMechanism<>(
-                    new LlamaCppReasoningCapability(adapterConfiguration(configuration, prefix)),
-                    LlamaCppProviderConfiguration.preference(configuration, prefix + ".preference")));
+            LlamaCppConfiguration adapter = adapterConfiguration(configuration, prefix);
+            int preference = LlamaCppProviderConfiguration.preference(
+                    configuration, prefix + ".preference");
+            switch (computation(configuration, prefix)) {
+                case TextInferenceCodecs.CONTRACT_ID -> mechanisms.add(new ReasoningMechanism<>(
+                        new LlamaCppReasoningCapability(adapter), preference));
+                case TextGenerationCodecs.CONTRACT_ID -> mechanisms.add(new ReasoningMechanism<>(
+                        new LlamaCppTextGenerationCapability(adapter), preference));
+                case TextEmbeddingCodecs.CONTRACT_ID -> mechanisms.add(new ReasoningMechanism<>(
+                        new LlamaCppEmbeddingCapability(adapter,
+                                embeddingSpace(configuration, prefix)), preference));
+                default -> throw new IllegalArgumentException(
+                        prefix + ".computation is not a supported reasoning contract");
+            }
         }
         return List.copyOf(mechanisms);
     }
@@ -94,10 +120,35 @@ public final class LlamaCppHttpReasoningProvider
                 LlamaCppProviderConfiguration.resources(configuration, prefix));
     }
 
+    private static String computation(ReasoningProviderConfiguration configuration, String prefix) {
+        return configuration.value(prefix + ".computation").map(String::strip)
+                .filter(value -> !value.isEmpty()).orElse(DEFAULT_COMPUTATION);
+    }
+
+    private static EmbeddingSpace embeddingSpace(ReasoningProviderConfiguration configuration,
+            String prefix) {
+        String id = LlamaCppProviderConfiguration.required(configuration,
+                prefix + ".embedding-space-id");
+        String rawDimensions = LlamaCppProviderConfiguration.required(configuration,
+                prefix + ".embedding-dimensions");
+        try {
+            return new EmbeddingSpace(id, Integer.parseInt(rawDimensions));
+        } catch (NumberFormatException exception) {
+            throw new IllegalArgumentException(
+                    prefix + ".embedding-dimensions must be an integer", exception);
+        }
+    }
+
     private static void validateEnabledInstance(ReasoningProviderConfiguration configuration,
             String instance) {
         String prefix = PREFIX + "." + instance.strip();
         adapterConfiguration(configuration, prefix);
         LlamaCppProviderConfiguration.preference(configuration, prefix + ".preference");
+        switch (computation(configuration, prefix)) {
+            case TextInferenceCodecs.CONTRACT_ID, TextGenerationCodecs.CONTRACT_ID -> { }
+            case TextEmbeddingCodecs.CONTRACT_ID -> embeddingSpace(configuration, prefix);
+            default -> throw new IllegalArgumentException(
+                    prefix + ".computation is not a supported reasoning contract");
+        }
     }
 }
