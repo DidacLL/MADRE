@@ -6,7 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.github.didacll.madre.sdk.identity.ModuleId;
-import io.github.didacll.madre.sdk.module.ModuleInstance;
+import io.github.didacll.madre.sdk.module.Module;
 import io.github.didacll.madre.sdk.registration.ModuleConfigurationDescriptor;
 import io.github.didacll.madre.sdk.registration.ModuleConfigurationField;
 import io.github.didacll.madre.sdk.registration.ModuleContext;
@@ -119,7 +119,7 @@ final class ModuleConfigurationManagerTest {
                         escapeIdentity ? new ModuleId("other.module") : id,
                         Map.of("setting", value));
             }
-            @Override public ModuleInstance create(ModuleContext context,
+            @Override public Module create(ModuleContext context,
                     ModuleProviderConfiguration configuration) {
                 materialized.set(true);
                 throw new AssertionError("configuration management must not materialize Modules");
