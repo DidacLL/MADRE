@@ -28,4 +28,13 @@ public final class ReasoningProviderConfiguration {
     }
 
     public Set<String> keys() { return values.keySet(); }
+
+    /** Returns a new immutable view after applying one provider-produced update. */
+    public ReasoningProviderConfiguration applying(ReasoningProviderConfigurationUpdate update) {
+        Objects.requireNonNull(update, "update");
+        Map<String, String> changed = new TreeMap<>(values);
+        update.removals().forEach(changed::remove);
+        changed.putAll(update.values());
+        return new ReasoningProviderConfiguration(changed);
+    }
 }
