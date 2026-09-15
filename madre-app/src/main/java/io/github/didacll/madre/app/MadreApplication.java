@@ -16,6 +16,7 @@ import io.github.didacll.madre.sdk.material.Material;
 import io.github.didacll.madre.sdk.material.MaterialType;
 import io.github.didacll.madre.sdk.module.EffectProfile;
 import io.github.didacll.madre.sdk.module.ModuleDefinition;
+import io.github.didacll.madre.sdk.module.ModuleInstance;
 import io.github.didacll.madre.sdk.module.OperationDefinition;
 import io.github.didacll.madre.sdk.module.OperationVisibility;
 import io.github.didacll.madre.sdk.operation.OperationCall;
@@ -84,8 +85,10 @@ public final class MadreApplication implements AutoCloseable {
                     new ModuleContext(kernel.reasoning(), kernel.modules().directoryFor(moduleId),
                             kernel.modules().invokerFor(moduleId), stateDirectory),
                     properties, kernel.modules()));
+            List<ModuleInstance> runtimeModules = modules.stream()
+                    .map(ModuleRegistration.Registration::instance).toList();
             Optional<LocalInteractionBinding> interaction = LocalInteractionBinding.resolve(
-                    properties, kernel.modules().definitions());
+                    properties, runtimeModules);
             return new MadreApplication(kernel, moduleLoader, reasoningLoader, reasoningConfiguration,
                     modules, capabilities, interaction);
         } catch (IOException | RuntimeException exception) {
@@ -157,18 +160,25 @@ public final class MadreApplication implements AutoCloseable {
     private CompletionStage<Material<?>> invokeText(InvocationBoundary boundary, ModuleId moduleId,
             String operationSpec, String materialTypeName, Sensitivity sensitivity,
             String encodedPayload) {
-        ModuleDefinition definition = kernel.modules().definition(moduleId).orElseThrow(() ->
-                new IllegalArgumentException("Module is not installed: " + moduleId));
-        ResolvedTextOperation resolved = resolveTextOperation(definition, operationSpec,
+        ModuleInstance module = runtimeModule(moduleId);
+        ResolvedTextOperation resolved = resolveTextOperation(module, operationSpec,
                 materialTypeName);
         Material<?> input = decodeMaterial(moduleId, resolved.inputType(), encodedPayload,
                 sensitivity);
         return invokeExact(boundary, resolved.operation(), input, resolved.effectProfileName());
     }
 
-    static ResolvedTextOperation resolveTextOperation(ModuleDefinition definition,
+    private ModuleInstance runtimeModule(ModuleId moduleId) {
+        return moduleRegistrations.stream().map(ModuleRegistration.Registration::instance)
+                .filter(instance -> instance.definition().id().equals(moduleId))
+                .findFirst().orElseThrow(() ->
+                        new IllegalArgumentException("Module is not installed: " + moduleId));
+    }
+
+    static ResolvedTextOperation resolveTextOperation(ModuleInstance module,
             String operationSpec, String materialTypeName) {
-        Objects.requireNonNull(definition, "definition");
+        Objects.requireNonNull(module, "module");
+        ModuleDefinition definition = module.definition();
         OperationSelection selection = operationSelection(operationSpec);
         ModuleId moduleId = definition.id();
         OperationDefinition operation = definition.operations().get(
@@ -182,7 +192,7 @@ public final class MadreApplication implements AutoCloseable {
         if (!operation.acceptedMaterial().containsKey(typeId)) {
             throw new IllegalArgumentException("Operation does not accept Material type " + typeId);
         }
-        MaterialType<?> type = definition.materialTypes().get(typeId);
+        MaterialType<?> type = module.materialTypes().get(typeId);
         if (type == null) {
             throw new IllegalArgumentException(
                     "local invocation supports Module-owned input Material types only");
