@@ -236,13 +236,15 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           function Slash([string]$value) { return $value.Replace('\', '/') }
-          Copy-Item 'verification/sdk-consumer/build/libs/independent-module.jar' 'madre-app/build/install/madre/modules/independent-module.jar' -Force
-          Copy-Item 'verification/reasoning-consumer/build/libs/independent-reasoning.jar' 'madre-app/build/install/madre/reasoning/independent-reasoning.jar' -Force
-          $shipped = @(Get-ChildItem 'madre-app/build/install/madre/reasoning' -Filter '*.jar' | Select-Object -ExpandProperty Name)
+          $shippedReasoningDir = 'madre-app/build/install/madre/reasoning'
+          $shipped = @(Get-ChildItem $shippedReasoningDir -Filter '*.jar' | Select-Object -ExpandProperty Name)
           if (-not ($shipped -match 'madre-adapter-llamacpp')) { throw 'shipped llama.cpp adapter is missing from reasoning installation directory' }
           if (-not ($shipped -match 'madre-adapter-openai-compatible')) { throw 'shipped OpenAI-compatible adapter is missing from reasoning installation directory' }
-          $moduleDir = (Resolve-Path 'madre-app/build/install/madre/modules').Path
-          $reasoningDir = (Resolve-Path 'madre-app/build/install/madre/reasoning').Path
+          $moduleDir = Join-Path $env:RUNNER_TEMP 'independent-reasoning-modules'
+          $reasoningDir = Join-Path $env:RUNNER_TEMP 'independent-reasoning-providers'
+          New-Item -ItemType Directory -Force -Path $moduleDir, $reasoningDir | Out-Null
+          Copy-Item 'verification/sdk-consumer/build/libs/independent-module.jar' (Join-Path $moduleDir 'independent-module.jar') -Force
+          Copy-Item 'verification/reasoning-consumer/build/libs/independent-reasoning.jar' (Join-Path $reasoningDir 'independent-reasoning.jar') -Force
           $stateDir = Join-Path $env:RUNNER_TEMP 'madre-reasoning-state'
           $database = Join-Path $env:RUNNER_TEMP 'madre-independent-reasoning.sqlite'
           $config = Join-Path $env:RUNNER_TEMP 'madre-independent-reasoning.properties'
