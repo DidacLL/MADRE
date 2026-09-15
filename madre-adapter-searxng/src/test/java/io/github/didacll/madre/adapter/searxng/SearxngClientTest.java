@@ -42,9 +42,11 @@ final class SearxngClientTest {
         });
         server.start();
         try {
+            // This test verifies protocol behavior, not sub-second timing. Hosted Windows runners
+            // can occasionally spend more than 500 ms scheduling the in-process HTTP fixture.
             SearxngClient client = new SearxngClient(new SearxngConfiguration(
                     URI.create("http://127.0.0.1:" + server.getAddress().getPort()
-                            + "/search"), Duration.ofMillis(500)));
+                            + "/search"), Duration.ofSeconds(2)));
 
             assertTrue(client.available());
             healthStatus.set(503);
