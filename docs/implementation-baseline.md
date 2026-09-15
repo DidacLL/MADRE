@@ -2,7 +2,7 @@
 
 This document records executable truth on the active Java 21 branch. Durable product meaning remains in `MADRE.md`; architecture responsibility rules remain in `docs/architecture/*`.
 
-The last code-bearing checkpoint for this baseline is `2fa763c358edaf11949f2975b29e617714b069de`, which passed Fast validation run `35028121656` with the root Gradle `check`.
+The last code-bearing checkpoint for this baseline is `676fda5430ee64d02ec72ec76b8fe22726ad0490`, which passed Fast validation run `35033416016` with the root Gradle `check`.
 
 ## Product/runtime baseline
 
@@ -19,6 +19,7 @@ The stable Java SDK now has an explicit execution-side authoring model:
 ```text
 Module
 Agent                     optional
+StatefulAgent<S>           optional Agent specialization
 MaterialType<T>
 Operation<I,O>
 OperationBinding<I,O>
@@ -28,6 +29,8 @@ OperationCall<I,O>
 A Java `Module` is the executable source of truth. It declares identity/version/purpose, Java Material bindings, optional foreign public Material references, optional Agents/Skills, and executable Operation bindings. `Module.definition()` derives the portable contract and `Module.instance()` derives the validated runtime assembly.
 
 A Java `Agent` is an optional Module-owned semantic actor. It defines no universal loop, planner, memory, prompt or execution context. If no stronger causal-integrity claim has been established, `Agent.integrity()` defaults to `Integrity.I1`; authors may explicitly declare stronger Integrity when justified.
+
+`StatefulAgent<S>` is an optional OOP authoring base for an Agent that owns typed private state. It serializes reads/transitions and can commit one transition through a Module-owned persistence function before publishing the new in-memory state. It is not a portable memory schema, generic persistence service or second execution model: concrete state meaning remains Module/Agent-owned, and semantic execution still occurs through ordinary MADRE Operations and `OperationCall` values.
 
 Portable descriptions are separate from Java execution mechanics:
 
@@ -105,11 +108,11 @@ Stable computation-contract artifacts remain `madre-text-inference`, `madre-text
 
 The testkit deliberately does not emulate Kernel mechanism selection, resource scheduling, retry timing, receiver-boundary enforcement or SQLite durability.
 
-`madre-sdk-experimental` remains an explicit 0.x incubation artifact but currently exposes no public authoring helper. The former `ModuleDefinitionBuilder` was removed because it preserved the definition-first duplicate graph that code-first authoring eliminates. Stable SDK/runtime artifacts do not depend on the experimental artifact.
+`madre-sdk` now includes the small stable `StatefulAgent<S>` authoring convenience because the shipped owner-interaction experiment demonstrated a concrete OOP need for typed Agent-owned state without weakening Operation-bound execution. `madre-sdk-experimental` remains an explicit 0.x incubation artifact and currently exposes no additional public authoring helper. The former `ModuleDefinitionBuilder` remains removed because it preserved the definition-first duplicate graph that code-first authoring eliminates. Stable SDK/runtime artifacts do not depend on the experimental artifact.
 
 ## Independent developer proof
 
-`verification/sdk-consumer` remains a separate Gradle project that depends only on published public MADRE artifacts. Its Module now implements the same code-first stable `Module` contract used by shipped code. Its tests exercise:
+`verification/sdk-consumer` remains a separate Gradle project that depends only on published public MADRE artifacts. Its Module implements the same code-first stable `Module` contract used by shipped code. Its tests exercise:
 
 - deterministic Module behavior through `madre-sdk-testkit`;
 - generic text inference;
@@ -117,24 +120,28 @@ The testkit deliberately does not emulate Kernel mechanism selection, resource s
 - an arbitrary non-text `ReasoningComputation<Integer>`;
 - projection from executable Module objects to the portable `ModuleDefinition`.
 
-The external consumer no longer depends on `madre-sdk-experimental`.
+The external consumer does not depend on `madre-sdk-experimental`.
 
 `verification/module-interoperability` likewise implements its independent caller/callee as code-first Modules and uses portable non-generic `OperationDefinition` values for discovery/composition.
 
-The repository still contains manual cross-platform acceptance workflows for the independent SDK, installed owner lifecycle, reasoning configuration and native packaging. They are explicit expensive verification tools rather than continuous development gates. The current code-first SDK cleanup is proven by root Fast validation; a fresh Windows/Linux extended SDK acceptance remains a relevant explicit release/checkpoint verification because this slice changes the public SDK boundary.
+The repository still contains manual cross-platform acceptance workflows for the independent SDK, installed owner lifecycle, reasoning configuration and native packaging. They are explicit expensive verification tools rather than continuous development gates. The stateful-Agent/conversation slice is proven by root Fast validation; because it changes a stable public SDK boundary, a fresh Windows/Linux extended SDK acceptance remains relevant at a release/checkpoint boundary and has not yet been freshly dispatched.
 
 ## Owner-interaction implementation baseline
 
-`madre-module-owner-interaction` is an ordinary shipped code-first Module with one code-first Agent. Its current behavior is still the pre-conversation experiment:
+`madre-module-owner-interaction` is an ordinary shipped code-first Module whose interaction actor is a concrete `StatefulAgent<OwnerConversationState>`. The stateful abstraction does not grant privilege and does not replace MADRE Operations.
 
-- `standard-prompt`: immediate text inference from the current owner prompt;
-- `fast-lane`: immediate foreground inference plus independently durable background reasoning and Module-owned pending association;
-- `collect-background`: Module-owned interpretation, optional visible follow-up, acknowledgement and pending-state removal;
+Its current bounded behavior is:
+
+- `standard-prompt`: an ordinary PUBLIC Operation with an explicit `WRITE + LIVE_INTERACTION` effect profile; it constructs bounded conversation-context Material, performs immediate text inference, returns Module-owned answer Material and commits the completed exchange to Agent-owned state;
+- `fast-lane`: an ordinary PUBLIC Operation using the same bounded conversation context for immediate foreground inference plus independently durable background reasoning, while preserving the Module-owned pending association;
+- `collect-background`: an ordinary PUBLIC Operation that interprets terminal durable reasoning, creates optional visible follow-up, acknowledges Kernel work and removes pending Module state;
 - explicit external/PUBLIC minimization to new S1 Material.
 
-This cleanup did not add multi-turn conversation history, generic memory, RAG, embeddings, routing or natural asynchronous presentation. The current console still requires explicit `/updates` for delayed follow-up presentation.
+All three semantic execution paths are reached through their declared `OperationBinding` and `OperationCall` contracts. There is no `Agent.execute(...)` path or semantic shortcut around Operation validation.
 
-A future multi-turn experiment must preserve the existing reasoning-sensitivity invariant: if historical/contextual information participates in a reasoning payload, the Module must first construct the actual contextual Material at the combined maximum Sensitivity and derive the reasoning request from a bounded call over that Material. A raw Sensitivity override is not part of the SDK.
+Conversation state is Module/Agent-owned, persisted separately from Kernel durable reasoning state, and bounded by the provider-owned `conversation-history-exchanges` setting. It is evidence for typed Agent state, not a generic MADRE memory model. The current console still requires explicit `/updates` for delayed follow-up presentation.
+
+The reasoning-sensitivity invariant is implemented rather than deferred: when historical/contextual values participate in a reasoning payload, the Module first constructs the actual contextual Material at the combined maximum Sensitivity and derives the reasoning request from a bounded call over that Material. A raw Sensitivity override is not part of the SDK.
 
 ## Local artifact lifecycle baseline
 
@@ -150,6 +157,8 @@ Managed local Module/reasoning JAR lifecycle remains unchanged by this SDK refac
 
 ## Current intentional limitations
 
-There is no public remote artifact repository/catalog, marketplace, update feed, dependency bundle protocol, signature/PKI trust model, credential vault, sandbox, external-process Module transport, universal Agent loop, generic planner/tool framework, workflow scheduler, memory abstraction, RAG abstraction, semantic-database abstraction or arbitrary metadata/property framework.
+There is no public remote artifact repository/catalog, marketplace, update feed, dependency bundle protocol, signature/PKI trust model, credential vault, sandbox, external-process Module transport, universal Agent loop, generic planner/tool framework, workflow scheduler, universal memory abstraction, RAG abstraction, semantic-database abstraction or arbitrary metadata/property framework.
+
+`StatefulAgent<S>` is intentionally narrower than those missing abstractions: it is typed OOP state ownership for a concrete Agent, while state shape, persistence and semantic use remain application-owned. Further abstractions require additional real consumers rather than extrapolation from owner interaction alone.
 
 These absences are deliberate until concrete experiments demonstrate an ownership-correct reusable contract. The SDK strategy is to make ordinary semantic software cheap to author while keeping stable concepts few, explicit and composable.
