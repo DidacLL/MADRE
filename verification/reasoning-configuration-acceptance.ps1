@@ -151,7 +151,11 @@ try {
             throw "shipped reasoning provider $providerId was not protected from owner uninstall"
         }
     }
-    $shippedCandidate = @(Get-ChildItem $shippedReasoning -Filter '*.jar')[0]
+    $shippedCandidates = @(Get-ChildItem $shippedReasoning -Filter 'madre-adapter-openai-compatible*.jar')
+    if ($shippedCandidates.Count -ne 1) {
+        throw 'native image does not contain exactly one shipped OpenAI-compatible reasoning JAR'
+    }
+    $shippedCandidate = $shippedCandidates[0]
     $collision = Invoke-MadreFailure @('reasoning', 'install', $shippedCandidate.FullName)
     if ($collision -notmatch 'shipped with MADRE' -or $collision -notmatch 'cannot be overridden') {
         throw 'reasoning install did not reject a shipped canonical identity collision'
