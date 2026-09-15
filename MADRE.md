@@ -118,15 +118,15 @@ The current implementation is transitional: `roles.core` resolves an optional in
 
 Executable Modules are discovered as JVM JARs exposing `ModuleProvider`. Each provider declares its canonical `ModuleId` before materialization and receives an immutable `ModuleProviderConfiguration` scoped to that same identity.
 
-The current developer configuration format is:
+Installed providers expose the implemented stable `ModuleConfigurationDescriptor` / `ModuleConfigurationField` metadata and `validateConfiguration(...)` contract without Module materialization. The host renders this metadata generically through `madre modules list`, `madre modules inspect` and `madre modules configure`. Configuration management is routed before normal semantic application startup, and provider-owned validation/canonicalization remains authoritative.
+
+The compatibility representation remains:
 
 ```text
 modules.config[<canonical ModuleId>].<module-owned-key>=<value>
 ```
 
-`madre-app` currently owns only generic extraction, exact-identity scoping and delivery. Provider class name, JAR name, discovery order, shipped status and CORE assignment never participate in association. Each Module provider owns supported-key validation, parsing, typed settings and defaults.
-
-This string map is current executable behavior, not the final owner configurator contract. A generic configurator cannot safely hard-code independently installed Module settings. When an owner-facing Module configurator is implemented, the installed provider must supply the minimum provider-owned typed metadata that the configurator actually needs. The exact public metadata API is deliberately deferred until that real configurator proves the requirement; this is not permission to invent a general schema framework now.
+`madre-app` owns generic extraction, exact-identity scoping, transactional persistence and delivery. Provider class name, JAR name, discovery order, shipped status and CORE assignment never participate in configuration association. Each Module provider owns supported-key validation, parsing, typed settings and defaults. The raw string map remains executable for compatibility and advanced developer use; it is not a host-owned schema for independently developed Module settings.
 
 Provider identity remains an installation invariant. Duplicate identities, materialized identity mismatches and invalid executable bindings fail startup before a partially reachable installation is exposed.
 
@@ -138,7 +138,7 @@ The owner-facing reasoning configurator is implemented. Each installed provider 
 
 `madre-app` has no concrete llama.cpp, OpenAI-compatible or future-provider configuration branch. Provider discovery is independent from mechanism materialization: an installed provider can be visible and configurable while materializing zero mechanisms. Disabled or unconfigured instances register nothing. Privacy is explicit and is never inferred from endpoint, transport or locality.
 
-The raw `reasoning.*` string representation remains executable for compatibility and advanced developer use rather than being the ordinary owner UX. This implemented reasoning-specific configurator does not imply a universal settings framework and does not complete generic Module configuration.
+The raw `reasoning.*` string representation remains executable for compatibility and advanced developer use rather than being the ordinary owner UX. This implemented reasoning-specific configurator does not imply a universal settings framework.
 
 Provider configuration is expected to deepen when concrete engine/model experiments require it. Local SLM optimization can legitimately need provider-owned runtime controls that are meaningless to other engines. Such controls belong to the provider/adapter configuration contract, not to Kernel. Extend the generic configuration vocabulary only from demonstrated provider needs rather than predesigning every possible field type.
 
