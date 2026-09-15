@@ -1,7 +1,7 @@
 package consumer;
 
 import io.github.didacll.madre.sdk.identity.ModuleId;
-import io.github.didacll.madre.sdk.module.ModuleInstance;
+import io.github.didacll.madre.sdk.module.Module;
 import io.github.didacll.madre.sdk.registration.ModuleConfigurationDescriptor;
 import io.github.didacll.madre.sdk.registration.ModuleConfigurationField;
 import io.github.didacll.madre.sdk.registration.ModuleContext;
@@ -29,12 +29,12 @@ public final class IndependentModuleProvider implements ModuleProvider {
         return canonical(configuration);
     }
 
-    @Override public ModuleInstance create(ModuleContext context,
+    @Override public Module create(ModuleContext context,
             ModuleProviderConfiguration configuration) {
         java.util.Objects.requireNonNull(context, "context");
         ModuleProviderConfiguration canonical = canonical(configuration);
         String prefix = canonical.value(RESULT_PREFIX).orElse("");
-        return IndependentDefinition.instance(context.reasoning(), prefix);
+        return IndependentDefinition.create(context.reasoning(), prefix);
     }
 
     private static ModuleProviderConfiguration canonical(ModuleProviderConfiguration configuration) {
