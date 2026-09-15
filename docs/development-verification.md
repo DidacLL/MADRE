@@ -30,9 +30,11 @@ The default PR workflow intentionally does not build native installers, publish 
 
 The following workflows remain available through `workflow_dispatch` for explicit use when their evidence is relevant:
 
-- `Extended SDK developer acceptance` — independent SDK consumer build/test on Windows and Linux.
-- `Extended reasoning owner configuration` — owner reasoning-provider configuration journey on Windows and Linux.
+- `Extended SDK developer acceptance` — builds/tests the independent SDK consumer outside the checkout, then exercises the installed-product Module lifecycle, semantic owner/PUBLIC boundaries, and manual-placement protection on Windows and Linux.
+- `Extended reasoning owner configuration` — owner reasoning-provider configuration and lifecycle journey on Windows and Linux.
 - `Extended native owner package` — native application/package build and packaged owner journey on Windows and Linux.
+
+These workflows preserve expensive product evidence without making it part of the continuous development loop.
 
 Use extended verification when one of these conditions applies:
 
