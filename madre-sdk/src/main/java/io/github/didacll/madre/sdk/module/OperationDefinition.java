@@ -8,7 +8,13 @@ import io.github.didacll.madre.sdk.identity.OperationId;
 import java.util.Map;
 import java.util.Objects;
 
-/** Contract for one bounded callable piece of Module behavior. */
+/**
+ * Portable contract for one bounded callable piece of Module behavior.
+ *
+ * <p>This value is deliberately structural: independently decoded/adapted contracts with the
+ * same canonical facts represent the same Operation. Executable Java behavior is attached by
+ * {@link OperationBinding}; object identity is never part of the runtime contract.</p>
+ */
 public final class OperationDefinition<I, O> {
     private final OperationId id;
     private final String purpose;
@@ -22,18 +28,24 @@ public final class OperationDefinition<I, O> {
             Map<MaterialTypeId, Sensitivity> producedMaterial,
             Map<EffectProfileId, EffectProfile> effectProfiles) {
         this.id = Objects.requireNonNull(id, "id");
-        if (purpose == null || purpose.isBlank()) throw new IllegalArgumentException("purpose must not be blank");
+        if (purpose == null || purpose.isBlank()) {
+            throw new IllegalArgumentException("purpose must not be blank");
+        }
         this.purpose = purpose.strip();
         this.visibility = Objects.requireNonNull(visibility, "visibility");
         this.acceptedMaterial = Map.copyOf(acceptedMaterial);
         this.producedMaterial = Map.copyOf(producedMaterial);
         this.effectProfiles = Map.copyOf(effectProfiles);
-        if (this.acceptedMaterial.isEmpty()) throw new IllegalArgumentException("an Operation must accept Material");
+        if (this.acceptedMaterial.isEmpty()) {
+            throw new IllegalArgumentException("an Operation must accept Material");
+        }
         if (this.acceptedMaterial.containsValue(Privacy.SYSTEM_RESERVED)) {
-            throw new IllegalArgumentException("SYSTEM_RESERVED Privacy is not an ordinary Operation boundary");
+            throw new IllegalArgumentException(
+                    "SYSTEM_RESERVED Privacy is not an ordinary Operation boundary");
         }
         if (this.producedMaterial.containsValue(Sensitivity.SYSTEM_RESERVED)) {
-            throw new IllegalArgumentException("SYSTEM_RESERVED Sensitivity is not an ordinary Operation result");
+            throw new IllegalArgumentException(
+                    "SYSTEM_RESERVED Sensitivity is not an ordinary Operation result");
         }
         if (!this.effectProfiles.entrySet().stream().allMatch(entry ->
                 entry.getKey().equals(entry.getValue().id())
@@ -49,4 +61,24 @@ public final class OperationDefinition<I, O> {
     public Map<MaterialTypeId, Privacy> acceptedMaterial() { return acceptedMaterial; }
     public Map<MaterialTypeId, Sensitivity> producedMaterial() { return producedMaterial; }
     public Map<EffectProfileId, EffectProfile> effectProfiles() { return effectProfiles; }
+
+    @Override public boolean equals(Object other) {
+        if (this == other) return true;
+        if (!(other instanceof OperationDefinition<?, ?> that)) return false;
+        return id.equals(that.id)
+                && purpose.equals(that.purpose)
+                && visibility == that.visibility
+                && acceptedMaterial.equals(that.acceptedMaterial)
+                && producedMaterial.equals(that.producedMaterial)
+                && effectProfiles.equals(that.effectProfiles);
+    }
+
+    @Override public int hashCode() {
+        return Objects.hash(id, purpose, visibility, acceptedMaterial, producedMaterial,
+                effectProfiles);
+    }
+
+    @Override public String toString() {
+        return id.toString();
+    }
 }
