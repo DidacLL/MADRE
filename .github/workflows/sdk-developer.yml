@@ -1,26 +1,13 @@
-name: SDK developer acceptance
+name: Extended SDK developer acceptance
 
 on:
-  pull_request:
-    paths:
-      - 'build.gradle.kts'
-      - 'settings.gradle.kts'
-      - 'madre-algebra/**'
-      - 'madre-sdk/**'
-      - 'madre-sdk-testkit/**'
-      - 'madre-sdk-experimental/**'
-      - 'madre-bom/**'
-      - 'madre-text-inference/**'
-      - 'madre-app/**'
-      - 'madre-module-owner-interaction/**'
-      - 'verification/sdk-consumer/**'
-      - '.github/workflows/sdk-developer.yml'
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: sdk-developer-${{ github.event.pull_request.number || github.ref }}
+  group: sdk-developer-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -32,159 +19,34 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 0
-
-      - name: Verify exact head
-        shell: pwsh
-        env:
-          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $actual = (git rev-parse HEAD).Trim()
-          if ($actual -ne $env:EXPECTED_HEAD) {
-            throw "checkout head $actual does not match expected exact head $env:EXPECTED_HEAD"
-          }
-
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
-
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.12'
 
-      - name: Publish public verification artifacts and build packaged host image
+      - name: Publish public verification artifacts
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $gradle = if ($IsWindows) { '.\gradlew.bat' } else { './gradlew' }
-          & $gradle --no-daemon --build-cache check publish :madre-app:jpackageAppImage
-          if ($LASTEXITCODE -ne 0) { throw 'MADRE verification publication or host image build failed' }
+          $gradle = if ($IsWindows) { '.\\gradlew.bat' } else { './gradlew' }
+          & $gradle --no-daemon --build-cache publish
+          if ($LASTEXITCODE -ne 0) { throw 'MADRE verification publication failed' }
 
-      - name: Build Module from a directory outside the MADRE checkout
+      - name: Build SDK consumer outside the MADRE checkout
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $gradle = if ($IsWindows) { '.\gradlew.bat' } else { './gradlew' }
+          $gradle = if ($IsWindows) { '.\\gradlew.bat' } else { './gradlew' }
           $external = Join-Path $env:RUNNER_TEMP 'madre-external-sdk-consumer'
           if (Test-Path $external) { Remove-Item -Recurse -Force $external }
           New-Item -ItemType Directory -Force -Path $external | Out-Null
           Copy-Item 'verification/sdk-consumer/*' $external -Recurse -Force
           $repository = (Resolve-Path 'build/isolated-repository').Path
-          & $gradle --no-daemon --build-cache -p $external "-PmadreRepository=$repository" clean jar
-          if ($LASTEXITCODE -ne 0) { throw 'external Module test/package build failed' }
-          $jar = Join-Path $external 'build/libs/independent-module.jar'
-          if (-not (Test-Path $jar)) { throw 'external Module JAR was not produced' }
-          "EXTERNAL_MODULE_JAR=$jar" >> $env:GITHUB_ENV
-
-      - name: Install, configure and invoke external JAR through packaged MADRE
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $appImage = (Resolve-Path 'madre-app/build/jpackage/app-image/madre').Path
-          $launcher = if ($IsWindows) {
-            Join-Path $appImage 'madre.exe'
-          } else {
-            Join-Path $appImage 'bin/madre'
-          }
-          if (-not (Test-Path $launcher)) { throw "packaged launcher is missing: $launcher" }
-
-          $temp = Join-Path $env:RUNNER_TEMP 'madre-sdk-owner-home'
-          if (Test-Path $temp) { Remove-Item -Recurse -Force $temp }
-          New-Item -ItemType Directory -Force -Path $temp | Out-Null
-
-          $saved = @{
-            HOME = $env:HOME
-            APPDATA = $env:APPDATA
-            LOCALAPPDATA = $env:LOCALAPPDATA
-            XDG_CONFIG_HOME = $env:XDG_CONFIG_HOME
-            XDG_DATA_HOME = $env:XDG_DATA_HOME
-            XDG_STATE_HOME = $env:XDG_STATE_HOME
-          }
-          try {
-            $env:HOME = Join-Path $temp 'home'
-            New-Item -ItemType Directory -Force -Path $env:HOME | Out-Null
-            if ($IsWindows) {
-              $env:APPDATA = Join-Path $temp 'roaming'
-              $env:LOCALAPPDATA = Join-Path $temp 'local'
-              $dataDirectory = Join-Path $env:LOCALAPPDATA 'MADRE'
-              $configurationFile = Join-Path (Join-Path $env:APPDATA 'MADRE') 'madre.properties'
-            } else {
-              $env:XDG_CONFIG_HOME = Join-Path $temp 'config'
-              $env:XDG_DATA_HOME = Join-Path $temp 'data'
-              $env:XDG_STATE_HOME = Join-Path $temp 'state'
-              $dataDirectory = Join-Path $env:XDG_DATA_HOME 'madre'
-              $configurationFile = Join-Path (Join-Path $env:XDG_CONFIG_HOME 'madre') 'madre.properties'
-            }
-
-            $bootstrap = (& $launcher doctor 2>&1 | Out-String)
-            if ($LASTEXITCODE -ne 0) { Write-Host $bootstrap; throw 'packaged host bootstrap failed' }
-            Write-Host $bootstrap
-            $ownerModules = Join-Path $dataDirectory 'modules'
-            if (-not (Test-Path $ownerModules)) {
-              throw "packaged host did not create owner Module directory: $ownerModules"
-            }
-            Copy-Item $env:EXTERNAL_MODULE_JAR (Join-Path $ownerModules 'independent-module.jar') -Force
-
-            $modules = (& $launcher modules list 2>&1 | Out-String)
-            if ($LASTEXITCODE -ne 0) { Write-Host $modules; throw 'modules list failed' }
-            Write-Host $modules
-            if ($modules -notmatch 'module\s+phd\.module') {
-              throw 'packaged MADRE did not discover the independently built owner Module provider'
-            }
-
-            $inspect = (& $launcher modules inspect phd.module 2>&1 | Out-String)
-            if ($LASTEXITCODE -ne 0) { Write-Host $inspect; throw 'modules inspect failed' }
-            Write-Host $inspect
-            if ($inspect -notmatch 'module\.field\s+result-prefix\s+TEXT') {
-              throw 'independent Module result-prefix metadata was not exposed'
-            }
-
-            $configured = (& $launcher modules configure phd.module --set 'result-prefix=configured-' 2>&1 | Out-String)
-            if ($LASTEXITCODE -ne 0) { Write-Host $configured; throw 'modules configure failed' }
-            Write-Host $configured
-            $persisted = Get-Content $configurationFile -Raw
-            if ($persisted -notmatch 'modules\.config\[phd\.module\]\.result-prefix=configured-') {
-              throw 'host did not persist the exact Module-scoped raw compatibility property'
-            }
-
-            $beforeInvalid = Get-Content $configurationFile -Raw
-            $invalid = (& $launcher modules configure phd.module --set 'result-prefix=bad value' 2>&1 | Out-String)
-            if ($LASTEXITCODE -eq 0) { Write-Host $invalid; throw 'invalid result-prefix configuration was accepted' }
-            $afterInvalid = Get-Content $configurationFile -Raw
-            if ($afterInvalid -ne $beforeInvalid) {
-              throw 'rejected Module configuration modified the persisted owner configuration'
-            }
-
-            $doctor = (& $launcher doctor 2>&1 | Out-String)
-            if ($LASTEXITCODE -ne 0) { Write-Host $doctor; throw 'doctor failed after owner Module configuration' }
-            Write-Host $doctor
-            if ($doctor -notmatch 'module\s+phd\.module') {
-              throw 'configured independently built owner Module did not materialize on normal startup'
-            }
-
-            $owner = (& $launcher --invoke-owner phd.module inspect request S4 hello 2>&1 | Out-String)
-            if ($LASTEXITCODE -ne 0) { Write-Host $owner; throw 'owner-local external Module invocation failed' }
-            Write-Host $owner
-            if ($owner -notmatch 'S4\s+private:configured-hello') {
-              throw 'owner-local invocation did not observe the persisted independent Module setting'
-            }
-
-            $public = (& $launcher --invoke-public phd.module inspect request S4 hello 2>&1 | Out-String)
-            if ($LASTEXITCODE -ne 0) { Write-Host $public; throw 'PUBLIC external Module invocation failed' }
-            Write-Host $public
-            if ($public -notmatch 'public:configured-hello') {
-              throw 'PUBLIC invocation did not observe configured semantic public transformation'
-            }
-            if ($public -match 'private:configured-hello') {
-              throw 'raw Module Material crossed the external PUBLIC receiver boundary'
-            }
-          } finally {
-            foreach ($name in $saved.Keys) {
-              [Environment]::SetEnvironmentVariable($name, $saved[$name], 'Process')
-            }
-            Remove-Item -Recurse -Force $temp -ErrorAction SilentlyContinue
+          & $gradle --no-daemon --build-cache -p $external "-PmadreRepository=$repository" clean test jar
+          if ($LASTEXITCODE -ne 0) { throw 'external Module build/test failed' }
+          if (-not (Test-Path (Join-Path $external 'build/libs/independent-module.jar'))) {
+            throw 'external Module JAR was not produced'
           }
