@@ -8,29 +8,38 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 
-/** Host-owned generic command surface for installed reasoning-provider configuration. */
+/** Host-owned generic command surface for reasoning configuration and local artifact lifecycle. */
 final class ReasoningCli {
     private ReasoningCli() { }
 
     static void run(HostEnvironment host, HostEnvironment.LoadedConfiguration loaded,
             Properties properties, List<String> arguments) throws IOException {
+        if (arguments.isEmpty() || arguments.equals(List.of("help"))) {
+            usage();
+            return;
+        }
+        switch (arguments.get(0)) {
+            case "install" -> install(host, loaded, properties, arguments);
+            case "uninstall" -> uninstall(host, loaded, properties, arguments);
+            default -> runDiscoveryCommand(host, loaded, properties, arguments);
+        }
+    }
+
+    private static void runDiscoveryCommand(HostEnvironment host,
+            HostEnvironment.LoadedConfiguration loaded, Properties properties,
+            List<String> arguments) throws IOException {
         List<Path> directories = reasoningArtifactDirectories(properties, host);
         try (InstalledReasoningLoader loader = new InstalledReasoningLoader(directories)) {
             ReasoningConfigurationManager manager =
                     new ReasoningConfigurationManager(loaded.path(), properties, loader);
-            if (arguments.isEmpty() || arguments.equals(List.of("help"))) {
-                usage();
-                return;
-            }
             switch (arguments.get(0)) {
-                case "providers" -> providers(loader);
+                case "providers" -> providers(host, loader);
                 case "list" -> list(loader, manager);
                 case "inspect" -> inspect(arguments, manager);
                 case "configure" -> configure(arguments, manager);
@@ -43,11 +52,48 @@ final class ReasoningCli {
         }
     }
 
-    private static void providers(InstalledReasoningLoader loader) {
+    private static void install(HostEnvironment host, HostEnvironment.LoadedConfiguration loaded,
+            Properties properties, List<String> arguments) throws IOException {
+        if (arguments.size() < 2 || arguments.size() > 3
+                || (arguments.size() == 3 && !arguments.get(2).equals("--replace"))) {
+            throw new IllegalArgumentException("reasoning install requires <jar> [--replace]");
+        }
+        boolean replace = arguments.size() == 3;
+        ReasoningArtifactLifecycle.InstallResult result = ReasoningArtifactLifecycle.install(host,
+                loaded, properties, Path.of(arguments.get(1)), replace);
+        System.out.println((replace ? "reasoning.provider.replaced\t" : "reasoning.provider.installed\t")
+                + result.providerId() + "\tsource=owner\tartifact=" + result.path().getFileName()
+                + "\tsha256=" + result.sha256());
+    }
+
+    private static void uninstall(HostEnvironment host, HostEnvironment.LoadedConfiguration loaded,
+            Properties properties, List<String> arguments) throws IOException {
+        if (arguments.size() < 2 || arguments.size() > 3
+                || (arguments.size() == 3 && !arguments.get(2).equals("--purge-configuration"))) {
+            throw new IllegalArgumentException(
+                    "reasoning uninstall requires <provider-id> [--purge-configuration]");
+        }
+        boolean purge = arguments.size() == 3;
+        ReasoningArtifactLifecycle.UninstallResult result = ReasoningArtifactLifecycle.uninstall(host,
+                loaded, properties, arguments.get(1), purge);
+        System.out.println("reasoning.provider.uninstalled\t" + result.providerId()
+                + "\tconfiguration-purged=" + result.configurationPurged());
+    }
+
+    private static void providers(HostEnvironment host, InstalledReasoningLoader loader) {
         List<ReasoningProviderDescriptor> descriptors = loader.providerDescriptors();
         System.out.println("reasoning.providers.count\t" + descriptors.size());
         for (ReasoningProviderDescriptor descriptor : descriptors) {
-            System.out.println("reasoning.provider\t" + descriptor.id() + "\t" + descriptor.displayName());
+            InstalledReasoningLoader.DiscoveredProvider discovered = loader.discoveredProviders().stream()
+                    .filter(item -> item.provider().descriptor().id().equals(descriptor.id()))
+                    .findFirst().orElseThrow(() -> new IllegalStateException(
+                            "cannot resolve source JAR for reasoning provider " + descriptor.id()));
+            ReasoningArtifactLifecycle.Source source = ReasoningArtifactLifecycle.classify(host,
+                    discovered.sourceJar());
+            String artifact = source == ReasoningArtifactLifecycle.Source.OWNER
+                    ? "\tartifact=" + discovered.sourceJar().getFileName() : "";
+            System.out.println("reasoning.provider\t" + descriptor.id() + "\t"
+                    + descriptor.displayName() + "\tsource=" + source.label() + artifact);
             System.out.println("  " + descriptor.help());
             for (ReasoningConfigurationField field : descriptor.fields()) {
                 StringBuilder detail = new StringBuilder("  field\t").append(field.name())
@@ -211,6 +257,8 @@ final class ReasoningCli {
         System.err.println("  madre reasoning enable <provider>/<instance>");
         System.err.println("  madre reasoning disable <provider>/<instance>");
         System.err.println("  madre reasoning remove <provider>/<instance>");
+        System.err.println("  madre reasoning install <jar> [--replace]");
+        System.err.println("  madre reasoning uninstall <provider-id> [--purge-configuration]");
     }
 
     private record ProviderInstanceRef(String provider, String instance) { }

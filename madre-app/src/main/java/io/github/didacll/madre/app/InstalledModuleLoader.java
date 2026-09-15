@@ -8,26 +8,35 @@ import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.ServiceConfigurationError;
 import java.util.ServiceLoader;
+import java.util.Set;
 
-/** Cross-platform JVM discovery of owner-installed Module JARs from installation directories. */
+/** Cross-platform JVM discovery of installed Module JARs from installation directories. */
 final class InstalledModuleLoader implements AutoCloseable {
     private final URLClassLoader classLoader;
     private final List<ModuleProvider> providers;
+    private final List<Path> jars;
 
     InstalledModuleLoader(Path directory) { this(installationDirectories(directory)); }
 
     InstalledModuleLoader(List<Path> directories) {
-        List<Path> jars = jars(directories, "Module", "modules.directory");
+        this(new JarSelection(jars(directories, "Module", "modules.directory")));
+    }
+
+    private InstalledModuleLoader(JarSelection selection) {
+        jars = selection.jars();
         URL[] urls = jars.stream().map(InstalledModuleLoader::url).toArray(URL[]::new);
+        Set<Path> selected = new HashSet<>(jars);
         classLoader = new URLClassLoader(urls, ModuleProvider.class.getClassLoader());
         try {
             providers = ServiceLoader.load(ModuleProvider.class, classLoader).stream()
+                    .filter(provider -> selected.contains(sourceJar(provider.type())))
                     .map(ServiceLoader.Provider::get).toList();
-        } catch (ServiceConfigurationError error) {
+        } catch (ServiceConfigurationError | RuntimeException error) {
             try {
                 classLoader.close();
             } catch (IOException closeFailure) {
@@ -37,7 +46,20 @@ final class InstalledModuleLoader implements AutoCloseable {
         }
     }
 
+    static InstalledModuleLoader forJar(Path jar) {
+        Path selected = Objects.requireNonNull(jar, "jar").toAbsolutePath().normalize();
+        if (!Files.isRegularFile(selected)) {
+            throw new IllegalArgumentException("Module JAR is not a regular file: " + selected);
+        }
+        return new InstalledModuleLoader(new JarSelection(List.of(selected)));
+    }
+
     List<ModuleProvider> providers() { return providers; }
+
+    List<DiscoveredProvider> discoveredProviders() {
+        return providers.stream().map(provider -> new DiscoveredProvider(provider,
+                sourceJar(provider.getClass()))).toList();
+    }
 
     static Path defaultDirectory() {
         try {
@@ -78,6 +100,7 @@ final class InstalledModuleLoader implements AutoCloseable {
             try (var entries = Files.list(directory)) {
                 result.addAll(entries.filter(Files::isRegularFile)
                         .filter(path -> path.getFileName().toString().endsWith(".jar"))
+                        .map(path -> path.toAbsolutePath().normalize())
                         .sorted().toList());
             } catch (IOException exception) {
                 throw new IllegalStateException("cannot inspect installed " + artifactName + "s in "
@@ -95,11 +118,35 @@ final class InstalledModuleLoader implements AutoCloseable {
         }
     }
 
+    private static Path sourceJar(Class<?> type) {
+        try {
+            URL location = Objects.requireNonNull(type.getProtectionDomain().getCodeSource(),
+                    "provider code source").getLocation();
+            return Path.of(location.toURI()).toAbsolutePath().normalize();
+        } catch (URISyntaxException | RuntimeException exception) {
+            throw new IllegalStateException("cannot resolve Module provider source for "
+                    + type.getName(), exception);
+        }
+    }
+
     @Override public void close() {
         try {
             classLoader.close();
         } catch (IOException exception) {
             throw new IllegalStateException("cannot close installed Module loader", exception);
+        }
+    }
+
+    record DiscoveredProvider(ModuleProvider provider, Path sourceJar) {
+        DiscoveredProvider {
+            Objects.requireNonNull(provider, "provider");
+            sourceJar = Objects.requireNonNull(sourceJar, "sourceJar").toAbsolutePath().normalize();
+        }
+    }
+
+    private record JarSelection(List<Path> jars) {
+        JarSelection {
+            jars = List.copyOf(Objects.requireNonNull(jars, "jars"));
         }
     }
 }

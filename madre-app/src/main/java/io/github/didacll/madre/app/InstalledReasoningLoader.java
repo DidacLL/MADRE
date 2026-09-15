@@ -14,30 +14,40 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.ServiceConfigurationError;
 import java.util.ServiceLoader;
+import java.util.Set;
 import java.util.TreeMap;
 
-/** Cross-platform JVM discovery of owner-installed reasoning-provider JARs. */
+/** Cross-platform JVM discovery of installed reasoning-provider JARs. */
 final class InstalledReasoningLoader implements AutoCloseable {
     private final URLClassLoader classLoader;
     private final Map<ReasoningProviderId, ReasoningMechanismProvider> providers;
+    private final Map<ReasoningProviderId, Path> providerSources;
 
     InstalledReasoningLoader(Path directory) { this(installationDirectories(directory)); }
 
     InstalledReasoningLoader(List<Path> directories) {
-        List<Path> jars = jars(directories);
+        this(new JarSelection(jars(directories)));
+    }
+
+    private InstalledReasoningLoader(JarSelection selection) {
+        List<Path> jars = selection.jars();
         URL[] urls = jars.stream().map(InstalledReasoningLoader::url).toArray(URL[]::new);
+        Set<Path> selected = new HashSet<>(jars);
         classLoader = new URLClassLoader(urls, ReasoningMechanismProvider.class.getClassLoader());
         List<ReasoningMechanismProvider> discovered = new ArrayList<>();
         try {
             ServiceLoader.load(ReasoningMechanismProvider.class, classLoader).stream()
+                    .filter(provider -> selected.contains(sourceJar(provider.type())))
                     .map(ServiceLoader.Provider::get).forEach(discovered::add);
             Map<ReasoningProviderId, ReasoningMechanismProvider> indexed = new TreeMap<>();
+            Map<ReasoningProviderId, Path> sources = new TreeMap<>();
             for (ReasoningMechanismProvider provider : discovered) {
                 ReasoningProviderDescriptor descriptor = Objects.requireNonNull(provider.descriptor(),
                         "reasoning provider descriptor");
@@ -48,8 +58,10 @@ final class InstalledReasoningLoader implements AutoCloseable {
                     throw new IllegalStateException("duplicate reasoning provider identity "
                             + descriptor.id());
                 }
+                sources.put(descriptor.id(), sourceJar(provider.getClass()));
             }
             providers = Collections.unmodifiableMap(new TreeMap<>(indexed));
+            providerSources = Collections.unmodifiableMap(new TreeMap<>(sources));
         } catch (ServiceConfigurationError | RuntimeException failure) {
             closeProviders(discovered, failure);
             try {
@@ -61,8 +73,22 @@ final class InstalledReasoningLoader implements AutoCloseable {
         }
     }
 
+    static InstalledReasoningLoader forJar(Path jar) {
+        Path selected = Objects.requireNonNull(jar, "jar").toAbsolutePath().normalize();
+        if (!Files.isRegularFile(selected)) {
+            throw new IllegalArgumentException("reasoning-provider JAR is not a regular file: "
+                    + selected);
+        }
+        return new InstalledReasoningLoader(new JarSelection(List.of(selected)));
+    }
+
     List<ReasoningProviderDescriptor> providerDescriptors() {
         return providers.values().stream().map(ReasoningMechanismProvider::descriptor).toList();
+    }
+
+    List<DiscoveredProvider> discoveredProviders() {
+        return providers.entrySet().stream().map(entry -> new DiscoveredProvider(entry.getValue(),
+                providerSources.get(entry.getKey()))).toList();
     }
 
     Optional<ReasoningMechanismProvider> provider(ReasoningProviderId id) {
@@ -148,6 +174,7 @@ final class InstalledReasoningLoader implements AutoCloseable {
             try (var entries = Files.list(directory)) {
                 result.addAll(entries.filter(Files::isRegularFile)
                         .filter(path -> path.getFileName().toString().endsWith(".jar"))
+                        .map(path -> path.toAbsolutePath().normalize())
                         .sorted().toList());
             } catch (IOException exception) {
                 throw new IllegalStateException(
@@ -163,6 +190,17 @@ final class InstalledReasoningLoader implements AutoCloseable {
         } catch (java.net.MalformedURLException exception) {
             throw new IllegalArgumentException("invalid reasoning-mechanism JAR path: " + path,
                     exception);
+        }
+    }
+
+    private static Path sourceJar(Class<?> type) {
+        try {
+            URL location = Objects.requireNonNull(type.getProtectionDomain().getCodeSource(),
+                    "provider code source").getLocation();
+            return Path.of(location.toURI()).toAbsolutePath().normalize();
+        } catch (URISyntaxException | RuntimeException exception) {
+            throw new IllegalStateException("cannot resolve reasoning provider source for "
+                    + type.getName(), exception);
         }
     }
 
@@ -203,10 +241,23 @@ final class InstalledReasoningLoader implements AutoCloseable {
                 ? failure.getClass().getSimpleName() : failure.getMessage();
     }
 
+    record DiscoveredProvider(ReasoningMechanismProvider provider, Path sourceJar) {
+        DiscoveredProvider {
+            Objects.requireNonNull(provider, "provider");
+            sourceJar = Objects.requireNonNull(sourceJar, "sourceJar").toAbsolutePath().normalize();
+        }
+    }
+
     record ProviderInstance(ReasoningProviderId providerId, ReasoningConfiguredInstance instance) {
         ProviderInstance {
             Objects.requireNonNull(providerId, "providerId");
             Objects.requireNonNull(instance, "instance");
+        }
+    }
+
+    private record JarSelection(List<Path> jars) {
+        JarSelection {
+            jars = List.copyOf(Objects.requireNonNull(jars, "jars"));
         }
     }
 }

@@ -13,22 +13,32 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 
-/** Host-owned generic command surface for installed Module configuration. */
+/** Host-owned generic command surface for Module configuration and local artifact lifecycle. */
 final class ModuleCli {
     private ModuleCli() { }
 
     static void run(HostEnvironment host, HostEnvironment.LoadedConfiguration loaded,
             Properties properties, List<String> arguments) throws IOException {
+        if (arguments.isEmpty() || arguments.equals(List.of("help"))) {
+            usage();
+            return;
+        }
+        switch (arguments.get(0)) {
+            case "install" -> install(host, loaded, properties, arguments);
+            case "uninstall" -> uninstall(host, loaded, properties, arguments);
+            default -> runDiscoveryCommand(host, loaded, properties, arguments);
+        }
+    }
+
+    private static void runDiscoveryCommand(HostEnvironment host,
+            HostEnvironment.LoadedConfiguration loaded, Properties properties,
+            List<String> arguments) throws IOException {
         List<Path> directories = moduleArtifactDirectories(properties, host);
         try (InstalledModuleLoader loader = new InstalledModuleLoader(directories)) {
             ModuleConfigurationManager manager = new ModuleConfigurationManager(
                     loaded.path(), properties, loader.providers());
-            if (arguments.isEmpty() || arguments.equals(List.of("help"))) {
-                usage();
-                return;
-            }
             switch (arguments.get(0)) {
-                case "list" -> list(manager);
+                case "list" -> list(host, loader, manager);
                 case "inspect" -> inspect(arguments, manager);
                 case "configure" -> configure(arguments, manager);
                 default -> throw new IllegalArgumentException(
@@ -37,13 +47,51 @@ final class ModuleCli {
         }
     }
 
-    private static void list(ModuleConfigurationManager manager) {
+    private static void install(HostEnvironment host, HostEnvironment.LoadedConfiguration loaded,
+            Properties properties, List<String> arguments) throws IOException {
+        if (arguments.size() < 2 || arguments.size() > 3
+                || (arguments.size() == 3 && !arguments.get(2).equals("--replace"))) {
+            throw new IllegalArgumentException("modules install requires <jar> [--replace]");
+        }
+        boolean replace = arguments.size() == 3;
+        ModuleArtifactLifecycle.InstallResult result = ModuleArtifactLifecycle.install(host, loaded,
+                properties, Path.of(arguments.get(1)), replace);
+        System.out.println((replace ? "module.replaced\t" : "module.installed\t")
+                + result.moduleId() + "\tsource=owner\tartifact=" + result.path().getFileName()
+                + "\tsha256=" + result.sha256());
+    }
+
+    private static void uninstall(HostEnvironment host, HostEnvironment.LoadedConfiguration loaded,
+            Properties properties, List<String> arguments) throws IOException {
+        if (arguments.size() < 2 || arguments.size() > 3
+                || (arguments.size() == 3 && !arguments.get(2).equals("--purge-configuration"))) {
+            throw new IllegalArgumentException(
+                    "modules uninstall requires <module-id> [--purge-configuration]");
+        }
+        boolean purge = arguments.size() == 3;
+        ModuleArtifactLifecycle.UninstallResult result = ModuleArtifactLifecycle.uninstall(host, loaded,
+                properties, arguments.get(1), purge);
+        System.out.println("module.uninstalled\t" + result.moduleId()
+                + "\tconfiguration-purged=" + result.configurationPurged());
+    }
+
+    private static void list(HostEnvironment host, InstalledModuleLoader loader,
+            ModuleConfigurationManager manager) {
         List<ModuleProvider> providers = manager.providers();
         System.out.println("modules.count\t" + providers.size());
         for (ModuleProvider provider : providers) {
             ModuleConfigurationDescriptor descriptor = manager.descriptor(provider);
+            InstalledModuleLoader.DiscoveredProvider discovered = loader.discoveredProviders().stream()
+                    .filter(item -> item.provider() == provider).findFirst()
+                    .orElseThrow(() -> new IllegalStateException(
+                            "cannot resolve source JAR for Module " + provider.moduleId()));
+            ModuleArtifactLifecycle.Source source = ModuleArtifactLifecycle.classify(host,
+                    discovered.sourceJar());
+            String artifact = source == ModuleArtifactLifecycle.Source.OWNER
+                    ? "\tartifact=" + discovered.sourceJar().getFileName() : "";
             System.out.println("module\t" + provider.moduleId() + "\t" + descriptor.displayName()
-                    + "\tconfigurable-fields=" + descriptor.fields().size());
+                    + "\tconfigurable-fields=" + descriptor.fields().size()
+                    + "\tsource=" + source.label() + artifact);
         }
     }
 
@@ -146,9 +194,11 @@ final class ModuleCli {
     }
 
     static void usage() {
-        System.err.println("module configuration commands:");
+        System.err.println("Module management commands:");
         System.err.println("  madre modules list");
         System.err.println("  madre modules inspect <module-id>");
         System.err.println("  madre modules configure <module-id> [--set <field>=<value>]...");
+        System.err.println("  madre modules install <jar> [--replace]");
+        System.err.println("  madre modules uninstall <module-id> [--purge-configuration]");
     }
 }
