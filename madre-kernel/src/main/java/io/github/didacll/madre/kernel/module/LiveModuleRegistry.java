@@ -100,7 +100,7 @@ public final class LiveModuleRegistry
         List<ReachableModule> result = new ArrayList<>();
         entries.values().stream().map(Entry::definition)
                 .sorted(Comparator.comparing(module -> module.id().value())).forEach(module -> {
-                    Map<OperationId, OperationDefinition<?, ?>> operations = new HashMap<>();
+                    Map<OperationId, OperationDefinition> operations = new HashMap<>();
                     module.operations().forEach((id, operation) -> {
                         Privacy privacy = operation.acceptedMaterial().get(query.materialType());
                         if (operation.visibility() == OperationVisibility.PUBLIC && privacy != null
