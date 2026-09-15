@@ -6,7 +6,7 @@ Windows and Linux run the same application, Kernel, SDK, Module installation/con
 
 Start with:
 
-- [MADRE.md](MADRE.md) for durable product meaning, Owner reasoning and product gates;
+- [MADRE.md](MADRE.md) for durable product meaning, Owner reasoning and current development posture;
 - [SDK developer guide](docs/sdk-development.md) for the current independent Module developer journey;
 - [Platform Architecture](docs/architecture/MADRE-platform-architecture.md) for responsibility boundaries;
 - [Security Algebra](docs/architecture/MADRE-security-algebra.md) for composition;
@@ -75,7 +75,9 @@ The same command without `--set` arguments enters a simple interactive prompt re
 madre reasoning configure openai-compatible local-compatible
 ```
 
-The host does not know that this provider uses `endpoint`, `model`, `privacy`, or `location`. Those owner-facing names, their metadata, validation/defaults and their mapping onto the provider's persisted representation are all owned by the provider artifact.
+The host does not know that this provider uses `endpoint`, `model`, `privacy`, `location`, `computation`, or any embedding-space field. Those owner-facing names, their metadata, validation/defaults and their mapping onto the provider's persisted representation are owned by the provider artifact.
+
+Current HTTP providers can materialize different reasoning computation families from provider-owned configuration. Omitting the computation choice preserves the historical text-inference-v1 behavior. Not every transport must implement every family; the llama.cpp AF_UNIX provider remains text-inference-v1-only.
 
 Inspect configured state without using raw internal property names:
 
@@ -167,23 +169,26 @@ No container runtime, VM layer, hosted provider or external account is required 
 
 ## SDK developer experimentation
 
-The first SDK tooling slice is now executable. The public artifact set adds:
+The SDK experimentation foundation is executable. The public artifact set includes:
 
 - `madre-bom` for dependency alignment;
-- stable `madre-sdk` unchanged as the ownership-demonstrated foundation;
+- stable `madre-sdk` as the ownership-demonstrated Module foundation;
 - `madre-sdk-testkit` for deterministic Module semantic tests over public contracts;
 - `madre-sdk-experimental` as an explicit 0.x incubation artifact;
-- existing `madre-reasoning-spi` and computation-contract artifacts such as `madre-text-inference` as separate public surfaces.
+- `madre-reasoning-spi` as the independent reasoning-provider boundary;
+- stable computation-contract artifacts `madre-text-inference`, `madre-text-generation` and `madre-embeddings` as separate lower-layer inference surfaces.
 
 `madre-sdk-testkit` has no `madre-app` or Kernel implementation dependency. Its programmable reasoning support is generic over arbitrary `ReasoningComputation<R>` and deliberately does not simulate Kernel scheduling, mechanism selection, Security Algebra receiver enforcement, resource coordination or SQLite durability.
 
 `madre-sdk-experimental` currently contains one typed `ModuleDefinitionBuilder`. It reduces repetitive collection assembly while producing the stable `ModuleDefinition` and preserving the stable containment model, including Agent-owned Workflows. Stable SDK, testkit, Kernel, application and reasoning SPI do not depend on it. Experimental APIs may change or disappear during 0.x; graduation is explicit and evidence-driven.
 
-The BOM aligns `madre-algebra`, `madre-sdk`, `madre-sdk-testkit`, `madre-sdk-experimental`, `madre-reasoning-spi` and `madre-text-inference`. It does not make adapters, Kernel or the installed application transitive Module dependencies.
+The BOM aligns `madre-algebra`, `madre-sdk`, `madre-sdk-testkit`, `madre-sdk-experimental`, `madre-reasoning-spi`, `madre-text-inference`, `madre-text-generation` and `madre-embeddings`. It does not make adapters, Kernel or the installed application transitive Module dependencies.
+
+Computation-contract artifacts do not define Module domains. A Module depends on one only when its own semantic behavior genuinely requires that inference computation. Adding an inference family is not an instruction to create a corresponding Module, Material model or stable high-level SDK abstraction.
 
 The current verification publication remains repository-local at `build/isolated-repository`. It is not yet a public remote 0.x release channel. The cross-platform `SDK developer acceptance` workflow publishes those artifacts, copies `verification/sdk-consumer` to a runner-temporary directory outside the checkout, runs its deterministic tests and JAR build there, installs only the resulting JAR in the normal owner-writable Module directory of a packaged MADRE application image, proves ServiceLoader discovery with `doctor`, and invokes it through owner-local and external/PUBLIC receiver paths.
 
-The independent fixture uses the experimental builder only from test scope. The built Module JAR therefore proves that experimental authoring can aid experimentation without becoming a production runtime requirement.
+The independent fixture uses the experimental builder only from test scope. The built Module JAR therefore proves that experimental authoring can aid experimentation without becoming a production runtime requirement. Its tests also resolve the newer computation-contract artifacts through the BOM without turning them into runtime dependencies of the installable fixture Module.
 
 A MADRE Gradle Module plugin was deliberately not added in this slice. After version alignment, the demonstrated build-specific requirements are Java 21 and standard Java ServiceLoader metadata. A plugin remains a future tooling increment if repeated external projects demonstrate enough additional packaging/validation friction to justify another public build API.
 
@@ -199,6 +204,8 @@ ModuleInstance create(ModuleContext context, ModuleProviderConfiguration configu
 ```
 
 `ModuleInstance` is one canonical `ModuleDefinition` plus exact executable bindings for every declared Operation. Shipped and owner-supplied Modules use the same discovery/registration path. Bundling, class-loader placement and CORE assignment confer no privilege.
+
+A Module should exist because it owns coherent semantic/application behavior. Reusable technical facilities—search clients, embedding computations, storage libraries, transports, databases or model APIs—may be used by Modules without becoming Modules themselves.
 
 Current Module configuration remains provider-owned string configuration:
 
@@ -235,7 +242,7 @@ When no reasoning mechanism is materialized, normal startup remains valid and po
 
 `roles.core` is optional and non-privileged. When resolved, it identifies the ordinary installed Module intended to provide the default owner-interaction/coordinator role. It changes no Security Algebra value, Operation visibility, invocation authority, reasoning selection, scheduling, class-loader treatment or installation authority.
 
-The current interaction model remains unfinished, but it is now treated as a major SDK/inference experimentation target rather than the next universal API to freeze. CORE should eventually lead ordinary owner interaction and natural delayed semantic follow-up without host-only privilege; the stable structural contract should be recovered from repeated successful experiments rather than standardized directly from the current console/Operation names.
+The current interaction model remains unfinished, but it is treated as a major SDK/inference experimentation consumer rather than the next universal API to freeze. CORE should eventually lead ordinary owner interaction and natural delayed semantic follow-up without host-only privilege; the stable structural contract should be recovered from repeated successful experiments rather than standardized directly from the current console/Operation names.
 
 ## Reasoning-adapter public installation contract
 
@@ -249,6 +256,8 @@ Each installed provider declares:
 - `materialize(...)` for producing enabled `ReasoningMechanism` values from the same read-only configuration.
 
 Configuration fields use only the value kinds needed by the shipped/independent providers today: `TEXT`, `INTEGER` and `CHOICE`, with required/default/allowed-value/help/display information and integer bounds where applicable. This is the current executable baseline, not a universal settings language or a claim that all future engine/model controls fit these kinds.
+
+`ReasoningCapability.supports(C computation)` is the generic local compatibility hook for value-level mechanism constraints. Existing implementations remain compatible through the default accepting behavior. Kernel may use it when filtering candidates, but Kernel does not interpret why a mechanism rejects a computation; for example, embedding-space compatibility remains mechanism-owned rather than becoming Kernel embedding logic.
 
 Providers own parsing, validation and raw persistence mapping. `madre-app` applies a provider-produced `ReasoningProviderConfigurationUpdate` generically and contains no concrete llama.cpp/OpenAI-compatible configuration key branches. Architecture checks reject compile-time app dependencies/imports on the shipped adapter implementations.
 
@@ -278,9 +287,9 @@ The example intentionally retains provider-specific disabled raw examples as com
 
 ## Verification evidence
 
-The Windows/Linux `Java 21 cross-platform build` workflow exercises `check`, architecture guards, Javadocs/publication, developer packages, isolated SDK Module/reasoning builds, Module-to-Module interoperability, no-reasoning boot, owner-local versus external/PUBLIC semantics, Module configuration, CORE/interaction independence and durable restart/recovery.
+The Windows/Linux `Java 21 cross-platform build` workflow exercises `check`, architecture guards, Javadocs/publication, developer packages, isolated SDK Module/reasoning builds, Module-to-Module interoperability, no-reasoning boot, owner-local versus external/PUBLIC semantics, Module configuration, CORE/interaction independence, durable restart/recovery, and the shipped heterogeneous generation/embedding protocol and configuration tests.
 
-The exact-head `SDK developer acceptance` workflow separately builds the independent Module project from a runner-temporary directory against the verification publication, executes its public-testkit tests (including arbitrary non-text durable reasoning), verifies its ServiceLoader packaging, installs the JAR in the packaged product's normal owner-writable Module directory, proves discovery and invokes both owner-local and external/PUBLIC receiver paths on Windows and Linux.
+The exact-head `SDK developer acceptance` workflow separately builds the independent Module project from a runner-temporary directory against the verification publication, executes its public-testkit tests including arbitrary non-text reasoning and current computation-contract consumption, verifies its ServiceLoader packaging, installs the JAR in the packaged product's normal owner-writable Module directory, proves discovery and invokes both owner-local and external/PUBLIC receiver paths on Windows and Linux.
 
 The exact-head `Native owner package` workflow builds MSI/DEB on the corresponding host, exercises the `jpackage` application image with machine `java` removed from `PATH`, proves fresh zero-argument bootstrap/restart/`doctor`/clean shutdown, verifies shipped provider discovery, configures shipped providers through the generic CLI, verifies provider-owned validation leaves persisted configuration unchanged, proves disable/re-enable/remove across restart, and then performs unattended native installer install/launch/uninstall. The MSI/DEB is retained as a downloadable workflow artifact.
 
@@ -290,8 +299,8 @@ Historical PR #47 runs also exercised live llama.cpp/model inference over the na
 
 ## Remaining product gaps
 
-This slice materially improves the public experimentation/developer environment, but MADRE is not yet a community-ready public SDK 0.x release.
+The current work materially improves the public experimentation/developer environment, but MADRE is not yet a community-ready public SDK 0.x release.
 
 The largest SDK release gaps are a real external artifact repository and release/version/signing mechanics, release-quality API compatibility policy, additional unrelated external-project feedback, and build/project-generation tooling if that feedback demonstrates enough remaining friction. The current verification repository and in-repository source fixture are acceptance infrastructure, not a distribution channel.
 
-Generic Module configuration, Module install/remove/update management, reasoning JAR download/install/update/remove management, marketplace discovery, credential management, graphical settings, and the CORE-led owner-interaction redesign remain separate unfinished product work. Production embeddings/multimodal computation contracts, semantic memory/RAG/planning frameworks, generic tool calling, audio/voice and MCP are also intentionally outside this SDK tooling slice.
+Generic Module configuration, Module install/remove/update management, reasoning JAR download/install/update/remove management, marketplace discovery, credential management, graphical settings, and the CORE-led owner-interaction evolution remain separate unfinished product work. Multimodal computation, semantic-memory/RAG/planning frameworks, generic tool calling, audio/voice and MCP are also intentionally not implied by the current foundation. They should be pursued only when real semantic or inference experiments establish a concrete need and correct responsibility boundary.
