@@ -13,12 +13,12 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 
-/** Immutable application-local binding from console presentation to installed Module contracts. */
+/** Immutable application-local binding from owner presentation to the selected CORE Module. */
 record LocalInteractionBinding(ModuleId moduleId, String defaultOperation,
         String standardOperation, String promptMaterialType, Sensitivity defaultSensitivity,
         Optional<UpdatesBinding> updates) {
     private static final String PREFIX = "interaction.";
-    private static final String MODULE = PREFIX + "module";
+    private static final String CORE = "roles.core";
     private static final String DEFAULT_OPERATION = PREFIX + "default-operation";
     private static final String STANDARD_OPERATION = PREFIX + "standard-operation";
     private static final String PROMPT_MATERIAL_TYPE = PREFIX + "prompt-material-type";
@@ -27,7 +27,7 @@ record LocalInteractionBinding(ModuleId moduleId, String defaultOperation,
     private static final String UPDATES_MATERIAL_TYPE = PREFIX + "updates-material-type";
     private static final String UPDATES_PAYLOAD = PREFIX + "updates-payload";
     private static final String UPDATES_SENSITIVITY = PREFIX + "updates-sensitivity";
-    private static final Set<String> ALLOWED_KEYS = Set.of(MODULE, DEFAULT_OPERATION,
+    private static final Set<String> ALLOWED_KEYS = Set.of(DEFAULT_OPERATION,
             STANDARD_OPERATION, PROMPT_MATERIAL_TYPE, DEFAULT_SENSITIVITY, UPDATES_OPERATION,
             UPDATES_MATERIAL_TYPE, UPDATES_PAYLOAD, UPDATES_SENSITIVITY);
     private static final Set<String> UPDATE_KEYS = Set.of(UPDATES_OPERATION, UPDATES_MATERIAL_TYPE,
@@ -54,11 +54,11 @@ record LocalInteractionBinding(ModuleId moduleId, String defaultOperation,
                     throw new IllegalArgumentException("unknown interaction property " + name);
                 });
 
-        ModuleId moduleId = new ModuleId(required(properties, MODULE));
+        ModuleId moduleId = new ModuleId(required(properties, CORE));
         ModuleInstance module = installedModules.stream()
                 .filter(item -> item.definition().id().equals(moduleId))
                 .findFirst().orElseThrow(() -> new IllegalArgumentException(
-                        "configured interaction Module is not installed: " + moduleId));
+                        "selected CORE interaction Module is not installed: " + moduleId));
         String defaultOperation = required(properties, DEFAULT_OPERATION);
         String standardOperation = required(properties, STANDARD_OPERATION);
         String promptMaterialType = required(properties, PROMPT_MATERIAL_TYPE);
@@ -100,7 +100,8 @@ record LocalInteractionBinding(ModuleId moduleId, String defaultOperation,
             Sensitivity sensitivity) {
         final MadreApplication.ResolvedTextOperation resolved;
         try {
-            resolved = MadreApplication.resolveTextOperation(module, operationSpec, materialType);
+            resolved = MadreApplication.resolveInteractionTextOperation(module, operationSpec,
+                    materialType);
         } catch (IllegalArgumentException exception) {
             throw new IllegalArgumentException(property + " is incompatible with installed Module "
                     + module.definition().id() + ": " + exception.getMessage(), exception);

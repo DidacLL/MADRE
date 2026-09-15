@@ -81,19 +81,19 @@ public final class OwnerInteractionModule implements Module {
     private static final OperationDefinition STANDARD_OPERATION =
             new OperationDefinition(STANDARD_PROMPT,
                     "Produce one interpreted response and retain bounded Agent conversation state",
-                    OperationVisibility.PUBLIC, Map.of(OWNER_PROMPT.id(), Privacy.SECRET),
+                    OperationVisibility.PRIVATE, Map.of(OWNER_PROMPT.id(), Privacy.SECRET),
                     Map.of(IMMEDIATE_ANSWER.id(), Sensitivity.S5),
                     Map.of(STANDARD_PROFILE.id(), STANDARD_PROFILE));
     private static final OperationDefinition FAST_OPERATION =
             new OperationDefinition(FAST_LANE,
                     "Return a foreground response and persist independently continuing background reasoning",
-                    OperationVisibility.PUBLIC, Map.of(OWNER_PROMPT.id(), Privacy.SECRET),
+                    OperationVisibility.PRIVATE, Map.of(OWNER_PROMPT.id(), Privacy.SECRET),
                     Map.of(IMMEDIATE_ANSWER.id(), Sensitivity.S5),
                     Map.of(FAST_PROFILE.id(), FAST_PROFILE));
     private static final OperationDefinition COLLECT_OPERATION =
             new OperationDefinition(COLLECT_BACKGROUND,
                     "Interpret completed durable reasoning, acknowledge it, and return Module updates",
-                    OperationVisibility.PUBLIC,
+                    OperationVisibility.PRIVATE,
                     Map.of(BACKGROUND_COLLECTION_REQUEST.id(), Privacy.SECRET),
                     Map.of(BACKGROUND_UPDATES.id(), Sensitivity.S5),
                     Map.of(COLLECT_PROFILE.id(), COLLECT_PROFILE));
@@ -120,7 +120,7 @@ public final class OwnerInteractionModule implements Module {
     }
 
     @Override public ModuleId id() { return ID; }
-    @Override public String version() { return "1.2.0"; }
+    @Override public String version() { return "1.3.0"; }
     @Override public String purpose() { return "Owner interaction and fallback behavior"; }
     @Override public Collection<? extends MaterialType<?>> materialTypes() {
         return List.of(OWNER_PROMPT, BACKGROUND_COLLECTION_REQUEST, IMMEDIATE_ANSWER,
@@ -183,12 +183,9 @@ public final class OwnerInteractionModule implements Module {
             this.reasoning = java.util.Objects.requireNonNull(reasoning, "reasoning");
             this.state = new OwnerInteractionStateStore(stateFile);
             this.settings = settings;
-            standardBinding = OperationBinding.publicOperation(STANDARD_OPERATION, standard,
-                    OwnerInteractionModule::minimizePublicResult);
-            fastBinding = OperationBinding.publicOperation(FAST_OPERATION, fast,
-                    OwnerInteractionModule::minimizePublicResult);
-            collectBinding = OperationBinding.publicOperation(COLLECT_OPERATION, collect,
-                    OwnerInteractionModule::minimizePublicResult);
+            standardBinding = OperationBinding.ownerInteractionOperation(STANDARD_OPERATION, standard);
+            fastBinding = OperationBinding.ownerInteractionOperation(FAST_OPERATION, fast);
+            collectBinding = OperationBinding.ownerInteractionOperation(COLLECT_OPERATION, collect);
         }
 
         @Override public AgentId id() { return INTERACTION_AGENT; }
@@ -366,7 +363,7 @@ public final class OwnerInteractionModule implements Module {
     }
 
     private static String renderBackgroundUpdates(List<BackgroundUpdate> updates) {
-        if (updates.isEmpty()) return "no completed background updates";
+        if (updates.isEmpty()) return "";
         return updates.stream().map(update -> {
             if (update.visibleFollowUp().isPresent()) {
                 return update.workId().value() + "\t" + update.visibleFollowUp().orElseThrow().payload();
@@ -419,13 +416,6 @@ public final class OwnerInteractionModule implements Module {
             throw new IllegalArgumentException(
                     "collection request must be owner-interaction Module Material");
         }
-    }
-
-    private static Material<String> minimizePublicResult(Material<String> internal) {
-        String publicText = internal.sensitivity().canReach(Privacy.PUBLIC)
-                ? internal.payload()
-                : "owner-interaction result withheld at public boundary";
-        return material(internal.type(), publicText, Sensitivity.S1);
     }
 
     private static Material<String> material(MaterialType<String> type, String text,

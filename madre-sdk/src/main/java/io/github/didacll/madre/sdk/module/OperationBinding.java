@@ -13,14 +13,17 @@ public final class OperationBinding<I, O> {
     private final OperationDefinition definition;
     private final Operation<I, O> implementation;
     private final Optional<PublicResultTransformer<O>> publicResultTransformer;
+    private final boolean ownerInteractionEntryPoint;
 
     private OperationBinding(OperationDefinition definition,
             Operation<I, O> implementation,
-            Optional<PublicResultTransformer<O>> publicResultTransformer) {
+            Optional<PublicResultTransformer<O>> publicResultTransformer,
+            boolean ownerInteractionEntryPoint) {
         this.definition = Objects.requireNonNull(definition, "definition");
         this.implementation = Objects.requireNonNull(implementation, "implementation");
         this.publicResultTransformer = Objects.requireNonNull(
                 publicResultTransformer, "publicResultTransformer");
+        this.ownerInteractionEntryPoint = ownerInteractionEntryPoint;
     }
 
     /** Binds a PUBLIC declaration and its mandatory external-boundary transformation. */
@@ -33,20 +36,39 @@ public final class OperationBinding<I, O> {
         }
         return new OperationBinding<>(definition, implementation,
                 Optional.of(Objects.requireNonNull(publicResultTransformer,
-                        "publicResultTransformer")));
+                        "publicResultTransformer")), false);
     }
 
-    /** Binds a PRIVATE declaration that is not invocable through the public runtime port. */
+    /** Binds a PRIVATE declaration that has no host/product interaction entry. */
     public static <I, O> OperationBinding<I, O> privateOperation(
             OperationDefinition definition, Operation<I, O> implementation) {
+        requirePrivate(definition, "a private binding requires a PRIVATE declaration");
+        return new OperationBinding<>(definition, implementation, Optional.empty(), false);
+    }
+
+    /**
+     * Binds a PRIVATE Operation that the owning Module intentionally offers to the installed
+     * product's selected owner-interaction surface. This is not PUBLIC exposure and does not make
+     * the Operation reachable to other Modules or arbitrary host/debug invocation.
+     */
+    public static <I, O> OperationBinding<I, O> ownerInteractionOperation(
+            OperationDefinition definition, Operation<I, O> implementation) {
+        requirePrivate(definition,
+                "an owner-interaction binding requires a PRIVATE declaration");
+        return new OperationBinding<>(definition, implementation, Optional.empty(), true);
+    }
+
+    private static void requirePrivate(OperationDefinition definition, String message) {
         if (Objects.requireNonNull(definition, "definition").visibility()
                 != OperationVisibility.PRIVATE) {
-            throw new IllegalArgumentException("a private binding requires a PRIVATE declaration");
+            throw new IllegalArgumentException(message);
         }
-        return new OperationBinding<>(definition, implementation, Optional.empty());
     }
 
     public OperationDefinition definition() { return definition; }
+
+    /** True only for an explicit host owner-interaction entry declared by the owning Module. */
+    public boolean ownerInteractionEntryPoint() { return ownerInteractionEntryPoint; }
 
     /** Executes inside the owning Module. The Operation owns its single output-validation path. */
     public CompletionStage<Material<O>> invoke(OperationCall<I, O> call) {

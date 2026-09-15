@@ -17,6 +17,7 @@ import io.github.didacll.madre.sdk.material.MaterialType;
 import io.github.didacll.madre.sdk.module.EffectProfile;
 import io.github.didacll.madre.sdk.module.ModuleDefinition;
 import io.github.didacll.madre.sdk.module.ModuleInstance;
+import io.github.didacll.madre.sdk.module.OperationBinding;
 import io.github.didacll.madre.sdk.module.OperationDefinition;
 import io.github.didacll.madre.sdk.module.OperationVisibility;
 import io.github.didacll.madre.sdk.operation.OperationCall;
@@ -150,19 +151,27 @@ public final class MadreApplication implements AutoCloseable {
                 sensitivity, encodedPayload);
     }
 
-    /** Owner-local host adapter that returns validated Module Material without public disclosure. */
+    /** Transitional expert/debug owner path; it deliberately remains PUBLIC-only. */
     public CompletionStage<Material<?>> invokeOwnerText(ModuleId moduleId, String operationName,
             String materialTypeName, Sensitivity sensitivity, String encodedPayload) {
         return invokeText(InvocationBoundary.OWNER_LOCAL, moduleId, operationName, materialTypeName,
                 sensitivity, encodedPayload);
     }
 
+    /** Product interaction path for an exact Operation explicitly offered by the selected Module. */
+    CompletionStage<Material<?>> invokeInteractionText(ModuleId moduleId, String operationName,
+            String materialTypeName, Sensitivity sensitivity, String encodedPayload) {
+        return invokeText(InvocationBoundary.OWNER_INTERACTION, moduleId, operationName,
+                materialTypeName, sensitivity, encodedPayload);
+    }
+
     private CompletionStage<Material<?>> invokeText(InvocationBoundary boundary, ModuleId moduleId,
             String operationSpec, String materialTypeName, Sensitivity sensitivity,
             String encodedPayload) {
         ModuleInstance module = runtimeModule(moduleId);
-        ResolvedTextOperation resolved = resolveTextOperation(module, operationSpec,
-                materialTypeName);
+        ResolvedTextOperation resolved = boundary == InvocationBoundary.OWNER_INTERACTION
+                ? resolveInteractionTextOperation(module, operationSpec, materialTypeName)
+                : resolveTextOperation(module, operationSpec, materialTypeName);
         Material<?> input = decodeMaterial(moduleId, resolved.inputType(), encodedPayload,
                 sensitivity);
         return invokeExact(boundary, resolved.operation(), input, resolved.effectProfileName());
@@ -175,7 +184,32 @@ public final class MadreApplication implements AutoCloseable {
                         new IllegalArgumentException("Module is not installed: " + moduleId));
     }
 
+    /** Resolves only the transitional generic PUBLIC invocation surface. */
     static ResolvedTextOperation resolveTextOperation(ModuleInstance module,
+            String operationSpec, String materialTypeName) {
+        ResolvedTextOperation resolved = resolveTextOperationContract(module, operationSpec,
+                materialTypeName);
+        if (resolved.operation().visibility() != OperationVisibility.PUBLIC) {
+            throw new IllegalArgumentException("PUBLIC Operation is not installed: "
+                    + resolved.operation().id());
+        }
+        return resolved;
+    }
+
+    /** Resolves only an executable binding explicitly opted into owner interaction. */
+    static ResolvedTextOperation resolveInteractionTextOperation(ModuleInstance module,
+            String operationSpec, String materialTypeName) {
+        ResolvedTextOperation resolved = resolveTextOperationContract(module, operationSpec,
+                materialTypeName);
+        OperationBinding<?, ?> binding = module.operations().get(resolved.operation().id());
+        if (binding == null || !binding.ownerInteractionEntryPoint()) {
+            throw new IllegalArgumentException("Operation is not an owner-interaction entry point: "
+                    + resolved.operation().id());
+        }
+        return resolved;
+    }
+
+    private static ResolvedTextOperation resolveTextOperationContract(ModuleInstance module,
             String operationSpec, String materialTypeName) {
         Objects.requireNonNull(module, "module");
         ModuleDefinition definition = module.definition();
@@ -183,8 +217,8 @@ public final class MadreApplication implements AutoCloseable {
         ModuleId moduleId = definition.id();
         OperationDefinition operation = definition.operations().get(
                 new OperationId(moduleId, selection.operationName()));
-        if (operation == null || operation.visibility() != OperationVisibility.PUBLIC) {
-            throw new IllegalArgumentException("PUBLIC Operation is not installed: "
+        if (operation == null) {
+            throw new IllegalArgumentException("Operation is not installed: "
                     + moduleId.value() + "/" + selection.operationName());
         }
         MaterialTypeId typeId = new MaterialTypeId(moduleId,
@@ -231,6 +265,7 @@ public final class MadreApplication implements AutoCloseable {
         CompletionStage<Material<Object>> result = switch (boundary) {
             case PUBLIC -> kernel.modules().invokePublic(call);
             case OWNER_LOCAL -> kernel.modules().invokeOwner(call);
+            case OWNER_INTERACTION -> kernel.modules().invokeOwnerInteraction(call);
         };
         return result.thenApply(material -> material);
     }
@@ -338,7 +373,7 @@ public final class MadreApplication implements AutoCloseable {
         }
     }
 
-    private enum InvocationBoundary { PUBLIC, OWNER_LOCAL }
+    private enum InvocationBoundary { PUBLIC, OWNER_LOCAL, OWNER_INTERACTION }
 
     private record OperationSelection(String operationName, Optional<String> effectProfileName) { }
 

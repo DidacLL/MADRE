@@ -17,6 +17,7 @@ import io.github.didacll.madre.sdk.module.OperationDefinition;
 import io.github.didacll.madre.sdk.module.OperationVisibility;
 import io.github.didacll.madre.sdk.operation.ModuleInvoker;
 import io.github.didacll.madre.sdk.operation.OperationCall;
+import io.github.didacll.madre.sdk.operation.OwnerInteractionInvoker;
 import io.github.didacll.madre.sdk.operation.OwnerModuleInvoker;
 import io.github.didacll.madre.sdk.operation.PublicModuleInvoker;
 import io.github.didacll.madre.sdk.registration.ModuleRegistration;
@@ -31,8 +32,8 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
 
 /** In-memory registry for currently running executable Modules; it deliberately has no persistence. */
-public final class LiveModuleRegistry
-        implements ModuleRegistration, PublicModuleInvoker, OwnerModuleInvoker {
+public final class LiveModuleRegistry implements ModuleRegistration, PublicModuleInvoker,
+        OwnerModuleInvoker, OwnerInteractionInvoker {
     private final Optional<ModuleId> configuredCore;
     private final ConcurrentHashMap<ModuleId, Entry> entries = new ConcurrentHashMap<>();
 
@@ -133,11 +134,24 @@ public final class LiveModuleRegistry
         return invokePublicExact(binding, requested);
     }
 
+    /** Transitional expert/debug path: owner-local invocation still requires PUBLIC exposure. */
     @Override public <I, O> CompletionStage<Material<O>> invokeOwner(OperationCall<I, O> call) {
         OperationCall<I, O> requested = Objects.requireNonNull(call, "call");
         OperationBinding<?, ?> binding = exactBinding(requested);
         if (binding.definition().visibility() != OperationVisibility.PUBLIC) {
             throw new IllegalArgumentException("Operation is not owner-callable: "
+                    + requested.operation().id());
+        }
+        return invokeOwnerExact(binding, requested);
+    }
+
+    /** Host-only selected interaction entry; PRIVATE access is explicit per executable binding. */
+    @Override public <I, O> CompletionStage<Material<O>> invokeOwnerInteraction(
+            OperationCall<I, O> call) {
+        OperationCall<I, O> requested = Objects.requireNonNull(call, "call");
+        OperationBinding<?, ?> binding = exactBinding(requested);
+        if (!binding.ownerInteractionEntryPoint()) {
+            throw new IllegalArgumentException("Operation is not an owner-interaction entry point: "
                     + requested.operation().id());
         }
         return invokeOwnerExact(binding, requested);
