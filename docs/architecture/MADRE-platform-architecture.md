@@ -57,7 +57,7 @@ The public SDK therefore has two lifecycle levels conceptually:
 
 Experimental facilities may depend on stable SDK contracts. Stable SDK, Kernel and the reasoning SPI must not depend on experimental facilities. Exact artifact names/package boundaries are implementation choices until materialized, but experimental code must have an explicit public lifecycle rather than silently becoming stable by being convenient.
 
-Graduation is evidence-driven. A technique becomes stable only after repeated real use shows that it is broadly reusable, has a clear responsibility owner and does not leak one Module/provider's private semantics.
+Graduation is evidence-driven, but evidence is proportional to abstraction scope. A broad semantic framework needs repeated diverse use. A narrow optional OOP specialization may stabilize from one substantial real consumer when its responsibility is generic and orthogonal, it removes ordinary programming ceremony, it leaks no Module/provider semantics, and focused tests demonstrate that MADRE execution/security invariants remain intact. `StatefulAgent<S>` is the current example: it captures typed Agent-owned state mechanics without defining a universal memory model or another execution route.
 
 The same rule applies vertically. A technical primitive or inference computation becoming available does not create a semantic/application responsibility above it. It may remain a provider capability, a typed computation contract or a reusable library until a real semantic consumer proves that a higher-level abstraction is useful and correctly owned.
 
@@ -93,13 +93,13 @@ A Module does not become a Kernel extension merely because one Operation perform
 
 Semantic memory, semantic databases, knowledge graphs, retrieval/context construction and request optimization likewise do not become Kernel responsibilities merely because they contribute to agentic quality. They belong in Modules that have real semantic ownership or in reusable SDK/application libraries unless a concrete shared-runtime requirement establishes otherwise. Their usefulness alone does not justify inventing a dedicated Module.
 
-`ModuleDefinition` is the canonical declarative surface. `ModuleInstance` binds it to exact executable `OperationBinding` values. Registration validates declared/executable identities and contracts before reachability.
+For Java authors, executable `Module` is the source of truth. It exposes Java `MaterialType<T>` bindings, optional executable `Agent` objects and exact `OperationBinding<I,O>` values. `Module.definition()` projects the language-neutral `ModuleDefinition`; `Module.instance()` projects the validated runtime/adaptor assembly. `ModuleDefinition` is therefore the portable declarative projection, not a second Java authoring graph. Optional execution-side conveniences such as `StatefulAgent<S>` remain ordinary Java/OOP facilities and do not add portable memory semantics.
 
 `ModuleDefinition.publicMaterialReferences` records foreign public Material type identities a Module structurally references. This is an opt-in to receiving those types through the fixed `Privacy.MODULE` receiver; it does not imply that every value of the type is S1.
 
 ## Module installation and discovery
 
-Modules are ordinary JVM JARs exposing `ModuleProvider` through Java's service-provider mechanism. Each provider declares its canonical `ModuleId` before materialization, receives a `ModuleContext` bound to that identity plus immutable `ModuleProviderConfiguration`, and creates one `ModuleInstance` for the same canonical identity.
+Modules are ordinary JVM JARs exposing `ModuleProvider` through Java's service-provider mechanism. Each provider declares its canonical `ModuleId` before materialization, receives a `ModuleContext` bound to that identity plus immutable `ModuleProviderConfiguration`, and creates one executable `Module` for the same canonical identity. Host/runtime code projects and validates its `ModuleInstance` before reachability.
 
 Shipped and independently built Modules use the same route. Bundling, class-loader placement, process placement and CORE assignment grant no authority.
 
@@ -174,7 +174,7 @@ The current runtime only resolves the configured identity and tolerates absence/
 
 `MadreMain` is a replaceable developer/local console. It currently owns the foreground read/evaluate loop, generic invocation commands, `/standard`, `/updates` and session Sensitivity selection. `LocalInteractionBinding` resolves `interaction.*` against exact installed Module declarations.
 
-The shipped example maps ordinary text to the owner-interaction Module's fast path. `/updates` invokes the Module-specific collection Operation; the application does not inspect Kernel reasoning output or perform semantic continuation. The Module itself owns foreground/background reasoning choices, its pending semantic state, interpretation, acknowledgement and any visible follow-up Material.
+The shipped example maps ordinary text to the owner-interaction Module's fast path. `/updates` invokes the Module-specific collection Operation; the application does not inspect Kernel reasoning output or perform semantic continuation. The Module itself owns bounded persisted conversation state, contextual Material construction, foreground/background reasoning choices, pending durable-work association, interpretation, acknowledgement and any visible follow-up Material.
 
 This proves the correct semantic/runtime separation but not the completed owner product. The target remains for CORE to lead ordinary owner interaction semantics while host product surfaces retain host/product-management mechanics and presentation/adaptation. However, the exact interaction contract should emerge from SDK/inference experiments rather than from mechanically standardizing the present console wiring. Natural delayed follow-up remains an important UX benchmark, not a command name to freeze.
 
@@ -253,13 +253,17 @@ The shipped owner-interaction Module is ordinary installed behavior and may be a
 
 Its current bounded behavior proves:
 
-- `standard-prompt`: immediate reasoning followed by Module-created response Material;
-- `fast-lane`: immediate foreground reasoning plus durable background reasoning and Module-owned pending-state persistence;
-- `collect-background`: Module interpretation of terminal reasoning, optional visible follow-up, acknowledgement of Kernel work and pending-state cleanup.
+- `standard-prompt`: an ordinary PUBLIC Operation constructs contextual Material from bounded Agent-owned conversation state, performs immediate reasoning, returns Module-created response Material and commits the completed exchange through an explicit `WRITE + LIVE_INTERACTION` effect profile;
+- `fast-lane`: an ordinary PUBLIC Operation uses the same security-preserving context for immediate foreground reasoning plus durable background reasoning and Module-owned pending-state persistence;
+- `collect-background`: an ordinary PUBLIC Operation performs Module interpretation of terminal reasoning, optional visible follow-up, acknowledgement of Kernel work and pending-state cleanup.
+
+All three semantic paths execute through declared `OperationBinding` / `OperationCall` contracts. `StatefulAgent<OwnerConversationState>` provides typed state ownership and commit mechanics only; it is not an `Agent.execute(...)` path and does not bypass EffectProfile or Security Algebra validation.
 
 The exact names above are implementation and experimentation evidence, not universal CORE API names.
 
-Kernel SQLite stores opaque durable reasoning state. The Module stores only the semantic association it needs to interpret eventual results. On restart these persistence domains recover independently and rejoin through `ReasoningService`.
+Kernel SQLite stores opaque durable reasoning state. The Module separately stores the semantic association it needs to interpret eventual results and its own bounded conversation state. On restart these persistence domains recover independently and rejoin through ordinary Module behavior and `ReasoningService`.
+
+If historical/contextual values participate in inference, the Module first creates the actual contextual Material at the combined maximum Sensitivity and derives the reasoning request from a bounded call over that Material. The SDK exposes no raw Sensitivity override.
 
 ## Search and ordinary application I/O
 
