@@ -1,0 +1,40 @@
+plugins {
+    `java-library`
+    `maven-publish`
+}
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(21)
+    withSourcesJar()
+    withJavadocJar()
+}
+
+tasks.withType<JavaCompile>().configureEach {
+    options.encoding = "UTF-8"
+    options.compilerArgs.addAll(listOf("-Xlint:all", "-Werror"))
+}
+
+dependencies {
+    api(project(":madre-sdk"))
+    testImplementation(platform("org.junit:junit-bom:5.11.4"))
+    testImplementation("org.junit.jupiter:junit-jupiter")
+}
+
+tasks.test { useJUnitPlatform() }
+
+publishing {
+    publications {
+        create<MavenPublication>("mavenJava") {
+            from(components["java"])
+            pom {
+                name = "MADRE SDK Testkit"
+                description = "Public deterministic semantic and Module testing utilities for MADRE SDK consumers."
+                url = "https://github.com/DidacLL/MADRE"
+                licenses { license { name = "GNU Affero General Public License v3.0"; url = "https://www.gnu.org/licenses/agpl-3.0.html" } }
+                developers { developer { id = "DidacLL" } }
+                scm { url = "https://github.com/DidacLL/MADRE" }
+            }
+        }
+    }
+    repositories { maven { name = "isolated"; url = uri(rootProject.layout.buildDirectory.dir("isolated-repository")) } }
+}

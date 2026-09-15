@@ -62,6 +62,16 @@ tasks.register("architectureCheck") {
         if (reasoningSpiBuild.exists() && reasoningSpiBuild.readText().contains("madre-kernel")) {
             violations += "madre-reasoning-spi/build.gradle.kts: public reasoning SPI depends on Kernel runtime"
         }
+        val testkitBuild = file("madre-sdk-testkit/build.gradle.kts")
+        if (testkitBuild.exists()) {
+            val text = testkitBuild.readText()
+            if (text.contains("madre-app")) {
+                violations += "madre-sdk-testkit/build.gradle.kts: public testkit depends on application internals"
+            }
+            if (text.contains("madre-kernel")) {
+                violations += "madre-sdk-testkit/build.gradle.kts: public testkit depends on Kernel implementation"
+            }
+        }
         listOf("madre-adapter-llamacpp", "madre-adapter-openai-compatible").forEach { projectName ->
             val adapterBuild = file("$projectName/build.gradle.kts")
             if (adapterBuild.exists() && adapterBuild.readText().contains("madre-kernel")) {
