@@ -8,11 +8,11 @@ import java.util.Objects;
 import java.util.Optional;
 
 /** Terminal interpretation of one durable owner-interaction reasoning request. */
-public record BackgroundUpdate(WorkId workId, WorkState reasoningState,
+record BackgroundUpdate(WorkId workId, WorkState reasoningState,
         Optional<Material<String>> backgroundAnalysis,
         Optional<Material<String>> visibleFollowUp,
         Optional<ReasoningFailureCategory> reasoningFailure) {
-    public BackgroundUpdate {
+    BackgroundUpdate {
         Objects.requireNonNull(workId, "workId");
         Objects.requireNonNull(reasoningState, "reasoningState");
         backgroundAnalysis = Objects.requireNonNull(backgroundAnalysis, "backgroundAnalysis");

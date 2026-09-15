@@ -157,7 +157,7 @@ final class OwnerInteractionModuleTest {
                 .prompt().contains("NO_FOLLOW_UP"));
     }
 
-    @Test void shippedModuleInterpretsAndPersistsBackgroundAcrossRestart() {
+    @Test void collectBackgroundExecutesTheDeclaredOperationAcrossRestart() {
         RecordingReasoning reasoning = new RecordingReasoning();
         reasoning.immediate.complete(result("Immediate"));
         Path state = temporary.resolve("core-state");
@@ -168,20 +168,17 @@ final class OwnerInteractionModuleTest {
         reasoning.complete(work, result("A useful correction"));
 
         OwnerInteractionModule restarted = new OwnerInteractionModule(reasoning, state);
-        List<BackgroundUpdate> updates = restarted.collectBackground();
+        Material<String> updates = restarted.collectBackground(
+                restarted.backgroundCollectionRequest()).toCompletableFuture().join();
 
-        assertEquals(1, updates.size());
-        assertEquals(OwnerInteractionModule.BACKGROUND_ANALYSIS,
-                updates.get(0).backgroundAnalysis().orElseThrow().type());
-        assertEquals(OwnerInteractionModule.VISIBLE_FOLLOW_UP,
-                updates.get(0).visibleFollowUp().orElseThrow().type());
-        assertEquals(Sensitivity.S5,
-                updates.get(0).visibleFollowUp().orElseThrow().sensitivity());
+        assertEquals(OwnerInteractionModule.BACKGROUND_UPDATES, updates.type());
+        assertEquals(Sensitivity.S5, updates.sensitivity());
+        assertTrue(updates.payload().contains("A useful correction"));
         assertTrue(reasoning.acknowledged.contains(work));
         assertEquals(0, restarted.pendingBackgroundCount());
     }
 
-    @Test void noFollowUpStopsSemanticContinuation() {
+    @Test void noFollowUpStopsSemanticContinuationThroughCollectionOperation() {
         RecordingReasoning reasoning = new RecordingReasoning();
         reasoning.immediate.complete(result("Immediate"));
         OwnerInteractionModule module = new OwnerInteractionModule(reasoning,
@@ -190,9 +187,9 @@ final class OwnerInteractionModuleTest {
                 .toCompletableFuture().join();
         reasoning.complete(reasoning.lastSubmitted, result("NO_FOLLOW_UP"));
 
-        BackgroundUpdate update = module.collectBackground().get(0);
-        assertTrue(update.backgroundAnalysis().isPresent());
-        assertTrue(update.visibleFollowUp().isEmpty());
+        Material<String> updates = module.collectBackground(module.backgroundCollectionRequest())
+                .toCompletableFuture().join();
+        assertTrue(updates.payload().contains("NO_FOLLOW_UP"));
     }
 
     @Test void publicDefinitionRoundTripsWithoutBehavior() {

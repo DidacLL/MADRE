@@ -150,8 +150,11 @@ public final class OwnerInteractionModule implements Module {
         return interaction.fastLane(prompt);
     }
 
-    public List<BackgroundUpdate> collectBackground() { return interaction.collectBackground(); }
-    public int pendingBackgroundCount() { return interaction.pendingBackgroundCount(); }
+    public CompletionStage<Material<String>> collectBackground(Material<String> request) {
+        return interaction.collectBackground(request);
+    }
+
+    int pendingBackgroundCount() { return interaction.pendingBackgroundCount(); }
 
     private static final class InteractionAgent extends StatefulAgent<OwnerConversationState> {
         private final ReasoningService reasoning;
@@ -269,6 +272,12 @@ public final class OwnerInteractionModule implements Module {
             });
         }
 
+        private CompletionStage<Material<String>> collectBackground(Material<String> request) {
+            requireCollectionRequest(request);
+            return collect.invoke(OperationCall.withEffect(
+                    COLLECT_OPERATION, COLLECT_PROFILE, request, List.of()));
+        }
+
         private Material<String> contextualPrompt(Material<String> current) {
             List<OwnerConversationExchange> history = readState(OwnerConversationState::exchanges);
             if (history.isEmpty()) return current;
@@ -311,10 +320,8 @@ public final class OwnerInteractionModule implements Module {
         }
 
         private Material<String> executeCollectBackground(OperationCall<String, String> call) {
-            if (!call.input().type().equals(BACKGROUND_COLLECTION_REQUEST)) {
-                throw new IllegalArgumentException("collection request has the wrong Material type");
-            }
-            List<BackgroundUpdate> updates = collectBackground();
+            requireCollectionRequest(call.input());
+            List<BackgroundUpdate> updates = collectBackgroundUpdates();
             Sensitivity sensitivity = updates.stream().flatMap(update -> java.util.stream.Stream.concat(
                             update.backgroundAnalysis().stream(), update.visibleFollowUp().stream()))
                     .map(Material::sensitivity)
@@ -323,7 +330,7 @@ public final class OwnerInteractionModule implements Module {
         }
 
         /** Interprets terminal reasoning results and removes acknowledged Module state. */
-        private List<BackgroundUpdate> collectBackground() {
+        private List<BackgroundUpdate> collectBackgroundUpdates() {
             List<BackgroundUpdate> updates = new ArrayList<>();
             state.snapshot().forEach((id, sensitivity) -> reasoning.inspect(id).ifPresent(status -> {
                 if (status.state() == WorkState.SUCCEEDED) {
@@ -402,6 +409,15 @@ public final class OwnerInteractionModule implements Module {
         if (!prompt.id().moduleId().equals(ID) || !prompt.type().equals(OWNER_PROMPT)) {
             throw new IllegalArgumentException(
                     "prompt must be owner-interaction Module Material");
+        }
+    }
+
+    private static void requireCollectionRequest(Material<String> request) {
+        java.util.Objects.requireNonNull(request, "request");
+        if (!request.id().moduleId().equals(ID)
+                || !request.type().equals(BACKGROUND_COLLECTION_REQUEST)) {
+            throw new IllegalArgumentException(
+                    "collection request must be owner-interaction Module Material");
         }
     }
 
