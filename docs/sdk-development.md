@@ -14,11 +14,13 @@ Use the smallest artifact set your software owns:
 - `madre-sdk-testkit` is a public deterministic semantic test harness over stable SDK contracts. It does not implement Kernel scheduling, mechanism selection, receiver-boundary Security Algebra, resource coordination or SQLite durability.
 - `madre-sdk-experimental` is a 0.x incubation artifact. Its APIs may change or disappear. Today it contains only `ModuleDefinitionBuilder`, a typed construction helper that produces the existing stable `ModuleDefinition`.
 - `madre-reasoning-spi` is for independently installed reasoning-provider/adaptor authors, not ordinary Module implementation.
-- computation-contract artifacts such as `madre-text-inference` define portable request/result semantics shared by multiple reasoning mechanisms.
-- concrete adapters such as the llama.cpp and OpenAI-compatible artifacts are independently installed reasoning mechanisms. A Module should not compile against one merely to request text inference.
+- `madre-text-inference`, `madre-text-generation` and `madre-embeddings` are stable computation-contract artifacts. They define portable inference request/result semantics shared by reasoning mechanisms; they are not Module-domain models and do not create Module boundaries.
+- concrete adapters such as the llama.cpp and OpenAI-compatible artifacts are independently installed reasoning mechanisms. A Module should not compile against one merely to request reasoning.
 - `madre-kernel` and `madre-app` are runtime/product implementation artifacts. Ordinary Module projects do not depend on them.
 
 The dependency direction is intentional: experimental SDK depends on stable SDK; stable SDK, testkit, Kernel, application and reasoning SPI do not depend on experimental SDK.
+
+A useful responsibility rule is that technical reuse does not create semantic ownership. A search client, embedding computation, database library, transport or model API may be used inside a Module or helper library without becoming a Module, Agent, Material type or stable SDK abstraction. Create a Module only when some coherent application/domain actually owns meaning, state, interpretation and bounded behavior.
 
 ## Start an independent Gradle project
 
@@ -44,8 +46,11 @@ dependencies {
     implementation(platform("io.github.didacll:madre-bom:0.1.0-SNAPSHOT"))
     implementation("io.github.didacll:madre-sdk")
 
-    // Add the portable computation contracts that the Module actually requests.
+    // Add only the portable computation contracts that this Module's
+    // semantic behavior actually needs.
     implementation("io.github.didacll:madre-text-inference")
+    // implementation("io.github.didacll:madre-text-generation")
+    // implementation("io.github.didacll:madre-embeddings")
 
     testImplementation(platform("io.github.didacll:madre-bom:0.1.0-SNAPSHOT"))
     testImplementation("io.github.didacll:madre-sdk-testkit")
@@ -71,7 +76,7 @@ The repository fixture `verification/sdk-consumer` is the executable version of 
 
 ## Module anatomy
 
-A Module is an independently installed semantic/application boundary, not a plug-in callback around Kernel internals.
+A Module is an independently installed semantic/application boundary, not a plug-in callback around Kernel internals and not a packaging unit for arbitrary reusable infrastructure.
 
 `MaterialType<T>` and `Material<T>` are nominal typed information. Material types have an owning `ModuleId`; the owner interprets their payload semantics. Sensitivity belongs to the Material. A Module that receives foreign Material through composition receives it only through the caller-bound runtime contracts and the declared receiver constraints.
 
@@ -176,7 +181,7 @@ try (ModuleTestContext fixture = ModuleTestContext.create(reasoning)) {
 
 For durable semantic continuation, `ProgrammableReasoningService.submit` starts work in `QUEUED`. Tests explicitly call `start`, `complete` or `fail`, then use the normal `inspect`, `collect`, `cancel` and `acknowledge` public methods. This gives deterministic state transitions without copying Kernel scheduling, retries, resource coordination or SQLite persistence into a fake runtime.
 
-The testkit is not text-specific. The independent verification consumer also defines an integer-valued `ReasoningComputation<Integer>`, submits it as durable work and deterministically collects an integer result. This is an acceptance property, not merely a package-name assertion.
+The testkit is not text-specific. The independent verification consumer exercises arbitrary non-text reasoning and also resolves the current text-generation and embedding contracts through the public BOM. `ProgrammableReasoningService` remains generic; it has no embedding-, generation- or provider-specific runtime behavior.
 
 Integration tests against the real Kernel/host remain necessary for scheduling, persistence/recovery, mechanism selection, receiver enforcement and installed discovery.
 
@@ -184,7 +189,15 @@ Integration tests against the real Kernel/host remain necessary for scheduling, 
 
 A Module requests reasoning through `ReasoningService`; it does not select a concrete adapter.
 
-A computation contract owns portable request semantics. For example, `TextInferenceCommand` belongs to `madre-text-inference` because multiple text mechanisms can implement those semantics. A Module can execute an immediate request and semantically interpret the returned typed result:
+A computation contract owns portable inference request semantics. The current public families are:
+
+- `madre-text-inference` / `madre.text-inference.v1`, preserving the original prompt-oriented durable contract;
+- `madre-text-generation` / `madre.text-generation.v2`, providing the richer portable text-generation family;
+- `madre-embeddings` / `madre.text-embedding.v1`, providing typed text-embedding work with explicit embedding-space semantics.
+
+These contracts are lower-layer inference vocabulary. A Module uses one only when its own semantic behavior requires that computation. Their existence does not imply corresponding Module types or domain concepts.
+
+For example, a Module can execute the preserved text-inference request and semantically interpret the returned typed result:
 
 ```java
 ReasoningRequest<TextInferenceResult, TextInferenceCommand> request =
@@ -202,11 +215,12 @@ return context.reasoning().execute(request);
 
 For work that must outlive the foreground call, use `ReasoningRequest.durable(...)`, then retain the returned `WorkId` in Module-owned semantic state. `inspect` observes physical work state; `collect` retrieves a successful typed result; the Module interprets that result and owns any semantic continuation; `acknowledge` tells the reasoning runtime the physical result no longer needs to be retained.
 
-The separation for future inference experiments is strict:
+The inference responsibility split is strict:
 
 - portable request/result semantics shared by implementations belong in a common computation-contract artifact;
 - mechanism/model/runtime tuning belongs to the installed provider/adapter;
-- shared mechanism selection, resource coordination, immediate/durable execution, retry, cancellation, physical persistence and opaque delivery belong to Kernel.
+- shared mechanism selection, resource coordination, immediate/durable execution, retry, cancellation, physical persistence and opaque delivery belong to Kernel;
+- Module/domain meaning remains above all three and is not inferred from the chosen computation family.
 
 Provider-specific controls such as a future llama.cpp thread count, GPU-layer placement or mmap choice therefore do not become Kernel fields merely because they matter for local-model performance.
 
@@ -274,22 +288,22 @@ They are existing legitimate receiver paths, not a proposed universal interactio
 
 ## What the SDK deliberately does not provide yet
 
-This first SDK tooling slice does not claim a community-ready 0.x release. In particular, it does not provide:
+The current SDK foundation does not claim a community-ready 0.x release. In particular, it does not provide:
 
 - a public remote artifact repository/release/signing/versioning process;
 - a Gradle Module plugin or project generator;
 - Module marketplace/download/update/removal management;
 - a generic Module configuration metadata/settings framework;
 - provider accounts, OAuth or credential storage;
-- a universal Agent loop, conversation/message protocol, tool abstraction or workflow language;
+- a universal Agent loop, conversation protocol, tool abstraction or workflow language;
 - generic prompt/context engineering, planning, memory, RAG, semantic database or knowledge-graph frameworks;
-- production embedding or multimodal computation contracts;
+- a multimodal computation contract;
 - audio/voice or MCP integration;
 - a desktop/web GUI;
 - an external-process Module transport;
 - a CORE-specific privileged API or a standardized replacement for current `interaction.*` behavior.
 
-Those omissions are intentional. Experimental semantic facilities should enter `madre-sdk-experimental` only when a real Module/CORE experiment demonstrates a small useful abstraction. Graduation into the stable SDK or another stable public artifact requires an explicit decision and evidence from repeated use.
+Those omissions are intentional. Experimental semantic facilities should enter `madre-sdk-experimental` only when real semantic code demonstrates a small useful reusable abstraction. Do not create a synthetic Module merely to justify such a helper or to demonstrate an inference capability. Graduation into the stable SDK or another stable public artifact requires an explicit decision and evidence from repeated use.
 
 ## Executable reference
 
