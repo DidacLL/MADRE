@@ -29,7 +29,8 @@ Before proposing a new architectural/product slice, an orchestrator must be able
 5. What is CORE, and what privilege does it receive?
 6. Why are Java executable objects separated from portable Module descriptions, and where does Java payload typing live?
 7. How should unknown or unproven generated/experimental code be represented?
-8. What evidence is required before adding a stable SDK abstraction?
+8. What evidence is required before adding a stable SDK abstraction, including a narrow optional specialization that does not apply to every Module or Agent?
+9. What is the Owner/user role in the trust model, and which adversarial risks does MADRE govern versus deliberately leave to the operating system and the Owner's installation decision?
 
 If an answer conflicts with `MADRE.md`, focused architecture or live executable truth, resolve that conflict before implementation.
 
@@ -41,7 +42,7 @@ Semantic/application experiments may involve Agents, Skills, Workflows, context/
 
 Inference experiments may involve heterogeneous origins/runtimes/models, richer portable computation contracts, embeddings, multimodal work and provider/model/runtime tuning, especially for local low-resource models.
 
-These are experiment areas, not architecture decomposition, roadmap or mandatory Module inventory. A technical capability earns a higher-level stable abstraction only when real semantic software demonstrates ownership, reuse and repeated value.
+These are experiment areas, not architecture decomposition, roadmap or mandatory Module inventory. A technical capability earns a higher-level stable abstraction only when real semantic software demonstrates ownership and usefulness. Evidence need not mean that one abstraction already appears identically in several Modules or applies universally: a narrow optional SDK type may stabilize when its responsibility is generic, orthogonal, non-semantic, exercised by a substantial real consumer, and protected by focused tests without weakening MADRE invariants. Broader semantic abstractions still require correspondingly broader evidence.
 
 `model-agnostic` means Kernel is independent of concrete model/runtime implementations. It does not require inference contracts to be feature-poor. Portable inference semantics belong to typed computation contracts; mechanism/model/runtime-specific tuning belongs to providers/adapters; shared reasoning scheduling/selection/resources/durability belongs to Kernel.
 
@@ -77,9 +78,9 @@ The host product owns installation/uninstallation, persistent product configurat
 
 A Module owns meaning, domain state/persistence, Material, transformations, optional Agents, Skills, Workflows, interpretation, continuation, domain integrations/UX and bounded Operations. Ordinary application I/O stays in application/Module code unless a concrete shared Kernel responsibility is established.
 
-An Agent is an optional Module-owned intelligent actor. There is no universal Agent loop, planner, memory model, prompt framework or tool loop.
+An Agent is an optional Module-owned intelligent actor. A concrete Agent may own typed state when its semantics require it. There is no universal Agent loop, planner, memory model, prompt framework or tool loop.
 
-An Operation is one bounded Module behavior. It may request reasoning or perform ordinary application effects, but semantic interpretation and continuation remain Module-owned.
+An Operation is one bounded Module behavior. It may request reasoning or perform ordinary application effects, but semantic interpretation and continuation remain Module-owned. Agent methods, state helpers and ordinary Java objects must not create a second MADRE semantic execution path around declared Operations.
 
 Kernel is deliberately narrow. It owns live executable Module registry/receiver mechanics plus shared reasoning registration/selection, resources, immediate/durable execution, retry, cancellation, opaque persistence and result delivery.
 
@@ -94,6 +95,7 @@ Java executable objects are the authoring source of truth:
 ```text
 Module
 Agent                     optional
+StatefulAgent<S>           optional Agent specialization
 MaterialType<T>
 Operation<I,O>
 OperationBinding<I,O>
@@ -116,11 +118,13 @@ EffectProfile
 
 `ModuleInstance` is validated runtime/adaptor assembly, not the ordinary Module authoring model. `ModuleProvider.create(...)` returns the executable `Module`.
 
+`StatefulAgent<S>` is a stable execution-side OOP convenience for typed Agent-owned state. It provides serialized state reads/transitions and optional commit-before-publish persistence. It defines no state schema, memory semantics, persistence format or execution loop. Subclasses still expose MADRE semantic behavior through ordinary Operation bindings and calls.
+
 An unproven Java Agent defaults to `Integrity.I1`; generated or experimental code must not invent stronger assurance. Lack of proof should reduce trust/composability, not make arbitrary local software impossible.
 
-`madre-sdk-experimental` is an explicit 0.x incubation boundary. It currently contains no public authoring helper after removal of the obsolete definition-first builder. Stable SDK, Kernel and reasoning SPI must not depend on experimental facilities.
+`madre-sdk-experimental` is an explicit 0.x incubation boundary. It currently contains no additional public authoring helper after removal of the obsolete definition-first builder. Stable SDK, Kernel and reasoning SPI must not depend on experimental facilities.
 
-Add authoring conveniences only when repeated real Module code demonstrates generic, ownership-correct friction. LLM-friendly means few orthogonal concepts and strong local invariants, not a dynamic metadata bag or universal framework.
+Add SDK conveniences when concrete software demonstrates an ownership-correct programming burden and the proposed type is the smallest orthogonal abstraction that removes it. Do not reject a useful optional specialization merely because it does not describe every Agent. Conversely, do not promote one Module's domain semantics into a universal SDK model. LLM-friendly means few composable types, ordinary OOP, strong local invariants and explicit execution boundaries, not a dynamic metadata bag or monolithic framework.
 
 ## Module composition
 
@@ -176,7 +180,7 @@ Material carries Sensitivity. Accepted Operation input contracts carry receiving
 
 Never infer algebra values from provider identity, endpoint, model, localhost, process/classloader placement, shipped status, Module bundling or CORE assignment.
 
-Security Algebra governs MADRE-mediated semantic composition. It is not a general OS sandbox or a promise that arbitrary software the Owner installs is safe.
+Security Algebra governs MADRE-mediated semantic composition. It is not a general OS sandbox or a promise that arbitrary software the Owner installs is safe. The Owner is the sovereign installation/user authority, not a synthetic Integrity-bearing Agent. User presence affects an Operation only through declared Autonomy semantics; it does not bypass information reach or invent trust for non-user causal participants.
 
 ## Reasoning execution
 
@@ -200,11 +204,11 @@ Cross-platform evidence remains important because Windows and Linux are first-cl
 
 Native owner deployment, Module/reasoning configuration, local artifact lifecycle, public SDK/testkit/experimental boundaries, independent developer fixtures and heterogeneous reasoning contracts are implemented substrate.
 
-Choose new work from concrete owner/developer/semantic-programming friction. Current high-value evidence areas include owner interaction, real Module composition, developer authoring ergonomics and public artifact distribution—but no one item is automatically next merely because it is listed.
+Choose new work from concrete owner/developer/semantic-programming friction. Prefer substantial end-to-end owner/developer experiments over repeated framework-only cleanup. The goal is to reach a first genuinely deployable MADRE installation that can be used to learn which semantic and inference abstractions deserve further investment.
 
-The shipped owner-interaction Module remains a useful reference consumer and is still transitional/single-turn in foreground reasoning. Its code-first refactor did not implement generic memory or conversation semantics.
+The shipped owner-interaction Module is now a real stateful reference consumer. It uses `StatefulAgent<OwnerConversationState>`, bounded persisted conversation state, Security-Algebra-preserving contextual Material, immediate and durable reasoning, and ordinary Operation-bound execution. It remains transitional: `interaction.*` is still independent from CORE and delayed follow-up still requires explicit `/updates` presentation.
 
-Promote only proven reusable abstractions. Do not pre-build a universal Agent framework, memory/RAG system, planner/tool API, workflow language, semantic database abstraction or Module taxonomy.
+Promote small orthogonal SDK abstractions when a real implementation proves their usefulness, even when they are optional specializations rather than universal concepts. Do not pre-build a universal Agent framework, universal memory/RAG system, planner/tool API, workflow language, semantic database abstraction or Module taxonomy.
 
 ## Delivery discipline
 
@@ -213,12 +217,12 @@ For each coherent change:
 1. re-check live repository truth;
 2. read current Owner request, `MADRE.md`, focused architecture and implementation baseline;
 3. state the owner/developer-visible outcome before inventing abstraction;
-4. implement behavior across its real boundaries;
+4. implement behavior across its real boundaries, preferring one substantial coherent run over additive scaffolding;
 5. test proportionally, including real execution for real-execution claims;
-6. review for responsibility leakage and accidental framework assumptions;
+6. review for responsibility leakage, duplicate execution paths and accidental framework assumptions;
 7. update the appropriate authoritative documentation when executable truth changed;
 8. commit/push coherent work;
-9. investigate relevant failures;
+9. investigate relevant failures before layering dependent work;
 10. never merge or enable auto-merge without explicit Owner instruction.
 
 MADRE has no installed-base compatibility obligation for discarded prototypes. Preserve unrelated Owner changes, but replace obsolete 0.x development scaffolding when it conflicts with the recovered architecture.
