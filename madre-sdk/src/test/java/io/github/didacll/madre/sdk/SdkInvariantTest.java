@@ -119,11 +119,11 @@ final class SdkInvariantTest {
                 workflow.operations());
         assertEquals(Privacy.LOCAL, agent.effectivePrivacy(definition.operations()));
         assertEquals(Sensitivity.S4, definition.effectiveSensitivity(List.of()).orElseThrow());
-        ModuleDefinitionJsonCodec codec = new ModuleDefinitionJsonCodec(
-                (id, contentType) -> definition.materialTypes().get(id));
+        ModuleDefinitionJsonCodec codec = new ModuleDefinitionJsonCodec();
         ModuleDefinition decoded = codec.decode(codec.encode(definition));
         AgentDefinition decodedAgent = decoded.agents().get(agent.id());
         assertEquals(definition.id(), decoded.id());
+        assertEquals(definition.materialTypes(), decoded.materialTypes());
         assertEquals(definition.operations().keySet(), decoded.operations().keySet());
         assertEquals(workflow.operations(),
                 decodedAgent.workflows().get(workflow.id()).operations());
@@ -207,8 +207,9 @@ final class SdkInvariantTest {
                 List.of(operationId, operationId));
         AgentDefinition agent = new AgentDefinition(agentId, "Interact", Integrity.I4,
                 Set.of(), Map.of(workflowId, workflow), Set.of(operationId));
-        return new ModuleDefinition(owner, "1.0.0", "Owner module", Map.of(type.id(), type),
-                Set.of(), Map.of(agentId, agent), Map.of(), Map.of(operationId, operation));
+        return new ModuleDefinition(owner, "1.0.0", "Owner module",
+                Map.of(type.id(), type.definition()), Set.of(), Map.of(agentId, agent), Map.of(),
+                Map.of(operationId, operation));
     }
 
     private record FixtureReasoning(String value) implements ReasoningComputation<String> {
