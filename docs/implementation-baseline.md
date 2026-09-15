@@ -25,17 +25,17 @@ This does not finish the whole owner product. Generic Module configuration metad
 
 The first SDK-first experimentation slice is now executable rather than only architectural intent.
 
-- `madre-bom` aligns compatible versions of the public algebra, stable SDK, public testkit, experimental SDK, reasoning SPI and current stable computation-contract artifacts.
+- `madre-bom` aligns compatible versions of the public algebra, stable SDK, public testkit, experimental SDK, reasoning SPI and stable computation-contract artifacts, including text inference v1, text generation v2 and text embeddings v1.
 - `madre-sdk` remains the stable ownership-demonstrated public foundation; it did not acquire experimental semantic helpers.
 - `madre-sdk-testkit` is a separately consumable public semantic/Module test artifact. It depends on public SDK contracts and has no `madre-app` or Kernel implementation dependency.
 - `madre-sdk-experimental` is a separately consumable 0.x incubation artifact. It depends on stable SDK; stable SDK, testkit, Kernel, application and reasoning SPI do not depend on it.
 - The experimental artifact is non-empty and currently contains one `ModuleDefinitionBuilder`. It only assembles the existing stable `ModuleDefinition`; it does not introduce another runtime/domain model. Workflows remain Agent-owned exactly as in the stable SDK.
 - Architecture checks reject dependency inversion from stable/runtime surfaces into the experimental artifact.
-- The external `verification/sdk-consumer` build uses the BOM, stable SDK and `madre-text-inference` at production scope, public testkit at test scope, and the experimental builder only at test scope. The resulting Module JAR therefore has no experimental runtime requirement.
+- The external `verification/sdk-consumer` build uses the BOM, stable SDK and `madre-text-inference` at production scope, public testkit plus text-generation/embeddings at test scope, and the experimental builder only at test scope. The resulting Module JAR therefore has no experimental or new inference-contract runtime requirement merely because its tests exercise them.
 - Its normal `jar` task executes deterministic SDK tests and verifies the Java ServiceLoader provider descriptor before producing `independent-module.jar`.
 - The public testkit includes `ModuleTestContext`, `ModuleTestHarness` and `ProgrammableReasoningService`. The latter is generic over arbitrary `ReasoningComputation<R>` and exposes deterministic immediate reasoning plus explicitly controlled queued/running/succeeded/failed/cancelled durable-work states.
 - The testkit deliberately does not simulate Kernel scheduling, mechanism selection, resource coordination, retry timing, receiver-boundary Security Algebra or SQLite durability. Installed/integration acceptance remains authoritative for those claims.
-- A test-only integer-valued `ReasoningComputation<Integer>` proves the testkit is not text-inference-specific.
+- A test-only integer-valued `ReasoningComputation<Integer>` proves the testkit is not text-inference-specific. The same external test project also drives real `TextGenerationCommand` and `TextEmbeddingCommand` values through `ProgrammableReasoningService` using only published artifacts.
 - The dedicated cross-platform `SDK developer acceptance` workflow publishes the verification artifacts, copies the independent consumer to a runner-temporary directory outside the checkout, builds/tests it there, installs only its produced JAR into the normal owner-writable Module directory of a packaged MADRE image, proves ServiceLoader discovery with `doctor`, and invokes its owner-local and external/PUBLIC behavior.
 
 The current publication target is still `build/isolated-repository`. This is verification infrastructure, not a public remote artifact repository or released SDK 0.x distribution channel.
@@ -61,10 +61,12 @@ Other transitional behavior remains unchanged:
 - `madre-sdk-testkit`: deterministic public semantic Module-testing utilities over stable SDK contracts, with no Kernel/application implementation dependency;
 - `madre-sdk-experimental`: 0.x incubation artifact for higher-level authoring facilities; currently only typed `ModuleDefinitionBuilder`, which produces the stable domain object;
 - `madre-bom`: Java-platform version alignment for public MADRE artifacts; it does not make adapters, Kernel or application mandatory SDK dependencies;
-- `madre-reasoning-spi`: public typed reasoning-adapter execution and installation SPI, including stable reasoning-provider identity, owner-facing provider descriptors, the narrow provider configurator contract, provider-owned configuration updates and no Kernel implementation dependency;
-- `madre-kernel`: live executable Module registry and receiver mechanics, reasoning-capability registry/selection, resources, immediate/durable reasoning, SQLite recovery and result delivery;
-- `madre-text-inference`: typed nominal text-inference computation/result contract;
-- `madre-adapter-llamacpp`, `madre-adapter-openai-compatible`: independently discoverable/configurable reasoning-adapter artifacts;
+- `madre-reasoning-spi`: public typed reasoning-adapter execution and installation SPI, including stable reasoning-provider identity, value-level mechanism compatibility, owner-facing provider descriptors, the narrow provider configurator contract, provider-owned configuration updates and no Kernel implementation dependency;
+- `madre-kernel`: live executable Module registry and receiver mechanics, model-agnostic reasoning-capability registry/selection, resources, immediate/durable reasoning, SQLite recovery and result delivery;
+- `madre-text-inference`: unchanged durable `madre.text-inference.v1` prompt-based text-inference computation/result contract;
+- `madre-text-generation`: richer durable `madre.text-generation.v2` ordered-message text-generation computation/result contract;
+- `madre-embeddings`: durable `madre.text-embedding.v1` text-embedding computation/result contract with explicit embedding-space identity and dimensionality;
+- `madre-adapter-llamacpp`, `madre-adapter-openai-compatible`: independently discoverable/configurable reasoning-adapter artifacts; their HTTP mechanisms can materialize the stable text-inference, text-generation or embedding contract selected by provider-owned instance configuration;
 - `madre-web-search`: reusable typed web-search values;
 - `madre-adapter-searxng`: ordinary SearXNG Java client with no Kernel dependency;
 - `madre-module-owner-interaction`: shipped ordinary CORE-capable Module;
@@ -150,9 +152,33 @@ Class<C extends ReasoningComputation<R>> -> Function<C,R>
 
 Immediate work completes through the programmed function. Durable work begins `QUEUED`; the test explicitly starts/completes/fails/cancels it and then uses normal `inspect`, `collect` and `acknowledge`. No scheduler thread, SQLite store, retry timer or mechanism-selection algorithm is copied into the testkit.
 
-The fixture's `ScoreComputation implements ReasoningComputation<Integer>` demonstrates that the facility is generic and not bound to `madre-text-inference`.
+The fixture's `ScoreComputation implements ReasoningComputation<Integer>` demonstrates that the facility is generic and not bound to a built-in inference family. The external consumer now additionally exercises stable text-generation and text-embedding computations through the same testkit API.
 
-Portable request semantics remain owned by common computation contracts. Mechanism/model/runtime-specific tuning remains provider/adapter-owned. Shared execution mechanics remain Kernel-owned. This slice does not enlarge provider field kinds or add production embeddings/multimodal contracts merely to demonstrate extensibility.
+Portable request semantics remain owned by common computation contracts. Mechanism/model/runtime-specific tuning remains provider/adapter-owned. Shared execution mechanics remain Kernel-owned. The heterogeneous-inference slice adds production text generation and embeddings without adding multimodal inference or higher-level semantic memory/RAG/vector-database behavior.
+
+## Heterogeneous inference baseline
+
+The first heterogeneous-inference slice now has three stable public reasoning contracts with separate durable identities:
+
+```text
+madre.text-inference.v1   TextInferenceCommand  -> TextInferenceResult
+madre.text-generation.v2  TextGenerationCommand -> TextGenerationResult
+madre.text-embedding.v1   TextEmbeddingCommand   -> TextEmbeddingResult
+```
+
+`madre.text-inference.v1` is unchanged. Existing queued durable text-inference work therefore retains the same Java types, codec and persisted contract identity.
+
+`TextGenerationCommand` carries ordered portable messages with `SYSTEM`, `USER` and `ASSISTANT` roles, maximum generated-token budget and stop sequences. Its result carries generated text, portable completion reason and optional input/generated token counts. It does not contain provider/runtime tuning.
+
+`TextEmbeddingCommand` carries one text input plus an `EmbeddingSpace`. The space contains a stable identity and positive dimensionality. `TextEmbeddingResult` repeats the space and requires exactly that many finite coordinates. Two same-dimensional vectors from different space identities are not declared compatible merely because their lengths match.
+
+`ReasoningCapability` now has a default `supports(C computation)` value predicate. Kernel evaluates it generically after nominal contract matching and before availability/preference selection. Existing providers remain source-compatible because the default returns `true`. The Kernel contains no embedding-specific type check. HTTP embedding capabilities override the predicate to require exact equality with their configured embedding space.
+
+The shipped OpenAI-compatible and llama.cpp loopback-HTTP providers expose a provider-owned `computation` choice. One configured instance materializes exactly one reasoning capability. Absence of that property defaults to `madre.text-inference.v1`, preserving established raw configuration. Embedding instances additionally require provider-owned `embedding-space-id` and `embedding-dimensions` fields. The host remains generic and does not parse or branch on these fields.
+
+The OpenAI-compatible adapter executes generation through `chat/completions` and embeddings through `embeddings`. The llama.cpp loopback-HTTP adapter executes generation through `/v1/chat/completions` and embeddings through `/v1/embeddings`. Both embedding adapters require numeric output with exact configured dimensionality before producing a public result. The llama.cpp AF_UNIX provider remains text-inference v1 only in this slice.
+
+No vector store, similarity index, semantic memory, retrieval workflow, RAG system or knowledge graph is introduced. Those are possible later consumers of embedding results, not responsibilities of this inference substrate.
 
 ## Reasoning provider installation/configuration baseline
 
@@ -168,7 +194,7 @@ Provider discovery does not require any configured instance and does not materia
 
 The shipped stable provider identities are `llamacpp-unix`, `llamacpp-http` and `openai-compatible`. The two llama.cpp transports are intentionally distinct because their required settings differ. The independently compiled verification provider uses `independent-text` and consumes the same public SPI without `madre-app` or Kernel implementation dependencies.
 
-The minimal owner-facing field kinds are exactly `TEXT`, `INTEGER` and `CHOICE`. Descriptors may expose display/help information, required/default values, allowed choices and integer bounds when those are needed by the current configurator. Providers—not the host—own parsing, semantic validation, defaults and the mapping to the existing raw property representation.
+The minimal owner-facing field kinds are exactly `TEXT`, `INTEGER` and `CHOICE`. Descriptors may expose display/help information, required/default values, allowed choices and integer bounds when those are needed by the current configurator. Providers—not the host—own parsing, semantic validation, defaults and the mapping to the existing raw property representation. The new computation-family and embedding-space settings are expressed with those already-demonstrated field kinds; no metadata vocabulary expansion was required.
 
 The current generic owner commands are:
 
@@ -192,7 +218,7 @@ Configuration validation does not probe endpoints. A configured but unreachable 
 
 In the native package, default reasoning discovery loads the shipped read-only reasoning directory plus the conventional owner data reasoning directory. Explicit `reasoning.directory` retains exact one-directory semantics. The native first-run configuration contains no provider instance configuration, so the shipped adapters legitimately materialize zero mechanisms.
 
-`ReasoningCapability` remains mechanism-only; it does not know Modules, Agents, Material, configuration UI, provider accounts or product lifecycle. An empty reasoning registry is valid at boot.
+`ReasoningCapability` remains mechanism-only; it does not know Modules, Agents, Material, configuration UI, provider accounts or product lifecycle. Its value-level `supports` predicate is mechanism compatibility only and does not grant semantic authority. An empty reasoning registry is valid at boot.
 
 ## Search baseline
 
@@ -234,8 +260,8 @@ The exact-head `SDK developer acceptance` workflow adds a dedicated two-host pub
 1. checks out the exact PR head;
 2. runs root checks, publishes the current public artifacts to the verification Maven repository and builds a packaged application image;
 3. copies `verification/sdk-consumer` to a runner-temporary directory outside the MADRE checkout;
-4. resolves the BOM/stable SDK/testkit/experimental/computation artifacts from the absolute verification repository path;
-5. executes deterministic Module tests, including reasoning-backed semantic behavior and arbitrary non-text durable reasoning, without Kernel/application implementation dependencies;
+4. resolves the BOM/stable SDK/testkit/experimental/text-inference/text-generation/embedding artifacts from the absolute verification repository path;
+5. executes deterministic Module tests, including reasoning-backed semantic behavior, arbitrary non-text durable reasoning and the stable generation/embedding contracts, without Kernel/application implementation dependencies;
 6. builds a normal JAR and verifies its `ModuleProvider` ServiceLoader descriptor;
 7. bootstraps the packaged host in an isolated owner home so MADRE creates its normal owner-writable Module directory;
 8. copies only the independent Module JAR into that owner directory;
@@ -251,7 +277,7 @@ The existing independently installed reasoning execution and Module-to-Module in
 
 ## Public development platform status and remaining product gates
 
-The first low-friction SDK experimentation slice now exists: dependency alignment, deterministic public testkit, explicit experimental incubation, developer documentation, standard ServiceLoader JAR convention and a complete cross-platform independent-build/install/invoke acceptance journey.
+The first low-friction SDK experimentation slice now exists: dependency alignment, deterministic public testkit, explicit experimental incubation, developer documentation, standard ServiceLoader JAR convention and a complete cross-platform independent-build/install/invoke acceptance journey. The heterogeneous-inference slice now gives that platform multiple stable inference families and two independently installed HTTP mechanism origins without expanding Kernel into an inference-specific framework.
 
 MADRE must still not be described as a community-ready public SDK 0.x release. The main remaining SDK-release gaps are:
 
@@ -263,6 +289,6 @@ MADRE must still not be described as a community-ready public SDK 0.x release. T
 
 The reasoning configurator does not imply generic settings infrastructure. Remaining owner-product gaps include generic Module configuration, Module/reasoning artifact download/install/update/remove management, marketplace/repository discovery, credential storage/account flows, and the meaningful CORE-led owner-interaction redesign/natural delayed semantic follow-up.
 
-Production embeddings, multimodal contracts, generic tool calling, semantic database/knowledge-graph/RAG/memory/planning frameworks, audio/voice, MCP and external-process Module transport remain intentionally outside this slice. The next reassessment may use genuinely heterogeneous inference experiments to decide which computation/provider contracts need to evolve, but this baseline does not begin that work.
+Multimodal contracts, generic tool calling, semantic database/knowledge-graph/RAG/memory/planning frameworks, audio/voice, MCP and external-process Module transport remain intentionally outside this slice. Embeddings here are only a typed inference substrate; no semantic-memory or retrieval architecture is implied.
 
 `docs/master-development-plan.md` remains historical foundation-plan evidence, not the active roadmap.
