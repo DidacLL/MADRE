@@ -17,7 +17,6 @@ import io.github.didacll.madre.sdk.execution.ReasoningPreferences;
 import io.github.didacll.madre.sdk.execution.ReasoningRequest;
 import io.github.didacll.madre.sdk.execution.ReasoningRetryPolicy;
 import io.github.didacll.madre.sdk.execution.WorkState;
-import io.github.didacll.madre.sdk.experimental.ModuleDefinitionBuilder;
 import io.github.didacll.madre.sdk.identity.MaterialId;
 import io.github.didacll.madre.sdk.identity.OperationId;
 import io.github.didacll.madre.sdk.material.Material;
@@ -72,7 +71,7 @@ final class IndependentModuleTest {
                         TextGenerationResult.CompletionReason.STOP, -1, -1))
                 .respond(TextEmbeddingCommand.class, command ->
                         new TextEmbeddingResult(command.space(), List.of(0.25, -0.5)));
-        OperationDefinition<String, String> operation = testReasoningOperation("heterogeneous-test");
+        OperationDefinition operation = testReasoningOperation("heterogeneous-test");
         Material<String> input = new Material<>(
                 new MaterialId(IndependentDefinition.ID, "heterogeneous-test-input"),
                 IndependentDefinition.REQUEST, "ignored", Sensitivity.S2);
@@ -99,7 +98,7 @@ final class IndependentModuleTest {
     void testkitConsumerCanDriveNonTextDurableReasoningDeterministically() {
         ProgrammableReasoningService reasoning = new ProgrammableReasoningService()
                 .respond(ScoreComputation.class, computation -> computation.value() * 2);
-        OperationDefinition<String, String> operation = testReasoningOperation("score-test");
+        OperationDefinition operation = testReasoningOperation("score-test");
         Material<String> input = new Material<>(
                 new MaterialId(IndependentDefinition.ID, "score-test-input"),
                 IndependentDefinition.REQUEST, "ignored", Sensitivity.S2);
@@ -117,19 +116,19 @@ final class IndependentModuleTest {
     }
 
     @Test
-    void experimentalAuthoringStillProducesStableSdkDomainObjects() {
-        var definition = ModuleDefinitionBuilder.module(
-                        IndependentDefinition.ID, "0.0.0-test", "Experimental authoring proof")
-                .materialType(IndependentDefinition.REQUEST)
-                .materialType(IndependentDefinition.RESULT)
-                .build();
+    void codeFirstAuthoringProjectsPortableSdkDomainObjects() {
+        var module = IndependentDefinition.create(new ProgrammableReasoningService(), "fixture-");
+        var definition = module.definition();
 
         assertEquals(IndependentDefinition.ID, definition.id());
         assertEquals(2, definition.materialTypes().size());
+        assertEquals(2, definition.operations().size());
+        assertEquals("text/plain; charset=utf-8",
+                definition.materialTypes().get(IndependentDefinition.REQUEST.id()).contentType());
     }
 
-    private static OperationDefinition<String, String> testReasoningOperation(String name) {
-        return new OperationDefinition<>(new OperationId(IndependentDefinition.ID, name),
+    private static OperationDefinition testReasoningOperation(String name) {
+        return new OperationDefinition(new OperationId(IndependentDefinition.ID, name),
                 "Test-only reasoning origin", OperationVisibility.PRIVATE,
                 Map.of(IndependentDefinition.REQUEST.id(), Privacy.SECRET),
                 Map.of(IndependentDefinition.RESULT.id(), Sensitivity.S4), Map.of());
