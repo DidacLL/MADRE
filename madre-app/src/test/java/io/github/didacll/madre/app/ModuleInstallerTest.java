@@ -13,8 +13,11 @@ import io.github.didacll.madre.sdk.execution.WorkId;
 import io.github.didacll.madre.sdk.execution.WorkStatus;
 import io.github.didacll.madre.sdk.identity.ModuleId;
 import io.github.didacll.madre.sdk.material.Material;
+import io.github.didacll.madre.sdk.material.MaterialType;
+import io.github.didacll.madre.sdk.module.Module;
 import io.github.didacll.madre.sdk.module.ModuleDefinition;
 import io.github.didacll.madre.sdk.module.ModuleInstance;
+import io.github.didacll.madre.sdk.module.OperationBinding;
 import io.github.didacll.madre.sdk.operation.ModuleInvoker;
 import io.github.didacll.madre.sdk.operation.OperationCall;
 import io.github.didacll.madre.sdk.registration.ModuleContext;
@@ -22,8 +25,8 @@ import io.github.didacll.madre.sdk.registration.ModuleProvider;
 import io.github.didacll.madre.sdk.registration.ModuleProviderConfiguration;
 import io.github.didacll.madre.sdk.registration.ModuleRegistration;
 import java.nio.file.Path;
+import java.util.Collection;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
@@ -103,7 +106,7 @@ final class ModuleInstallerTest {
         ModuleProvider first = provider(firstId, configuration -> { });
         ModuleProvider failing = new ModuleProvider() {
             @Override public ModuleId moduleId() { return failingId; }
-            @Override public ModuleInstance create(ModuleContext context,
+            @Override public Module create(ModuleContext context,
                     ModuleProviderConfiguration configuration) {
                 assertTrue(registry.definitions().isEmpty());
                 throw new IllegalArgumentException("malformed fixture configuration");
@@ -123,9 +126,9 @@ final class ModuleInstallerTest {
         ModuleId returned = new ModuleId("fixture.returned");
         ModuleProvider provider = new ModuleProvider() {
             @Override public ModuleId moduleId() { return declared; }
-            @Override public ModuleInstance create(ModuleContext context,
+            @Override public Module create(ModuleContext context,
                     ModuleProviderConfiguration configuration) {
-                return instance(returned);
+                return module(returned);
             }
         };
         LiveModuleRegistry registry = new LiveModuleRegistry();
@@ -190,18 +193,26 @@ final class ModuleInstallerTest {
             java.util.function.Consumer<ModuleProviderConfiguration> configurationConsumer) {
         return new ModuleProvider() {
             @Override public ModuleId moduleId() { return id; }
-            @Override public ModuleInstance create(ModuleContext context,
+            @Override public Module create(ModuleContext context,
                     ModuleProviderConfiguration configuration) {
                 configurationConsumer.accept(configuration);
-                return instance(id);
+                return module(id);
             }
         };
     }
 
-    private static ModuleInstance instance(ModuleId id) {
-        ModuleDefinition definition = new ModuleDefinition(id, "1.0.0", "test Module",
-                Map.of(), Set.of(), Map.of(), Map.of(), Map.of());
-        return new ModuleInstance(definition, Map.of());
+    private static Module module(ModuleId id) {
+        return new Module() {
+            @Override public ModuleId id() { return id; }
+            @Override public String version() { return "1.0.0"; }
+            @Override public String purpose() { return "test Module"; }
+            @Override public Collection<? extends MaterialType<?>> materialTypes() {
+                return List.of();
+            }
+            @Override public Collection<? extends OperationBinding<?, ?>> operations() {
+                return List.of();
+            }
+        };
     }
 
     private static Function<ModuleId, ModuleContext> contexts() {
