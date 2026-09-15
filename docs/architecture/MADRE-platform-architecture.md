@@ -94,7 +94,7 @@ modules.config[<canonical ModuleId>].<module-owned-key>=<value>
 
 `madre-app` currently extracts only this generic namespace, matches exact canonical identity and supplies an immutable string map. Each provider owns its key vocabulary, validation, parsing, typed settings and defaults. Configuration targeting an uninstalled identity or malformed enabled configuration fails startup rather than silently falling back.
 
-This is a sound ownership boundary but not yet a generic owner configurator contract. An owner-facing configurator cannot hard-code keys owned by independently installed Modules. The eventual configurator therefore needs the minimum provider-owned typed metadata required to render/validate real configuration. The exact public metadata API is intentionally not designed here; it must be recovered from the first configurator implementation rather than from a speculative schema framework.
+This is a sound ownership boundary but not yet a generic owner Module configurator contract. An owner-facing Module configurator cannot hard-code keys owned by independently installed Modules. The eventual configurator therefore needs the minimum provider-owned typed metadata required to render/validate real Module configuration. The exact public metadata API is intentionally not designed here; it must be recovered from the first Module configurator implementation rather than from a speculative schema framework or by generalizing the reasoning-provider descriptor contract prematurely.
 
 `roles.core` and current `interaction.*` are separate installation facts today. Neither changes Module configuration delivery.
 
@@ -157,17 +157,21 @@ This proves the correct semantic/runtime separation but not the completed owner 
 
 Do not implement that target by giving CORE privileged host ports or by turning Kernel into a conversation/router service.
 
-## Reasoning-mechanism installation and discovery
+## Reasoning-mechanism installation, configuration and discovery
 
-Reasoning mechanisms are independently installable and architecturally distinct from Modules. Their artifacts live in a separate installation directory and use the public reasoning service-provider contract.
+Reasoning mechanisms are independently installable and architecturally distinct from Modules. Their artifacts live in separate shipped/owner reasoning installation roots and use the public reasoning service-provider contract.
 
-The public reasoning SPI contains the typed reasoning execution contract and minimal installation/materialization boundary. An adapter depends on that SPI plus the computation contracts it implements, not on `madre-app` or Kernel registries/stores/schedulers.
+The public reasoning SPI contains the typed reasoning execution contract plus the small provider-owned installation/configuration boundary used by the owner product. An adapter depends on that SPI plus the computation contracts it implements, not on `madre-app` or Kernel registries/stores/schedulers.
 
-`madre-app` currently owns only generic discovery, read-only `reasoning.*` delivery and registration. Provider-specific parsing remains inside each adapter. One provider may materialize zero, one or many mechanisms; disabled or unconfigured instances register nothing.
+Each provider declares a stable `ReasoningProviderId`, a `ReasoningProviderDescriptor` with only owner-facing display/help information and the minimal `TEXT`, `INTEGER` and `CHOICE` field metadata demonstrated by the current configurator, a `ReasoningProviderConfigurator` for repeatable named instances, and `materialize(...)` for enabled mechanisms. Provider discovery is independent from mechanism materialization, so an installed provider with zero configured or enabled instances remains discoverable/configurable while registering no `ReasoningCapability` values.
 
-As with Modules, the string configuration is current executable behavior rather than the final generic configurator surface. Future configuration metadata must be provider-owned and introduced only to satisfy demonstrated configurator needs.
+`madre-app` owns generic discovery, rendering of provider descriptors, the provider/list/inspect/configure/enable/disable/remove host commands, and transactional persistence of provider-produced configuration updates. Provider-specific parsing, validation, defaults, raw property names and representation remain inside each adapter. There are no concrete llama.cpp/OpenAI-compatible configuration branches in application production code.
 
-Privacy remains explicit and is never inferred from endpoint, transport or locality. Bundled adapter placement grants no privilege.
+The raw `reasoning.*` string representation remains executable for compatibility and advanced developer use; it is not the ordinary owner configuration surface. The implemented reasoning-provider descriptor/configurator is intentionally reasoning-specific and must not be treated as the unfinished generic Module configurator or expanded into a universal settings framework without demonstrated need.
+
+These host configuration mechanics remain outside Kernel and outside CORE. Kernel receives only successfully materialized reasoning mechanisms; `ReasoningCapability` remains mechanism-only and contains no configuration UI/product-management responsibility.
+
+Privacy remains explicit and is never inferred from endpoint, transport or locality. Bundled adapter placement grants no privilege. Zero materialized mechanisms remains a valid boot state.
 
 ## Kernel boundary
 

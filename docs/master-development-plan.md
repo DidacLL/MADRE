@@ -60,8 +60,8 @@ Several foundation-era decisions should not be treated as the next roadmap simpl
 
 - CORE was initially exercised mainly as optional Module identity resolution. The durable product definition now gives CORE meaningful default owner-interaction/coordinator semantics while preserving its non-privileged ordinary-Module status.
 - `interaction.*` and the `MadreMain` console currently provide presentation wiring independently of CORE. This is transitional executable truth, not the desired final owner-product responsibility split.
-- Current Module/reasoning configuration is generic string delivery with provider-owned parsing. That ownership is sound, but an owner configurator eventually needs the minimum provider-owned typed metadata demonstrated by the real configurator; the exact API is not predetermined here.
-- The Gradle/JDK distribution is current developer packaging, not proof of an owner-deployable Windows/Linux product.
+- Module configuration remains generic string delivery with provider-owned parsing; its owner-facing generic configurator is still unfinished and must recover only the minimum Module-provider-owned typed metadata demonstrated by real owner behavior. Reasoning-provider configuration has since advanced beyond the original plan: the real owner configurator now uses a narrow provider-owned descriptor/configurator contract with stable provider identity and `TEXT`/`INTEGER`/`CHOICE` metadata. That implemented reasoning contract must not be replayed as future work or generalized into a universal settings schema.
+- Native Windows/Linux owner packaging with bundled Java and zero-argument first-run bootstrap is now implemented foundation behavior rather than a future deployment gate.
 - Independent SDK fixtures prove contract isolation, not a complete community developer product.
 - Module-to-Module invocation is valid proven infrastructure even though its generalization arrived before CORE exercised it. Preserve it; extend its public shape only from real use.
 - Historical references to generic physical `Capability`, `ExecutionService`, `WorkRequest` or Kernel search are superseded by the active reasoning-specific architecture and must not be restored by replaying old slices.
@@ -70,13 +70,12 @@ Several foundation-era decisions should not be treated as the next roadmap simpl
 
 The current product direction is summarized here only so this historical record cannot be mistaken for an active roadmap. The durable statement is in `MADRE.md` and `AGENTS.md`.
 
-The near-term product gates are:
+Native owner deployment and generic reasoning-provider configuration are implemented foundations. The remaining near-term product gates are:
 
-1. owner-deployable Windows/Linux product;
-2. meaningful CORE-led owner interaction with natural delayed semantic follow-up;
-3. generic configuration contracts proven by the actual configurator and provider-owned typed metadata it truly needs;
-4. genuinely public SDK/tooling/testkit/developer journey;
-5. broader integration surfaces such as UI extraction, Skills/MCP libraries or multimodal support only after concrete use demonstrates need.
+1. meaningful CORE-led owner interaction with natural delayed semantic follow-up;
+2. generic Module configuration contracts proven by the actual Module configurator and provider-owned typed metadata it truly needs;
+3. genuinely public SDK/tooling/testkit/developer journey;
+4. broader integration surfaces such as UI extraction, Skills/MCP libraries or multimodal support only after concrete use demonstrates need.
 
 These are outcome gates, not class/API prescriptions. Live dependency analysis may change implementation order when necessary, but it must not use that freedom to introduce unrelated frameworks or integrations.
 
@@ -98,7 +97,7 @@ Future work must preserve the foundation that has already been proven:
 
 Research and exploratory material about QVAC, AAAAT, OpenWhispr, voice, MCP, marketplace/update services and other external systems remains evidence only unless the Owner explicitly accepts a product direction.
 
-This historical plan therefore does not authorize native installer implementation, desktop UI, configuration-schema design, UI/surface frameworks, Skill runtime redesign, MCP runtime, external-process Module transport, public marketplace/update services or other adjacent work by itself.
+This historical plan therefore does not authorize native installer redesign, desktop UI, new generic configuration-schema design, UI/surface frameworks, Skill runtime redesign, MCP runtime, external-process Module transport, public marketplace/update services or other adjacent work by itself.
 
 ## Authority reminder
 

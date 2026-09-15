@@ -100,19 +100,23 @@ modules.config[<canonical ModuleId>].<module-owned-key>=<value>
 
 `madre-app` currently owns only generic extraction, exact-identity scoping and delivery. Provider class name, JAR name, discovery order, shipped status and CORE assignment never participate in association. Each Module provider owns supported-key validation, parsing, typed settings and defaults.
 
-This string map is current executable behavior, not the final owner configurator contract. A generic configurator cannot safely hard-code independently installed Module settings. When an owner-facing configurator is implemented, the installed provider must supply the minimum provider-owned typed metadata that the configurator actually needs. The exact public metadata API is deliberately deferred until that real configurator proves the requirement; this is not permission to invent a general schema framework now.
+This string map is current executable behavior, not the final owner configurator contract. A generic configurator cannot safely hard-code independently installed Module settings. When an owner-facing Module configurator is implemented, the installed provider must supply the minimum provider-owned typed metadata that the configurator actually needs. The exact public metadata API is deliberately deferred until that real configurator proves the requirement; this is not permission to invent a general schema framework now.
 
 Provider identity remains an installation invariant. Duplicate identities, materialized identity mismatches and invalid executable bindings fail startup before a partially reachable installation is exposed.
 
 ## Reasoning installation and configuration
 
-Reasoning adapters are independently installable JVM JARs discovered from the reasoning installation directory through the public reasoning SPI. Installed distributions currently use a sibling `reasoning/` directory by default.
+Reasoning adapters are independently installable JVM JARs discovered from the reasoning installation directories through the public reasoning SPI. Packaged installations scan both shipped and owner-writable reasoning roots; explicit `reasoning.directory` retains exact single-directory semantics for development and tests.
 
-`madre-app` has no concrete llama.cpp, OpenAI-compatible or future-provider factory/configuration branch. Each provider owns provider-specific parsing and may materialize zero, one or many mechanisms. Disabled or unconfigured instances register nothing. Privacy is explicit and is never inferred from endpoint, transport or locality.
+The owner-facing reasoning configurator is implemented. Each installed provider declares a stable provider-owned `ReasoningProviderId`, a `ReasoningProviderDescriptor` containing only the owner-facing display/help information and minimal `TEXT`, `INTEGER` and `CHOICE` fields demonstrated necessary by the current configurator, and a `ReasoningProviderConfigurator` for repeatable named instances. The host renders this metadata generically, exposes provider/list/inspect/configure/enable/disable/remove commands, and owns transactional persistence. Provider-specific parsing, validation, defaults and raw-property mapping remain inside the provider artifact.
 
-The current `reasoning.*` string configuration is likewise developer-facing executable behavior rather than a completed generic owner configurator contract. Future owner configuration must obtain only the typed provider metadata demonstrated necessary by the actual configurator and must not move provider-specific semantics into the host.
+`madre-app` has no concrete llama.cpp, OpenAI-compatible or future-provider configuration branch. Provider discovery is independent from mechanism materialization: an installed provider can be visible and configurable while materializing zero mechanisms. Disabled or unconfigured instances register nothing. Privacy is explicit and is never inferred from endpoint, transport or locality.
+
+The raw `reasoning.*` string representation remains executable for compatibility and advanced developer use rather than being the ordinary owner UX. This implemented reasoning-specific configurator does not imply a universal settings framework and does not complete generic Module configuration.
 
 MADRE can boot with no reasoning directory, an empty one, or installed providers that materialize no mechanisms. Modules that do not request reasoning remain usable.
+
+Host configuration mechanics remain outside Kernel and outside CORE. `ReasoningCapability` remains mechanism-only and contains no owner configuration UI or product-management responsibility.
 
 ## Module, owner-local and external/PUBLIC invocation
 
@@ -178,13 +182,12 @@ Optional future standard libraries for ordinary application I/O, MCP, UI, audio,
 
 ## Product gates
 
-The next product outcomes are ordered by owner/developer value rather than architecture novelty:
+Native Windows/Linux owner deployment and generic reasoning-provider configuration are implemented foundations. The next product outcomes are ordered by owner/developer value rather than architecture novelty:
 
-1. **Owner-deployable Windows/Linux product.** Installation, configuration and launch must stop requiring the owner to understand JDK 21, Gradle, classpaths, ServiceLoader or a manually copied properties file.
-2. **Meaningful CORE-led interaction.** CORE should lead the ordinary owner conversation and deliver useful delayed semantic follow-up naturally while remaining an ordinary non-privileged Module.
-3. **Generic owner configuration.** The real configurator should drive the minimum provider-owned typed metadata contract needed for independently installed Module/reasoning settings. Do not hard-code providers and do not design a schema framework first.
-4. **Genuinely public developer journey.** Stable artifacts, documentation, tooling/testkit and packaging/install proof must make an unrelated Module developer successful without depending on `madre-app` or Kernel implementation.
-5. **Broader integration surfaces only from demonstrated demand.** UI extraction, Skills/MCP standard libraries, audio/multimodal support and similar community facilities follow concrete use rather than speculative architecture.
+1. **Meaningful CORE-led interaction.** CORE should lead the ordinary owner conversation and deliver useful delayed semantic follow-up naturally while remaining an ordinary non-privileged Module.
+2. **Generic owner Module configuration.** A real Module configurator should drive the minimum Module-provider-owned typed metadata contract needed for independently installed Module settings. Do not reuse the reasoning configurator as a universal schema, hard-code Module settings, or design a schema framework first.
+3. **Genuinely public developer journey.** Stable artifacts, documentation, tooling/testkit and packaging/install proof must make an unrelated Module developer successful without depending on `madre-app` or Kernel implementation.
+4. **Broader integration surfaces only from demonstrated demand.** UI extraction, Skills/MCP standard libraries, audio/multimodal support and similar community facilities follow concrete use rather than speculative architecture.
 
 These are product gates, not a new immutable master plan. Live dependency analysis may change implementation order, but it must not use sequencing as an excuse to introduce unrelated frameworks, protocols or Modules.
 

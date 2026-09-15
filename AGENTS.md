@@ -51,9 +51,11 @@ Do not freeze speculative CORE Operation names, a universal surface interface or
 
 Module providers declare their canonical `ModuleId` before materialization and receive immutable owner configuration scoped to that exact identity through the public Module SDK. `madre-app` may extract/deliver the current generic `modules.config[<ModuleId>].*` namespace, but Module-specific keys, parsing, validation and typed settings remain inside the installed Module artifact.
 
-Reasoning-provider configuration follows the same ownership principle through the reasoning installation boundary.
+Reasoning-provider configuration now has a demonstrated public ownership boundary. Each installed provider declares a stable `ReasoningProviderId`, owner-facing descriptor metadata and a narrow configurator for repeatable named instances. The current generic host configurator renders only the provider-owned `TEXT`, `INTEGER` and `CHOICE` field metadata it needs, delegates parsing/validation/raw-property mapping to the provider, and owns transactional persistence plus the generic owner commands. Provider discovery remains independent from mechanism materialization, and zero configured/materialized mechanisms remains valid.
 
-The current string configuration is executable truth, not the final owner configurator contract. A generic owner-facing configurator must not hard-code settings belonging to independently installed Modules or reasoning providers. When that configurator is implemented, recover the minimum provider-owned typed metadata it actually requires. Do not invent a general schema framework in advance.
+The raw `reasoning.*` string representation remains compatibility/developer executable truth, not the ordinary owner setup contract. Do not re-invent provider-specific reasoning configuration in `madre-app`, Kernel or CORE, and do not generalize the proven reasoning descriptor/configurator into a universal settings framework without demonstrated product need.
+
+Generic owner-facing Module configuration remains unfinished. A future Module configurator must not hard-code settings belonging to independently installed Modules. Recover the minimum Module-provider-owned typed metadata from demonstrated owner behavior when that configurator is actually implemented; do not invent a general schema framework in advance.
 
 ## Security Algebra
 
@@ -95,13 +97,14 @@ Tests establish mathematical invariants, public contracts, failure mechanics and
 
 ## Product gates and sequencing
 
+Native Windows/Linux owner deployment and the generic reasoning-provider configurator are implemented foundations. Preserve them as proven product behavior rather than reopening them as future architecture work.
+
 After the current product-contract recovery, prioritize concrete product proof rather than new abstractions:
 
-1. an owner-deployable Windows/Linux product that does not require the owner to understand JDK, Gradle, classpaths, ServiceLoader or internal property namespaces;
-2. a meaningful CORE-led owner interaction experience, including natural delayed semantic follow-up rather than a diagnostic collection command as the primary UX;
-3. generic configuration contracts proven by the actual owner configurator, with provider-owned typed metadata introduced only to satisfy demonstrated configurator needs;
-4. a genuinely public SDK/tooling/testkit/developer journey in which an unrelated developer can consume stable artifacts, build/test/package an independent Module, install it and expose domain behavior without application/Kernel implementation dependencies;
-5. only then broader community integration surfaces such as UI extraction, Skills/MCP standard libraries, audio/multimodal support or similar facilities when concrete use demonstrates the need.
+1. a meaningful CORE-led owner interaction experience, including natural delayed semantic follow-up rather than a diagnostic collection command as the primary UX;
+2. generic Module configuration proven by the actual owner configurator, with Module-provider-owned typed metadata introduced only to satisfy demonstrated configurator needs;
+3. a genuinely public SDK/tooling/testkit/developer journey in which an unrelated developer can consume stable artifacts, build/test/package an independent Module, install it and expose domain behavior without application/Kernel implementation dependencies;
+4. only then broader community integration surfaces such as UI extraction, Skills/MCP standard libraries, audio/multimodal support or similar facilities when concrete use demonstrates the need.
 
 Do not convert these gates into speculative API design. A later gate may be reordered only when live dependency analysis shows that doing so is necessary to complete an earlier product outcome.
 
