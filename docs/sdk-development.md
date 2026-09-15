@@ -63,7 +63,7 @@ Run it with an absolute verification repository path:
 ./gradlew -PmadreRepository=/absolute/path/to/MADRE/build/isolated-repository clean test jar
 ```
 
-`verification/sdk-consumer` is the executable external-project reference. CI copies it to a runner-temporary directory outside the MADRE checkout before building it.
+`verification/sdk-consumer` is the executable external-project reference. The manually invoked `Extended SDK developer acceptance` copies it to a runner-temporary directory outside the MADRE checkout before building it.
 
 ## Module anatomy
 
@@ -71,7 +71,7 @@ A Module is an independently installed semantic/application boundary, not a gene
 
 `MaterialType<T>` and `Material<T>` are nominal typed information owned and interpreted by a Module. `OperationDefinition<I,O>` declares bounded behavior and its Security Algebra constraints. `OperationBinding` binds the exact executable `Operation<I,O>`. `ModuleDefinition` is the immutable canonical semantic declaration; `ModuleInstance` combines it with exact executable bindings.
 
-Agents, Skills, and Workflows remain Module-owned semantics. A Workflow is a semantic blueprint, not a Kernel scheduler or universal planner language.
+Agents and Skills are Module-owned semantics. Workflows are Agent-owned semantic blueprints within that Module, not Kernel schedulers or a universal planner language.
 
 The stable SDK includes demonstrated syntax conveniences such as `MaterialCodecs.utf8String()` and `Operation.of(...)`. They do not hide Material identity, Sensitivity, EffectProfiles, binding, or reasoning semantics.
 
@@ -233,7 +233,7 @@ Windows: %LOCALAPPDATA%\MADRE\modules
 Linux:   ${XDG_DATA_HOME:-~/.local/share}/madre/modules
 ```
 
-Do not pre-copy the JAR there in the ordinary installed-product journey. Direct directory placement remains an advanced/developer compatibility path only.
+Do not pre-copy the JAR there in the ordinary installed-product journey. Direct directory placement remains an advanced/developer compatibility path only. A manually placed JAR under a non-reserved filename remains discoverable as `manual`, but the managed lifecycle will not adopt, replace or delete it. The deterministic managed filename for an installation domain and canonical identity is a reserved host slot.
 
 An explicit replacement requires another local JAR with the same canonical `ModuleId`:
 
@@ -241,7 +241,7 @@ An explicit replacement requires another local JAR with the same canonical `Modu
 madre modules install /absolute/path/replacement.jar --replace
 ```
 
-A same-identity owner artifact must opt into `--replace`; a shipped identity cannot be overridden. Replacement is staged/revalidated before the active JAR is touched and uses a same-filesystem atomic move where supported with safe replacement fallback.
+A same-identity lifecycle-managed owner artifact must opt into `--replace`; a shipped identity cannot be overridden. A same-identity manual JAR blocks managed installation until the operator removes that manual file explicitly. Replacement is staged/revalidated before the active managed JAR is touched and uses a same-filesystem atomic move where supported with safe replacement fallback.
 
 Discover providers without requiring successful Module materialization:
 
@@ -249,7 +249,7 @@ Discover providers without requiring successful Module materialization:
 madre modules list
 ```
 
-The list classifies each provider as `shipped`, `owner`, or `development`. Owner-managed entries also show their managed artifact filename.
+The list classifies each provider as `shipped`, lifecycle-managed `owner`, manually placed `manual`, or external-override `development`. Lifecycle-managed owner entries also show their managed artifact filename.
 
 Inspect provider-owned metadata and current values:
 
@@ -273,7 +273,7 @@ The host persists the existing raw compatibility representation:
 modules.config[<canonical ModuleId>].<module-owned-key>=<value>
 ```
 
-The Module owns the keys and their meaning. The host constructs a complete identity-scoped candidate, validates the proposed edit through the provider before persistence, replaces only that exact Module prefix, preserves all unrelated host/reasoning/other-Module settings, and updates its in-memory configuration only after the safe same-directory replacement succeeds. A rejected edit leaves the previous configuration file unchanged.
+The Module owns the keys and their meaning. The host constructs a complete identity-scoped candidate, validates the proposed edit through the provider before persistence, replaces only the exact Module prefix, preserves all unrelated host/reasoning/other-Module settings, and updates its in-memory configuration only after the safe same-directory replacement succeeds. A rejected edit leaves the previous configuration file unchanged.
 
 Configuration commands use provider discovery only. They do not call `ModuleProvider.create(...)` and do not start `MadreApplication`, so they can serve as a recovery path for a Module whose runtime configuration cannot currently materialize.
 
@@ -297,7 +297,7 @@ madre modules uninstall <module-id> --purge-configuration
 
 Plain uninstall refuses when exact `modules.config[<id>].*` settings remain. The explicit purge form removes only that exact Module configuration while uninstalling. It does not remove `<state>/module-state`, does not rewrite `roles.core`, and does not remove unrelated configuration. A Module referenced by current `interaction.module` is refused until that binding is changed. Shipped Modules cannot be removed through this command.
 
-If a Module is discovered only through an explicit `modules.directory` outside MADRE's conventional owner root, the lifecycle command will not delete that arbitrary developer file; remove it manually if that direct-placement setup is intentional.
+If a Module is discovered only through an explicit `modules.directory` outside MADRE's conventional owner root, the lifecycle command will not delete that arbitrary developer file. The same non-destructive rule applies to a manual JAR copied into the conventional owner discovery directory: even `--purge-configuration` refuses before changing configuration or artifact bytes. Remove direct-placement files manually if that setup is intentional.
 
 ## Reasoning-provider lifecycle is separate
 
@@ -312,25 +312,27 @@ madre reasoning uninstall <provider-id> --purge-configuration
 
 Installation validates the provider descriptor/configurator and current provider-owned configuration without materializing a mechanism. It never invents endpoint/model/privacy values or enables an instance.
 
-`madre reasoning remove <provider>/<instance>` still removes one configured instance. Provider artifact uninstall is deliberately a separate `uninstall` command. Plain provider uninstall refuses while configured instances remain. The purge form removes them through the provider's own configurator before deleting the owner JAR; it does not guess provider raw-property namespaces and does not erase Kernel durable work.
+`madre reasoning remove <provider>/<instance>` still removes one configured instance. Provider artifact uninstall is deliberately a separate `uninstall` command. Plain provider uninstall refuses while configured instances remain. The purge form removes them through the provider's own configurator before deleting a lifecycle-managed owner JAR; it does not guess provider raw-property namespaces and does not erase Kernel durable work. A manually placed reasoning-provider JAR is discoverable as `manual` but is never replaced or deleted by the managed lifecycle, and purge refusal occurs before provider configuration is changed.
 
 ## Executable external reference
 
-`verification/sdk-consumer` declares exactly one real owner setting, `result-prefix`. The same provider contract is built from a directory outside the MADRE checkout against only the published public artifacts. Cross-platform SDK acceptance then:
+`verification/sdk-consumer` declares exactly one real owner setting, `result-prefix`. The same provider contract is built from a directory outside the MADRE checkout against only the published public artifacts. The manually invoked cross-platform `Extended SDK developer acceptance` then:
 
 1. builds its installable JAR externally;
 2. verifies the conventional owner Module directory initially contains no external JAR;
 3. runs packaged `madre modules install <external-jar>`;
-4. discovers `phd.module` as `source=owner`;
+4. discovers `phd.module` as lifecycle-managed `source=owner`;
 5. exposes `result-prefix` through `madre modules inspect phd.module`;
 6. configures it through `madre modules configure phd.module --set result-prefix=configured-`;
 7. performs normal owner-local and external/PUBLIC semantic invocation with the configured value;
 8. creates a byte-different, semantically identical fixture JAR and proves explicit same-identity `--replace` without manually editing the owner directory;
-9. proves shipped owner-interaction install collision/uninstall attempts fail without changing shipped bytes;
-10. keeps all prior owner/PUBLIC, CORE/interaction, zero-reasoning, and durable-restart evidence;
-11. proves plain uninstall refuses with retained configuration;
-12. proves `--purge-configuration` removes only the exact `phd.module` settings and owner JAR while unrelated configuration and semantic Module state remain;
-13. proves `phd.module` is no longer discoverable.
+9. proves invalid replacement candidates leave the previously installed Module and reasoning artifacts byte-for-byte unchanged;
+10. proves shipped owner-interaction install collision/uninstall attempts fail without changing shipped bytes;
+11. keeps all prior owner/PUBLIC, CORE/interaction, zero-reasoning, and durable-restart evidence;
+12. proves plain uninstall refuses with retained configuration;
+13. proves `--purge-configuration` removes only the exact `phd.module` settings and owner JAR while unrelated configuration and semantic Module state remain;
+14. proves `phd.module` is no longer discoverable;
+15. proves manually placed Module/reasoning JARs remain discoverable as `manual`, while replace and purge-uninstall refuse before mutating either the files or their persisted configuration.
 
 The shipped owner-interaction Module uses the same stable configuration contract for its existing installation settings. Its established semantic parser remains both edit-time and runtime authority.
 
