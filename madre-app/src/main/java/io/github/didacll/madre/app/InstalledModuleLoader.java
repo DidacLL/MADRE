@@ -14,6 +14,7 @@ import java.util.Objects;
 import java.util.ServiceConfigurationError;
 import java.util.ServiceLoader;
 import java.util.Set;
+import java.util.stream.Stream;
 
 /** Cross-platform JVM discovery of installed Module JARs from installation directories. */
 final class InstalledModuleLoader implements AutoCloseable {
@@ -24,18 +25,21 @@ final class InstalledModuleLoader implements AutoCloseable {
     InstalledModuleLoader(Path directory) { this(installationDirectories(directory)); }
 
     InstalledModuleLoader(List<Path> directories) {
-        this(new JarSelection(jars(directories, "Module", "modules.directory")));
+        this(new JarSelection(jars(directories, "Module", "modules.directory")), false);
     }
 
-    private InstalledModuleLoader(JarSelection selection) {
+    private InstalledModuleLoader(JarSelection selection, boolean requireProviderFromSelectedJar) {
         jars = selection.jars();
         URL[] urls = jars.stream().map(InstalledModuleLoader::url).toArray(URL[]::new);
         Set<Path> selected = new HashSet<>(jars);
         classLoader = new URLClassLoader(urls, ModuleProvider.class.getClassLoader());
         try {
-            providers = ServiceLoader.load(ModuleProvider.class, classLoader).stream()
-                    .filter(provider -> selected.contains(sourceJar(provider.type())))
-                    .map(ServiceLoader.Provider::get).toList();
+            Stream<ServiceLoader.Provider<ModuleProvider>> discovered =
+                    ServiceLoader.load(ModuleProvider.class, classLoader).stream();
+            if (requireProviderFromSelectedJar) {
+                discovered = discovered.filter(provider -> selected.contains(sourceJar(provider.type())));
+            }
+            providers = discovered.map(ServiceLoader.Provider::get).toList();
         } catch (ServiceConfigurationError | RuntimeException error) {
             try {
                 classLoader.close();
@@ -51,7 +55,7 @@ final class InstalledModuleLoader implements AutoCloseable {
         if (!Files.isRegularFile(selected)) {
             throw new IllegalArgumentException("Module JAR is not a regular file: " + selected);
         }
-        return new InstalledModuleLoader(new JarSelection(List.of(selected)));
+        return new InstalledModuleLoader(new JarSelection(List.of(selected)), true);
     }
 
     List<ModuleProvider> providers() { return providers; }
