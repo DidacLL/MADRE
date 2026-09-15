@@ -25,8 +25,8 @@ final class ManagedJarFiles {
             throw new IllegalArgumentException("installation source is not a readable regular file: "
                     + source);
         }
-        try (JarFile ignored = new JarFile(source.toFile(), true)) {
-            // Opening the archive proves the central directory is readable before staging.
+        try (JarFile archive = new JarFile(source.toFile(), true)) {
+            archive.size();
         }
         return source;
     }
