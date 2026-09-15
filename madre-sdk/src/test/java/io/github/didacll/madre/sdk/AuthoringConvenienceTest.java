@@ -78,12 +78,13 @@ final class AuthoringConvenienceTest {
 
         assertThrows(IllegalArgumentException.class, () -> new ModuleDefinition(
                 OWNER, "1.0.0", "Foreign ownership must fail",
-                Map.of(foreignType.id(), foreignType), Set.of(), Map.of(), Map.of(), Map.of()));
+                Map.of(foreignType.id(), foreignType.definition()), Set.of(), Map.of(), Map.of(),
+                Map.of()));
 
         MaterialTypeId alias = new MaterialTypeId(OWNER, "alias");
         assertThrows(IllegalArgumentException.class, () -> new ModuleDefinition(
                 OWNER, "1.0.0", "Non-canonical key must fail",
-                Map.of(alias, TEXT), Set.of(), Map.of(), Map.of(), Map.of()));
+                Map.of(alias, TEXT.definition()), Set.of(), Map.of(), Map.of(), Map.of()));
     }
 
     private static OperationDefinition operationDefinition(OperationVisibility visibility) {
