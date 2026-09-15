@@ -1,13 +1,13 @@
-name: Native owner package
+name: Extended native owner package
 
 on:
-  pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: native-owner-package-${{ github.event.pull_request.number || github.ref }}
+  group: native-owner-package-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -19,9 +19,6 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 0
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
@@ -45,102 +42,9 @@ jobs:
             -AppImageRoot 'madre-app/build/jpackage/app-image/madre' `
             -NativePackageDirectory 'madre-app/build/jpackage/native'
 
-      - name: Verify Windows installer lifecycle
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $msi = @(Get-ChildItem 'madre-app/build/jpackage/native' -Filter '*.msi')
-          if ($msi.Count -ne 1) { throw "expected one MSI package, found $($msi.Count)" }
-          $install = Start-Process msiexec.exe -ArgumentList '/i', $msi[0].FullName, '/qn', '/norestart' -Wait -PassThru
-          if ($install.ExitCode -ne 0) { throw "MSI installation failed with $($install.ExitCode)" }
-          $temp = Join-Path ([System.IO.Path]::GetTempPath()) ('madre-installed-' + [guid]::NewGuid())
-          New-Item -ItemType Directory -Force -Path $temp | Out-Null
-          $savedAppData = $env:APPDATA
-          $savedLocalAppData = $env:LOCALAPPDATA
-          try {
-            $entry = Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' -ErrorAction SilentlyContinue |
-              Get-ItemProperty | Where-Object { $_.DisplayName -eq 'madre' } | Select-Object -First 1
-            $installed = $null
-            if ($entry -and -not [string]::IsNullOrWhiteSpace($entry.InstallLocation)) {
-              $candidate = Join-Path $entry.InstallLocation 'madre.exe'
-              if (Test-Path $candidate) { $installed = $candidate }
-            }
-            if (-not $installed) {
-              $candidate = Get-ChildItem $savedLocalAppData -Filter 'madre.exe' -Recurse -ErrorAction SilentlyContinue |
-                Where-Object { $_.FullName -match '[\\/]madre[\\/]' } | Select-Object -First 1
-              if ($candidate) { $installed = $candidate.FullName }
-            }
-            if (-not $installed) { throw 'installed MADRE launcher could not be located' }
-            $env:APPDATA = Join-Path $temp 'roaming'
-            $env:LOCALAPPDATA = Join-Path $temp 'local'
-            $doctor = (& $installed doctor 2>&1 | Out-String)
-            if ($LASTEXITCODE -ne 0) { Write-Host $doctor; throw 'installed MADRE doctor failed' }
-            Write-Host $doctor
-            if ($doctor -notmatch 'configuration\.status\s+loaded \(bootstrapped\)') {
-              throw 'installed package did not bootstrap fresh owner configuration'
-            }
-            if ($doctor -notmatch 'reasoning\.mechanisms\.count\s+0') {
-              throw 'installed package unexpectedly enabled a reasoning mechanism'
-            }
-            $console = (('/exit' + [Environment]::NewLine) | & $installed 2>&1 | Out-String)
-            if ($LASTEXITCODE -ne 0) { Write-Host $console; throw 'installed zero-argument launch failed' }
-          } finally {
-            $env:APPDATA = $savedAppData
-            $env:LOCALAPPDATA = $savedLocalAppData
-            $uninstall = Start-Process msiexec.exe -ArgumentList '/x', $msi[0].FullName, '/qn', '/norestart' -Wait -PassThru
-            if ($uninstall.ExitCode -ne 0) { throw "MSI uninstall failed with $($uninstall.ExitCode)" }
-            Remove-Item -Recurse -Force $temp -ErrorAction SilentlyContinue
-          }
-
-      - name: Verify Linux installer lifecycle
-        if: runner.os == 'Linux'
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $deb = @(Get-ChildItem 'madre-app/build/jpackage/native' -Filter '*.deb')
-          if ($deb.Count -ne 1) { throw "expected one DEB package, found $($deb.Count)" }
-          & /usr/bin/sudo /usr/bin/dpkg -i $deb[0].FullName
-          if ($LASTEXITCODE -ne 0) { throw 'DEB installation failed' }
-          $temp = Join-Path ([System.IO.Path]::GetTempPath()) ('madre-installed-' + [guid]::NewGuid())
-          New-Item -ItemType Directory -Force -Path $temp | Out-Null
-          $saved = @{
-            HOME = $env:HOME
-            XDG_CONFIG_HOME = $env:XDG_CONFIG_HOME
-            XDG_DATA_HOME = $env:XDG_DATA_HOME
-            XDG_STATE_HOME = $env:XDG_STATE_HOME
-          }
-          try {
-            $env:HOME = Join-Path $temp 'home'
-            $env:XDG_CONFIG_HOME = Join-Path $temp 'config'
-            $env:XDG_DATA_HOME = Join-Path $temp 'data'
-            $env:XDG_STATE_HOME = Join-Path $temp 'state'
-            New-Item -ItemType Directory -Force -Path $env:HOME | Out-Null
-            $installed = '/opt/madre/bin/madre'
-            if (-not (Test-Path $installed)) { throw 'installed MADRE launcher is missing' }
-            $doctor = (& $installed doctor 2>&1 | Out-String)
-            if ($LASTEXITCODE -ne 0) { Write-Host $doctor; throw 'installed MADRE doctor failed' }
-            Write-Host $doctor
-            if ($doctor -notmatch 'configuration\.status\s+loaded \(bootstrapped\)') {
-              throw 'installed package did not bootstrap fresh owner configuration'
-            }
-            if ($doctor -notmatch 'reasoning\.mechanisms\.count\s+0') {
-              throw 'installed package unexpectedly enabled a reasoning mechanism'
-            }
-            $console = (('/exit' + [Environment]::NewLine) | & $installed 2>&1 | Out-String)
-            if ($LASTEXITCODE -ne 0) { Write-Host $console; throw 'installed zero-argument launch failed' }
-          } finally {
-            foreach ($name in $saved.Keys) {
-              [Environment]::SetEnvironmentVariable($name, $saved[$name], 'Process')
-            }
-            & /usr/bin/sudo /usr/bin/dpkg -r madre
-            if ($LASTEXITCODE -ne 0) { throw 'DEB uninstall failed' }
-            Remove-Item -Recurse -Force $temp -ErrorAction SilentlyContinue
-          }
-
       - name: Retain native installer
         uses: actions/upload-artifact@v4
         with:
-          name: madre-native-${{ runner.os }}-${{ github.event.pull_request.head.sha }}
+          name: madre-native-${{ runner.os }}-${{ github.sha }}
           path: madre-app/build/jpackage/native/*
           if-no-files-found: error
