@@ -5,7 +5,14 @@ import java.util.Objects;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Function;
 
-/** Executable behavior for one declared bounded Operation. */
+/**
+ * One executable bounded unit of Module logic that participates in MADRE arbitration.
+ *
+ * <p>The body may implement any Module-owned behavior: pure computation, file/database/network
+ * access, process/script execution, reasoning, or a composition of ordinary Java facilities.
+ * MADRE does not prescribe the implementation technique. The surrounding {@link OperationCall}
+ * and declared contract provide the typed/trust/security boundary for the bounded invocation.</p>
+ */
 public abstract class Operation<I, O> {
     /**
      * Creates an Operation from one functional body while preserving the normal
@@ -24,8 +31,8 @@ public abstract class Operation<I, O> {
     }
 
     /**
-     * Performs Module-owned behavior after the input and applicable causal values
-     * compose. This hook is deliberately not a public invocation path.
+     * Performs Module-owned behavior after the bounded call has satisfied its declared MADRE
+     * arbitration. This hook is deliberately not a separate public invocation path.
      */
     protected abstract CompletionStage<Material<O>> execute(OperationCall<I, O> call);
 
