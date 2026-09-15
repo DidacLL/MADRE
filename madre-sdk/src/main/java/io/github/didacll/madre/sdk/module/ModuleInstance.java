@@ -51,8 +51,7 @@ public final class ModuleInstance {
     public Map<MaterialTypeId, MaterialType<?>> materialTypes() { return materialTypes; }
     public Map<OperationId, OperationBinding<?, ?>> operations() { return operations; }
 
-    /** Confirms that Java bindings exactly realize the canonical portable contracts. */
-    public void validateBindings() {
+    private void validateBindings() {
         if (!materialTypes.keySet().equals(definition.materialTypes().keySet())) {
             throw new IllegalArgumentException(
                     "Java MaterialType bindings must exactly match declared Material types");
