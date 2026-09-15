@@ -157,8 +157,7 @@ public final class ModuleDefinitionJsonCodec {
             }
             Map<SkillId, SkillDefinition> skills = decodeSkills(root, module);
             Map<EffectProfileId, EffectProfile> profiles = decodeProfiles(root, module);
-            Map<OperationId, OperationDefinition<?, ?>> operations =
-                    decodeOperations(root, module, profiles);
+            Map<OperationId, OperationDefinition> operations = decodeOperations(root, module, profiles);
             Map<AgentId, AgentDefinition> agents = decodeAgents(root, module);
             return new ModuleDefinition(module, requiredText(root, "version"),
                     requiredText(root, "purpose"), typeDefinitions, references, agents, skills,
@@ -211,9 +210,9 @@ public final class ModuleDefinitionJsonCodec {
         return values;
     }
 
-    private static Map<OperationId, OperationDefinition<?, ?>> decodeOperations(
+    private static Map<OperationId, OperationDefinition> decodeOperations(
             ObjectNode root, ModuleId module, Map<EffectProfileId, EffectProfile> profiles) {
-        Map<OperationId, OperationDefinition<?, ?>> values = new HashMap<>();
+        Map<OperationId, OperationDefinition> values = new HashMap<>();
         Set<EffectProfileId> usedProfiles = new HashSet<>();
         for (JsonNode raw : requiredArray(root, "operations")) {
             ObjectNode node = object(raw, "operation");
@@ -231,7 +230,7 @@ public final class ModuleDefinitionJsonCodec {
                 }
                 selected.put(profileId, profile);
             }
-            OperationDefinition<Object, Object> operation = new OperationDefinition<>(id,
+            OperationDefinition operation = new OperationDefinition(id,
                     requiredText(node, "purpose"),
                     OperationVisibility.valueOf(requiredText(node, "visibility")),
                     decodePrivacyMap(node, module), decodeSensitivityMap(node, module), selected);
