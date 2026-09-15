@@ -48,7 +48,7 @@ The current console does not yet realize this complete product layering. `MadreM
 
 MADRE is intentionally both an installed owner product and a software/inference experimentation environment. The architecture must make it inexpensive to try alternative semantic-agentic designs and heterogeneous inference mechanisms without turning each experiment into Kernel architecture.
 
-Semantic experimentation belongs primarily above Kernel: Module behavior, Agent definitions, Skills, Workflows, context/request construction, semantic memory/stores, knowledge graphs, retrieval, coordination and application-specific interpretation. Those experiments should consume the same stable Module/Material/Operation/ReasoningService contracts as deployed software.
+Semantic experimentation belongs primarily above Kernel: Module behavior, Agent definitions, Skills, Workflows, context/request construction, semantic memory/stores, knowledge graphs, retrieval, coordination and application-specific interpretation are examples of techniques that experiments may use. They are not a mandatory architecture inventory and do not imply one Module or public abstraction per technique. Those experiments should consume the same stable Module/Material/Operation/ReasoningService contracts as deployed software.
 
 The public SDK therefore has two lifecycle levels conceptually:
 
@@ -59,7 +59,9 @@ Experimental facilities may depend on stable SDK contracts. Stable SDK, Kernel a
 
 Graduation is evidence-driven. A technique becomes stable only after repeated real use shows that it is broadly reusable, has a clear responsibility owner and does not leak one Module/provider's private semantics.
 
-This experimentation model is not permission to create a universal Agent loop, workflow language, generic tool system, arbitrary metadata framework or speculative semantic database abstraction. The point is to make concrete experiments cheap and rigorous.
+The same rule applies vertically. A technical primitive or inference computation becoming available does not create a semantic/application responsibility above it. It may remain a provider capability, a typed computation contract or a reusable library until a real semantic consumer proves that a higher-level abstraction is useful and correctly owned.
+
+This experimentation model is not permission to create a universal Agent loop, workflow language, generic tool system, arbitrary metadata framework, speculative semantic database abstraction or synthetic Module whose only purpose is to demonstrate a technical primitive. The point is to make concrete experiments cheap and rigorous.
 
 ## Host product boundary
 
@@ -81,13 +83,15 @@ The host may hold host-only ports such as `OwnerModuleInvoker` and `PublicModule
 
 A Module is the semantic and application/domain boundary. It owns domain state and persistence, Material, Agents, Skills, Workflows, public/private Operations, application I/O, semantic transformations, continuation, artifacts and domain-specific presentation/UX.
 
+A Module boundary therefore requires coherent semantic/domain ownership. Reusable infrastructure such as search clients, embedding primitives, databases, storage libraries, transports or model APIs is not a Module merely because multiple applications may use it. Such facilities may be libraries or lower-layer capabilities until an actual application/domain exists that owns meaning around them.
+
 An Operation is bounded callable Module behavior. It declares accepted Material and receiving Privacy, produced Material and maximum Sensitivity, and any EffectProfiles required for consequential variants.
 
 An EffectProfile represents actual consequential behavior of one exact Operation variant. Reasoning computation is not itself an action realizer and does not create Risk merely because an Operation requested reasoning.
 
 A Module does not become a Kernel extension merely because one Operation performs file, HTTP, database, device, search, MCP or other application I/O.
 
-Semantic memory, semantic databases, knowledge graphs, retrieval/context construction and request optimization likewise do not become Kernel responsibilities merely because they contribute to agentic quality. They belong in Modules or reusable SDK/application libraries unless a concrete shared-runtime requirement establishes otherwise.
+Semantic memory, semantic databases, knowledge graphs, retrieval/context construction and request optimization likewise do not become Kernel responsibilities merely because they contribute to agentic quality. They belong in Modules that have real semantic ownership or in reusable SDK/application libraries unless a concrete shared-runtime requirement establishes otherwise. Their usefulness alone does not justify inventing a dedicated Module.
 
 `ModuleDefinition` is the canonical declarative surface. `ModuleInstance` binds it to exact executable `OperationBinding` values. Registration validates declared/executable identities and contracts before reachability.
 
@@ -186,9 +190,11 @@ The architecture distinguishes three layers of inference variability:
 2. **mechanism/model/runtime tuning** belongs to independently installed provider/adapter configuration and implementation;
 3. **shared execution mechanics** belong to Kernel: compatible selection, information reach, availability/resources, immediate/durable scheduling, retry, cancellation, persistence and result delivery.
 
-The current text-inference contract is one proven computation family, not the upper bound of MADRE inference. Future experiments may establish richer text-generation semantics or materially different common contracts such as embeddings or multimodal inference. New computation families should become typed contracts without adding model-specific branches to Kernel.
+The current public computation families include preserved text inference (`madre.text-inference.v1`), richer text generation (`madre.text-generation.v2`) and text embeddings (`madre.text-embedding.v1`). They demonstrate that richer and materially different inference families can coexist without adding model-specific branches to Kernel. They remain inference-layer contracts; their existence does not require Module-domain concepts that mirror their vocabulary.
 
-Low-resource local inference is a first-order product concern. A llama.cpp provider, for example, may eventually need controls for engine/model execution that have no meaning for an OpenAI-compatible endpoint or another runtime. Such controls should remain provider-owned. Conversely, request parameters that experiments demonstrate are portable across multiple text-generation implementations belong in the common text-generation computation contract rather than being duplicated as provider-private knobs.
+Low-resource local inference is a first-order product concern. A llama.cpp provider, for example, may need controls for engine/model execution that have no meaning for an OpenAI-compatible endpoint or another runtime. Such controls remain provider-owned. Conversely, request parameters demonstrated to be portable across multiple text-generation implementations belong in the common text-generation computation contract rather than being duplicated as provider-private knobs.
+
+Future computation families such as multimodal work should be introduced only when concrete inference experiments establish their portable semantics. New inference capabilities do not establish a roadmap for semantic/application architecture.
 
 This boundary lets MADRE expose enough control to optimize SLMs and heterogeneous engines while preserving a narrow model-independent Kernel.
 
@@ -235,7 +241,9 @@ The public reasoning SPI is reasoning-specific:
 ReasoningCapability<R,C extends ReasoningComputation<R>>
 ```
 
-The manifest describes the exact reasoning contract, receiving Privacy, location, expected latency and resource claims. Availability is runtime state. Selection uses contract compatibility, information reach, availability, resources, typed preferences and deterministic ordering.
+The manifest describes the exact reasoning contract, receiving Privacy, location, expected latency and resource claims. Availability is runtime state. Selection uses nominal contract matching, the capability's local deterministic compatibility for the exact computation value, information reach, availability, resources, typed preferences and deterministic ordering.
+
+That value-level compatibility remains generic. Kernel does not understand why a mechanism rejects a computation. For example, embedding-space compatibility is enforced by embedding mechanisms without making Kernel aware of embeddings.
 
 Operation Risk is not carried into reasoning. Reasoning mechanisms do not own Module/Agent/Material/Workflow semantics, external action or semantic continuation. There is no generic Kernel action capability path.
 
@@ -257,7 +265,7 @@ Kernel SQLite stores opaque durable reasoning state. The Module stores only the 
 
 Search is ordinary application/domain I/O. `madre-web-search` supplies reusable typed values and `madre-adapter-searxng` supplies an ordinary client with no Kernel dependency.
 
-A future domain Module may use search, files, databases, semantic databases, knowledge graphs, HTTP, MCP or devices directly or through optional SDK libraries. Such standard/experimental libraries may improve developer ergonomics without turning those facilities into Kernel services.
+A future domain Module may use search, files, databases, semantic databases, knowledge graphs, HTTP, MCP, embeddings or devices directly or through optional SDK/application libraries when those facilities support the Module's actual domain semantics. Such libraries may improve developer ergonomics without becoming Modules or Kernel services merely because they are reusable.
 
 ## Storage
 
