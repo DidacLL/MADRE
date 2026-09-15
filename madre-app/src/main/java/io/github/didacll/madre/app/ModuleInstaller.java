@@ -1,6 +1,7 @@
 package io.github.didacll.madre.app;
 
 import io.github.didacll.madre.sdk.identity.ModuleId;
+import io.github.didacll.madre.sdk.module.Module;
 import io.github.didacll.madre.sdk.module.ModuleInstance;
 import io.github.didacll.madre.sdk.registration.ModuleContext;
 import io.github.didacll.madre.sdk.registration.ModuleProvider;
@@ -38,9 +39,9 @@ final class ModuleInstaller {
             ModuleProviderConfiguration configuration = configurations.get(entry.moduleId());
             ModuleContext context = Objects.requireNonNull(contextFactory.apply(entry.moduleId()),
                     "ModuleContext factory returned null for " + entry.moduleId());
-            ModuleInstance instance;
+            Module module;
             try {
-                instance = Objects.requireNonNull(
+                module = Objects.requireNonNull(
                         entry.provider().create(context, configuration),
                         "ModuleProvider returned null for " + entry.moduleId());
             } catch (RuntimeException exception) {
@@ -48,13 +49,13 @@ final class ModuleInstaller {
                         "cannot materialize Module " + entry.moduleId() + ": " + message(exception),
                         exception);
             }
-            if (!instance.definition().id().equals(entry.moduleId())) {
+            if (!module.id().equals(entry.moduleId())) {
                 throw new IllegalStateException("ModuleProvider identity " + entry.moduleId()
-                        + " does not match materialized Module identity "
-                        + instance.definition().id());
+                        + " does not match materialized Module identity " + module.id());
             }
+            ModuleInstance instance;
             try {
-                instance.validateBindings();
+                instance = ModuleInstance.from(module);
             } catch (RuntimeException exception) {
                 throw new IllegalStateException(
                         "cannot validate materialized Module " + entry.moduleId() + ": "
