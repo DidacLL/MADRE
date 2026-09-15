@@ -89,16 +89,11 @@ final class ReasoningCli {
                     .findFirst().orElseThrow(() -> new IllegalStateException(
                             "cannot resolve source JAR for reasoning provider " + descriptor.id()));
             ReasoningArtifactLifecycle.Source source = ReasoningArtifactLifecycle.classify(host,
-                    discovered.sourceJar());
-            boolean managedOwner = source == ReasoningArtifactLifecycle.Source.OWNER
-                    && ManagedJarFiles.isManagedPath(host.ownerReasoningDirectory(), "reasoning",
-                            descriptor.id().value(), discovered.sourceJar());
-            String sourceLabel = source == ReasoningArtifactLifecycle.Source.OWNER && !managedOwner
-                    ? "manual" : source.label();
-            String artifact = managedOwner
+                    descriptor.id(), discovered.sourceJar());
+            String artifact = source == ReasoningArtifactLifecycle.Source.OWNER
                     ? "\tartifact=" + discovered.sourceJar().getFileName() : "";
             System.out.println("reasoning.provider\t" + descriptor.id() + "\t"
-                    + descriptor.displayName() + "\tsource=" + sourceLabel + artifact);
+                    + descriptor.displayName() + "\tsource=" + source.label() + artifact);
             System.out.println("  " + descriptor.help());
             for (ReasoningConfigurationField field : descriptor.fields()) {
                 StringBuilder detail = new StringBuilder("  field\t").append(field.name())
@@ -108,8 +103,12 @@ final class ReasoningCli {
                 if (!field.allowedValues().isEmpty()) {
                     detail.append("\tchoices=").append(String.join(",", field.allowedValues()));
                 }
-                if (field.minimum().isPresent()) detail.append("\tmin=").append(field.minimum().getAsLong());
-                if (field.maximum().isPresent()) detail.append("\tmax=").append(field.maximum().getAsLong());
+                if (field.minimum().isPresent()) {
+                    detail.append("\tmin=").append(field.minimum().getAsLong());
+                }
+                if (field.maximum().isPresent()) {
+                    detail.append("\tmax=").append(field.maximum().getAsLong());
+                }
                 System.out.println(detail);
                 System.out.println("    " + field.displayName() + ": " + field.help());
             }
@@ -183,7 +182,9 @@ final class ReasoningCli {
                         + choices + (suggested == null ? "" : ", current/default=" + suggested) + "]: ");
                 System.out.flush();
                 String entered = reader.readLine();
-                if (entered == null) throw new IllegalArgumentException("configuration input ended early");
+                if (entered == null) {
+                    throw new IllegalArgumentException("configuration input ended early");
+                }
                 if (!entered.isBlank()) values.put(field.name(), entered.strip());
                 else if (current == null && field.defaultValue().isPresent()) {
                     values.put(field.name(), field.defaultValue().orElseThrow());
