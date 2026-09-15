@@ -23,6 +23,7 @@ import java.util.ServiceConfigurationError;
 import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.stream.Stream;
 
 /** Cross-platform JVM discovery of installed reasoning-provider JARs. */
 final class InstalledReasoningLoader implements AutoCloseable {
@@ -33,19 +34,22 @@ final class InstalledReasoningLoader implements AutoCloseable {
     InstalledReasoningLoader(Path directory) { this(installationDirectories(directory)); }
 
     InstalledReasoningLoader(List<Path> directories) {
-        this(new JarSelection(jars(directories)));
+        this(new JarSelection(jars(directories)), false);
     }
 
-    private InstalledReasoningLoader(JarSelection selection) {
+    private InstalledReasoningLoader(JarSelection selection, boolean requireProviderFromSelectedJar) {
         List<Path> jars = selection.jars();
         URL[] urls = jars.stream().map(InstalledReasoningLoader::url).toArray(URL[]::new);
         Set<Path> selected = new HashSet<>(jars);
         classLoader = new URLClassLoader(urls, ReasoningMechanismProvider.class.getClassLoader());
         List<ReasoningMechanismProvider> discovered = new ArrayList<>();
         try {
-            ServiceLoader.load(ReasoningMechanismProvider.class, classLoader).stream()
-                    .filter(provider -> selected.contains(sourceJar(provider.type())))
-                    .map(ServiceLoader.Provider::get).forEach(discovered::add);
+            Stream<ServiceLoader.Provider<ReasoningMechanismProvider>> entries =
+                    ServiceLoader.load(ReasoningMechanismProvider.class, classLoader).stream();
+            if (requireProviderFromSelectedJar) {
+                entries = entries.filter(provider -> selected.contains(sourceJar(provider.type())));
+            }
+            entries.map(ServiceLoader.Provider::get).forEach(discovered::add);
             Map<ReasoningProviderId, ReasoningMechanismProvider> indexed = new TreeMap<>();
             Map<ReasoningProviderId, Path> sources = new TreeMap<>();
             for (ReasoningMechanismProvider provider : discovered) {
@@ -79,7 +83,7 @@ final class InstalledReasoningLoader implements AutoCloseable {
             throw new IllegalArgumentException("reasoning-provider JAR is not a regular file: "
                     + selected);
         }
-        return new InstalledReasoningLoader(new JarSelection(List.of(selected)));
+        return new InstalledReasoningLoader(new JarSelection(List.of(selected)), true);
     }
 
     List<ReasoningProviderDescriptor> providerDescriptors() {
