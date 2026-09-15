@@ -232,7 +232,7 @@ Optional future standard libraries for ordinary application I/O, MCP, UI, audio,
 
 ## Current development posture
 
-Native Windows/Linux owner deployment, generic reasoning-provider configuration, the SDK/testkit/experimental lifecycle, the independent developer journey, preserved durable text inference, richer text generation and text embeddings are implemented foundations.
+Native Windows/Linux owner deployment, generic Module/reasoning-provider configuration, local Module/reasoning artifact lifecycle, the SDK/testkit/experimental lifecycle, the independent developer journey, preserved durable text inference, richer text generation and text embeddings are implemented foundations.
 
 The active priority is to make MADRE a progressively more complete and low-friction framework for ordinary modular agentic software. Development should start from concrete semantic-programming and owner/developer friction, not from a recently added inference primitive or from a list of fashionable agentic techniques.
 
@@ -242,7 +242,7 @@ Use these rules when selecting the next slice:
 2. **Incubate reusable techniques without inventing domains.** Higher-level helpers may enter `madre-sdk-experimental` when they simplify real semantic code while still producing/consuming the stable object model. A helper, library or inference capability does not become a Module unless an actual application/domain owns its semantics.
 3. **Keep inference evolution independent.** Provider/runtime tuning and new portable computation families continue when concrete experiments require them. They do not become Module architecture merely because they are available.
 4. **Use CORE as evidence, not authority.** CORE/owner interaction is a major UX benchmark and a useful SDK consumer, but current Operation names and interaction wiring do not define universal stable contracts.
-5. **Complete host/developer mechanics from real journeys.** Generic Module configuration, artifact lifecycle/release tooling and related product facilities should be recovered from demonstrated owner/developer needs.
+5. **Complete host/developer mechanics from real journeys.** Release/versioning tooling and related remaining product facilities should be recovered from demonstrated owner/developer needs.
 6. **Promote only proven abstractions.** Stable SDK growth requires repeated use, clear responsibility ownership and evidence that the abstraction does not leak one domain or provider's private semantics.
 
 These are responsibility rules, not a feature checklist. Research on QVAC, AAAAT, OpenWhispr and other external systems remains evidence only unless the Owner explicitly accepts a product direction.
