@@ -55,8 +55,8 @@ jobs:
           $buildLogic = '^(build\.gradle\.kts|settings\.gradle\.kts|gradlew|gradlew\.bat|gradle/|\.github/workflows/build\.yml)($|/)'
           $anySource = '^madre-[^/]+/src/'
           $productionSource = '^madre-[^/]+/src/main/'
-          $sdkSurface = '^(madre-algebra/src/main/|madre-sdk/src/main/|madre-text-inference/src/main/|verification/sdk-consumer/|verification/module-interoperability/)'
-          $reasoningSurface = '^(madre-algebra/src/main/|madre-sdk/src/main/|madre-reasoning-spi/|madre-text-inference/|verification/reasoning-consumer/)'
+          $sdkSurface = '^(madre-algebra/src/main/|madre-sdk/src/main/|madre-text-(inference|generation)/src/main/|madre-embeddings/src/main/|verification/sdk-consumer/|verification/module-interoperability/)'
+          $reasoningSurface = '^(madre-algebra/src/main/|madre-sdk/src/main/|madre-reasoning-spi/|madre-text-(inference|generation)/|madre-embeddings/|verification/reasoning-consumer/)'
           $ownerAcceptance = '^verification/installed-owner-acceptance\.ps1$'
           $interopAcceptance = '^verification/module-interoperability/'
           $verify = $forceFull
