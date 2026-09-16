@@ -2,6 +2,7 @@ package io.github.didacll.madre.kernel.module;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -15,6 +16,7 @@ import io.github.didacll.madre.sdk.identity.OperationId;
 import io.github.didacll.madre.sdk.material.Material;
 import io.github.didacll.madre.sdk.material.MaterialCodecs;
 import io.github.didacll.madre.sdk.material.MaterialType;
+import io.github.didacll.madre.sdk.material.MaterialTypeDefinition;
 import io.github.didacll.madre.sdk.module.ModuleDefinition;
 import io.github.didacll.madre.sdk.module.ModuleInstance;
 import io.github.didacll.madre.sdk.module.OperationBinding;
@@ -24,6 +26,7 @@ import io.github.didacll.madre.sdk.operation.OperationCall;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
 final class LiveModuleRegistryTest {
@@ -32,8 +35,15 @@ final class LiveModuleRegistryTest {
     private static final MaterialType<String> CALLER_TEXT = new MaterialType<>(
             new MaterialTypeId(CALLER, "text"), String.class,
             "text/plain; charset=utf-8", MaterialCodecs.utf8String());
+    private static final MaterialType<String> TARGET_COMMAND = new MaterialType<>(
+            new MaterialTypeId(CALLEE, "target-command"), String.class,
+            "text/plain; charset=utf-8", MaterialCodecs.utf8String());
+    private static final MaterialType<String> TARGET_RESULT = new MaterialType<>(
+            new MaterialTypeId(CALLEE, "target-result"), String.class,
+            "text/plain; charset=utf-8", MaterialCodecs.utf8String());
     private static final OperationDefinition EXPOSED = definition("exposed", Sensitivity.S4);
     private static final OperationDefinition UNEXPOSED = definition("unexposed", Sensitivity.S4);
+    private static final OperationDefinition DYNAMIC = dynamicDefinition("dynamic", Sensitivity.S4);
 
     @Test void moduleBoundaryControlsDiscoveryAndCompositionWithoutChangingOperationOntology() {
         LiveModuleRegistry registry = new LiveModuleRegistry();
@@ -58,6 +68,70 @@ final class LiveModuleRegistryTest {
         OperationCall<String, String> unexposedCall = OperationCall.withoutEffect(UNEXPOSED, input);
         assertThrows(IllegalArgumentException.class,
                 () -> registry.invokerFor(CALLER).invoke(unexposedCall));
+    }
+
+    @Test void structuralDiscoverySupportsExactTargetOwnedContractsWithoutStaticReference() {
+        LiveModuleRegistry registry = new LiveModuleRegistry();
+        AtomicReference<Material<String>> produced = new AtomicReference<>();
+        registry.register(dynamicCallee(Set.of(DYNAMIC.id()), Sensitivity.S4, produced));
+        registry.register(caller());
+
+        var discovered = registry.directoryFor(CALLER).reachableOperations(Sensitivity.S2);
+        assertEquals(1, discovered.size());
+        var reachable = discovered.getFirst();
+        assertEquals(DYNAMIC, reachable.operation());
+        assertEquals(TARGET_COMMAND.definition(),
+                reachable.materialTypes().get(TARGET_COMMAND.id()));
+        assertEquals(TARGET_RESULT.definition(),
+                reachable.materialTypes().get(TARGET_RESULT.id()));
+
+        MaterialType<String> inputType = new MaterialType<>(
+                reachable.materialTypes().get(TARGET_COMMAND.id()), String.class,
+                MaterialCodecs.utf8String());
+        Material<String> input = new Material<>(new MaterialId(CALLER, "dynamic-input"),
+                inputType, "hello", Sensitivity.S2);
+        Material<String> result = registry.invokerFor(CALLER)
+                .invoke(OperationCall.withoutEffect(DYNAMIC, input))
+                .toCompletableFuture().join();
+
+        assertSame(produced.get(), result);
+        assertEquals(CALLEE, result.id().moduleId());
+        assertEquals(TARGET_RESULT.id(), result.type().id());
+        assertEquals("target:hello", result.payload());
+        assertEquals(Sensitivity.S4, result.sensitivity());
+    }
+
+    @Test void targetScopedDynamicContractRejectsForgery() {
+        LiveModuleRegistry registry = new LiveModuleRegistry();
+        registry.register(dynamicCallee(Set.of(DYNAMIC.id()), Sensitivity.S4,
+                new AtomicReference<>()));
+        registry.register(caller());
+        MaterialType<String> forged = new MaterialType<>(
+                new MaterialTypeDefinition(TARGET_COMMAND.id(), "application/json"), String.class,
+                MaterialCodecs.utf8String());
+        Material<String> input = new Material<>(new MaterialId(CALLER, "forged-input"), forged,
+                "hello", Sensitivity.S2);
+        OperationCall<String, String> call = OperationCall.withoutEffect(DYNAMIC, input);
+
+        assertThrows(IllegalArgumentException.class,
+                () -> registry.invokerFor(CALLER).invoke(call));
+    }
+
+    @Test void targetOwnedResultStillEnforcesModuleReceiverBoundary() {
+        LiveModuleRegistry registry = new LiveModuleRegistry();
+        OperationDefinition sensitive = dynamicDefinition("dynamic", Sensitivity.S5);
+        registry.register(dynamicCallee(Set.of(sensitive.id()), Sensitivity.S5,
+                new AtomicReference<>()));
+        registry.register(caller());
+        Material<String> input = new Material<>(new MaterialId(CALLER, "sensitive-input"),
+                new MaterialType<>(TARGET_COMMAND.definition(), String.class,
+                        MaterialCodecs.utf8String()),
+                "hello", Sensitivity.S2);
+
+        assertThrows(java.util.concurrent.CompletionException.class,
+                () -> registry.invokerFor(CALLER)
+                        .invoke(OperationCall.withoutEffect(sensitive, input))
+                        .toCompletableFuture().join());
     }
 
     @Test void callerOwnedNominalContractAcceptsCalleeOwnedConcreteResult() {
@@ -174,6 +248,25 @@ final class LiveModuleRegistryTest {
                         unexposedDefinition.id(), unexposedBinding));
     }
 
+    private static ModuleInstance dynamicCallee(Set<OperationId> exposed,
+            Sensitivity outputSensitivity, AtomicReference<Material<String>> produced) {
+        OperationDefinition dynamic = dynamicDefinition("dynamic", outputSensitivity);
+        Operation<String, String> implementation = Operation.of(call -> {
+            Material<String> output = new Material<>(
+                    new MaterialId(CALLEE, "dynamic-output"), TARGET_RESULT,
+                    "target:" + call.input().payload(), outputSensitivity);
+            produced.set(output);
+            return CompletableFuture.completedFuture(output);
+        });
+        ModuleDefinition definition = new ModuleDefinition(CALLEE, "1", "dynamic callee",
+                Map.of(TARGET_COMMAND.id(), TARGET_COMMAND.definition(),
+                        TARGET_RESULT.id(), TARGET_RESULT.definition()),
+                Set.of(), Map.of(), Map.of(), Map.of(dynamic.id(), dynamic), exposed);
+        return new ModuleInstance(definition,
+                Map.of(TARGET_COMMAND.id(), TARGET_COMMAND, TARGET_RESULT.id(), TARGET_RESULT),
+                Map.of(dynamic.id(), OperationBinding.operation(dynamic, implementation)));
+    }
+
     private static ModuleInstance calleeWithTransformer(
             io.github.didacll.madre.sdk.module.PublicResultTransformer<String> transformer) {
         Operation<String, String> implementation = Operation.of(call ->
@@ -202,5 +295,11 @@ final class LiveModuleRegistryTest {
     private static OperationDefinition definition(String name, Sensitivity output) {
         return new OperationDefinition(new OperationId(CALLEE, name), name,
                 Map.of(CALLER_TEXT.id(), Privacy.MODULE), Map.of(CALLER_TEXT.id(), output), Map.of());
+    }
+
+    private static OperationDefinition dynamicDefinition(String name, Sensitivity output) {
+        return new OperationDefinition(new OperationId(CALLEE, name), "dynamic text contract",
+                Map.of(TARGET_COMMAND.id(), Privacy.MODULE),
+                Map.of(TARGET_RESULT.id(), output), Map.of());
     }
 }
