@@ -47,25 +47,27 @@ final class LiveModuleRegistryTest {
         assertTrue(reachable.getFirst().operations().containsKey(EXPOSED.id()));
         assertTrue(!reachable.getFirst().operations().containsKey(UNEXPOSED.id()));
 
-        Material<String> result = registry.invokerFor(CALLER)
-                .invoke(OperationCall.withoutEffect(EXPOSED, input)).toCompletableFuture().join();
+        OperationCall<String, String> exposedCall = OperationCall.withoutEffect(EXPOSED, input);
+        Material<String> result = registry.invokerFor(CALLER).invoke(exposedCall)
+                .toCompletableFuture().join();
         assertEquals(CALLEE, result.id().moduleId());
         assertEquals(CALLER_TEXT.id(), result.type().id());
         assertEquals("internal:hello", result.payload());
         assertEquals(Sensitivity.S4, result.sensitivity());
 
-        assertThrows(IllegalArgumentException.class, () -> registry.invokerFor(CALLER)
-                .invoke(OperationCall.withoutEffect(UNEXPOSED, input)));
+        OperationCall<String, String> unexposedCall = OperationCall.withoutEffect(UNEXPOSED, input);
+        assertThrows(IllegalArgumentException.class,
+                () -> registry.invokerFor(CALLER).invoke(unexposedCall));
     }
 
     @Test void callerOwnedNominalContractAcceptsCalleeOwnedConcreteResult() {
         LiveModuleRegistry registry = new LiveModuleRegistry();
         registry.register(callee(Set.of(EXPOSED.id()), false));
         registry.register(caller());
+        OperationCall<String, String> call = OperationCall.withoutEffect(EXPOSED,
+                callerMaterial("contract", Sensitivity.S2));
 
-        Material<String> result = registry.invokerFor(CALLER)
-                .invoke(OperationCall.withoutEffect(EXPOSED,
-                        callerMaterial("contract", Sensitivity.S2)))
+        Material<String> result = registry.invokerFor(CALLER).invoke(call)
                 .toCompletableFuture().join();
 
         assertEquals(CALLEE, result.id().moduleId());
@@ -77,11 +79,12 @@ final class LiveModuleRegistryTest {
         LiveModuleRegistry registry = new LiveModuleRegistry();
         registry.register(callee(Set.of(EXPOSED.id()), false, Sensitivity.S5));
         registry.register(caller());
+        OperationDefinition highOutput = definition("exposed", Sensitivity.S5);
+        OperationCall<String, String> call = OperationCall.withoutEffect(highOutput,
+                callerMaterial("secret", Sensitivity.S2));
 
-        assertThrows(java.util.concurrent.CompletionException.class, () -> registry.invokerFor(CALLER)
-                .invoke(OperationCall.withoutEffect(
-                        definition("exposed", Sensitivity.S5), callerMaterial("secret", Sensitivity.S2)))
-                .toCompletableFuture().join());
+        assertThrows(java.util.concurrent.CompletionException.class,
+                () -> registry.invokerFor(CALLER).invoke(call).toCompletableFuture().join());
     }
 
     @Test void externalPublicDisclosureIsIndependentFromModuleExposure() {
@@ -89,9 +92,9 @@ final class LiveModuleRegistryTest {
         registry.register(callee(Set.of(), true));
         Material<String> input = new Material<>(new MaterialId(CALLEE, "host-input"), CALLER_TEXT,
                 "hello", Sensitivity.S2);
+        OperationCall<String, String> call = OperationCall.withoutEffect(EXPOSED, input);
 
-        Material<String> result = registry.invokePublic(
-                OperationCall.withoutEffect(EXPOSED, input)).toCompletableFuture().join();
+        Material<String> result = registry.invokePublic(call).toCompletableFuture().join();
 
         assertEquals("public:hello", result.payload());
         assertEquals(Sensitivity.S1, result.sensitivity());
@@ -120,9 +123,9 @@ final class LiveModuleRegistryTest {
         registry.register(callee(Set.of(), true));
         Material<String> input = new Material<>(new MaterialId(CALLEE, "host-input"), CALLER_TEXT,
                 "hello", Sensitivity.S2);
+        OperationCall<String, String> call = OperationCall.withoutEffect(EXPOSED, input);
 
-        Material<String> result = registry.invokeOwner(
-                OperationCall.withoutEffect(EXPOSED, input)).toCompletableFuture().join();
+        Material<String> result = registry.invokeOwner(call).toCompletableFuture().join();
 
         assertEquals("internal:hello", result.payload());
         assertEquals(Sensitivity.S4, result.sensitivity());
@@ -134,10 +137,11 @@ final class LiveModuleRegistryTest {
         registry.register(caller());
         OperationDefinition forged = new OperationDefinition(EXPOSED.id(), "forged",
                 EXPOSED.acceptedMaterial(), EXPOSED.producedMaterial(), Map.of());
+        OperationCall<String, String> call = OperationCall.withoutEffect(forged,
+                callerMaterial("hello", Sensitivity.S2));
 
-        assertThrows(IllegalArgumentException.class, () -> registry.invokerFor(CALLER)
-                .invoke(OperationCall.withoutEffect(forged,
-                        callerMaterial("hello", Sensitivity.S2))));
+        assertThrows(IllegalArgumentException.class,
+                () -> registry.invokerFor(CALLER).invoke(call));
     }
 
     private static ModuleInstance callee(Set<OperationId> exposed, boolean publicDisclosure) {

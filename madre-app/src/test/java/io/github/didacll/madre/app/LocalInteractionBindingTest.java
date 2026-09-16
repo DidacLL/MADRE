@@ -19,7 +19,6 @@ import io.github.didacll.madre.sdk.module.ModuleDefinition;
 import io.github.didacll.madre.sdk.module.ModuleInstance;
 import io.github.didacll.madre.sdk.module.OperationBinding;
 import io.github.didacll.madre.sdk.module.OperationDefinition;
-import io.github.didacll.madre.sdk.module.OperationVisibility;
 import io.github.didacll.madre.sdk.operation.Operation;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
@@ -87,8 +86,8 @@ final class LocalInteractionBindingTest {
         assertTrue(failure.getMessage().contains("cannot be SYSTEM_RESERVED"));
     }
 
-    @Test void rejectsPrivateOperationThatWasNotExplicitlyBoundForOwnerInteraction() {
-        Properties properties = configuration("plain-private");
+    @Test void rejectsOperationThatWasNotExplicitlyBoundForOwnerInteraction() {
+        Properties properties = configuration("plain");
         IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
                 () -> LocalInteractionBinding.resolve(properties, List.of(instance(false))));
         assertTrue(failure.getMessage().contains("not an owner-interaction entry point"));
@@ -113,7 +112,7 @@ final class LocalInteractionBindingTest {
         OperationId fastId = new OperationId(MODULE, "fast");
         OperationId ambiguousId = new OperationId(MODULE, "ambiguous");
         OperationId updatesId = new OperationId(MODULE, "updates");
-        OperationId plainPrivateId = new OperationId(MODULE, "plain-private");
+        OperationId plainId = new OperationId(MODULE, "plain");
         EffectProfile fastProfile = new EffectProfile(new EffectProfileId(fastId, "write"),
                 Risk.WRITE, Autonomy.AUTONOMOUS);
         EffectProfile first = new EffectProfile(new EffectProfileId(ambiguousId, "first"),
@@ -129,19 +128,19 @@ final class LocalInteractionBindingTest {
                 Map.of(first.id(), first, second.id(), second));
         OperationDefinition updates = operation(updatesId, COLLECT,
                 Map.of(updatesProfile.id(), updatesProfile));
-        OperationDefinition plainPrivate = operation(plainPrivateId, PROMPT, Map.of());
+        OperationDefinition plain = operation(plainId, PROMPT, Map.of());
         Map<OperationId, OperationDefinition> operations = new LinkedHashMap<>();
         operations.put(standardId, standard);
         operations.put(fastId, fast);
         if (ambiguous) operations.put(ambiguousId, ambiguousOperation);
         operations.put(updatesId, updates);
-        operations.put(plainPrivateId, plainPrivate);
+        operations.put(plainId, plain);
         ModuleDefinition definition = new ModuleDefinition(MODULE, "1.0.0", "interaction fixture",
                 Map.of(PROMPT.id(), PROMPT.definition(), COLLECT.id(), COLLECT.definition(),
                         ANSWER.id(), ANSWER.definition()), Set.of(), Map.of(), Map.of(), operations);
         Map<OperationId, OperationBinding<?, ?>> bindings = new LinkedHashMap<>();
         operations.forEach((id, contract) -> bindings.put(id,
-                id.equals(plainPrivateId) ? privateFixtureBinding(contract)
+                id.equals(plainId) ? ordinaryFixtureBinding(contract)
                         : interactionFixtureBinding(contract)));
         return new ModuleInstance(definition,
                 Map.of(PROMPT.id(), PROMPT, COLLECT.id(), COLLECT, ANSWER.id(), ANSWER), bindings);
@@ -152,9 +151,9 @@ final class LocalInteractionBindingTest {
         return OperationBinding.ownerInteractionOperation(contract, fixtureOperation());
     }
 
-    private static OperationBinding<String, String> privateFixtureBinding(
+    private static OperationBinding<String, String> ordinaryFixtureBinding(
             OperationDefinition contract) {
-        return OperationBinding.privateOperation(contract, fixtureOperation());
+        return OperationBinding.operation(contract, fixtureOperation());
     }
 
     private static Operation<String, String> fixtureOperation() {
@@ -164,7 +163,7 @@ final class LocalInteractionBindingTest {
 
     private static OperationDefinition operation(OperationId id,
             MaterialType<String> input, Map<EffectProfileId, EffectProfile> profiles) {
-        return new OperationDefinition(id, "fixture operation", OperationVisibility.PRIVATE,
+        return new OperationDefinition(id, "fixture operation",
                 Map.of(input.id(), Privacy.SECRET), Map.of(ANSWER.id(), Sensitivity.S5), profiles);
     }
 

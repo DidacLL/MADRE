@@ -15,7 +15,6 @@ import io.github.didacll.madre.sdk.material.Material;
 import io.github.didacll.madre.sdk.material.MaterialCodec;
 import io.github.didacll.madre.sdk.material.MaterialType;
 import io.github.didacll.madre.sdk.module.OperationDefinition;
-import io.github.didacll.madre.sdk.module.OperationVisibility;
 import io.github.didacll.madre.sdk.operation.OperationCall;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -66,8 +65,7 @@ final class TestReasoningRequests {
                 "fixture", sensitivity);
         OperationDefinition operation = new OperationDefinition(
                 new OperationId(MODULE, "operation-" + suffix), "Fixture reasoning",
-                OperationVisibility.PRIVATE, Map.of(inputType.id(), Privacy.SECRET),
-                Map.of(), Map.of());
+                Map.of(inputType.id(), Privacy.SECRET), Map.of(), Map.of());
         return OperationCall.withoutEffect(operation, input);
     }
 }
