@@ -7,7 +7,7 @@ import io.github.didacll.madre.sdk.module.OperationDefinition;
 import java.util.Map;
 import java.util.Objects;
 
-/** Public Module behavior reachable for one exact directory query. */
+/** Module-exposed behavior reachable for one exact directory query. */
 public record ReachableModule(ModuleId id, String version, String purpose,
         Map<AgentId, ReachableAgent> agents, Map<OperationId, OperationDefinition> operations) {
     public ReachableModule {

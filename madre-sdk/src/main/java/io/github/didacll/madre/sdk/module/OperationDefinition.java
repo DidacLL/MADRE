@@ -13,12 +13,9 @@ import java.util.Objects;
  *
  * <p>An Operation exists so one piece of Module execution can participate in MADRE's ordinary
  * typed, modular and Security-Algebra-aware arbitration. The Module still owns the implementation
- * and meaning of the execution. Exposure, presentation, reasoning use/locality and transport are
- * orthogonal concerns; none of them defines whether something is an Operation.</p>
- *
- * <p>{@link OperationVisibility} is the current 0.x installed-runtime exposure marker. It is not
- * an information-classification field and must not be used to infer Material Sensitivity,
- * reasoning-mechanism Privacy, external disclosure semantics or owner interaction.</p>
+ * and meaning of the execution. Cross-Module exposure, owner/product entry, external/public
+ * disclosure, presentation, reasoning use/locality and transport are orthogonal concerns; none of
+ * them is intrinsic Operation ontology.</p>
  *
  * <p>This value is deliberately language-neutral and structural: independently decoded/adapted
  * contracts with the same canonical facts represent the same Operation. Java payload typing lives
@@ -28,12 +25,11 @@ import java.util.Objects;
 public final class OperationDefinition {
     private final OperationId id;
     private final String purpose;
-    private final OperationVisibility visibility;
     private final Map<MaterialTypeId, Privacy> acceptedMaterial;
     private final Map<MaterialTypeId, Sensitivity> producedMaterial;
     private final Map<EffectProfileId, EffectProfile> effectProfiles;
 
-    public OperationDefinition(OperationId id, String purpose, OperationVisibility visibility,
+    public OperationDefinition(OperationId id, String purpose,
             Map<MaterialTypeId, Privacy> acceptedMaterial,
             Map<MaterialTypeId, Sensitivity> producedMaterial,
             Map<EffectProfileId, EffectProfile> effectProfiles) {
@@ -42,7 +38,6 @@ public final class OperationDefinition {
             throw new IllegalArgumentException("purpose must not be blank");
         }
         this.purpose = purpose.strip();
-        this.visibility = Objects.requireNonNull(visibility, "visibility");
         this.acceptedMaterial = Map.copyOf(acceptedMaterial);
         this.producedMaterial = Map.copyOf(producedMaterial);
         this.effectProfiles = Map.copyOf(effectProfiles);
@@ -67,7 +62,6 @@ public final class OperationDefinition {
 
     public OperationId id() { return id; }
     public String purpose() { return purpose; }
-    public OperationVisibility visibility() { return visibility; }
     public Map<MaterialTypeId, Privacy> acceptedMaterial() { return acceptedMaterial; }
     public Map<MaterialTypeId, Sensitivity> producedMaterial() { return producedMaterial; }
     public Map<EffectProfileId, EffectProfile> effectProfiles() { return effectProfiles; }
@@ -77,15 +71,13 @@ public final class OperationDefinition {
         if (!(other instanceof OperationDefinition that)) return false;
         return id.equals(that.id)
                 && purpose.equals(that.purpose)
-                && visibility == that.visibility
                 && acceptedMaterial.equals(that.acceptedMaterial)
                 && producedMaterial.equals(that.producedMaterial)
                 && effectProfiles.equals(that.effectProfiles);
     }
 
     @Override public int hashCode() {
-        return Objects.hash(id, purpose, visibility, acceptedMaterial, producedMaterial,
-                effectProfiles);
+        return Objects.hash(id, purpose, acceptedMaterial, producedMaterial, effectProfiles);
     }
 
     @Override public String toString() {

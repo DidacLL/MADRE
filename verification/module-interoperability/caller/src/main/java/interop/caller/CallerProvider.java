@@ -14,7 +14,6 @@ import io.github.didacll.madre.sdk.material.MaterialType;
 import io.github.didacll.madre.sdk.module.Module;
 import io.github.didacll.madre.sdk.module.OperationBinding;
 import io.github.didacll.madre.sdk.module.OperationDefinition;
-import io.github.didacll.madre.sdk.module.OperationVisibility;
 import io.github.didacll.madre.sdk.operation.Operation;
 import io.github.didacll.madre.sdk.operation.OperationCall;
 import io.github.didacll.madre.sdk.registration.ModuleContext;
@@ -52,23 +51,23 @@ public final class CallerProvider implements ModuleProvider {
         private final OperationBinding<String, String> compose;
         private final OperationBinding<String, String> probeTooSensitive;
         private final OperationBinding<String, String> probeUndeclared;
-        private final OperationBinding<String, String> probePrivate;
+        private final OperationBinding<String, String> probeInternal;
 
         private CallerModule(ModuleContext context) {
             OperationDefinition composeContract = operation("compose", Sensitivity.S4);
             OperationDefinition tooSensitiveContract = operation("probe-too-sensitive", Sensitivity.S2);
             OperationDefinition undeclaredContract = operation("probe-undeclared", Sensitivity.S2);
-            OperationDefinition privateContract = operation("probe-private", Sensitivity.S1);
-            compose = OperationBinding.publicOperation(composeContract, compose(context),
+            OperationDefinition internalContract = operation("probe-internal", Sensitivity.S1);
+            compose = OperationBinding.publicDisclosure(composeContract, compose(context),
                     CallerProvider::publicResult);
-            probeTooSensitive = OperationBinding.publicOperation(tooSensitiveContract,
+            probeTooSensitive = OperationBinding.publicDisclosure(tooSensitiveContract,
                     blockedProbe(context, "too-sensitive", "blocked:too-sensitive"),
                     CallerProvider::publicResult);
-            probeUndeclared = OperationBinding.publicOperation(undeclaredContract,
+            probeUndeclared = OperationBinding.publicDisclosure(undeclaredContract,
                     blockedProbe(context, "undeclared-result", "blocked:undeclared-type"),
                     CallerProvider::publicResult);
-            probePrivate = OperationBinding.publicOperation(privateContract,
-                    privateProbe(context), CallerProvider::publicResult);
+            probeInternal = OperationBinding.publicDisclosure(internalContract,
+                    internalProbe(context), CallerProvider::publicResult);
         }
 
         @Override public ModuleId id() { return ID; }
@@ -81,14 +80,13 @@ public final class CallerProvider implements ModuleProvider {
             return Set.of(CALLEE_RESULT);
         }
         @Override public Collection<? extends OperationBinding<?, ?>> operations() {
-            return List.of(compose, probeTooSensitive, probeUndeclared, probePrivate);
+            return List.of(compose, probeTooSensitive, probeUndeclared, probeInternal);
         }
     }
 
     private static OperationDefinition operation(String name, Sensitivity maximum) {
         return new OperationDefinition(new OperationId(ID, name), name,
-                OperationVisibility.PUBLIC, Map.of(REQUEST.id(), Privacy.MODULE),
-                Map.of(ADAPTED.id(), maximum), Map.of());
+                Map.of(REQUEST.id(), Privacy.MODULE), Map.of(ADAPTED.id(), maximum), Map.of());
     }
 
     private static Operation<String, String> compose(ModuleContext context) {
@@ -123,15 +121,15 @@ public final class CallerProvider implements ModuleProvider {
         });
     }
 
-    private static Operation<String, String> privateProbe(ModuleContext context) {
+    private static Operation<String, String> internalProbe(ModuleContext context) {
         return Operation.of(call -> {
-            OperationId privateId = new OperationId(CALLEE, "private-sensitive");
+            OperationId internalId = new OperationId(CALLEE, "internal-sensitive");
             boolean reachable = context.directory().reachable(
                             new ReachabilityQuery(call.input().type().id(), call.input().sensitivity())).stream()
                     .filter(module -> module.id().equals(CALLEE))
-                    .anyMatch(module -> module.operations().containsKey(privateId));
+                    .anyMatch(module -> module.operations().containsKey(internalId));
             return CompletableFuture.completedFuture(
-                    own("privateReachable=" + reachable, Sensitivity.S1));
+                    own("internalReachable=" + reachable, Sensitivity.S1));
         });
     }
 

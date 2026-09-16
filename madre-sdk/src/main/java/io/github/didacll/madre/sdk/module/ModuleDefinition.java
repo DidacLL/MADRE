@@ -24,6 +24,7 @@ public final class ModuleDefinition {
     private final Map<AgentId, AgentDefinition> agents;
     private final Map<SkillId, SkillDefinition> skills;
     private final Map<OperationId, OperationDefinition> operations;
+    private final Set<OperationId> exposedOperations;
 
     public ModuleDefinition(ModuleId id, String version, String purpose,
             Map<MaterialTypeId, MaterialTypeDefinition> materialTypes,
@@ -31,6 +32,17 @@ public final class ModuleDefinition {
             Map<AgentId, AgentDefinition> agents,
             Map<SkillId, SkillDefinition> skills,
             Map<OperationId, OperationDefinition> operations) {
+        this(id, version, purpose, materialTypes, publicMaterialReferences, agents, skills,
+                operations, Set.of());
+    }
+
+    public ModuleDefinition(ModuleId id, String version, String purpose,
+            Map<MaterialTypeId, MaterialTypeDefinition> materialTypes,
+            Set<MaterialTypeId> publicMaterialReferences,
+            Map<AgentId, AgentDefinition> agents,
+            Map<SkillId, SkillDefinition> skills,
+            Map<OperationId, OperationDefinition> operations,
+            Set<OperationId> exposedOperations) {
         this.id = Objects.requireNonNull(id, "id");
         this.version = requireText(version, "version");
         this.purpose = requireText(purpose, "purpose");
@@ -39,6 +51,7 @@ public final class ModuleDefinition {
         this.agents = Map.copyOf(agents);
         this.skills = Map.copyOf(skills);
         this.operations = Map.copyOf(operations);
+        this.exposedOperations = Set.copyOf(exposedOperations);
         validateCanonicalKeys();
         validateOwnership();
         validateReferences();
@@ -72,14 +85,18 @@ public final class ModuleDefinition {
             throw new IllegalArgumentException(
                     "a public Material reference cannot duplicate an owned declaration");
         }
+        if (!operations.keySet().containsAll(exposedOperations)) {
+            throw new IllegalArgumentException(
+                    "Module exposure may reference only Operations owned by this Module");
+        }
     }
 
     private void validateReferences() {
         for (OperationDefinition operation : operations.values()) {
             if (!operation.acceptedMaterial().keySet().stream()
-                    .allMatch(type -> materialTypes.containsKey(type)
-                            || publicMaterialReferences.contains(type))
-                    || !materialTypes.keySet().containsAll(operation.producedMaterial().keySet())) {
+                    .allMatch(this::resolvesMaterialType)
+                    || !operation.producedMaterial().keySet().stream()
+                            .allMatch(this::resolvesMaterialType)) {
                 throw new IllegalArgumentException(
                         "Operation contains an unresolved Material type reference: " + operation.id());
             }
@@ -101,6 +118,10 @@ public final class ModuleDefinition {
         }
     }
 
+    private boolean resolvesMaterialType(MaterialTypeId type) {
+        return materialTypes.containsKey(type) || publicMaterialReferences.contains(type);
+    }
+
     public ModuleId id() { return id; }
     public String version() { return version; }
     public String purpose() { return purpose; }
@@ -109,19 +130,28 @@ public final class ModuleDefinition {
     public Map<AgentId, AgentDefinition> agents() { return agents; }
     public Map<SkillId, SkillDefinition> skills() { return skills; }
     public Map<OperationId, OperationDefinition> operations() { return operations; }
+    public Set<OperationId> exposedOperations() { return exposedOperations; }
 
-    /** Derives exact current sensitivity from reachable Material and public promised outputs. */
+    /** Derives exact current sensitivity from owned reachable Material and exposed output promises. */
     public Optional<Sensitivity> effectiveSensitivity(
             Collection<? extends Material<?>> reachableMaterial) {
-        Optional<Sensitivity> value = operations.values().stream()
-                .filter(operation -> operation.visibility() == OperationVisibility.PUBLIC)
+        Optional<Sensitivity> value = exposedOperations.stream()
+                .map(operations::get)
                 .flatMap(operation -> operation.producedMaterial().values().stream())
                 .reduce(Sensitivity::combine);
         for (Material<?> material : reachableMaterial) {
+            if (!material.id().moduleId().equals(id)) {
+                throw new IllegalArgumentException("reachable Material value must belong to this Module");
+            }
             MaterialTypeDefinition declared = materialTypes.get(material.type().id());
-            if (!material.id().moduleId().equals(id) || declared == null
-                    || !declared.equals(material.type().definition())) {
-                throw new IllegalArgumentException("reachable Material must belong to this Module");
+            if (declared != null) {
+                if (!declared.equals(material.type().definition())) {
+                    throw new IllegalArgumentException(
+                            "reachable Material does not match its owned nominal contract");
+                }
+            } else if (!publicMaterialReferences.contains(material.type().id())) {
+                throw new IllegalArgumentException(
+                        "reachable Material uses an undeclared foreign nominal contract");
             }
             value = Optional.of(value.map(current -> current.combine(material.sensitivity()))
                     .orElse(material.sensitivity()));

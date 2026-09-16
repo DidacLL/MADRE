@@ -16,7 +16,6 @@ import io.github.didacll.madre.sdk.material.MaterialType;
 import io.github.didacll.madre.sdk.module.Module;
 import io.github.didacll.madre.sdk.module.OperationBinding;
 import io.github.didacll.madre.sdk.module.OperationDefinition;
-import io.github.didacll.madre.sdk.module.OperationVisibility;
 import io.github.didacll.madre.sdk.operation.Operation;
 import io.github.didacll.madre.text.TextInferenceCommand;
 import java.time.Duration;
@@ -57,9 +56,9 @@ public final class IndependentDefinition implements Module {
             return reasoning.execute(request).thenApply(result -> material(RESULT,
                     "private:reasoned:" + prefix + result.text(), Sensitivity.S4));
         });
-        inspect = OperationBinding.publicOperation(INSPECT_OPERATION, inspectBehavior,
+        inspect = OperationBinding.publicDisclosure(INSPECT_OPERATION, inspectBehavior,
                 IndependentDefinition::publicResult);
-        reason = OperationBinding.publicOperation(REASON_OPERATION, reasonBehavior,
+        reason = OperationBinding.publicDisclosure(REASON_OPERATION, reasonBehavior,
                 IndependentDefinition::publicResult);
     }
 
@@ -80,7 +79,7 @@ public final class IndependentDefinition implements Module {
     }
 
     private static OperationDefinition operation(OperationId id, String description) {
-        return new OperationDefinition(id, description, OperationVisibility.PUBLIC,
+        return new OperationDefinition(id, description,
                 Map.of(REQUEST.id(), Privacy.SECRET), Map.of(RESULT.id(), Sensitivity.S4), Map.of());
     }
 

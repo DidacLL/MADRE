@@ -26,7 +26,6 @@ import io.github.didacll.madre.sdk.module.EffectProfile;
 import io.github.didacll.madre.sdk.module.Module;
 import io.github.didacll.madre.sdk.module.OperationBinding;
 import io.github.didacll.madre.sdk.module.OperationDefinition;
-import io.github.didacll.madre.sdk.module.OperationVisibility;
 import io.github.didacll.madre.sdk.module.SkillDefinition;
 import io.github.didacll.madre.sdk.module.StatefulAgent;
 import io.github.didacll.madre.sdk.module.WorkflowDefinition;
@@ -81,19 +80,18 @@ public final class OwnerInteractionModule implements Module {
     private static final OperationDefinition STANDARD_OPERATION =
             new OperationDefinition(STANDARD_PROMPT,
                     "Produce one interpreted response and retain bounded Agent conversation state",
-                    OperationVisibility.PRIVATE, Map.of(OWNER_PROMPT.id(), Privacy.SECRET),
+                    Map.of(OWNER_PROMPT.id(), Privacy.SECRET),
                     Map.of(IMMEDIATE_ANSWER.id(), Sensitivity.S5),
                     Map.of(STANDARD_PROFILE.id(), STANDARD_PROFILE));
     private static final OperationDefinition FAST_OPERATION =
             new OperationDefinition(FAST_LANE,
                     "Return a foreground response and persist independently continuing background reasoning",
-                    OperationVisibility.PRIVATE, Map.of(OWNER_PROMPT.id(), Privacy.SECRET),
+                    Map.of(OWNER_PROMPT.id(), Privacy.SECRET),
                     Map.of(IMMEDIATE_ANSWER.id(), Sensitivity.S5),
                     Map.of(FAST_PROFILE.id(), FAST_PROFILE));
     private static final OperationDefinition COLLECT_OPERATION =
             new OperationDefinition(COLLECT_BACKGROUND,
                     "Interpret completed durable reasoning, acknowledge it, and return Module updates",
-                    OperationVisibility.PRIVATE,
                     Map.of(BACKGROUND_COLLECTION_REQUEST.id(), Privacy.SECRET),
                     Map.of(BACKGROUND_UPDATES.id(), Sensitivity.S5),
                     Map.of(COLLECT_PROFILE.id(), COLLECT_PROFILE));

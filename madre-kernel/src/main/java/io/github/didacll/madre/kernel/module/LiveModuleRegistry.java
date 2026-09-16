@@ -9,12 +9,12 @@ import io.github.didacll.madre.sdk.identity.AgentId;
 import io.github.didacll.madre.sdk.identity.ModuleId;
 import io.github.didacll.madre.sdk.identity.OperationId;
 import io.github.didacll.madre.sdk.material.Material;
+import io.github.didacll.madre.sdk.material.MaterialTypeDefinition;
 import io.github.didacll.madre.sdk.module.AgentDefinition;
 import io.github.didacll.madre.sdk.module.ModuleDefinition;
 import io.github.didacll.madre.sdk.module.ModuleInstance;
 import io.github.didacll.madre.sdk.module.OperationBinding;
 import io.github.didacll.madre.sdk.module.OperationDefinition;
-import io.github.didacll.madre.sdk.module.OperationVisibility;
 import io.github.didacll.madre.sdk.operation.ModuleInvoker;
 import io.github.didacll.madre.sdk.operation.OperationCall;
 import io.github.didacll.madre.sdk.operation.OwnerInteractionInvoker;
@@ -103,7 +103,7 @@ public final class LiveModuleRegistry implements ModuleRegistration, PublicModul
                     Map<OperationId, OperationDefinition> operations = new HashMap<>();
                     module.operations().forEach((id, operation) -> {
                         Privacy privacy = operation.acceptedMaterial().get(query.materialType());
-                        if (operation.visibility() == OperationVisibility.PUBLIC && privacy != null
+                        if (module.exposedOperations().contains(id) && privacy != null
                                 && query.sensitivity().canReach(privacy)) {
                             operations.put(id, operation);
                         }
@@ -134,21 +134,24 @@ public final class LiveModuleRegistry implements ModuleRegistration, PublicModul
         return invokePublicExact(binding, requested);
     }
 
-    /** Transitional expert/debug path: owner-local invocation still requires PUBLIC exposure. */
+    /** Expert/debug host entry; Module exposure and external/public disclosure are separate. */
     @Override public <I, O> CompletionStage<Material<O>> invokeOwner(OperationCall<I, O> call) {
         OperationCall<I, O> requested = Objects.requireNonNull(call, "call");
         OperationBinding<?, ?> binding = exactBinding(requested);
-        if (binding.definition().visibility() != OperationVisibility.PUBLIC) {
-            throw new IllegalArgumentException("Operation is not owner-callable: "
-                    + requested.operation().id());
-        }
         return invokeOwnerExact(binding, requested);
     }
 
-    /** Host-only selected interaction entry; PRIVATE access is explicit per executable binding. */
+    /** Host-only selected interaction entry through the ordinary Module assigned CORE. */
     @Override public <I, O> CompletionStage<Material<O>> invokeOwnerInteraction(
             OperationCall<I, O> call) {
         OperationCall<I, O> requested = Objects.requireNonNull(call, "call");
+        ModuleId selectedCore = configuredCore.orElseThrow(() ->
+                new IllegalStateException("no Module is assigned the CORE role"));
+        if (!selectedCore.equals(requested.operation().id().moduleId())
+                || !entries.containsKey(selectedCore)) {
+            throw new IllegalArgumentException(
+                    "owner interaction must target the installed Module assigned CORE");
+        }
         OperationBinding<?, ?> binding = exactBinding(requested);
         if (!binding.ownerInteractionEntryPoint()) {
             throw new IllegalArgumentException("Operation is not an owner-interaction entry point: "
@@ -166,8 +169,9 @@ public final class LiveModuleRegistry implements ModuleRegistration, PublicModul
                     "input Material is not structurally reachable from calling Module " + callerId);
         }
         OperationBinding<?, ?> binding = exactBinding(requested);
-        if (binding.definition().visibility() != OperationVisibility.PUBLIC) {
-            throw new IllegalArgumentException("Operation is not Module-callable: "
+        ModuleDefinition callee = entries.get(requested.operation().id().moduleId()).definition();
+        if (!callee.exposedOperations().contains(requested.operation().id())) {
+            throw new IllegalArgumentException("Operation is not exposed by its Module: "
                     + requested.operation().id());
         }
         return invokeModuleExact(binding, requested).thenApply(result -> receive(caller, result));
@@ -195,20 +199,24 @@ public final class LiveModuleRegistry implements ModuleRegistration, PublicModul
         if (!material.id().moduleId().equals(caller.id())) {
             return false;
         }
-        if (caller.materialTypes().containsKey(material.type().id())) {
-            return material.type().id().moduleId().equals(caller.id());
+        MaterialTypeDefinition local = caller.materialTypes().get(material.type().id());
+        if (local != null) {
+            return local.equals(material.type().definition());
         }
         return caller.publicMaterialReferences().contains(material.type().id())
                 && material.sensitivity().canReach(Privacy.MODULE);
     }
 
     private static <O> Material<O> receive(ModuleDefinition caller, Material<O> result) {
-        if (!caller.publicMaterialReferences().contains(result.type().id())) {
-            throw new IllegalStateException("calling Module does not declare foreign Material type "
+        MaterialTypeDefinition local = caller.materialTypes().get(result.type().id());
+        if (local != null) {
+            if (!local.equals(result.type().definition())) {
+                throw new IllegalStateException(
+                        "received Material does not match the caller-owned nominal contract");
+            }
+        } else if (!caller.publicMaterialReferences().contains(result.type().id())) {
+            throw new IllegalStateException("calling Module does not declare Material type "
                     + result.type().id());
-        }
-        if (!result.id().moduleId().equals(result.type().id().moduleId())) {
-            throw new IllegalStateException("foreign Material identity does not match its owner");
         }
         if (!result.sensitivity().canReach(Privacy.MODULE)) {
             throw new IllegalStateException("foreign Material Sensitivity cannot reach the "

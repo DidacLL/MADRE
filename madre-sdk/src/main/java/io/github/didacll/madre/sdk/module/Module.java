@@ -33,6 +33,12 @@ public interface Module {
     default Collection<? extends Agent> agents() { return Set.of(); }
 
     /**
+     * Operation identities this Module intentionally exposes to other installed Modules. Exposure
+     * is a Module-interface fact; it does not alter Operation ontology or Material Privacy.
+     */
+    default Set<OperationId> exposedOperations() { return Set.of(); }
+
+    /**
      * Module-provided semantic Skills. By default this is the canonical union advertised by its
      * Agents; a Module may override when it deliberately exposes reusable Skills not currently
      * attached to an Agent.
@@ -93,7 +99,8 @@ public interface Module {
 
         return new ModuleDefinition(id(), version(), purpose(), materialDefinitions,
                 Set.copyOf(new LinkedHashSet<>(publicMaterialReferences())), agentDefinitions,
-                skillDefinitions, operationDefinitions);
+                skillDefinitions, operationDefinitions,
+                Set.copyOf(new LinkedHashSet<>(exposedOperations())));
     }
 
     /** Produces the validated runtime assembly registered by MADRE. */

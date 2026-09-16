@@ -18,7 +18,6 @@ import io.github.didacll.madre.sdk.material.MaterialType;
 import io.github.didacll.madre.sdk.module.ModuleDefinition;
 import io.github.didacll.madre.sdk.module.OperationBinding;
 import io.github.didacll.madre.sdk.module.OperationDefinition;
-import io.github.didacll.madre.sdk.module.OperationVisibility;
 import io.github.didacll.madre.sdk.operation.Operation;
 import io.github.didacll.madre.sdk.operation.OperationCall;
 import java.nio.charset.StandardCharsets;
@@ -49,7 +48,7 @@ final class AuthoringConvenienceTest {
 
     @Test
     void functionalOperationStillUsesNormalOutputValidation() {
-        OperationDefinition definition = operationDefinition(OperationVisibility.PRIVATE);
+        OperationDefinition definition = operationDefinition();
         Material<String> input = new Material<>(new MaterialId(OWNER, "input"), TEXT,
                 "hello", Sensitivity.S2);
         OperationCall<String, String> call = OperationCall.withoutEffect(definition, input);
@@ -64,14 +63,14 @@ final class AuthoringConvenienceTest {
     }
 
     @Test
-    void publicBindingStillRequiresExplicitSemanticTransformation() {
-        OperationDefinition definition = operationDefinition(OperationVisibility.PUBLIC);
+    void publicDisclosureBindingStillRequiresExplicitSemanticTransformation() {
+        OperationDefinition definition = operationDefinition();
         Operation<String, String> implementation = Operation.of(call ->
                 CompletableFuture.completedFuture(new Material<>(
                         new MaterialId(OWNER, "output"), TEXT, "result", Sensitivity.S2)));
 
         assertThrows(NullPointerException.class,
-                () -> OperationBinding.publicOperation(definition, implementation, null));
+                () -> OperationBinding.publicDisclosure(definition, implementation, null));
     }
 
     @Test
@@ -91,9 +90,8 @@ final class AuthoringConvenienceTest {
                 Map.of(alias, TEXT.definition()), Set.of(), Map.of(), Map.of(), Map.of()));
     }
 
-    private static OperationDefinition operationDefinition(OperationVisibility visibility) {
+    private static OperationDefinition operationDefinition() {
         return new OperationDefinition(new OperationId(OWNER, "run"), "Run authoring test",
-                visibility, Map.of(TEXT.id(), Privacy.LOCAL),
-                Map.of(TEXT.id(), Sensitivity.S3), Map.of());
+                Map.of(TEXT.id(), Privacy.LOCAL), Map.of(TEXT.id(), Sensitivity.S3), Map.of());
     }
 }

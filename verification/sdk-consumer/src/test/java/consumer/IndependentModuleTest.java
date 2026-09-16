@@ -21,7 +21,6 @@ import io.github.didacll.madre.sdk.identity.MaterialId;
 import io.github.didacll.madre.sdk.identity.OperationId;
 import io.github.didacll.madre.sdk.material.Material;
 import io.github.didacll.madre.sdk.module.OperationDefinition;
-import io.github.didacll.madre.sdk.module.OperationVisibility;
 import io.github.didacll.madre.sdk.operation.OperationCall;
 import io.github.didacll.madre.sdk.registration.ModuleProviderConfiguration;
 import io.github.didacll.madre.sdk.testkit.ModuleTestContext;
@@ -129,7 +128,7 @@ final class IndependentModuleTest {
 
     private static OperationDefinition testReasoningOperation(String name) {
         return new OperationDefinition(new OperationId(IndependentDefinition.ID, name),
-                "Test-only reasoning origin", OperationVisibility.PRIVATE,
+                "Test-only reasoning origin",
                 Map.of(IndependentDefinition.REQUEST.id(), Privacy.SECRET),
                 Map.of(IndependentDefinition.RESULT.id(), Sensitivity.S4), Map.of());
     }

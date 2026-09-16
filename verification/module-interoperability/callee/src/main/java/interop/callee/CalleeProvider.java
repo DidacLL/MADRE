@@ -12,7 +12,6 @@ import io.github.didacll.madre.sdk.material.MaterialType;
 import io.github.didacll.madre.sdk.module.Module;
 import io.github.didacll.madre.sdk.module.OperationBinding;
 import io.github.didacll.madre.sdk.module.OperationDefinition;
-import io.github.didacll.madre.sdk.module.OperationVisibility;
 import io.github.didacll.madre.sdk.operation.Operation;
 import io.github.didacll.madre.sdk.registration.ModuleContext;
 import io.github.didacll.madre.sdk.registration.ModuleProvider;
@@ -48,7 +47,7 @@ public final class CalleeProvider implements ModuleProvider {
         private final OperationBinding<String, String> sensitive;
         private final OperationBinding<String, String> tooSensitive;
         private final OperationBinding<String, String> undeclared;
-        private final OperationBinding<String, String> privateSensitive;
+        private final OperationBinding<String, String> internalSensitive;
 
         private CalleeModule() {
             OperationDefinition sensitiveContract = operation(
@@ -57,20 +56,19 @@ public final class CalleeProvider implements ModuleProvider {
                     "too-sensitive", Sensitivity.S5, RESULT, false);
             OperationDefinition undeclaredContract = operation(
                     "undeclared-result", Sensitivity.S2, OTHER_RESULT, false);
-            OperationDefinition privateContract = new OperationDefinition(
-                    new OperationId(ID, "private-sensitive"), "Private sensitive behavior",
-                    OperationVisibility.PRIVATE,
+            OperationDefinition internalContract = new OperationDefinition(
+                    new OperationId(ID, "internal-sensitive"), "Unexposed sensitive behavior",
                     Map.of(REQUEST.id(), Privacy.MODULE, CALLER_REQUEST, Privacy.MODULE),
                     Map.of(RESULT.id(), Sensitivity.S4), Map.of());
 
-            sensitive = OperationBinding.publicOperation(sensitiveContract,
+            sensitive = OperationBinding.publicDisclosure(sensitiveContract,
                     behavior(RESULT, Sensitivity.S4, "classified:"), CalleeProvider::publicResult);
-            tooSensitive = OperationBinding.publicOperation(tooSensitiveContract,
+            tooSensitive = OperationBinding.publicDisclosure(tooSensitiveContract,
                     behavior(RESULT, Sensitivity.S5, "too-sensitive:"), CalleeProvider::publicResult);
-            undeclared = OperationBinding.publicOperation(undeclaredContract,
+            undeclared = OperationBinding.publicDisclosure(undeclaredContract,
                     behavior(OTHER_RESULT, Sensitivity.S2, "undeclared:"), CalleeProvider::publicResult);
-            privateSensitive = OperationBinding.privateOperation(privateContract,
-                    behavior(RESULT, Sensitivity.S4, "private:"));
+            internalSensitive = OperationBinding.operation(internalContract,
+                    behavior(RESULT, Sensitivity.S4, "internal:"));
         }
 
         @Override public ModuleId id() { return ID; }
@@ -82,8 +80,12 @@ public final class CalleeProvider implements ModuleProvider {
         @Override public Set<MaterialTypeId> publicMaterialReferences() {
             return Set.of(CALLER_REQUEST);
         }
+        @Override public Set<OperationId> exposedOperations() {
+            return Set.of(sensitive.definition().id(), tooSensitive.definition().id(),
+                    undeclared.definition().id());
+        }
         @Override public Collection<? extends OperationBinding<?, ?>> operations() {
-            return List.of(sensitive, tooSensitive, undeclared, privateSensitive);
+            return List.of(sensitive, tooSensitive, undeclared, internalSensitive);
         }
     }
 
@@ -93,7 +95,7 @@ public final class CalleeProvider implements ModuleProvider {
                 ? Map.of(REQUEST.id(), Privacy.MODULE, CALLER_REQUEST, Privacy.MODULE)
                 : Map.of(CALLER_REQUEST, Privacy.MODULE);
         return new OperationDefinition(new OperationId(ID, name), name,
-                OperationVisibility.PUBLIC, accepted, Map.of(output.id(), sensitivity), Map.of());
+                accepted, Map.of(output.id(), sensitivity), Map.of());
     }
 
     private static Operation<String, String> behavior(MaterialType<String> output,

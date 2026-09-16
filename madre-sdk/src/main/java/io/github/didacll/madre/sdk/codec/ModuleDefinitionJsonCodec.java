@@ -22,7 +22,6 @@ import io.github.didacll.madre.sdk.module.AgentDefinition;
 import io.github.didacll.madre.sdk.module.EffectProfile;
 import io.github.didacll.madre.sdk.module.ModuleDefinition;
 import io.github.didacll.madre.sdk.module.OperationDefinition;
-import io.github.didacll.madre.sdk.module.OperationVisibility;
 import io.github.didacll.madre.sdk.module.SkillDefinition;
 import io.github.didacll.madre.sdk.module.WorkflowDefinition;
 import java.util.ArrayList;
@@ -34,9 +33,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-/** Explicit version-two JSON mapping for language-neutral Module declarations. */
+/** Explicit version-three JSON mapping for language-neutral Module declarations. */
 public final class ModuleDefinitionJsonCodec {
-    private static final int FORMAT_VERSION = 2;
+    private static final int FORMAT_VERSION = 3;
     private final ObjectMapper mapper = new ObjectMapper();
 
     public String encode(ModuleDefinition definition) {
@@ -58,6 +57,9 @@ public final class ModuleDefinitionJsonCodec {
         definition.publicMaterialReferences().stream()
                 .sorted(java.util.Comparator.comparing(ModuleDefinitionJsonCodec::qualified))
                 .forEach(id -> references.add(qualified(id)));
+        ArrayNode exposed = root.putArray("exposedOperations");
+        definition.exposedOperations().stream().map(OperationId::name).sorted()
+                .forEach(exposed::add);
         ArrayNode skills = root.putArray("skills");
         definition.skills().values().stream()
                 .sorted(java.util.Comparator.comparing(skill -> skill.id().name()))
@@ -95,7 +97,6 @@ public final class ModuleDefinitionJsonCodec {
                     ObjectNode node = operations.addObject();
                     node.put("name", operation.id().name());
                     node.put("purpose", operation.purpose());
-                    node.put("visibility", operation.visibility().name());
                     writePrivacyMap(node.putArray("acceptedMaterial"), operation.acceptedMaterial());
                     writeSensitivityMap(node.putArray("producedMaterial"), operation.producedMaterial());
                     ArrayNode effectIds = node.putArray("effectProfiles");
@@ -138,8 +139,8 @@ public final class ModuleDefinitionJsonCodec {
             JsonNode parsed = mapper.readTree(json);
             ObjectNode root = object(parsed, "root");
             exactFields(root, Set.of("formatVersion", "module", "version", "purpose",
-                    "materialTypes", "publicMaterialReferences", "skills", "effectProfiles",
-                    "operations", "agents"));
+                    "materialTypes", "publicMaterialReferences", "exposedOperations", "skills",
+                    "effectProfiles", "operations", "agents"));
             if (requiredInt(root, "formatVersion") != FORMAT_VERSION) {
                 throw new CodecException("unsupported formatVersion");
             }
@@ -149,13 +150,17 @@ public final class ModuleDefinitionJsonCodec {
             for (JsonNode node : requiredArray(root, "publicMaterialReferences")) {
                 references.add(parseMaterialTypeId(requiredTextNode(node), module));
             }
+            Set<OperationId> exposedOperations = new HashSet<>();
+            for (JsonNode node : requiredArray(root, "exposedOperations")) {
+                exposedOperations.add(new OperationId(module, requiredTextNode(node)));
+            }
             Map<SkillId, SkillDefinition> skills = decodeSkills(root, module);
             Map<EffectProfileId, EffectProfile> profiles = decodeProfiles(root, module);
             Map<OperationId, OperationDefinition> operations = decodeOperations(root, module, profiles);
             Map<AgentId, AgentDefinition> agents = decodeAgents(root, module);
             return new ModuleDefinition(module, requiredText(root, "version"),
                     requiredText(root, "purpose"), typeDefinitions, references, agents, skills,
-                    operations);
+                    operations, exposedOperations);
         } catch (JsonProcessingException | IllegalArgumentException exception) {
             throw new CodecException("invalid Module definition JSON", exception);
         }
@@ -206,7 +211,7 @@ public final class ModuleDefinitionJsonCodec {
         Set<EffectProfileId> usedProfiles = new HashSet<>();
         for (JsonNode raw : requiredArray(root, "operations")) {
             ObjectNode node = object(raw, "operation");
-            exactFields(node, Set.of("name", "purpose", "visibility", "acceptedMaterial",
+            exactFields(node, Set.of("name", "purpose", "acceptedMaterial",
                     "producedMaterial", "effectProfiles"));
             OperationId id = new OperationId(module, requiredText(node, "name"));
             Map<EffectProfileId, EffectProfile> selected = new HashMap<>();
@@ -221,9 +226,8 @@ public final class ModuleDefinitionJsonCodec {
                 selected.put(profileId, profile);
             }
             OperationDefinition operation = new OperationDefinition(id,
-                    requiredText(node, "purpose"),
-                    OperationVisibility.valueOf(requiredText(node, "visibility")),
-                    decodePrivacyMap(node, module), decodeSensitivityMap(node, module), selected);
+                    requiredText(node, "purpose"), decodePrivacyMap(node, module),
+                    decodeSensitivityMap(node, module), selected);
             putUnique(values, id, operation);
         }
         if (!usedProfiles.equals(profiles.keySet())) {

@@ -4,7 +4,7 @@ import io.github.didacll.madre.sdk.material.Material;
 import java.util.concurrent.CompletionStage;
 
 /**
- * Caller-bound runtime port for invoking another installed Module's exact PUBLIC Operation.
+ * Caller-bound runtime port for invoking another installed Module's exposed Operation.
  * The receiver remains a Module: contract-valid callee Material is returned unchanged when
  * that foreign Material can structurally reach the calling Module.
  */
