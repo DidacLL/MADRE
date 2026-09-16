@@ -19,7 +19,6 @@ import io.github.didacll.madre.sdk.module.ModuleDefinition;
 import io.github.didacll.madre.sdk.module.ModuleInstance;
 import io.github.didacll.madre.sdk.module.OperationBinding;
 import io.github.didacll.madre.sdk.module.OperationDefinition;
-import io.github.didacll.madre.sdk.module.OperationVisibility;
 import io.github.didacll.madre.sdk.operation.OperationCall;
 import io.github.didacll.madre.sdk.registration.ModuleContext;
 import io.github.didacll.madre.sdk.registration.ModuleRegistration;
@@ -151,7 +150,7 @@ public final class MadreApplication implements AutoCloseable {
                 sensitivity, encodedPayload);
     }
 
-    /** Transitional expert/debug owner path; it deliberately remains PUBLIC-only. */
+    /** Expert/debug owner path; Module exposure and public disclosure are independent. */
     public CompletionStage<Material<?>> invokeOwnerText(ModuleId moduleId, String operationName,
             String materialTypeName, Sensitivity sensitivity, String encodedPayload) {
         return invokeText(InvocationBoundary.OWNER_LOCAL, moduleId, operationName, materialTypeName,
@@ -184,16 +183,10 @@ public final class MadreApplication implements AutoCloseable {
                         new IllegalArgumentException("Module is not installed: " + moduleId));
     }
 
-    /** Resolves only the transitional generic PUBLIC invocation surface. */
+    /** Resolves an exact installed Operation contract for generic host/debug or public entry. */
     static ResolvedTextOperation resolveTextOperation(ModuleInstance module,
             String operationSpec, String materialTypeName) {
-        ResolvedTextOperation resolved = resolveTextOperationContract(module, operationSpec,
-                materialTypeName);
-        if (resolved.operation().visibility() != OperationVisibility.PUBLIC) {
-            throw new IllegalArgumentException("PUBLIC Operation is not installed: "
-                    + resolved.operation().id());
-        }
-        return resolved;
+        return resolveTextOperationContract(module, operationSpec, materialTypeName);
     }
 
     /** Resolves only an executable binding explicitly opted into owner interaction. */

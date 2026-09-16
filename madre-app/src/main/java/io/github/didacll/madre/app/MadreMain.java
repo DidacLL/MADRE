@@ -289,8 +289,7 @@ public final class MadreMain {
                     ? " [CORE]" : "";
             System.out.println(module.id().value() + " " + module.version() + role);
             module.operations().values().stream()
-                    .filter(operation -> operation.visibility()
-                            == io.github.didacll.madre.sdk.module.OperationVisibility.PUBLIC)
+                    .filter(operation -> module.exposedOperations().contains(operation.id()))
                     .sorted(java.util.Comparator.comparing(operation -> operation.id().name()))
                     .forEach(operation -> System.out.println("  " + operation.id().name()));
         });
