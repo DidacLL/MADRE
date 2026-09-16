@@ -72,11 +72,12 @@ tasks.register("architectureCheck") {
                 violations += "madre-sdk-testkit/build.gradle.kts: public testkit depends on Kernel implementation"
             }
         }
+        val experimentalProjectDependency = Regex("project\\(\":madre-sdk-experimental\"\\)")
         listOf("madre-sdk", "madre-sdk-testkit", "madre-kernel", "madre-app", "madre-reasoning-spi")
                 .forEach { projectName ->
                     val projectBuild = file("$projectName/build.gradle.kts")
                     if (projectBuild.exists()
-                            && projectBuild.readText().contains("madre-sdk-experimental")) {
+                            && experimentalProjectDependency.containsMatchIn(projectBuild.readText())) {
                         violations += "$projectName/build.gradle.kts: stable/runtime boundary depends on experimental SDK"
                     }
                 }
