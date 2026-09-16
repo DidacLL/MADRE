@@ -10,13 +10,13 @@ Use the smallest verification that can falsify the change being made.
 - Run the affected Gradle project tests before committing.
 - Run root `check` when a change crosses project boundaries or before handing off a coherent slice.
 - Prefer local verification because it provides immediate feedback and does not serialize development behind hosted runners.
-- Do not wait for, repeatedly poll, or shepherd GitHub Actions after every push. CI is an asynchronous signal, not a per-commit gate.
+- Do not wait for, repeatedly poll, or shepherd GitHub Actions after every push. CI is an asynchronous signal, not a per-commit scheduler.
 
-A coherent change may be committed and pushed after appropriate local verification. "Exact-head CI is green" is not a standing requirement for continuing development.
+A coherent change may be committed and pushed after appropriate local verification. Exact-head extended CI is required only when the acceptance claim itself depends on those hosted product journeys or when the Owner explicitly requires it.
 
 ## Automatic CI
 
-Pull requests run one lightweight Linux validation job:
+Pull requests run one lightweight Linux validation job for normal source changes:
 
 ```text
 ./gradlew --no-daemon --build-cache check
@@ -24,17 +24,20 @@ Pull requests run one lightweight Linux validation job:
 
 Documentation-only changes do not start this workflow. Concurrency cancellation ensures a newer push supersedes an older in-progress run.
 
-The default PR workflow intentionally does not build native installers, publish verification artifacts, run Windows matrices, recreate independent installation journeys, or execute every historical acceptance proof.
+Two expensive cross-platform workflows also have narrow path-sensitive PR triggers because they protect boundaries for which lightweight `check` is insufficient:
+
+- `Extended SDK developer acceptance` runs when public SDK/application/independent-consumer or installed-owner acceptance paths change;
+- `Extended native owner package` runs when native package, application, Kernel, shipped CORE, SDK or native owner-conversation acceptance paths change.
+
+These are targeted acceptance gates, not a policy that every PR or commit must recreate every extended journey.
 
 ## Extended verification
 
-The following workflows remain available through `workflow_dispatch` for explicit use when their evidence is relevant:
+The following workflows remain available through `workflow_dispatch`; some also run automatically under the narrow PR path triggers described above:
 
-- `Extended SDK developer acceptance` — builds/tests the independent SDK consumer outside the checkout, then exercises the installed-product Module lifecycle, semantic owner/PUBLIC boundaries, failed-replacement rollback, and non-destructive manual-placement compatibility for both Module and reasoning artifacts on Windows and Linux.
+- `Extended SDK developer acceptance` — builds/tests independent SDK and reasoning consumers outside the checkout, then exercises installed-product Module/reasoning lifecycle, semantic owner/PUBLIC boundaries and replacement behavior on Windows and Linux. Its owner-interaction assertion uses ordinary plain text rather than CORE-private commands.
 - `Extended reasoning owner configuration` — owner reasoning-provider configuration and lifecycle journey on Windows and Linux.
-- `Extended native owner package` — native application/package build and packaged owner journey on Windows and Linux.
-
-These workflows preserve expensive product evidence without making it part of the continuous development loop.
+- `Extended native owner package` — native application/package build and packaged owner journey on Windows and Linux. Its sustained owner-conversation acceptance exercises ordinary foreground response, persisted multi-turn context, durable continuation, restart recovery and natural Agent-approved follow-up without exposing the CORE-private Operation/Material protocol.
 
 Use extended verification when one of these conditions applies:
 
@@ -51,6 +54,8 @@ A failing relevant check is engineering evidence and must be understood. Fix gen
 
 Do not add new mandatory CI stages without a demonstrated defect class that cannot be covered cheaply by an existing local or lightweight check. Prefer improving tests and local reproducibility over adding orchestration.
 
+For durable reasoning/restart acceptance, account for the real configured retry/recovery semantics rather than shortening the test until it no longer exercises persistence. A graceful shutdown may interrupt an in-flight attempt and re-queue it according to the existing retry policy; the restarted process must remain alive long enough for that persisted work to become eligible and complete.
+
 ## Release posture
 
-Cross-platform packaging and end-to-end installation proofs are release/acceptance concerns. They remain valuable, especially because Windows and Linux are first-class hosts, but they should be exercised deliberately rather than continuously.
+Cross-platform packaging and end-to-end installation proofs remain release/acceptance concerns even where selected path changes trigger them automatically. Windows and Linux are first-class hosts, and owner-interaction/package changes must preserve the same semantic application behavior on both.
