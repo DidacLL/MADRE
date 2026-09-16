@@ -34,3 +34,29 @@ jobs:
           gradle-version: '8.12'
       - name: Check
         run: ./gradlew --no-daemon --build-cache check
+
+  aaaat-module:
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.12'
+      - name: Build owner application and independently packaged Modules
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          ./gradlew --no-daemon --build-cache publish :madre-app:installDist :madre-module-aaaat:jar
+          if ($LASTEXITCODE -ne 0) { throw 'MADRE publication/application/AAAAT Module build failed' }
+          $repository = (Resolve-Path 'build/isolated-repository').Path
+          ./gradlew --no-daemon --build-cache -p verification/aaaat-module-composition/caller `
+            "-PmadreRepository=$repository" clean jar
+          if ($LASTEXITCODE -ne 0) { throw 'independent AAAAT caller build failed' }
+      - name: Exercise installed AAAAT Module composition
+        shell: pwsh
+        run: ./verification/aaaat-module-acceptance.ps1
