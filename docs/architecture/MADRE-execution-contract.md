@@ -2,95 +2,64 @@
 
 ## Scope
 
-Kernel execution is intentionally restricted to reasoning. It is not a universal physical-action dispatcher and does not provide a generic `Capability<C,R>` SPI.
+Kernel execution is intentionally restricted to reasoning. It is not a universal physical-action dispatcher and does not provide a generic tool/capability execution framework.
 
 A Module may perform ordinary application I/O directly inside bounded Module behavior. File, database, network, search, device and similar effects do not enter Kernel merely because they are external.
 
+Reasoning is independent from Module exposure, generic host/debug entry, owner interaction and external/public disclosure. Those concerns may share an `OperationCall`, but they do not determine reasoning eligibility.
+
 ## Model-agnostic inference extensibility
 
-`Model-agnostic` describes Kernel independence from concrete models, providers and inference runtimes. It does not require every public computation contract to expose only the smallest common denominator.
+`Model-agnostic` means Kernel is independent from concrete models, providers and inference runtimes. It does not require every computation contract to expose only a lowest common denominator.
 
-MADRE separates three categories deliberately:
+MADRE separates three categories:
 
-1. **portable request/result semantics** belong to a nominal typed reasoning computation contract when they are meaningful across multiple implementations of that contract;
-2. **mechanism/model/runtime tuning** belongs to the independently installed reasoning provider/adapter and its owner configuration;
-3. **shared execution mechanics** belong to Kernel: compatible selection, information reach, availability/resources, immediate/durable scheduling, retry, cancellation, persistence and result delivery.
+1. portable request/result semantics belong to nominal typed reasoning computation contracts when meaningful across multiple implementations;
+2. mechanism/model/runtime tuning belongs to independently installed reasoning providers/adapters and their owner configuration;
+3. shared execution mechanics belong to Kernel: compatible selection, information reach, availability/resources, immediate/durable scheduling, retry, cancellation, persistence and result delivery.
 
-The stable computation artifacts currently demonstrate three deliberate contracts:
+Stable computation artifacts currently demonstrate three contracts:
 
-- `madre-text-inference` keeps the original durable `madre.text-inference.v1` prompt/budget/stop contract unchanged;
-- `madre-text-generation` adds `madre.text-generation.v2` with ordered `SYSTEM`/`USER`/`ASSISTANT` messages, output budget, stop sequences and text/finish/token output;
-- `madre-embeddings` adds `madre.text-embedding.v1` for text-to-vector computation with an explicit `EmbeddingSpace` identity and dimensionality carried by both request and result.
+- `madre-text-inference` keeps durable `madre.text-inference.v1`;
+- `madre-text-generation` provides `madre.text-generation.v2` with ordered messages, output budget, stops and typed result metadata;
+- `madre-embeddings` provides `madre.text-embedding.v1` with explicit `EmbeddingSpace` identity/dimensionality.
 
-These are separate nominal Java computation/result types and separate durable contract identities. Text-generation v2 therefore does not reinterpret or migrate persisted text-inference v1 bytes. Embedding coordinates are meaningful only in their declared space; dimensional equality alone does not make two spaces compatible.
+These are inference contracts, not Module-domain concepts. New computation families should be added only when concrete inference experiments establish portable semantics.
 
-The original text-inference computation remains supported as a minimal stable contract, not an architectural ceiling. Future experiments may justify further portable generation semantics or materially different computation families such as multimodal inference. Such additions must remain typed public computation contracts without teaching Kernel about messages, text tokens, vectors, images, particular model families or provider protocols.
-
-Conversely, engine-specific controls used to optimize constrained local inference do not become common computation fields merely because performance matters. Threading, device placement, memory mapping, batching, runtime/model loading or similar controls belong to a provider when their semantics are specific to that mechanism/runtime. Provider configuration should expose the model/runtime controls required by real experiments without moving those details into Kernel.
-
-This separation is how MADRE supports heterogeneous inference and low-resource SLM optimization while keeping the runtime model-independent.
+Engine-specific controls such as threading, device placement, batching, model loading or runtime-specific optimizations remain provider responsibility unless a semantic is genuinely portable across implementations.
 
 ## Public reasoning-adapter SPI
 
-The published `madre-reasoning-spi` artifact is the boundary for independently built reasoning mechanisms. It exposes the typed reasoning execution concepts an adapter needs plus the small installation/configuration contract required by the owner product: `ReasoningCapability`, capability identity/manifest, exact `ReasoningContract` and durable codecs, observed `ReasoningAvailability`, `ReasoningExecutionContext`, resource claims, typed failure reporting, `ReasoningProviderId`, provider descriptors/configurators and provider-owned configuration updates.
+The published `madre-reasoning-spi` artifact is the boundary for independently built reasoning mechanisms. It exposes typed reasoning execution concepts plus the small installation/configuration contract required by the owner product:
 
-A `ReasoningCapability` may additionally implement a mechanism-owned value-level compatibility predicate through `supports(C computation)`. The default is compatible. Kernel invokes this only after the nominal computation/result contract matches. The predicate exists for facts that are intrinsic to a concrete mechanism but vary within one public computation type—for example, the exact embedding space generated by a configured model. It must not execute inference, perform semantic routing or become a provider-specific Kernel options channel.
+- `ReasoningCapability`;
+- capability identity/manifest;
+- exact `ReasoningContract` and durable codecs;
+- observed `ReasoningAvailability`;
+- `ReasoningExecutionContext`;
+- resource claims;
+- typed failure reporting;
+- provider identity/descriptor/configurator contracts.
 
-The SPI does not expose Module/Agent/Workflow/Operation semantics, Material, SQLite runtime objects, Kernel registries, schedulers, application assembly, generic tools/actions, semantic continuation, provider accounts or a universal settings framework.
+A `ReasoningCapability` may implement a mechanism-owned value-level compatibility predicate through `supports(C computation)`. The default is compatible. Kernel evaluates it only after nominal computation/result compatibility. It may express intrinsic mechanism facts such as supported embedding space; it must not perform semantic routing or become a provider-specific Kernel options channel.
 
-A reasoning adapter can therefore be built independently from `madre-app` and Kernel runtime implementation classes while implementing any published reasoning computation contract and participating in the same owner configuration journey as shipped providers. Existing independently compiled providers remain valid because the value-level compatibility method has a compatibility-preserving default implementation.
+The SPI does not expose Module/Agent/Workflow semantics, Material, Kernel persistence objects, application assembly, generic tools/actions, semantic continuation or a universal settings framework.
 
 ## Installation, discovery and provider configuration
 
-Reasoning adapter JARs expose `ReasoningMechanismProvider` through Java's service-provider mechanism. The application discovers them from the configured reasoning installation directories with JDK path/class-loader APIs. Packaged installations scan the shipped reasoning directory plus the conventional owner-writable reasoning directory; explicit `reasoning.directory` retains exact single-directory semantics for deterministic development/tests.
+Reasoning adapter JARs expose `ReasoningMechanismProvider` through Java service-provider discovery. Module and reasoning installation are distinct. Installing an adapter never assigns CORE, registers a Module or automatically enables a mechanism.
 
-Module and reasoning installation remain separate. Reasoning providers do not participate in Module registration, CORE role resolution or Module lifecycle. Installing an adapter never enables a mechanism.
+Each provider declares stable provider identity and owner-facing descriptor/configurator metadata. The host owns generic discovery/rendering/persistence. Provider-specific field meaning, parsing, defaults, model/runtime controls and validation remain inside the provider artifact.
 
-Each provider declares a stable provider-owned `ReasoningProviderId` through `ReasoningProviderDescriptor`. Provider identity is not derived from implementation class name, JAR filename, discovery order, shipped status or mechanism identity. Duplicate provider identities are rejected during discovery.
+Current stable owner-facing field kinds are deliberately small (`TEXT`, `INTEGER`, `CHOICE`) and expand only from concrete provider needs.
 
-`ReasoningProviderDescriptor` contains only the owner-facing metadata demonstrated necessary by the current configurator: display name/help and a list of `ReasoningConfigurationField` values. Current field kinds are deliberately limited to `TEXT`, `INTEGER` and `CHOICE`; fields may declare required/default information, integer bounds, allowed choices, and display/help text. This is the current executable baseline, not a claim that every future model/runtime control fits those kinds. Extend the vocabulary only when a concrete provider experiment demonstrates the need. It must not become JSON Schema, a reflection/annotation system, a dependency-expression language or a generic settings engine.
+Privacy is an explicit configured mechanism fact. It is never inferred from endpoint, transport, process placement, model name, provider identity, local/remote location or shipped status.
 
-`ReasoningProviderConfigurator` owns repeatable named-instance configuration. It lists configured instances and produces provider-owned `ReasoningProviderConfigurationUpdate` values for configure, enable/disable and remove. The host applies those updates generically. Provider-specific raw property names, instance-list representation, parsing, defaults and validation stay inside the provider artifact.
-
-The existing `reasoning.*` representation remains executable for compatibility and advanced developer use. `madre-app` does not need to know provider-specific keys such as endpoint, socket, model, computation family, embedding-space identity, Privacy, location or preference. Provider validation happens before host persistence, so a rejected update leaves the previously persisted configuration intact. Host persistence preserves unrelated configuration and replaces the owner properties file through a same-directory temporary file with atomic replacement where supported and safe replacement fallback otherwise.
-
-Configuration validation is structural/local and does not require network connectivity. A syntactically valid configured endpoint may therefore be unreachable at runtime without being treated as malformed configuration.
-
-Installation does not imply enablement. An absent directory, empty directory, installed provider with no configured instances, or provider whose instances are all disabled produces zero registered `ReasoningCapability` values and does not prevent MADRE from booting.
-
-Privacy is an explicit configured mechanism fact. It is never derived from endpoint, transport, process placement, provider identity or `ReasoningLocation`. Invalid enabled provider configuration is a startup error with provider-owned validation detail; adapters must not silently substitute different mechanism semantics.
-
-Shipped llama.cpp AF_UNIX, explicit llama.cpp loopback-HTTP compatibility and OpenAI-compatible adapters use this same discovery/configuration/materialization path as independently supplied adapters. The llama.cpp transports remain distinct provider identities because their configuration requirements differ. Bundled placement grants no selection privilege.
-
-For the OpenAI-compatible and llama.cpp loopback-HTTP providers, one configured instance now explicitly materializes exactly one public computation contract. Existing raw configurations with no computation field retain `madre.text-inference.v1` as the provider-owned compatibility default. Text-generation and embedding instances are opt-in. An embedding instance additionally declares the exact space identity and positive dimensionality it produces. These fields remain provider-owned owner configuration; Kernel does not parse them.
-
-The llama.cpp AF_UNIX provider remains on the durable text-inference v1 contract in this slice. No architectural requirement says every transport must implement every public computation family.
-
-Provider discovery for owner setup is independent of mechanism materialization: an installed adapter that currently materializes zero mechanisms remains discoverable and configurable. The application owns the provider/class-loader lifecycle and closes each provider once with its loader; setup does not require repeatedly instantiating ServiceLoader providers.
-
-## Owner host configuration surface
-
-The current generic owner commands are:
-
-```text
-madre reasoning providers
-madre reasoning list
-madre reasoning inspect <provider>/<instance>
-madre reasoning configure <provider> <instance> [--set <field>=<value>]...
-madre reasoning enable <provider>/<instance>
-madre reasoning disable <provider>/<instance>
-madre reasoning remove <provider>/<instance>
-```
-
-`configure` without `--set` arguments runs a simple interactive prompt from provider metadata. The repeated `--set` form is deterministic and scriptable. Disabling retains an instance's provider-owned configuration; removing deletes only that exact instance's owned configuration. Neither operation removes the adapter artifact.
-
-`madre doctor` distinguishes installed provider types, configured provider instances/state and successfully materialized mechanism identities/count. It does not dump raw provider properties. Zero providers or zero materialized mechanisms are valid host states.
-
-The host configuration surface is product-management behavior in `madre-app`; it is not a Kernel service and is not delegated to CORE.
+An absent directory, empty directory, installed provider with no configured instances, or only disabled instances produces zero registered `ReasoningCapability` values and does not prevent MADRE from booting.
 
 ## Module-created reasoning work
 
-A Module starts from one valid bounded `OperationCall` and constructs a nominal `ReasoningComputation<R>`. The SDK then creates a `ReasoningRequest<R,C>` where `C extends ReasoningComputation<R>`.
+A Module starts from one valid bounded `OperationCall` and constructs a nominal `ReasoningComputation<R>`. The SDK creates a `ReasoningRequest<R,C>` where `C extends ReasoningComputation<R>`.
 
 The request contains:
 
@@ -99,106 +68,113 @@ The request contains:
 - carried Sensitivity, derived from the input Material of that call;
 - immediate or durable execution mode;
 - priority and eligibility time;
-- timeout, cancellation key and reasoning retry policy;
-- typed reasoning preferences currently limited to optional location and maximum latency.
+- timeout, cancellation key and retry policy;
+- typed selection preferences such as optional location/latency constraints.
 
-The request contains no Material identity or Material type, Agent, Workflow, concrete reasoning-mechanism identity, semantic continuation or future output Material.
+The request contains no semantic continuation, Agent, Workflow, cross-Module exposure fact, host-entry choice, public-disclosure binding, concrete reasoning-mechanism identity or Operation Risk.
 
-Operation Risk is deliberately absent. A reasoning mechanism computes information; it does not thereby realize the external effect described by a Module Operation's EffectProfile.
+Operation Risk is deliberately absent. A reasoning mechanism computes information; it does not thereby realize the external consequence described by an EffectProfile.
 
-Computation-specific request semantics belong inside the nominal computation value, not in a generic Kernel options bag. Text generation carries its portable message/budget/stop semantics in `TextGenerationCommand`. Text embedding carries the requested `EmbeddingSpace` and input text in `TextEmbeddingCommand`. Provider/runtime knobs remain outside both computations.
-
-## Reasoning contract and mechanism selection
+## Reasoning selection
 
 A `ReasoningCapability<R,C>` exposes:
 
 ```text
-manifest()             -> ReasoningCapabilityManifest<R,C>
-availability()         -> ReasoningAvailability
-supports(C computation) -> boolean
-execute(C computation, ReasoningExecutionContext context) -> R
+manifest()
+availability()
+supports(C computation)
+execute(C computation, ReasoningExecutionContext context)
 ```
 
-`supports` defaults to `true`. It is evaluated only after exact nominal computation/result matching and supplies the minimum generic value-level mechanism compatibility required by contracts such as embeddings.
+Its manifest contains only installed facts used by selection:
 
-Its manifest contains only installed facts used by reasoning selection:
-
-- nominal `ReasoningCapabilityId`;
-- exact `ReasoningContract<R,C>`;
+- nominal capability identity;
+- exact reasoning contract;
 - explicit receiving `Privacy`;
-- `ReasoningLocation`;
+- reasoning location;
 - expected latency;
 - resource claims.
 
-It does not contain Material semantics, Module/Operation identities, configuration UI metadata, Risk, action-realizer Integrity, provider-account authority or arbitrary metadata.
-
 Kernel selection is deterministic. A candidate is usable only when:
 
-1. its nominal computation and result Java types match the request exactly;
-2. the mechanism reports that it supports that exact computation value;
-3. the request's carried Sensitivity can reach the manifest's receiving Privacy;
-4. the mechanism is currently available;
-5. typed request location/latency preferences are satisfied;
-6. required resources can be reserved.
+1. nominal computation/result types match the request exactly;
+2. the capability supports that exact computation value;
+3. carried Sensitivity can reach the capability's receiving Privacy;
+4. the capability is available;
+5. request preferences are satisfied;
+6. resources can be reserved.
 
-For embeddings, HTTP provider capabilities implement step 2 by requiring equality with their configured `EmbeddingSpace`, including both identity and dimensions. Kernel itself contains no embedding-specific branch.
+Installed order, Module exposure, host entry, CORE assignment and shipped-vs-external origin do not create selection privilege.
 
-Installed order, shipped-vs-external origin and CORE designation do not create selection privilege. Ordinary configured installation preference and deterministic capability identity ordering remain the only ordering inputs after compatibility.
+No rejected security-decision domain object is created. A non-composable mechanism is simply unreachable for that request.
 
-No rejected security-decision object is created. A non-composable mechanism is simply unreachable for that request.
+## Contextual Material and Sensitivity
+
+When semantic context combines several source values before reasoning, the Module must represent the actual combined context as Material at combined maximum Sensitivity and derive its `ReasoningRequest` from an `OperationCall` over that Material.
+
+The SDK intentionally has no raw carried-Sensitivity override. A lower-labelled current prompt does not erase more sensitive conversation/history included in its actual reasoning context.
+
+If a weaker receiving mechanism is desired, the Module must deliberately derive new minimized Material when semantically justified. Kernel does not mutate classification to make a mechanism eligible.
 
 ## Invocation
 
-Kernel reserves the selected resources and invokes the adapter with only the typed computation and execution mechanics needed for timeout/cancellation/attempt handling.
+Kernel reserves selected resources and invokes the capability with only the typed computation and execution mechanics needed for timeout/cancellation/attempt handling.
 
-The adapter owns provider-specific protocol translation and mechanism-specific tuning. Provider request/response structures, endpoint details, model/runtime settings and transport behavior stay inside the adapter unless a specific semantic has deliberately been standardized by the computation contract.
+The adapter owns provider protocol translation and mechanism-specific tuning. Kernel contains no provider/model-specific branches for standardized computation families.
 
-Current shipped reasoning realizations are:
-
-- llama.cpp AF_UNIX for durable text-inference v1;
-- llama.cpp loopback HTTP for configured text-inference v1, text-generation v2 or text-embedding v1 instances;
-- OpenAI-compatible HTTP for configured text-inference v1, text-generation v2 or text-embedding v1 instances.
-
-The HTTP embedding implementations call their real embeddings endpoints, require numeric vectors and reject output dimensionality that disagrees with the configured embedding space. The generation implementations map the portable ordered role/message contract into each provider's chat-completions protocol. No mechanism is silently enabled merely because its adapter JAR is installed.
+Current shipped realizations include llama.cpp and OpenAI-compatible adapters. Installation or bundling grants no selection privilege.
 
 ## Module-owned interpretation
 
-A reasoning result is not Material. Kernel neither assigns Material identity nor chooses output Sensitivity.
+A reasoning result is not Material. Kernel neither assigns Material identity nor chooses application output Sensitivity.
 
 The originating Module:
 
 1. receives the reasoning result;
-2. interprets it according to its bounded behavior;
-3. creates new Material when the result has semantic value;
+2. interprets it according to bounded Module/Agent semantics;
+3. creates Material when the result acquires semantic value;
 4. updates Module state/presentation as appropriate;
 5. invokes another bounded Operation or stops.
 
-Receiver semantics are applied only after the Module has produced contract-valid Material. If the containing `PUBLIC` Operation was invoked through the external/public host boundary, the Module-owned `PublicResultTransformer` must create new declared Material whose Sensitivity can reach `Privacy.PUBLIC`. Owner-local invocation returns the contract-valid Module Material unchanged. Module-to-Module invocation likewise does not run the public transformer; its caller-bound receiver instead requires the foreign result type to be canonically referenced by the receiving Module and the result Sensitivity to reach fixed `Privacy.MODULE`.
+Concrete result Material is owned by the Module that creates it. Its nominal Material type may be Module-owned or an explicitly referenced foreign contract.
 
-There is no result object that can execute an Operation or submit more work by itself.
+Receiver semantics apply only after the Module has produced contract-valid Material:
+
+- Module-to-Module composition uses the target Module's exposed interface and fixed `Privacy.MODULE`; no public-disclosure transformer runs;
+- generic owner/debug entry returns contract-valid Module Material unchanged;
+- owner interaction uses an exact owner-interaction binding in the Module assigned CORE and returns normal contract-valid Material;
+- external/public disclosure uses a binding with `PublicResultTransformer`, which must create new declared Material capable of reaching `Privacy.PUBLIC`.
+
+These receiver/product boundaries do not change the reasoning request that occurred inside the Operation.
 
 ## Immediate and durable reasoning
 
 Immediate reasoning uses the same registry selection, resource coordination, failure mapping and retry semantics as durable reasoning, but returns the result to the waiting Module call.
 
-Durable reasoning stores only the runtime state needed to survive restart. SQLite persists opaque serialized computation bytes, stable reasoning-contract identity, Module identity for delivery, priority/eligibility/timeout/cancellation/retry state, attempts/failure category and opaque result bytes until collection and acknowledgement.
+Durable reasoning stores only physical runtime state required to survive restart: opaque serialized computation bytes, stable reasoning-contract identity, Module identity for delivery, priority/eligibility/timeout/cancellation/retry state, attempts/failure category and opaque result bytes until collection/acknowledgement.
 
-Queued input survives restart. Interrupted running work returns to an eligible state under the runtime's recovery rules. Successful output survives restart until collected/acknowledged or removed by retention cleanup.
+Queued input survives restart. Interrupted running work returns to an eligible state under recovery rules. Successful output survives until collection/acknowledgement or retention cleanup.
 
-Durable persistence does not store concrete adapter implementation class names. On restart, persisted work is resolved through the stable reasoning-contract identity and becomes runnable once a compatible contract/mechanism is registered again. Preserving the original `madre.text-inference.v1` identity and codec while introducing separate generation and embedding identities is therefore a durability requirement, not merely an API naming choice.
+Kernel cannot inspect persisted computation bytes as Module knowledge and owns no semantic continuation.
 
-The Kernel cannot inspect persisted computation bytes as Module knowledge.
+The shipped owner-interaction Module demonstrates the intended split: Kernel persists durable reasoning work while the Module owns pending WorkId association, conversation state, interpretation, acknowledgement and whether a completed result warrants visible follow-up.
 
-## Installation and execution failures
+## Failures
 
-Reasoning failures use stable reasoning categories such as unavailable, timeout, cancelled, connection, protocol, remote failure, internal and interrupted. Retry is bounded by the request's `ReasoningRetryPolicy`.
+Reasoning failures use stable categories such as unavailable, timeout, cancelled, connection, protocol, remote failure, internal and interrupted. Retry is bounded by the request's `ReasoningRetryPolicy`.
 
-The reasoning registry rejects duplicate capability identity and conflicting computation-contract identity/type declarations. Provider discovery rejects duplicate provider identity and invalid provider descriptors/configurators. Provider materialization rejects null/invalid mechanism values. Invalid enabled provider configuration fails startup with provider-owned validation detail. Application assembly rolls back registrations/loaders if reasoning installation startup fails, leaving no half-registered mechanism state.
+The reasoning registry rejects duplicate capability identity and conflicting contract identity/type declarations. Provider discovery rejects duplicate provider identity and invalid provider metadata/configuration. Invalid enabled provider configuration fails startup with provider-owned validation detail.
 
-Absence of an installed/available compatible mechanism is a reasoning-runtime condition, not a platform boot failure. MADRE can start with an empty reasoning registry. An immediate reasoning request fails as unavailable when no compatible available mechanism can execute the exact computation value.
+Absence of an installed/available compatible mechanism is a runtime condition, not a platform boot failure. MADRE can start with an empty reasoning registry.
 
 ## Search and other external I/O
 
-SearXNG is not a `ReasoningCapability`. The repository's SearXNG integration is an ordinary Java client over the reusable web-search value model. A domain Module may use that client directly when web search belongs to its behavior.
+Search is not a Kernel reasoning capability merely because a Module may use search to construct context. The repository's SearXNG integration is an ordinary reusable Java client. A Module may use it directly when web search belongs to that Module's behavior.
 
-The former standalone WebSearch Module and generic search Kernel capability are intentionally removed. Reintroducing search into Kernel would require a new concrete shared-Kernel responsibility, not analogy with tool-calling frameworks.
+Likewise, files, databases, HTTP services, devices, MCP and other application I/O remain Module/application concerns unless a concrete shared Kernel responsibility is established.
+
+## Evolution rule
+
+Reasoning architecture should remain narrow enough that independently developed Modules can experiment with semantics while independently developed providers can experiment with models/runtimes.
+
+Do not turn cross-Module exposure, owner interaction, external/public disclosure, provider tuning or application I/O into reasoning-selection semantics. Do not add a universal execution/capability framework merely because Kernel already schedules reasoning.

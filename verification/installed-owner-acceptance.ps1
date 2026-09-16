@@ -95,9 +95,15 @@ try {
         throw 'Module list did not expose independent owner source metadata'
     }
     Invoke-Madre @('modules', 'configure', 'phd.module', '--set', 'result-prefix=configured-') | Out-Null
+
+    # External/public disclosure and generic owner/debug entry are independent receiver paths.
     $public = Invoke-Madre @('--invoke-public', 'phd.module', 'inspect', 'request', 'S4', 'hello')
     if ($public -notmatch 'public:configured-hello') {
-        throw 'independent Module configuration did not reach semantic PUBLIC invocation'
+        throw 'independent Module configuration did not reach external/public disclosure'
+    }
+    $owner = Invoke-Madre @('--invoke-owner', 'phd.module', 'inspect', 'request', 'S4', 'hello')
+    if ($owner -notmatch 'S4\s+private:configured-hello') {
+        throw 'generic owner/debug entry did not preserve untransformed Module Material'
     }
 
     # Independently compiled provider lifecycle remains separate from Module installation.
@@ -121,20 +127,16 @@ try {
         throw 'configured independent reasoning mechanism did not materialize'
     }
 
-    # Owner interaction is no longer a PUBLIC/generic-owner exposure accident.
-    $ownerFailure = Invoke-MadreFailure @('--invoke-owner', $ownerModuleId,
-        'standard-prompt', 'owner-prompt', 'S5', 'must-not-bypass-interaction')
-    if ($ownerFailure -notmatch 'PUBLIC Operation is not installed|not owner-callable') {
-        throw 'generic owner/debug path did not reject PRIVATE interaction Operation'
-    }
+    # Owner interaction is not external/public disclosure. Without a public transformation the
+    # external receiver must reject the same Operation even though the selected CORE host can enter it.
     $publicFailure = Invoke-MadreFailure @('--invoke-public', $ownerModuleId,
         'standard-prompt', 'owner-prompt', 'S5', 'must-not-be-public')
-    if ($publicFailure -notmatch 'PUBLIC Operation is not installed|not PUBLIC') {
-        throw 'external PUBLIC path did not reject PRIVATE interaction Operation'
+    if ($publicFailure -notmatch 'external/public disclosure transformation') {
+        throw 'external public path did not require an explicit disclosure transformation'
     }
 
-    # The ordinary console reaches only the selected Module's explicit interaction entry and the
-    # real OperationCall/ReasoningService path still carries S5 Material to the SECRET fixture.
+    # The ordinary console reaches the selected Module's explicit interaction entry and the real
+    # OperationCall/ReasoningService path still carries S5 Material to the SECRET fixture.
     $console = Invoke-Console @('/standard sdk-owner', '/exit')
     if ($console -notmatch 'S5\s+independent:sdk-owner') {
         throw 'ordinary owner interaction did not execute through the configured reasoning mechanism'

@@ -26,7 +26,7 @@ Before proposing a new architectural/product slice, an orchestrator must be able
 2. What creates a Module boundary, and which technical primitives do not create one?
 3. What belongs to Module/Agent/Operation, to Kernel, to reasoning provider/adapter, and to the host product?
 4. What is an Operation, which facts make one bounded Module execution MADRE-arbitrable, and why must exposure, presentation, reasoning and transport remain orthogonal to that definition?
-5. What does Security Algebra govern, and which values must never be inferred from locality/provider/model/process/CORE status or Operation visibility?
+5. What does Security Algebra govern, and which values must never be inferred from locality/provider/model/process/CORE status, Module exposure or host entry choice?
 6. What is CORE, and what privilege does it receive?
 7. Why are Java executable objects separated from portable Module descriptions, and where does Java payload typing live?
 8. How should unknown or unproven generated/experimental code be represented?
@@ -49,7 +49,7 @@ These are experiment areas, not architecture decomposition, roadmap or mandatory
 
 ## Semantic ownership
 
-A Module boundary exists only when coherent application/domain behavior owns meaning, state, interpretation, bounded Operations and domain semantics.
+A Module boundary exists only when coherent application/domain behavior owns meaning, state, interpretation, bounded behavior and domain semantics.
 
 Technical facilities such as search, embeddings, files, databases, transports, model APIs, storage, MCP or devices may be ordinary libraries/mechanisms used by a Module. Technical reuse does not create a Module.
 
@@ -81,7 +81,7 @@ A Module owns meaning, domain state/persistence, Material, transformations, opti
 
 An Agent is an optional Module-owned intelligent actor. A concrete Agent may own typed state when its semantics require it. There is no universal Agent loop, planner, memory model, prompt framework or tool loop.
 
-An Operation is one bounded execution of Module logic through MADRE. It exists so that execution can participate in MADRE's ordinary typed, modular, trust and Security-Algebra arbitration while the Module still owns its implementation and meaning. Exposure to another Module, presentation to the Owner, external disclosure, reasoning use/locality and transport are orthogonal concerns and must not be used to define whether something is an Operation. Agent methods, state helpers and ordinary Java objects must not create a second MADRE-arbitrated execution path around declared Operations.
+An Operation is one bounded execution of Module logic through MADRE. It exists so that execution can participate in MADRE's ordinary typed, modular, trust and Security-Algebra arbitration while the Module still owns its implementation and meaning. Cross-Module exposure, presentation to the Owner, external/public disclosure, reasoning use/locality and transport are orthogonal concerns and must not be used to define whether something is an Operation. Agent methods, state helpers and ordinary Java objects must not create a second MADRE-arbitrated execution path around declared Operations.
 
 Kernel is deliberately narrow. It owns live executable Module registry/receiver mechanics plus shared reasoning registration/selection, resources, immediate/durable execution, retry, cancellation, opaque persistence and result delivery.
 
@@ -115,41 +115,45 @@ WorkflowDefinition
 EffectProfile
 ```
 
-`OperationDefinition` is language-neutral and non-generic. Java payload typing lives on executable Operation/Call/Binding objects. `MaterialTypeDefinition` contains nominal identity/content type; Java class and codec belong to `MaterialType<T>`.
+`OperationDefinition` is language-neutral and non-generic. It contains only the bounded execution contract: identity/purpose, accepted Material receiver Privacy, produced Material maximum Sensitivity and optional EffectProfiles. PUBLIC/PRIVATE is not Operation ontology.
 
-The current `OperationVisibility.PUBLIC/PRIVATE` is a 0.x installed-runtime exposure marker. It is not Material confidentiality, external publication, owner visibility or reasoning locality.
+Cross-Module discoverability/invocation is owned by the Module interface through `Module.exposedOperations()` / `ModuleDefinition.exposedOperations()`. Exposure is neither Material confidentiality nor external publication.
 
-The executable SDK has three binding shapes with distinct responsibilities: `publicOperation(...)`, ordinary `privateOperation(...)`, and narrow `ownerInteractionOperation(...)`. The last requires a PRIVATE definition and marks only that exact executable binding as eligible for the selected local owner-interaction surface. It is not a larger exposure taxonomy, is not portable UI metadata, does not make the Operation PUBLIC, and does not grant CORE generic PRIVATE authority.
+The executable binding shapes are responsibility-specific: `OperationBinding.operation(...)` for an ordinary bounded execution, `OperationBinding.publicDisclosure(...)` when the Module supplies explicit transformation for a real external/public receiver, and `OperationBinding.ownerInteractionOperation(...)` when an exact Operation is an entry for the selected host owner-interaction surface. None changes the Operation's semantic ontology or Security Algebra.
 
 `ModuleInstance` is validated runtime/adaptor assembly, not the ordinary Module authoring model. `ModuleProvider.create(...)` returns the executable `Module`.
 
 `StatefulAgent<S>` is a stable execution-side OOP convenience for typed Agent-owned state. It provides serialized state reads/transitions and optional commit-before-publish persistence. It defines no state schema, memory semantics, persistence format or execution loop. Subclasses still express MADRE-arbitrable behavior through ordinary Operation bindings and calls.
 
+A Material value and its nominal type have distinct ownership. `MaterialId.moduleId` identifies the Module that created/owns the concrete value. `MaterialTypeId.moduleId` identifies the Module that defines the nominal contract. A Module may create a value conforming to a foreign nominal contract when that contract is explicitly referenced. Do not collapse value ownership into type ownership.
+
 An unproven Java Agent defaults to `Integrity.I1`; generated or experimental code must not invent stronger assurance. Lack of proof should reduce trust/composability, not make arbitrary local software impossible.
 
-`madre-sdk-experimental` is an explicit 0.x incubation boundary. It currently contains no additional public authoring helper after removal of the obsolete definition-first builder. Stable SDK, Kernel and reasoning SPI must not depend on experimental facilities.
+`madre-sdk-experimental` is an explicit 0.x incubation boundary. Stable SDK, Kernel and reasoning SPI must not depend on experimental facilities.
 
 Add SDK conveniences when concrete software demonstrates an ownership-correct programming burden and the proposed type is the smallest orthogonal abstraction that removes it. Do not reject a useful optional specialization merely because it does not describe every Agent. Conversely, do not promote one Module's domain semantics into a universal SDK model. LLM-friendly means few composable types, ordinary OOP, strong local invariants and explicit execution boundaries, not a dynamic metadata bag or monolithic framework.
 
-## Module composition and presentation boundaries
+## Module composition and receiver boundaries
 
 Installed Module composition uses caller-bound `ModuleDirectory` / `ModuleInvoker`. Runtime binds canonical caller identity; Module code cannot provide caller identity or arbitrary receiving Privacy.
 
-Module-to-Module calls target installed `PUBLIC` Operations and use fixed `Privacy.MODULE`. `PRIVATE` Operations, including explicit owner-interaction entries, are unavailable to generic Module composition.
+Module-to-Module calls target Operations explicitly exposed by the target Module. Exposure is a Module-interface fact, not an Operation visibility level. The fixed receiver remains `Privacy.MODULE`.
 
-A foreign result crosses unchanged only when the caller declares its type in `publicMaterialReferences` and its Sensitivity can reach `Privacy.MODULE`. The caller may then create new caller-owned interpretation Material.
+A result crosses unchanged only when the calling Module structurally declares the nominal Material type it receives and the result Sensitivity can reach `Privacy.MODULE`. The concrete Material value remains owned by the Module that created it even when its nominal type is defined by the caller or another Module. The caller may then create new caller-owned interpretation Material.
 
-The external/PUBLIC host boundary targets a `PUBLIC` Operation and requires `PublicResultTransformer`; the durable rule is explicit semantic transformation at actual public disclosure. The generic owner/debug boundary also targets PUBLIC and returns valid Module Material unchanged.
+Generic owner/debug entry is a separate host-only path. It resolves an exact installed Operation and returns its contract-valid Module Material unchanged. It is not Module exposure and is not external/public disclosure.
 
-The ordinary product conversation uses a separate host-only `OwnerInteractionInvoker`. It can enter only exact PRIVATE bindings created with `ownerInteractionOperation(...)`; generic PRIVATE bindings remain unreachable. This port is not present in `ModuleContext`, so CORE cannot use it to invoke another Module's PRIVATE Operations. Every entry still uses a canonical `OperationCall` and ordinary contract validation.
+External/public disclosure is another host-only receiver boundary. `PublicModuleInvoker` can disclose only an exact binding created with `publicDisclosure(...)`; the Module-owned transformer must create new declared Material with a new identity whose Sensitivity can reach `Privacy.PUBLIC`. Whether the same Operation is exposed to other Modules is independent.
 
-Do not generalize this into a universal presentation/exposure enum without new concrete product evidence.
+Ordinary product conversation uses the host-only `OwnerInteractionInvoker`. It can enter only exact bindings created with `ownerInteractionOperation(...)` in the installed Module assigned `roles.core`. This port is not present in `ModuleContext`; CORE therefore receives no generic authority over other Modules.
+
+Do not generalize these distinct receiver/product concerns into a universal presentation or visibility lattice without new concrete evidence.
 
 ## CORE
 
 CORE identifies MADRE's default owner-interaction/coordinator Module. It is semantically meaningful and non-privileged.
 
-CORE assignment must not alter Security Algebra, generic Operation exposure, Module-composition authority, reasoning installation/selection, scheduling, classloader treatment, installation authority or host ports. Do not create a privileged `CoreModule` subtype.
+CORE assignment must not alter Security Algebra, Module exposure, Module-composition authority, generic host/debug authority, external disclosure, reasoning installation/selection, scheduling, classloader treatment, installation authority or host ports. Do not create a privileged `CoreModule` subtype.
 
 The current product uses `roles.core` as the single Module identity for ordinary owner interaction. `interaction.*` configures exact presentation Operation/Material details on that selected Module; it no longer carries a duplicated `interaction.module` identity.
 
@@ -187,9 +191,9 @@ One EffectProfile uses only its own Risk and Autonomy. Its non-user causal deman
 
 Material carries Sensitivity. Accepted Operation input contracts carry receiving Privacy. Agent carries/derives Integrity. EffectProfile carries Risk+Autonomy. Reasoning mechanism declares receiving Privacy.
 
-Operation visibility/exposure and the executable owner-interaction entry marker are not Algebra carriers and never change actual Material Sensitivity or reasoning-mechanism receiving Privacy.
+Module exposure, owner/debug entry, owner-interaction entry and external/public disclosure binding are not Algebra carriers and never change actual Material Sensitivity or reasoning-mechanism receiving Privacy. `Privacy.PUBLIC` means an actual public receiver boundary; it does not mean Module exposure.
 
-Never infer algebra values from provider identity, endpoint, model, localhost, process/classloader placement, shipped status, Module bundling, Operation visibility, owner-interaction binding or CORE assignment.
+Never infer algebra values from provider identity, endpoint, model, localhost, process/classloader placement, shipped status, Module bundling, Module exposure, owner-interaction binding, public-disclosure binding or CORE assignment.
 
 Security Algebra governs MADRE-mediated semantic composition. It is not a general OS sandbox or a promise that arbitrary software the Owner installs is safe. The Owner is the sovereign installation/user authority, not a synthetic Integrity-bearing Agent. User presence affects an Operation only through declared Autonomy semantics; it does not bypass information reach or invent trust for non-user causal participants.
 
@@ -201,7 +205,7 @@ A Module creates a typed `ReasoningComputation<R>` and `ReasoningRequest` from a
 
 If semantic context contains multiple source values, the Module must construct the actual contextual Material at combined Sensitivity and derive reasoning from a call over it. Do not add a raw Sensitivity override.
 
-A PRIVATE Operation may request local or remote reasoning. Eligibility depends only on actual carried Sensitivity, computation compatibility and mechanism receiving Privacy/availability/resources. If information cannot reach a candidate mechanism, either the Module deliberately derives suitably minimized new Material or that mechanism is not eligible. Do not mutate Operation exposure as a substitute for information transformation.
+Any Operation may request local or remote reasoning. Eligibility depends only on actual carried Sensitivity, computation compatibility and mechanism receiving Privacy/availability/resources. If information cannot reach a candidate mechanism, either the Module deliberately derives suitably minimized new Material or that mechanism is not eligible. Do not use Module exposure, host entry or public-disclosure configuration as a substitute for information transformation.
 
 Kernel durable work remains opaque physical reasoning state. Module owns semantic association, interpretation and continuation. Do not add generic Kernel callbacks, continuation routers or scheduler languages.
 
@@ -221,7 +225,7 @@ Native owner deployment, Module/reasoning configuration, local artifact lifecycl
 
 Choose new work from concrete owner/developer/semantic-programming friction. Prefer substantial end-to-end owner/developer experiments over repeated framework-only cleanup.
 
-The shipped owner-interaction Module is now the first sustained owner-deployment reference consumer. It uses PRIVATE explicit owner-interaction Operations, `StatefulAgent<OwnerConversationState>`, bounded persisted conversation state, Security-Algebra-preserving contextual Material, immediate and durable reasoning, Module-owned pending association, independent Kernel durable state and natural Module-approved follow-up presentation after restart. `/updates` remains only a compatibility/debug path.
+The shipped owner-interaction Module is the first sustained owner-deployment reference consumer. It uses exact owner-interaction Operation bindings, `StatefulAgent<OwnerConversationState>`, bounded persisted conversation state, Security-Algebra-preserving contextual Material, immediate and durable reasoning, Module-owned pending association, independent Kernel durable state and natural Module-approved follow-up presentation after restart. Its Operations are not made cross-Module exposed merely because the Module is CORE. `/updates` remains only a compatibility/debug path.
 
 Promote small orthogonal SDK abstractions when a real implementation proves their usefulness, even when they are optional specializations rather than universal concepts. Do not pre-build a universal Agent framework, universal memory/RAG system, planner/tool API, workflow language, semantic database abstraction or Module taxonomy.
 
