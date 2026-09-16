@@ -131,7 +131,7 @@ The executable binding shapes are responsibility-specific: `OperationBinding.ope
 
 `StatefulAgent<S>` is a stable execution-side OOP convenience for typed Agent-owned state. It provides serialized state reads/transitions and optional commit-before-publish persistence. It defines no state schema, memory semantics, persistence format or execution loop. Subclasses still express MADRE-arbitrable behavior through ordinary Operation bindings and calls.
 
-A Material value and its nominal type have distinct ownership. `MaterialId.moduleId` identifies the Module that created/owns the concrete value. `MaterialTypeId.moduleId` identifies the Module that defines the nominal contract. A Module may create a value conforming to a foreign nominal contract when that contract is explicitly referenced. Do not collapse value ownership into type ownership.
+A Material value and its nominal type have distinct ownership. `MaterialId.moduleId` identifies the Module that created/owns the concrete value. `MaterialTypeId.moduleId` identifies the Module that defines the nominal contract. A Module may statically reference a foreign nominal contract through `foreignMaterialReferences()`. For ordinary composition with an unknown target, a caller may also use an exact target-owned nominal contract published by that target's reachable exposed Operation; this is target-scoped runtime contract use, not a general foreign reference or public disclosure. Do not collapse value ownership into type ownership.
 
 An unproven Java Agent defaults to `Integrity.I1`; generated or experimental code must not invent stronger assurance. Lack of proof should reduce trust/composability, not make arbitrary local software impossible.
 
@@ -143,9 +143,13 @@ Add SDK conveniences when concrete software demonstrates an ownership-correct pr
 
 Installed Module composition uses caller-bound `ModuleDirectory` / `ModuleInvoker`. Runtime binds canonical caller identity; Module code cannot provide caller identity or arbitrary receiving Privacy.
 
-Module-to-Module calls target Operations explicitly exposed by the target Module. Exposure is a Module-interface fact, not an Operation visibility level. The fixed receiver remains `Privacy.MODULE`.
+Module-to-Module calls target Operations explicitly exposed by the target Module. Exposure is a Module-interface fact, not an Operation visibility level. Input information must reach the exact selected Operation's declared accepted-Material Privacy. Returned information crosses the fixed Module receiver only when its Sensitivity can reach `Privacy.MODULE`.
 
-A result crosses unchanged only when the calling Module structurally declares the nominal Material type it receives and the result Sensitivity can reach `Privacy.MODULE`. The concrete Material value remains owned by the Module that created it even when its nominal type is defined by the caller or another Module. The caller may then create new caller-owned interpretation Material.
+`ModuleDirectory.reachable(...)` remains exact discovery for an already-known nominal Material type. `ModuleDirectory.exposed(Sensitivity)` is broad structural discovery for unknown installed Modules: it returns reachable exposed Operations plus only the target-owned portable Material type definitions referenced by those contracts. It does not rank semantic relevance, grant invocation authority, or imply external/public disclosure.
+
+For a target-owned nominal contract published by the selected target Operation, the caller may create caller-owned input Material conforming exactly to that target definition without having compiled against the target. The runtime validates the exact published definition and target execution-side payload type before invocation. Third-party foreign nominal contracts still require the caller's static `foreignMaterialReferences()` declaration.
+
+A target-owned result may cross unchanged without a prior static caller reference when it conforms exactly to the producer's published nominal contract and its Sensitivity can reach `Privacy.MODULE`. Third-party nominal result types still require the caller's structural foreign reference. In every case the concrete Material value remains owned by the Module that created it, with its original nominal type and Sensitivity intact. The caller may then deliberately create new caller-owned interpretation Material.
 
 Generic owner/debug entry is a separate host-only path. It resolves an exact installed Operation and returns its contract-valid Module Material unchanged. It is not Module exposure and is not external/public disclosure.
 
