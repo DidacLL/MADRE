@@ -1,0 +1,87 @@
+# CORE identifies the ordinary installed Module intended to lead MADRE's default owner
+# interaction/coordinator semantics. CORE confers no privilege. The current runtime only resolves
+# this optional identity; it does not yet use CORE to drive the console or structurally qualify
+# the Module. Remove this line to run with no CORE assignment.
+roles.core=io.github.didacll.madre.owner-interaction
+kernel.database=var/kernel-work.sqlite
+kernel.result-retention-seconds=86400
+modules.state-directory=var/module-state
+# Installed distributions discover Module JARs from their sibling modules/ directory by default.
+# modules.directory=/absolute/path/to/madre-modules
+# Reasoning mechanisms are discovered independently from sibling reasoning/ JARs by default.
+# reasoning.directory=/absolute/path/to/madre-reasoning
+
+# Current developer-facing Module configuration is delivered generically through the public
+# Module-provider installation boundary. The exact syntax is
+# modules.config[<canonical ModuleId>].<module-owned-key>.
+# Square brackets are structural delimiters; valid ModuleId values cannot contain them, so dotted,
+# dashed and underscored Module identities are scoped exactly rather than parsed by dot segments.
+# madre-app does not know the keys below: the owner-interaction Module owns validation/defaults.
+# A future generic owner configurator must obtain the minimum provider-owned typed metadata it
+# needs from installed artifacts rather than hard-code these keys. No such metadata API exists yet.
+# Omitting every line for this Module preserves OwnerInteractionSettings.defaults().
+# modules.config[io.github.didacll.madre.owner-interaction].foreground-maximum-tokens=256
+# modules.config[io.github.didacll.madre.owner-interaction].background-maximum-tokens=512
+# modules.config[io.github.didacll.madre.owner-interaction].foreground-timeout-ms=90000
+# modules.config[io.github.didacll.madre.owner-interaction].background-timeout-ms=300000
+# modules.config[io.github.didacll.madre.owner-interaction].background-retry-attempts=3
+# modules.config[io.github.didacll.madre.owner-interaction].background-retry-delay-ms=5000
+# Optional reasoning-selection constraints are Module-owned too; absence means unconstrained.
+# modules.config[io.github.didacll.madre.owner-interaction].foreground-location=LOCAL
+# modules.config[io.github.didacll.madre.owner-interaction].foreground-maximum-latency-ms=30000
+# modules.config[io.github.didacll.madre.owner-interaction].background-location=LOCAL
+# modules.config[io.github.didacll.madre.owner-interaction].background-maximum-latency-ms=30000
+
+# Transitional local text presentation binding used by the current MadreMain developer console.
+# Today this application-local wiring is resolved independently of roles.core; that is current
+# executable behavior, not the target product definition of CORE. Remove all interaction.* lines
+# for the generic low-level console. The configured default Sensitivity is explicit.
+interaction.module=io.github.didacll.madre.owner-interaction
+interaction.default-operation=fast-lane
+interaction.standard-operation=standard-prompt
+interaction.prompt-material-type=owner-prompt
+interaction.default-sensitivity=S5
+interaction.updates-operation=collect-background
+interaction.updates-material-type=background-collection-request
+interaction.updates-payload=collect
+interaction.updates-sensitivity=S1
+
+# Explicit resource capacity for reasoning mechanisms. The reasoning directory may be absent
+# or empty, and every installed provider may remain disabled; MADRE still boots.
+resources.model-slot=1
+
+# Current provider-owned developer configuration supports multiple named AF_UNIX llama.cpp
+# instances. A future generic configurator must not hard-code these provider-specific fields.
+# Merely installing the adapter JAR never enables an instance.
+reasoning.llamacpp-unix.instances=primary
+reasoning.llamacpp-unix.primary.enabled=false
+reasoning.llamacpp-unix.primary.id=local-llama-uds
+reasoning.llamacpp-unix.primary.socket=/absolute/path/madre-runtime/llama-server.sock
+reasoning.llamacpp-unix.primary.model=local-model
+reasoning.llamacpp-unix.primary.privacy=SECRET
+reasoning.llamacpp-unix.primary.expected-latency-ms=30000
+reasoning.llamacpp-unix.primary.preference=200
+reasoning.llamacpp-unix.primary.resource.model-slot=1
+
+# Explicit loopback-HTTP llama.cpp compatibility instance.
+reasoning.llamacpp-http.instances=compat
+reasoning.llamacpp-http.compat.enabled=false
+reasoning.llamacpp-http.compat.id=local-llama-http
+reasoning.llamacpp-http.compat.endpoint=http://127.0.0.1:8080/
+reasoning.llamacpp-http.compat.model=local-model
+reasoning.llamacpp-http.compat.privacy=SECRET
+reasoning.llamacpp-http.compat.expected-latency-ms=30000
+reasoning.llamacpp-http.compat.preference=100
+reasoning.llamacpp-http.compat.resource.model-slot=1
+
+# Optional OpenAI-compatible instances. Account/session mechanics remain external.
+# Privacy is always explicit and is never inferred from endpoint or ReasoningLocation.
+reasoning.openai-compatible.instances=example
+reasoning.openai-compatible.example.enabled=false
+reasoning.openai-compatible.example.id=compatible-text
+reasoning.openai-compatible.example.endpoint=http://127.0.0.1:8081/v1/
+reasoning.openai-compatible.example.model=compatible-model
+reasoning.openai-compatible.example.privacy=SECRET
+reasoning.openai-compatible.example.location=LOCAL
+reasoning.openai-compatible.example.expected-latency-ms=30000
+reasoning.openai-compatible.example.preference=50

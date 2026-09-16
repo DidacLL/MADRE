@@ -1,258 +1,204 @@
-# MADRE Agent Interoperability and SDK
+# MADRE Module SDK and Interoperability
 
-Authority: `MADRE.md` defines product meaning. This document owns public Module/Agent/Skill/Workflow/Operation contracts, CORE capability, discovery/brokering and the SDK-facing boundary.
+This document defines the public Module programming boundary. `MADRE.md` remains authoritative for product meaning; the Security Algebra document defines the algebra itself.
 
-MADRE standardizes only the structure independent implementations need to share. Module-private reasoning remains Module-owned.
+## Programming model
 
-## 1. SDK role
+A MADRE Module is an owner-installed semantic/application boundary implemented with ordinary software. A Java Module does not begin as a metadata graph: the executable `Module` object is the Java author's source of truth and MADRE derives a portable description from it.
 
-The SDK is a first-class architectural boundary, not merely an HTTP convenience wrapper.
+The execution-side Java model is:
 
-It should provide a small, typed, object-oriented and interface-segregated contract that:
+- `Module`: one semantic/application owner;
+- `Agent`: optional Module-owned intelligent actor;
+- `StatefulAgent<S>`: optional execution-side specialization for typed Agent-owned state;
+- `MaterialType<T>` / `Material<T>`: Java typed values participating in MADRE contracts;
+- `Operation<I,O>`: executable bounded Module logic;
+- `OperationBinding<I,O>`: one exact executable binding and, in the current 0.x external/PUBLIC wiring, the Module-owned public result transformation required by that binding kind;
+- `OperationCall<I,O>`: one bounded typed Java invocation.
 
-- exposes real MADRE functions without Kernel internals;
-- gives developers reusable helpers for common patterns;
-- is difficult to misuse accidentally;
-- remains flexible enough for very different Module/Agent implementations;
-- can be represented in languages other than the current Python prototype.
+The portable description model is:
 
-A Module should implement only the surfaces it needs.
+- `ModuleDefinition`;
+- `AgentDefinition`;
+- `MaterialTypeDefinition`;
+- `OperationDefinition`;
+- `SkillDefinition`;
+- `WorkflowDefinition`;
+- `EffectProfile`.
 
-The public spine currently includes concepts such as:
+The distinction is intentional. Portable descriptions contain the facts MADRE needs for discovery, composition, arbitration, adapters and validation. They do not encode Java classes, codecs, executable class names, prompts, scripts or arbitrary metadata bags.
 
-```text
-Module / ModuleManifest
-Agent / AgentDescriptor
-Skill / SkillDescriptor
-Workflow / WorkflowDescriptor
-Operation / OperationDescriptor / EffectProfile
-Artifact / ContextBundle
-WorkSubmission / WorkRecord / WorkAttempt
-MaterialHandle / material resolver
-InferenceRequirement / CapabilityDescriptor
-SecurityID / SecurityObject / SecurityTransition
-```
+`Module.definition()` projects the portable `ModuleDefinition`. `Module.instance()` creates the validated runtime `ModuleInstance` joining that portable contract to exact Java Material and Operation bindings. `ModuleInstance` is runtime/adaptor assembly, not the primary Java authoring API.
 
-This list defines conceptual responsibility, not a requirement for one class per noun in every language. Exact APIs should remain as small as possible while preserving stable boundaries.
+## What an Operation is
 
-## 2. Module Manifest
+An Operation is one bounded execution of Module logic through MADRE. That is the primitive.
 
-A Module publishes only intentionally interoperable surfaces:
+The Module owns the implementation and meaning. Making a particular execution an Operation lets MADRE type it, compose it, apply the declared trust/security facts that are relevant to that execution, and arbitrate whether the bounded call can proceed. This mirrors the wider Module model: MADRE does not take ownership of the application logic merely because that logic participates in its modular contracts.
 
-```text
-module identity / version / description
-discovery terms
-exported Agent descriptors
-exported Skill descriptors
-exported Workflow descriptors
-exported Operation descriptors + bound EffectProfiles
-optional UI/interaction endpoints
-material-resolution endpoint when durable work is used
-SecurityID / public security facts required by those surfaces
-```
-
-The manifest exposes no private database, Agent memory, WorkPlan, prompt history or implementation object graph.
-
-Registration means that MADRE can find and route the published surface. Security admissibility is evaluated separately through the transition algebra.
-
-## 3. Agent
-
-An `Agent` is a Module-owned intelligent actor.
-
-MADRE should define a minimal public/SDK contract, while the Module remains free to implement the Agent with one model call, a reasoning loop, deterministic logic, several models, internal tools, memory, state machines or other mechanisms.
-
-A minimal Agent can be understood as:
+Do not define an Operation by what technique it uses or by who currently invokes it. These are independent questions:
 
 ```text
-identity / purpose
-instructions or behavior definition
-accepted input / result contract
-available Skills / Workflows / Operations
-SecurityID
-execution behavior
-
-optional:
-    state
-    memory
-    delegation / parallel execution
-    persistent configuration
+bounded Module execution -> Operation
+caller/surface access    -> exposure / invocation boundary
+reasoning eligibility    -> actual Material Sensitivity vs mechanism receiving Privacy
+transport/locality       -> implementation/provider concern
 ```
 
-MADRE does not currently require a universal `AgentDefinition` + `AgentInstance` ontology. A Module may use those concepts internally if useful.
+A PRIVATE Operation may request local or remote reasoning. A PUBLIC Operation may request no reasoning. A local owner conversation can remain internal to its Module. If some information must cross to a reasoning mechanism with a different receiving boundary, the Module constructs the appropriate Material transformation when justified; the Operation does not become a different kind of Operation because the mechanism is remote.
 
-A public `AgentDescriptor` carries only discoverable/invocable facts and references the owning Module.
+The current two-state `OperationVisibility` is a 0.x installed-runtime exposure mechanism. Today, `PUBLIC` is used by generic Module-composition and host invocation wiring; `PRIVATE` is omitted from those generic installed invocation paths. That is executable truth, but it is not a confidentiality label, an external-publication label, an owner-visibility label, a reasoning-locality label, or the durable definition of Operation.
 
-## 4. Skills and Workflows
+## Portable types versus Java typing
 
-A **Skill** is portable Agent behavior, knowledge or instruction material.
+`OperationDefinition` is language-neutral and deliberately non-generic. Its current facts are Operation identity/purpose/exposure marker, accepted Material type to receiving Privacy, produced Material type to maximum Sensitivity, and declared EffectProfiles. These are the facts the present runtime needs to arbitrate the bounded execution; they are not a claim that every possible future Operation concern belongs in this record.
 
-A public Skill contract may contain:
+Java `I,O` payload typing belongs to `Operation<I,O>`, `OperationCall<I,O>` and `OperationBinding<I,O>`, where actual Java values exist. A remotely decoded Operation contract therefore does not pretend to know Java payload classes.
+
+Likewise, `MaterialTypeDefinition` contains only nominal `MaterialTypeId` plus content type. Java `MaterialType<T>` adds `Class<T>` and `MaterialCodec<T>` as execution bindings. `ModuleDefinitionJsonCodec` format version 2 serializes the portable description without needing a Java Material resolver.
+
+This separation permits language-neutral discovery/adapters while retaining strong Java typing at executable boundaries.
+
+## Module and Agent authorship
+
+A Module may contain zero Agents. Agent is used only when the Module genuinely owns an intelligent actor; it is not a mandatory wrapper around application code.
+
+An Agent defines no universal receive loop, planner, memory model, prompt format, tool loop or execution context. Its current public facts are identity, purpose, Integrity, Skills, Workflows and associated Operations. An unproven Java Agent defaults to `Integrity.I1`, the lowest ordinary value, rather than inventing stronger assurance. Stronger Integrity is an explicit claim that must be justified by the implementation context.
+
+`StatefulAgent<S>` is an optional execution-side OOP convenience for a concrete Agent that owns typed state. It supplies serialized state reads/transitions and optional commit-before-publish persistence. The concrete Agent/Module owns state meaning, persistence representation and use. It does not add a universal memory model or a second MADRE-arbitrated execution route.
+
+`SkillDefinition` is lightweight Module-provided ability/knowledge/instruction metadata. `WorkflowDefinition` is currently an Agent-owned ordered Operation description. Kernel does not interpret it as a scheduler or planner language.
+
+Unknown or experimental behavior remains valid software. Lack of proof reduces the trust/composability claims the Module should make; it is not a reason to fabricate certainty or to make arbitrary local code impossible.
+
+## Module provider boundary
+
+One installable Module artifact exposes a `ModuleProvider` through Java `ServiceLoader`.
+
+Its stable responsibilities are:
 
 ```text
-identity / purpose / revision
-instructions/resources
-input/output expectations
-related Operations
-related Workflows
-compatibility information
-SecurityID where relevant
+moduleId() -> canonical ModuleId
+configurationDescriptor() -> owner-facing installation metadata
+validateConfiguration(configuration) -> validated/canonicalized same-identity configuration
+create(context, configuration) -> executable Module
 ```
 
-A **Workflow** is a reusable semantic recipe/behavior owned by an Agent or Module. MADRE does not prescribe one universal workflow engine or language.
+`ModuleProvider.create(...)` returns the executable Module. Host/testkit code derives and validates the `ModuleInstance`. The materialized Module identity must equal the provider identity.
 
-The SDK should make both concepts simple enough to construct from other ecosystems. An external Agent package, `AGENTS.md`, `CLAUDE.md`, command description or natural-language specification may be translated—manually or with AI-assisted tooling—into MADRE Agents/Skills/Workflows when its behavior can be bounded by MADRE contracts.
+Provider configuration is immutable and identity-scoped. The host does not know Module-specific setting keys or meaning. Configuration metadata is not part of Module execution definitions or Security Algebra.
 
-Translation/import tooling is an interoperability feature, not Kernel reasoning.
+Duplicate provider identities, configuration for an uninstalled identity, provider/materialized identity mismatch and invalid runtime assemblies fail before use.
 
-## 5. WorkPlans
+## Runtime assembly invariants
 
-A `WorkPlan` belongs to the Agent/Module that created it.
+`ModuleInstance` validates by construction that:
 
-The SDK may provide a useful base representation or helper interfaces, but it must not force all Modules into one planning ontology.
+- Java Material bindings exactly match the portable Material declarations;
+- every Java Material binding is owned by the Module;
+- executable Operation bindings exactly match the portable Operations;
+- every executable binding is owned by the Module;
+- no declared executable Operation is missing and no undeclared binding is present.
 
-A WorkPlan may express semantic tasks, dependencies, delegation, research, verification, user decisions, Workflow use or expected artifacts. Only physical executable projections become Kernel `WorkSubmission`s.
+The live registry can therefore treat a received `ModuleInstance` as a valid assembly and focus on registration/reachability/invocation responsibility.
 
-## 6. Operations and EffectProfiles
+`Material` construction itself validates ordinary Sensitivity, Java payload compatibility and that `MaterialId` and `MaterialTypeId` belong to the same Module. Operation output validation remains separate: the result type must be declared by the Operation, owned by its Module and no more sensitive than the declared maximum.
 
-An `Operation` is bounded callable behavior exported by a Module.
+## Caller-bound Module composition
 
-Its public descriptor includes only facts needed to discover and invoke the bounded callable, for example:
+`ModuleContext` contains caller-bound `ModuleDirectory` and `ModuleInvoker` ports. It contains neither generic owner-local nor external/PUBLIC host invocation authority.
+
+The caller identity is bound by installation/runtime assembly. `ReachabilityQuery` does not contain a caller identity or receiver Privacy. `ModuleInvoker.invoke(...)` receives only the exact bounded `OperationCall`. Module code therefore cannot forge its caller identity or choose a weaker receiver boundary.
+
+In the current runtime, directory reachability exposes only installed `PUBLIC` Operations compatible with the offered Material. `PRIVATE` Operations remain unavailable to generic Module-to-Module composition.
+
+The Module-to-Module receiver is fixed at `Privacy.MODULE`. A successful result crosses unchanged only when:
 
 ```text
-identity / owner
-purpose
-input/output contract
-repeatability/idempotency facts
-available EffectProfiles
+caller declares the returned foreign Material type in publicMaterialReferences
+and returned Sensitivity can reach Privacy.MODULE
 ```
 
-Security-significant execution shapes of the same Operation are represented by immutable **EffectProfiles** owned by that Operation.
+The exact callee Material identity, owner, type and Sensitivity are preserved. The caller may then create a new caller-owned Material representing its own interpretation.
 
-Conceptually:
+This is ordinary installed application composition. It is not external publication and does not run the external/PUBLIC result transformer.
+
+## Owner interaction, owner-local invocation and external/PUBLIC disclosure
+
+Owner interaction is not the same boundary as Module-to-Module composition or external publication.
+
+A Module may own conversational or other owner-facing execution that remains internal to the application. A local presentation surface can let the Owner use that execution without implying that the same Operation is a public composition API for arbitrary Modules. MADRE has not yet frozen the final reusable interaction-surface contract.
+
+The current host implementation has two generic invocation ports in addition to Module-to-Module composition:
 
 ```text
-EffectProfile
-    SecurityID
-    bound Operation reference
-    Risk
-    Autonomy
-    Privacy?   # only if the effect itself exposes material
+current Module receiver -> PUBLIC Operation, fixed Privacy.MODULE, no public transform
+current Owner-local     -> PUBLIC Operation, host-only, valid Material unchanged
+current External/PUBLIC -> PUBLIC Operation, host-only, explicit Module-owned public transform
 ```
 
-A concrete effect transition selects one bound EffectProfile. The caller does not invent or override Risk, Autonomy, Integrity or Privacy numerically.
+This table is executable 0.x truth, not the target definition of Operation exposure.
 
-This allows one semantic Operation to expose, for example, both a direct-user-controlled effect shape and an autonomous effect shape without introducing `approved=true`, an ACL, a role, or another authority mechanism.
+The current `OwnerModuleInvoker` resolves an installed `PUBLIC` Operation, executes the canonical bounded call and returns valid Module-created Material unchanged. Requiring `PUBLIC` here is transitional host wiring. It must not be generalized into a rule that all owner-facing behavior must also be public to other Modules.
 
-MADRE-provided AI integrations expose external/system effects through specific Operations or bounded mechanisms. There is no generic Agent shell or unrestricted Internet capability.
+The current `PublicModuleInvoker` also targets a `PUBLIC` Operation and requires its `PublicResultTransformer`. The transformer must create new declared Material with new nominal identity and Sensitivity capable of reaching `Privacy.PUBLIC`. The durable principle is explicit Module-controlled transformation at an actual external/public disclosure boundary. Coupling that transformation to the same two-state visibility marker used for Module composition is not itself an architectural requirement.
 
-An Operation may internally run deterministic code, use another service, invoke a Workflow or submit MADRE inference work; those internals remain Module-owned. The EffectProfile describes the security-relevant execution contract visible at the MADRE boundary, not the Module's private implementation ontology.
+Do not solve owner interaction by making every PRIVATE Operation host-callable. That would erase Module encapsulation in the opposite direction. The correct reusable owner-interaction exposure should be recovered from real product experiments and remain non-privileged with respect to CORE.
 
-## 7. Artifacts and ContextBundles
+## Security Algebra responsibility
 
-An `Artifact` is material owned by a Module.
+Security Algebra attaches only where responsibility applies. Material carries Sensitivity; accepted Operation inputs carry receiving Privacy; Agent carries/derives causal Integrity; consequential Operation variants carry Risk and Autonomy; reasoning mechanisms declare receiving Privacy.
 
-A `ContextBundle` is an artifact-like bounded collection of material prepared for a concrete purpose. It carries a material SecurityObject with the values required by the final Security Algebra, including Sensitivity, and Integrity only when the scope is control-relevant.
+Operation exposure is not another Algebra carrier. `OperationVisibility.PUBLIC` does not mean Material is public, and `PRIVATE` does not imply that reasoning must stay inside one process or machine.
 
-Generated model output becomes ordinary Artifact material once delivered. It can be fed into subsequent Agents/Workflows/Operations according to Module semantics.
+The algebra governs MADRE-mediated information/effect composition. It is not a general sandbox for installed Java code and does not infer values from locality, endpoint, provider, model, process, classloader placement, shipped status or CORE role.
 
-Security-relevant transformation produces a new representation/security binding rather than mutating the source. A Module may therefore create a minimized representation with lower Sensitivity or an explicitly validated representation with stronger Integrity when its own semantics and validation path justify doing so.
+The Owner explicitly chooses software to install. Such software can perform ordinary application/OS behavior inside its responsibility. MADRE's contracts constrain what enters the MADRE composition model; they do not pretend to make arbitrary installed code safe.
 
-## 8. Discovery and brokering
+## Reasoning boundary
 
-Discovery exposes descriptors visible/admissible under the caller's current carried security history and the prospective discovery/invocation boundary.
+A bounded Operation may create a typed `ReasoningComputation<R>` and `ReasoningRequest` from its valid `OperationCall`.
 
-The registry supplies discovery and routing facts. It does not choose semantic usefulness and registration is not authority.
+The request derives originating Module and carried Sensitivity structurally from that call. It carries only reasoning computation plus execution controls such as priority, timeout, eligibility, cancellation, retry and typed preferences. It does not contain semantic continuation, Material identity/type, Agent/Workflow identity, concrete mechanism identity or Operation Risk.
 
-The intelligent participant chooses the target Agent/Operation/Skill/Workflow. Actual invocation is evaluated again with the concrete participants/material and transition roles.
+If several values are combined before reasoning, the Module must create the actual combined/contextual Material with the combined Sensitivity and derive the reasoning request from a call over that Material. The SDK provides no arbitrary carried-Sensitivity override.
 
-The broker routes an explicit owning-Module + exported identity and records physical dispatch/result evidence. Brokered security context continues through the invoked endpoint so nested inference/work/delegation remains part of the same security lifecycle.
+Kernel owns compatible reasoning selection, resources, immediate/durable execution, retry/cancellation and opaque persistence. Module owns interpretation, association and continuation. Provider/adapter owns concrete mechanism/model/runtime tuning.
 
-If an externally effectful Operation may have executed but outcome is unknown, the effect must not be blindly repeated.
+## Durable interpretation
 
-## 9. CORE-capable Module contract
+Durable Kernel work is physical reasoning state. Domain meaning of that work remains Module-owned.
 
-MADRE ships with a default CORE Module. A user may select another installed Module that satisfies the CORE contract.
+The shipped owner-interaction Module demonstrates this split: it keeps its WorkId-to-pending association and typed bounded conversation state, Kernel keeps opaque durable reasoning work, and the Module later interprets a completed result into its own Material before acknowledgement/removal.
 
-CORE is an ordinary Module at the Kernel boundary and uses the same SDK/security/execution mechanisms as other Modules.
+There is no generic Kernel callback/continuation object, semantic result router or workflow scheduler.
 
-### Required functional capability
+## Owner interaction and CORE
 
-A CORE-capable Module must be able to provide the installation's generic/default intelligent role, including:
+CORE is an optional installation role assigned to one ordinary installed Module. It is expected to be an important owner-facing/coordinator reference consumer, but it has no private runtime authority.
 
-- a general interaction endpoint suitable for MADRE's default UI/UX;
-- a default interaction Agent or equivalent intelligent behavior;
-- fallback handling/delegation for Modules that do not provide their own suitable Agent/UI path;
-- generic delegation/escalation across visible Module surfaces;
-- MADRE-system-oriented intelligent assistance required by the standard experience, such as configuration/install guidance.
+The current `interaction.*` console binding is independent from `roles.core`. This is a transitional product arrangement, not a universal SDK contract. The console currently maps ordinary text, `/standard` and `/updates` onto configured installed `PUBLIC` Operations, but that does not define the target interaction exposure model.
 
-The shipped default CORE may add richer personal-assistant behavior, profiles, memory, Skills, Workflows and developer tooling. Those are Module-owned features, not Kernel requirements.
+The shipped owner-interaction Module owns bounded persisted multi-turn conversation state through a concrete `StatefulAgent<OwnerConversationState>`. Its MADRE-arbitrated executions still occur through ordinary Operation bindings/calls. This proves stateful Agent programming, not a generic conversation/memory API and not a requirement that conversation Operations remain `PUBLIC`.
 
-### Required security capability
+## Installation/discovery
 
-CORE may legitimately handle extremely sensitive user/system material. A CORE-capable Module must therefore provide sufficiently strong Privacy and Integrity characteristics for the disclosure/control paths it is expected to participate in under MADRE's Security Algebra.
+A Module is currently an ordinary JVM JAR with one canonical `ModuleProvider` for managed installation. Shipped and independently built Modules use the same provider/registration path; bundling, classloader placement and CORE status confer no privilege.
 
-This is not a privilege grant. CORE receives no bypass and every transition is evaluated by the same predicates.
+Managed lifecycle distinguishes shipped, lifecycle-managed owner, manual direct-placement and development override sources. Artifact administration is a host responsibility and is absent from `ModuleContext`.
 
-CORE-owned Artifacts/ContextBundles may simultaneously have the highest Sensitivity levels. Participant Privacy/Integrity and material Sensitivity are independent dimensions.
+## Independent interoperability proof
 
-CORE must be able to minimize, anonymize, omit, validate or otherwise transform material that belongs to CORE's own semantic domain, including representations it has deliberately accepted into that domain, before sending or using them through another transition when its semantics permit such a transformation. A source Module remains responsible for domain-specific classification/transformation that only it can perform before exporting its representation to CORE.
+`verification/sdk-consumer` builds independently against published public artifacts and implements the same code-first `Module` contract used by shipped Modules. It exercises stable testkit and heterogeneous reasoning contracts without application/Kernel implementation dependencies.
 
-### Default selection
+`verification/module-interoperability` separately builds an installed caller and callee. It proves the current caller-bound reachability/invocation behavior, preservation of valid foreign Material, caller-owned interpretation, S5 blocking at `Privacy.MODULE`, undeclared-foreign-type blocking, PRIVATE invisibility to Module composition, current owner-local raw receipt and current external/PUBLIC transformation.
 
-The shipped CORE remains selected by default. If another installed Module satisfies the CORE contract, the user may configure it as CORE. No elaborate election/role-management system is required.
+These fixtures are architecture evidence for the boundaries they actually prove. They do not establish that one two-state Operation visibility marker must forever encode every owner/public presentation surface.
 
-## 10. Interaction surfaces
+## Evolution rule
 
-MADRE does not require one UI.
+Stable SDK concepts should be extracted from real Module code, with evidence proportional to abstraction scope, rather than invented to anticipate every possible agentic application. The explicit experimental artifact exists for higher-level incubation; it currently contains no public authoring helper after removal of the obsolete definition-first builder.
 
-An interaction may originate from:
+A narrow optional OOP specialization can be stable when one substantial real consumer demonstrates a generic orthogonal responsibility and focused tests preserve the invariants. Broader frameworks need broader/repeated evidence.
 
-- a Module-owned native UI;
-- the default CORE UI/UX;
-- a provider/tool application GUI or CLI through an adapter;
-- an automation or machine-facing integration.
-
-When CORE owns the interaction surface, all direct user input enters CORE's interaction Agent/behavior. That Agent may use transient low-latency inference for immediate natural interaction and create/delegate further work as necessary.
-
-A native Module with its own UI may handle its own semantics or explicitly send governed input to CORE's interaction endpoint.
-
-A Module or adapter without its own UI may delegate its default interaction to CORE; this is the normal fallback for simple third-party/unknown wrappers.
-
-These are SDK/Module patterns. Kernel only sees the resulting inference/work/Operation requests and security transitions.
-
-## 11. SDK helpers and extension seams
-
-The SDK should provide small reusable helpers where they remove repeated integration work without defining new Kernel semantics. Relevant examples include:
-
-```text
-Module/descriptor registration
-Agent/Operation endpoint adapters
-ContextBundle/Artifact construction
-SecurityObject binding/propagation
-SecurityTransition construction for known disclosure/control/effect relationships
-EffectProfile declaration/selection
-transient inference helper
-Durable WorkSubmission + material resolver helper
-result consumption
-CORE interaction/delegation helper
-Capability adapter scaffolding
-```
-
-Correct transition construction should be difficult to omit accidentally. Semantic roles that require private content understanding remain Module-owned; Kernel evaluates the supplied bound facts/relationships without reading payload meaning.
-
-Mechanism-specific advanced features may use optional adapter extension interfaces. For example, a local inference mechanism could expose cache/session/residency controls needed for a KV-cache management experiment without adding raw vector/KV fields to every generic `InferenceRequirement`.
-
-## 12. Developer/import tooling
-
-The SDK should make later tools straightforward rather than making them Kernel features.
-
-Examples include:
-
-- AI-assisted conversion of external Agent packages/protocols into MADRE Modules/Agents;
-- Skill/Workflow extraction from repository instruction files or natural descriptions;
-- a `MADREDeveloper` Module;
-- a no-code Module/Agent builder;
-- inference-mechanism experimentation and benchmarking;
-- Module/adapter security valuation and validation tooling that emits complete bound SecurityObjects before runtime algebra evaluation.
-
-These are valuable product/research directions but are not required for Kernel foundation.
+A new inference capability, reusable library or implementation technique does not by itself justify a new Module, Material, Agent, Workflow or stable SDK abstraction. Module ownership defines Module boundaries; demonstrated programming friction justifies convenience abstractions.

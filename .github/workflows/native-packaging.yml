@@ -1,0 +1,56 @@
+name: Extended native owner package
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-owner-package-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native-package:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.12'
+
+      - name: Build native application image and installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $gradle = if ($IsWindows) { '.\\gradlew.bat' } else { './gradlew' }
+          & $gradle --no-daemon --build-cache :madre-app:jpackageAppImage :madre-app:nativePackage
+          if ($LASTEXITCODE -ne 0) { throw 'native package build failed' }
+
+      - name: Verify packaged owner journey
+        shell: pwsh
+        run: |
+          ./verification/native-package-acceptance.ps1 `
+            -AppImageRoot 'madre-app/build/jpackage/app-image/madre' `
+            -NativePackageDirectory 'madre-app/build/jpackage/native'
+
+      - name: Verify sustained owner conversation and recovery
+        shell: pwsh
+        run: |
+          ./verification/native-owner-conversation-acceptance.ps1 `
+            -AppImageRoot 'madre-app/build/jpackage/app-image/madre'
+
+      - name: Retain native installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: madre-native-${{ runner.os }}-${{ github.sha }}
+          path: madre-app/build/jpackage/native/*
+          if-no-files-found: error

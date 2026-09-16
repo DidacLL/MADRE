@@ -1,0 +1,51 @@
+name: Extended reasoning owner configuration
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: reasoning-owner-config-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  owner-reasoning-configuration:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.12'
+
+      - name: Publish public artifacts and build packaged application image
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $gradle = if ($IsWindows) { '.\\gradlew.bat' } else { './gradlew' }
+          & $gradle --no-daemon --build-cache publish :madre-app:jpackageAppImage
+          if ($LASTEXITCODE -ne 0) { throw 'MADRE public artifacts/application image build failed' }
+
+      - name: Build independent reasoning provider against published artifacts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $gradle = if ($IsWindows) { '.\\gradlew.bat' } else { './gradlew' }
+          & $gradle --no-daemon --build-cache -p verification/reasoning-consumer jar
+          if ($LASTEXITCODE -ne 0) { throw 'independent reasoning provider build failed' }
+
+      - name: Verify native owner reasoning configuration journey
+        shell: pwsh
+        run: |
+          ./verification/reasoning-configuration-acceptance.ps1 `
+            -AppImageRoot 'madre-app/build/jpackage/app-image/madre' `
+            -IndependentReasoningJar 'verification/reasoning-consumer/build/libs/independent-reasoning.jar'
