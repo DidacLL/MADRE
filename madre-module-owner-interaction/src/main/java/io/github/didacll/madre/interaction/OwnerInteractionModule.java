@@ -5,6 +5,7 @@ import io.github.didacll.madre.algebra.Integrity;
 import io.github.didacll.madre.algebra.Privacy;
 import io.github.didacll.madre.algebra.Risk;
 import io.github.didacll.madre.algebra.Sensitivity;
+import io.github.didacll.madre.sdk.directory.ModuleDirectory;
 import io.github.didacll.madre.sdk.execution.ReasoningRequest;
 import io.github.didacll.madre.sdk.execution.ReasoningRetryPolicy;
 import io.github.didacll.madre.sdk.execution.ReasoningService;
@@ -30,6 +31,7 @@ import io.github.didacll.madre.sdk.module.OwnerMessage;
 import io.github.didacll.madre.sdk.module.SkillDefinition;
 import io.github.didacll.madre.sdk.module.StatefulAgent;
 import io.github.didacll.madre.sdk.module.WorkflowDefinition;
+import io.github.didacll.madre.sdk.operation.ModuleInvoker;
 import io.github.didacll.madre.sdk.operation.Operation;
 import io.github.didacll.madre.sdk.operation.OperationCall;
 import io.github.didacll.madre.sdk.operation.OwnerInteractionInvoker;
@@ -150,6 +152,11 @@ public final class OwnerInteractionModule implements Module {
         interaction = new InteractionAgent(reasoning, stateFile, settings);
     }
 
+    OwnerInteractionModule(ReasoningService reasoning, ModuleDirectory directory,
+            ModuleInvoker invoker, Path stateFile, OwnerInteractionSettings settings) {
+        interaction = new InteractionAgent(reasoning, directory, invoker, stateFile, settings);
+    }
+
     @Override public ModuleId id() { return ID; }
     @Override public String version() { return "1.5.0"; }
     @Override public String purpose() { return "Owner interaction and fallback behavior"; }
@@ -196,6 +203,8 @@ public final class OwnerInteractionModule implements Module {
         private final OwnerInteractionSettings settings;
         private final OwnerInteractionStateStore state;
         private final OwnerKnowledgeStore knowledge;
+        private final Optional<TextOperationDiscovery> moduleDiscovery;
+        private final Optional<TextOperationInvocation> moduleInvocation;
         private final Operation<String, String> standard = Operation.of(this::executeStandardPrompt);
         private final Operation<String, String> fast = Operation.of(this::executeFastLane);
         private final Operation<String, String> collect = Operation.of(call ->
@@ -214,12 +223,24 @@ public final class OwnerInteractionModule implements Module {
                 OwnerInteractionSettings settings) {
             this(reasoning, stateFile, settings,
                     new OwnerConversationStore(conversationStateFile(stateFile)),
-                    new OwnerKnowledgeStore(knowledgeStateFile(stateFile)));
+                    new OwnerKnowledgeStore(knowledgeStateFile(stateFile)),
+                    Optional.empty(), Optional.empty());
+        }
+
+        private InteractionAgent(ReasoningService reasoning, ModuleDirectory directory,
+                ModuleInvoker invoker, Path stateFile, OwnerInteractionSettings settings) {
+            this(reasoning, stateFile, settings,
+                    new OwnerConversationStore(conversationStateFile(stateFile)),
+                    new OwnerKnowledgeStore(knowledgeStateFile(stateFile)),
+                    Optional.of(new TextOperationDiscovery(directory)),
+                    Optional.of(new TextOperationInvocation(ID, invoker)));
         }
 
         private InteractionAgent(ReasoningService reasoning, Path stateFile,
                 OwnerInteractionSettings settings, OwnerConversationStore conversationStore,
-                OwnerKnowledgeStore knowledgeStore) {
+                OwnerKnowledgeStore knowledgeStore,
+                Optional<TextOperationDiscovery> moduleDiscovery,
+                Optional<TextOperationInvocation> moduleInvocation) {
             super(java.util.Objects.requireNonNull(conversationStore, "conversationStore").load()
                             .limited(java.util.Objects.requireNonNull(settings, "settings")
                                     .conversationHistoryExchanges()),
@@ -228,6 +249,14 @@ public final class OwnerInteractionModule implements Module {
             this.state = new OwnerInteractionStateStore(stateFile);
             this.settings = settings;
             this.knowledge = java.util.Objects.requireNonNull(knowledgeStore, "knowledgeStore");
+            this.moduleDiscovery = java.util.Objects.requireNonNull(moduleDiscovery,
+                    "moduleDiscovery");
+            this.moduleInvocation = java.util.Objects.requireNonNull(moduleInvocation,
+                    "moduleInvocation");
+            if (moduleDiscovery.isPresent() != moduleInvocation.isPresent()) {
+                throw new IllegalArgumentException(
+                        "ordinary Module discovery and invocation ports must be supplied together");
+            }
             standardBinding = OperationBinding.ownerInteractionOperation(STANDARD_OPERATION, standard);
             fastBinding = OperationBinding.ownerInteractionOperation(FAST_OPERATION, fast);
             collectBinding = OperationBinding.ownerInteractionOperation(COLLECT_OPERATION, collect);
@@ -265,10 +294,43 @@ public final class OwnerInteractionModule implements Module {
                         intent.orElseThrow());
             }
             Material<String> prompt = material(OWNER_PROMPT, ownerText.strip(), sensitivity);
+            Optional<TextOperationDiscovery.Candidate> candidate = moduleDiscovery
+                    .flatMap(discovery -> discovery.select(prompt.payload(), prompt.sensitivity()));
+            if (candidate.isPresent()) {
+                return respondThroughModule(prompt, candidate.orElseThrow());
+            }
             OperationCall<String, String> call = OperationCall.withEffect(
                     FAST_OPERATION, FAST_PROFILE, prompt, causalParticipants());
             return invoker.invokeOwnerInteraction(call).thenApply(answer ->
                     new OwnerMessage(answer.payload(), answer.sensitivity()));
+        }
+
+        private CompletionStage<OwnerMessage> respondThroughModule(Material<String> ownerPrompt,
+                TextOperationDiscovery.Candidate candidate) {
+            CompletionStage<Material<String>> invocation;
+            try {
+                invocation = moduleInvocation.orElseThrow().invoke(candidate,
+                        ownerPrompt.payload(), ownerPrompt.sensitivity(), integrity());
+            } catch (RuntimeException failure) {
+                return CompletableFuture.completedFuture(moduleFailure(ownerPrompt));
+            }
+            return invocation.handle((foreign, failure) -> {
+                if (failure != null) return moduleFailure(ownerPrompt);
+                String interpreted = foreign.payload().strip();
+                if (interpreted.isEmpty()) return moduleFailure(ownerPrompt);
+                Material<String> answer = material(IMMEDIATE_ANSWER, interpreted,
+                        ownerPrompt.sensitivity().combine(foreign.sensitivity()));
+                rememberExchange(ownerPrompt, answer);
+                return new OwnerMessage(answer.payload(), answer.sensitivity());
+            });
+        }
+
+        private OwnerMessage moduleFailure(Material<String> ownerPrompt) {
+            Material<String> answer = material(IMMEDIATE_ANSWER,
+                    "I found a matching installed application capability, but it could not safely complete that request.",
+                    ownerPrompt.sensitivity());
+            rememberExchange(ownerPrompt, answer);
+            return new OwnerMessage(answer.payload(), answer.sensitivity());
         }
 
         private CompletionStage<OwnerMessage> respondToKnowledge(OwnerInteractionInvoker invoker,
