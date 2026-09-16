@@ -192,12 +192,13 @@ public final class LiveModuleRegistry implements ModuleRegistration, PublicModul
     }
 
     private static boolean callerCanOffer(ModuleDefinition caller, Material<?> material) {
+        if (!material.id().moduleId().equals(caller.id())) {
+            return false;
+        }
         if (caller.materialTypes().containsKey(material.type().id())) {
-            return material.id().moduleId().equals(caller.id())
-                    && material.type().id().moduleId().equals(caller.id());
+            return material.type().id().moduleId().equals(caller.id());
         }
         return caller.publicMaterialReferences().contains(material.type().id())
-                && material.id().moduleId().equals(material.type().id().moduleId())
                 && material.sensitivity().canReach(Privacy.MODULE);
     }
 
