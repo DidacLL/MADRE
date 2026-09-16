@@ -2,12 +2,22 @@ name: Extended native owner package
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/native-packaging.yml'
+      - 'config/**'
+      - 'madre-app/**'
+      - 'madre-kernel/**'
+      - 'madre-module-owner-interaction/**'
+      - 'madre-sdk/**'
+      - 'verification/native-package-acceptance.ps1'
+      - 'verification/native-owner-conversation-acceptance.ps1'
 
 permissions:
   contents: read
 
 concurrency:
-  group: native-owner-package-${{ github.ref }}
+  group: native-owner-package-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:

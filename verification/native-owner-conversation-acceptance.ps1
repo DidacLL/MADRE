@@ -45,8 +45,12 @@ $server = Start-Job -ArgumentList $prefix, $gate -ScriptBlock {
                     $prompt = [string]$payload.messages[0].content
                     $model = [string]$payload.model
                     if ($prompt.StartsWith("Analyze the owner's bounded conversation below")) {
-                        while (-not (Test-Path $gate)) { Start-Sleep -Milliseconds 50 }
-                        $text = 'durable-follow-up'
+                        if ($prompt -match 'CURRENT OWNER:\s*start durable analysis') {
+                            while (-not (Test-Path $gate)) { Start-Sleep -Milliseconds 50 }
+                            $text = 'durable-follow-up'
+                        } else {
+                            $text = 'NO_FOLLOW_UP'
+                        }
                     } elseif ($prompt -match 'OWNER TURN 1:' -and $prompt -match 'remember alpha') {
                         $text = "$model`:context-preserved"
                     } else {
@@ -105,16 +109,22 @@ try {
     if ($IsWindows) {
         $env:APPDATA = Join-Path $temp 'roaming'
         $env:LOCALAPPDATA = Join-Path $temp 'local'
+        $configuration = Join-Path $env:APPDATA 'MADRE/madre.properties'
         $stateDirectory = Join-Path $env:LOCALAPPDATA 'MADRE/state'
     } else {
         $env:XDG_CONFIG_HOME = Join-Path $temp 'xdg-config'
         $env:XDG_DATA_HOME = Join-Path $temp 'xdg-data'
         $env:XDG_STATE_HOME = Join-Path $temp 'xdg-state'
+        $configuration = Join-Path $env:XDG_CONFIG_HOME 'madre/madre.properties'
         $stateDirectory = Join-Path $env:XDG_STATE_HOME 'madre'
     }
     New-Item -ItemType Directory -Force -Path $env:HOME | Out-Null
 
     Invoke-Madre @('doctor') | Out-Null
+    $propertiesText = Get-Content $configuration -Raw
+    if ($propertiesText -match '(?m)^interaction\.') {
+        throw 'first-run owner configuration still contains host semantic interaction protocol keys'
+    }
     $providers = Invoke-Madre @('reasoning', 'providers')
     if ($providers -notmatch 'openai-compatible') { throw 'shipped OpenAI-compatible provider is missing' }
 
@@ -135,19 +145,19 @@ try {
     $first = Invoke-Console {
         param($process)
         Start-Sleep -Milliseconds 700
-        $process.StandardInput.WriteLine('/standard remember alpha')
-        Start-Sleep -Milliseconds 500
+        $process.StandardInput.WriteLine('remember alpha')
+        Start-Sleep -Milliseconds 600
         $process.StandardInput.WriteLine('/sensitivity S1')
-        $process.StandardInput.WriteLine('/standard what did I ask you to remember?')
-        Start-Sleep -Milliseconds 500
+        $process.StandardInput.WriteLine('what did I ask you to remember?')
+        Start-Sleep -Milliseconds 600
         $process.StandardInput.WriteLine('start durable analysis')
-        Start-Sleep -Milliseconds 500
+        Start-Sleep -Milliseconds 600
     }
-    if ($first -notmatch 'S5\s+secret-model:first-answer') {
-        throw 'S5 owner turn did not select the SECRET-compatible mechanism'
+    if ($first -notmatch 'secret-model:first-answer') {
+        throw 'ordinary owner turn did not select the SECRET-compatible mechanism'
     }
-    if ($first -notmatch 'S5\s+secret-model:context-preserved') {
-        throw 'multi-turn context did not preserve maximum carried Sensitivity and conversation state'
+    if ($first -notmatch 'secret-model:context-preserved') {
+        throw 'ordinary multi-turn conversation did not reuse Agent-owned persisted context'
     }
 
     $moduleState = Join-Path $stateDirectory 'module-state'
@@ -163,17 +173,26 @@ try {
     $second = Invoke-Console {
         param($process)
         Start-Sleep -Seconds 3
-        $process.StandardInput.WriteLine('/standard after restart')
-        Start-Sleep -Milliseconds 700
+        $process.StandardInput.WriteLine('after restart')
+        Start-Sleep -Milliseconds 900
     }
     if ($second -notmatch 'follow-up\s+durable-follow-up') {
-        throw 'recovered durable work was not surfaced naturally after restart'
+        throw 'CORE Agent-approved recovered durable work was not surfaced naturally after restart'
     }
     if ($second -notmatch 'context-preserved') {
-        throw 'Module-owned conversation state was not recovered after restart'
+        throw 'Module-owned conversation state was not recovered for an ordinary turn after restart'
     }
     if ((Test-Path $pending) -and (Get-Item $pending).Length -ne 0) {
-        throw 'Module pending association was not acknowledged after useful follow-up presentation'
+        throw 'Module pending association was not acknowledged after semantic follow-up collection'
+    }
+
+    $normalOutput = $first + [Environment]::NewLine + $second
+    $privateProtocol = @('fast-lane', 'standard-prompt', 'collect-background', 'owner-prompt',
+        'background-collection-request', 'NO_FOLLOW_UP', '/standard', '/updates')
+    foreach ($token in $privateProtocol) {
+        if ($normalOutput -match [regex]::Escape($token)) {
+            throw "ordinary owner output exposed CORE implementation protocol: $token"
+        }
     }
 } finally {
     Stop-Job $server -ErrorAction SilentlyContinue | Out-Null

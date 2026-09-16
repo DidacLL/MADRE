@@ -3,6 +3,7 @@ package io.github.didacll.madre.app;
 import io.github.didacll.madre.algebra.Sensitivity;
 import io.github.didacll.madre.sdk.identity.ModuleId;
 import io.github.didacll.madre.sdk.material.Material;
+import io.github.didacll.madre.sdk.module.OwnerMessage;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -158,29 +159,29 @@ public final class MadreMain {
     }
 
     private static void runConsole(MadreApplication application) throws IOException {
-        Optional<LocalInteractionBinding> configured = application.interactionBinding();
-        Sensitivity currentSensitivity = configured.map(LocalInteractionBinding::defaultSensitivity)
-                .orElse(Sensitivity.S1);
+        Sensitivity currentSensitivity = Sensitivity.S5;
+        boolean conversational = application.hasOwnerInteraction();
         if (application.kernel().reasoningCapabilities().installedIds().isEmpty()
                 && !application.installedReasoningProviders().isEmpty()) {
             System.out.println("No reasoning mechanisms are enabled. Run 'madre reasoning providers' "
                     + "to inspect installed provider types and 'madre reasoning configure ...' to set one up.");
         }
-        if (configured.isPresent()) {
-            LocalInteractionBinding binding = configured.orElseThrow();
-            System.out.println("MADRE ready - local text -> " + binding.moduleId().value() + "/"
-                    + binding.defaultOperation() + " (owner interaction, " + currentSensitivity
-                    + "); /standard <text>; /updates; /sensitivity <S1..S5>; /modules; "
-                    + "/invoke-owner ...; /invoke-public ...; /exit");
+        if (conversational) {
+            String core = application.resolvedCore().map(ModuleId::value).orElse("unresolved");
+            System.out.println("MADRE ready - conversation via CORE " + core
+                    + " (input sensitivity " + currentSensitivity
+                    + "); /sensitivity <S1..S5>; /modules; /invoke-owner ...; "
+                    + "/invoke-public ...; /exit");
         } else {
-            System.out.println("MADRE ready - generic console; /modules; "
+            System.out.println("MADRE ready - no conversational CORE; /modules; "
                     + "/invoke-public <module> <operation> <material-type> <S1..S5> <payload>; "
                     + "/invoke-owner <module> <operation> <material-type> <S1..S5> <payload>; /exit");
         }
 
-        OwnerInteractionPresentation presentation = configured.map(binding ->
-                new OwnerInteractionPresentation(application, binding,
-                        text -> System.out.println("follow-up\t" + text))).orElse(null);
+        OwnerInteractionPresentation presentation = conversational
+                ? new OwnerInteractionPresentation(application,
+                        text -> System.out.println("follow-up\t" + text))
+                : null;
         try (presentation;
                 BufferedReader reader = new BufferedReader(new InputStreamReader(System.in))) {
             String line;
@@ -208,8 +209,8 @@ public final class MadreMain {
                     continue;
                 }
                 if (input.startsWith("/sensitivity ") || input.equals("/sensitivity")) {
-                    if (configured.isEmpty()) {
-                        System.err.println("interaction is not configured");
+                    if (!conversational) {
+                        System.err.println("no owner-interaction Agent is available in the selected CORE");
                         continue;
                     }
                     String value = input.equals("/sensitivity") ? ""
@@ -222,52 +223,32 @@ public final class MadreMain {
                     }
                     continue;
                 }
-                if (input.startsWith("/standard ") || input.equals("/standard")) {
-                    if (configured.isEmpty()) {
-                        System.err.println("interaction is not configured");
-                        continue;
-                    }
-                    String text = input.equals("/standard") ? ""
-                            : input.substring("/standard ".length()).strip();
-                    if (text.isEmpty()) {
-                        System.err.println("standard requires text");
-                        continue;
-                    }
-                    LocalInteractionBinding binding = configured.orElseThrow();
-                    invoke(application, Invocation.INTERACTION, binding.moduleId().value(),
-                            binding.standardOperation(), binding.promptMaterialType(),
-                            currentSensitivity.name(), text, false);
-                    continue;
-                }
-                if (input.equals("/updates")) {
-                    if (configured.isEmpty()) {
-                        System.err.println("interaction is not configured");
-                        continue;
-                    }
-                    LocalInteractionBinding binding = configured.orElseThrow();
-                    if (binding.updates().isEmpty()) {
-                        System.err.println("interaction background updates are not configured");
-                        continue;
-                    }
-                    LocalInteractionBinding.UpdatesBinding updates = binding.updates().orElseThrow();
-                    invoke(application, Invocation.INTERACTION, binding.moduleId().value(),
-                            updates.operation(), updates.materialType(), updates.sensitivity().name(),
-                            updates.payload(), false);
-                    continue;
-                }
                 if (input.startsWith("/")) {
                     System.err.println("unknown command: " + input);
                     continue;
                 }
-                if (configured.isEmpty()) {
-                    System.err.println("interaction is not configured; use /invoke-owner for local Module invocation");
+                if (!conversational) {
+                    System.err.println("no owner-interaction Agent is available in the selected CORE; "
+                            + "use /invoke-owner for diagnostic Module invocation");
                     continue;
                 }
-                LocalInteractionBinding binding = configured.orElseThrow();
-                invoke(application, Invocation.INTERACTION, binding.moduleId().value(),
-                        binding.defaultOperation(), binding.promptMaterialType(),
-                        currentSensitivity.name(), input, false);
+                converse(application, input, currentSensitivity);
             }
+        }
+    }
+
+    private static void converse(MadreApplication application, String ownerText,
+            Sensitivity sensitivity) {
+        try {
+            OwnerMessage result = application.converse(ownerText, sensitivity)
+                    .toCompletableFuture().join();
+            System.out.println(result.text());
+        } catch (RuntimeException exception) {
+            Throwable cause = exception instanceof CompletionException
+                    && exception.getCause() != null ? exception.getCause() : exception;
+            String message = cause.getMessage() == null ? cause.getClass().getSimpleName()
+                    : cause.getMessage();
+            System.err.println("conversation failure: " + message);
         }
     }
 
@@ -304,8 +285,6 @@ public final class MadreMain {
                 case PUBLIC -> application.invokePublicText(new ModuleId(module), operation,
                         materialType, sensitivity, payload).toCompletableFuture().join();
                 case OWNER_LOCAL -> application.invokeOwnerText(new ModuleId(module), operation,
-                        materialType, sensitivity, payload).toCompletableFuture().join();
-                case INTERACTION -> application.invokeInteractionText(new ModuleId(module), operation,
                         materialType, sensitivity, payload).toCompletableFuture().join();
             };
             if (invocation == Invocation.PUBLIC) {
@@ -357,5 +336,5 @@ public final class MadreMain {
     }
 
     private record ParsedArguments(Optional<Path> configuration, List<String> command) { }
-    private enum Invocation { PUBLIC, OWNER_LOCAL, INTERACTION }
+    private enum Invocation { PUBLIC, OWNER_LOCAL }
 }

@@ -21,16 +21,18 @@ import io.github.didacll.madre.sdk.identity.WorkflowId;
 import io.github.didacll.madre.sdk.material.Material;
 import io.github.didacll.madre.sdk.material.MaterialCodecs;
 import io.github.didacll.madre.sdk.material.MaterialType;
-import io.github.didacll.madre.sdk.module.Agent;
 import io.github.didacll.madre.sdk.module.EffectProfile;
 import io.github.didacll.madre.sdk.module.Module;
 import io.github.didacll.madre.sdk.module.OperationBinding;
 import io.github.didacll.madre.sdk.module.OperationDefinition;
+import io.github.didacll.madre.sdk.module.OwnerInteractionAgent;
+import io.github.didacll.madre.sdk.module.OwnerMessage;
 import io.github.didacll.madre.sdk.module.SkillDefinition;
 import io.github.didacll.madre.sdk.module.StatefulAgent;
 import io.github.didacll.madre.sdk.module.WorkflowDefinition;
 import io.github.didacll.madre.sdk.operation.Operation;
 import io.github.didacll.madre.sdk.operation.OperationCall;
+import io.github.didacll.madre.sdk.operation.OwnerInteractionInvoker;
 import io.github.didacll.madre.text.TextInferenceCommand;
 import io.github.didacll.madre.text.TextInferenceResult;
 import java.nio.file.Path;
@@ -118,13 +120,15 @@ public final class OwnerInteractionModule implements Module {
     }
 
     @Override public ModuleId id() { return ID; }
-    @Override public String version() { return "1.3.0"; }
+    @Override public String version() { return "1.4.0"; }
     @Override public String purpose() { return "Owner interaction and fallback behavior"; }
     @Override public Collection<? extends MaterialType<?>> materialTypes() {
         return List.of(OWNER_PROMPT, BACKGROUND_COLLECTION_REQUEST, IMMEDIATE_ANSWER,
                 BACKGROUND_ANALYSIS, VISIBLE_FOLLOW_UP, BACKGROUND_UPDATES);
     }
-    @Override public Collection<? extends Agent> agents() { return List.of(interaction); }
+    @Override public Collection<? extends io.github.didacll.madre.sdk.module.Agent> agents() {
+        return List.of(interaction);
+    }
     @Override public Collection<? extends OperationBinding<?, ?>> operations() {
         return interaction.bindings();
     }
@@ -154,7 +158,8 @@ public final class OwnerInteractionModule implements Module {
 
     int pendingBackgroundCount() { return interaction.pendingBackgroundCount(); }
 
-    private static final class InteractionAgent extends StatefulAgent<OwnerConversationState> {
+    private static final class InteractionAgent extends StatefulAgent<OwnerConversationState>
+            implements OwnerInteractionAgent {
         private final ReasoningService reasoning;
         private final OwnerInteractionSettings settings;
         private final OwnerInteractionStateStore state;
@@ -199,6 +204,45 @@ public final class OwnerInteractionModule implements Module {
         }
         @Override public Set<OperationId> operations() {
             return Set.of(STANDARD_PROMPT, FAST_LANE, COLLECT_BACKGROUND);
+        }
+
+        @Override public CompletionStage<OwnerMessage> respond(OwnerInteractionInvoker invoker,
+                String ownerText, Sensitivity sensitivity) {
+            java.util.Objects.requireNonNull(invoker, "invoker");
+            if (ownerText == null || ownerText.isBlank()) {
+                throw new IllegalArgumentException("owner text must not be blank");
+            }
+            Material<String> prompt = material(OWNER_PROMPT, ownerText.strip(), sensitivity);
+            OperationCall<String, String> call = OperationCall.withEffect(
+                    FAST_OPERATION, FAST_PROFILE, prompt, List.of());
+            return invoker.invokeOwnerInteraction(call).thenApply(answer ->
+                    new OwnerMessage(answer.payload(), answer.sensitivity()));
+        }
+
+        @Override public CompletionStage<List<OwnerMessage>> followUps(
+                OwnerInteractionInvoker invoker) {
+            java.util.Objects.requireNonNull(invoker, "invoker");
+            Material<String> request = material(BACKGROUND_COLLECTION_REQUEST, "collect",
+                    Sensitivity.S1);
+            OperationCall<String, String> call = OperationCall.withEffect(
+                    COLLECT_OPERATION, COLLECT_PROFILE, request, List.of());
+            return invoker.invokeOwnerInteraction(call).thenApply(this::visibleFollowUps);
+        }
+
+        private List<OwnerMessage> visibleFollowUps(Material<String> material) {
+            if (!material.type().equals(BACKGROUND_UPDATES) || material.payload().isBlank()) {
+                return List.of();
+            }
+            String visible = material.payload().lines().map(line -> {
+                int separator = line.indexOf('\t');
+                return separator >= 0 ? line.substring(separator + 1).strip() : line.strip();
+            }).filter(value -> !value.isBlank())
+                    .filter(value -> !value.equalsIgnoreCase("NO_FOLLOW_UP"))
+                    .filter(value -> !value.startsWith("FAILED")
+                            && !value.startsWith("CANCELLED"))
+                    .collect(java.util.stream.Collectors.joining(System.lineSeparator()));
+            return visible.isBlank() ? List.of()
+                    : List.of(new OwnerMessage(visible, material.sensitivity()));
         }
 
         private Collection<? extends OperationBinding<?, ?>> bindings() {

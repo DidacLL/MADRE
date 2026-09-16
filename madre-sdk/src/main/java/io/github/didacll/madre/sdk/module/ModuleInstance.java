@@ -6,23 +6,35 @@ import io.github.didacll.madre.sdk.material.MaterialType;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 
 /** Validated runtime assembly of portable Module contracts and Java execution bindings. */
 public final class ModuleInstance {
     private final ModuleDefinition definition;
     private final Map<MaterialTypeId, MaterialType<?>> materialTypes;
     private final Map<OperationId, OperationBinding<?, ?>> operations;
+    private final Optional<OwnerInteractionAgent> ownerInteractionAgent;
 
     /**
      * Adapter-oriented assembly path for an already available portable definition and Java-facing
-     * payload/behavior bindings. The assembly is valid by construction.
+     * payload/behavior bindings. The assembly is valid by construction. Portable adapters do not
+     * imply an executable owner-interaction Agent.
      */
     public ModuleInstance(ModuleDefinition definition,
             Map<MaterialTypeId, MaterialType<?>> materialTypes,
             Map<OperationId, OperationBinding<?, ?>> operations) {
+        this(definition, materialTypes, operations, Optional.empty());
+    }
+
+    private ModuleInstance(ModuleDefinition definition,
+            Map<MaterialTypeId, MaterialType<?>> materialTypes,
+            Map<OperationId, OperationBinding<?, ?>> operations,
+            Optional<OwnerInteractionAgent> ownerInteractionAgent) {
         this.definition = Objects.requireNonNull(definition, "definition");
         this.materialTypes = Map.copyOf(materialTypes);
         this.operations = Map.copyOf(operations);
+        this.ownerInteractionAgent = Objects.requireNonNull(ownerInteractionAgent,
+                "ownerInteractionAgent");
         validateBindings();
     }
 
@@ -44,12 +56,24 @@ public final class ModuleInstance {
                 throw new IllegalArgumentException("duplicate Operation identity: " + id);
             }
         }
-        return new ModuleInstance(executable.definition(), types, bindings);
+        OwnerInteractionAgent interaction = null;
+        for (Agent agent : executable.agents()) {
+            if (agent instanceof OwnerInteractionAgent candidate) {
+                if (interaction != null) {
+                    throw new IllegalArgumentException(
+                            "Module declares more than one owner-interaction Agent: " + executable.id());
+                }
+                interaction = candidate;
+            }
+        }
+        return new ModuleInstance(executable.definition(), types, bindings,
+                Optional.ofNullable(interaction));
     }
 
     public ModuleDefinition definition() { return definition; }
     public Map<MaterialTypeId, MaterialType<?>> materialTypes() { return materialTypes; }
     public Map<OperationId, OperationBinding<?, ?>> operations() { return operations; }
+    public Optional<OwnerInteractionAgent> ownerInteractionAgent() { return ownerInteractionAgent; }
 
     private void validateBindings() {
         if (!materialTypes.keySet().equals(definition.materialTypes().keySet())) {
@@ -84,6 +108,16 @@ public final class ModuleInstance {
             if (!id.moduleId().equals(definition.id())) {
                 throw new IllegalArgumentException(
                         "Operation binding is not owned by the Module: " + id);
+            }
+        });
+        ownerInteractionAgent.ifPresent(agent -> {
+            if (!agent.id().moduleId().equals(definition.id())) {
+                throw new IllegalArgumentException(
+                        "owner-interaction Agent is not owned by the Module: " + agent.id());
+            }
+            if (!definition.agents().containsKey(agent.id())) {
+                throw new IllegalArgumentException(
+                        "owner-interaction Agent is absent from the Module declaration: " + agent.id());
             }
         });
     }

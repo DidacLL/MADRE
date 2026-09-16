@@ -19,6 +19,8 @@ import io.github.didacll.madre.sdk.module.ModuleDefinition;
 import io.github.didacll.madre.sdk.module.ModuleInstance;
 import io.github.didacll.madre.sdk.module.OperationBinding;
 import io.github.didacll.madre.sdk.module.OperationDefinition;
+import io.github.didacll.madre.sdk.module.OwnerInteractionAgent;
+import io.github.didacll.madre.sdk.module.OwnerMessage;
 import io.github.didacll.madre.sdk.operation.OperationCall;
 import io.github.didacll.madre.sdk.registration.ModuleContext;
 import io.github.didacll.madre.sdk.registration.ModuleRegistration;
@@ -32,6 +34,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
 /** Running installation assembly. CORE, local interaction and reasoning mechanisms are independent optional facts. */
@@ -42,14 +45,12 @@ public final class MadreApplication implements AutoCloseable {
     private final ReasoningProviderConfiguration reasoningConfiguration;
     private final List<ModuleRegistration.Registration> moduleRegistrations;
     private final List<ReasoningCapabilityRegistry.Registration> reasoningRegistrations;
-    private final Optional<LocalInteractionBinding> interactionBinding;
 
     private MadreApplication(KernelRuntime kernel, InstalledModuleLoader moduleLoader,
             InstalledReasoningLoader reasoningLoader,
             ReasoningProviderConfiguration reasoningConfiguration,
             List<ModuleRegistration.Registration> moduleRegistrations,
-            List<ReasoningCapabilityRegistry.Registration> reasoningRegistrations,
-            Optional<LocalInteractionBinding> interactionBinding) {
+            List<ReasoningCapabilityRegistry.Registration> reasoningRegistrations) {
         this.kernel = kernel;
         this.moduleLoader = moduleLoader;
         this.reasoningLoader = reasoningLoader;
@@ -57,7 +58,6 @@ public final class MadreApplication implements AutoCloseable {
                 "reasoningConfiguration");
         this.moduleRegistrations = List.copyOf(moduleRegistrations);
         this.reasoningRegistrations = List.copyOf(reasoningRegistrations);
-        this.interactionBinding = Objects.requireNonNull(interactionBinding, "interactionBinding");
     }
 
     public static MadreApplication start(Properties properties) {
@@ -85,12 +85,8 @@ public final class MadreApplication implements AutoCloseable {
                     new ModuleContext(kernel.reasoning(), kernel.modules().directoryFor(moduleId),
                             kernel.modules().invokerFor(moduleId), stateDirectory),
                     properties, kernel.modules()));
-            List<ModuleInstance> runtimeModules = modules.stream()
-                    .map(ModuleRegistration.Registration::instance).toList();
-            Optional<LocalInteractionBinding> interaction = LocalInteractionBinding.resolve(
-                    properties, runtimeModules);
             return new MadreApplication(kernel, moduleLoader, reasoningLoader, reasoningConfiguration,
-                    modules, capabilities, interaction);
+                    modules, capabilities);
         } catch (IOException | RuntimeException exception) {
             closeAfterFailure(modules, exception);
             closeAfterFailure(capabilities, exception);
@@ -143,6 +139,28 @@ public final class MadreApplication implements AutoCloseable {
         return reasoningLoader.configuredInstances(reasoningConfiguration);
     }
 
+    /** True when the Module currently selected as CORE exposes an executable semantic Agent. */
+    boolean hasOwnerInteraction() { return coreOwnerInteractionAgent().isPresent(); }
+
+    /** Ordinary owner conversation: host transport into the selected CORE Agent. */
+    CompletionStage<OwnerMessage> converse(String ownerText, Sensitivity sensitivity) {
+        OwnerInteractionAgent interaction = coreOwnerInteractionAgent().orElseThrow(() ->
+                new IllegalStateException("selected CORE has no owner-interaction Agent"));
+        return interaction.respond(kernel.modules(), ownerText, sensitivity);
+    }
+
+    /** Host polling transport for semantic follow-ups approved by the selected CORE Agent. */
+    CompletionStage<List<OwnerMessage>> collectOwnerFollowUps() {
+        Optional<OwnerInteractionAgent> interaction = coreOwnerInteractionAgent();
+        if (interaction.isEmpty()) return CompletableFuture.completedFuture(List.of());
+        return interaction.orElseThrow().followUps(kernel.modules());
+    }
+
+    private Optional<OwnerInteractionAgent> coreOwnerInteractionAgent() {
+        return resolvedCore().flatMap(core -> runtimeModuleOptional(core)
+                .flatMap(ModuleInstance::ownerInteractionAgent));
+    }
+
     /** External/public-boundary adapter for one Module-owned Material input. */
     public CompletionStage<Material<?>> invokePublicText(ModuleId moduleId, String operationName,
             String materialTypeName, Sensitivity sensitivity, String encodedPayload) {
@@ -157,7 +175,7 @@ public final class MadreApplication implements AutoCloseable {
                 sensitivity, encodedPayload);
     }
 
-    /** Product interaction path for an exact Operation explicitly offered by the selected Module. */
+    /** Diagnostic product path for an exact Operation explicitly offered for owner interaction. */
     CompletionStage<Material<?>> invokeInteractionText(ModuleId moduleId, String operationName,
             String materialTypeName, Sensitivity sensitivity, String encodedPayload) {
         return invokeText(InvocationBoundary.OWNER_INTERACTION, moduleId, operationName,
@@ -177,10 +195,13 @@ public final class MadreApplication implements AutoCloseable {
     }
 
     private ModuleInstance runtimeModule(ModuleId moduleId) {
+        return runtimeModuleOptional(moduleId).orElseThrow(() ->
+                new IllegalArgumentException("Module is not installed: " + moduleId));
+    }
+
+    private Optional<ModuleInstance> runtimeModuleOptional(ModuleId moduleId) {
         return moduleRegistrations.stream().map(ModuleRegistration.Registration::instance)
-                .filter(instance -> instance.definition().id().equals(moduleId))
-                .findFirst().orElseThrow(() ->
-                        new IllegalArgumentException("Module is not installed: " + moduleId));
+                .filter(instance -> instance.definition().id().equals(moduleId)).findFirst();
     }
 
     /** Resolves an exact installed Operation contract for generic host/debug or public entry. */
@@ -292,8 +313,6 @@ public final class MadreApplication implements AutoCloseable {
         throw new IllegalArgumentException("Operation has multiple EffectProfiles; use "
                 + operation.id().name() + "@<effect-profile>");
     }
-
-    Optional<LocalInteractionBinding> interactionBinding() { return interactionBinding; }
 
     public Optional<ModuleId> resolvedCore() { return kernel.modules().resolvedCore(); }
     public KernelRuntime kernel() { return kernel; }

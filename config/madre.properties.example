@@ -1,7 +1,8 @@
 # CORE identifies the ordinary installed Module intended to lead MADRE's default owner
-# interaction/coordinator semantics. CORE confers no privilege. The current runtime only resolves
-# this optional identity; it does not yet use CORE to drive the console or structurally qualify
-# the Module. Remove this line to run with no CORE assignment.
+# interaction/coordinator semantics. CORE confers no privilege. When the selected executable
+# Module contains an OwnerInteractionAgent, ordinary owner text is transported directly to that
+# Agent; the host does not configure or select the Module's private Operations/Material protocol.
+# Remove this line to run with no CORE assignment.
 roles.core=io.github.didacll.madre.owner-interaction
 kernel.database=var/kernel-work.sqlite
 kernel.result-retention-seconds=86400
@@ -31,20 +32,6 @@ modules.state-directory=var/module-state
 # modules.config[io.github.didacll.madre.owner-interaction].foreground-maximum-latency-ms=30000
 # modules.config[io.github.didacll.madre.owner-interaction].background-location=LOCAL
 # modules.config[io.github.didacll.madre.owner-interaction].background-maximum-latency-ms=30000
-
-# Transitional local text presentation binding used by the current MadreMain developer console.
-# Today this application-local wiring is resolved independently of roles.core; that is current
-# executable behavior, not the target product definition of CORE. Remove all interaction.* lines
-# for the generic low-level console. The configured default Sensitivity is explicit.
-interaction.module=io.github.didacll.madre.owner-interaction
-interaction.default-operation=fast-lane
-interaction.standard-operation=standard-prompt
-interaction.prompt-material-type=owner-prompt
-interaction.default-sensitivity=S5
-interaction.updates-operation=collect-background
-interaction.updates-material-type=background-collection-request
-interaction.updates-payload=collect
-interaction.updates-sensitivity=S1
 
 # Explicit resource capacity for reasoning mechanisms. The reasoning directory may be absent
 # or empty, and every installed provider may remain disabled; MADRE still boots.
