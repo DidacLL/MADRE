@@ -62,7 +62,7 @@ final class LiveModuleRegistryTest {
         LiveModuleRegistry registry = new LiveModuleRegistry();
         registry.register(fixture.instance());
         registry.register(receiver(callerId, Set.of(fixture.input().id(), fixture.output().id())));
-        Material<String> input = new Material<>(new MaterialId(fixture.moduleId(), "foreign-input"),
+        Material<String> input = new Material<>(new MaterialId(callerId, "foreign-input"),
                 fixture.input(), "hello", Sensitivity.S2);
         OperationCall<String, String> call = OperationCall.withoutEffect(
                 fixture.publicOperation(), input);
@@ -85,15 +85,19 @@ final class LiveModuleRegistryTest {
         registry.register(receiver(allowedId,
                 Set.of(fixture.input().id(), fixture.output().id())));
         registry.register(receiver(deniedId, Set.of(fixture.input().id())));
-        Material<String> input = new Material<>(new MaterialId(fixture.moduleId(), "foreign-input"),
+        Material<String> allowedInput = new Material<>(new MaterialId(allowedId, "foreign-input"),
                 fixture.input(), "hello", Sensitivity.S2);
-        OperationCall<String, String> call = OperationCall.withoutEffect(
-                fixture.publicOperation(), input);
+        Material<String> deniedInput = new Material<>(new MaterialId(deniedId, "foreign-input"),
+                fixture.input(), "hello", Sensitivity.S2);
+        OperationCall<String, String> allowedCall = OperationCall.withoutEffect(
+                fixture.publicOperation(), allowedInput);
+        OperationCall<String, String> deniedCall = OperationCall.withoutEffect(
+                fixture.publicOperation(), deniedInput);
 
-        assertEquals("internal:hello", registry.invokerFor(allowedId).invoke(call)
+        assertEquals("internal:hello", registry.invokerFor(allowedId).invoke(allowedCall)
                 .toCompletableFuture().join().payload());
         assertThrows(java.util.concurrent.CompletionException.class,
-                () -> registry.invokerFor(deniedId).invoke(call).toCompletableFuture().join());
+                () -> registry.invokerFor(deniedId).invoke(deniedCall).toCompletableFuture().join());
     }
 
     @Test void moduleReceiverRejectsSensitivityAboveModulePrivacyBeforeExposure() {
@@ -102,7 +106,7 @@ final class LiveModuleRegistryTest {
         LiveModuleRegistry registry = new LiveModuleRegistry();
         registry.register(fixture.instance());
         registry.register(receiver(callerId, Set.of(fixture.input().id(), fixture.output().id())));
-        Material<String> input = new Material<>(new MaterialId(fixture.moduleId(), "foreign-input"),
+        Material<String> input = new Material<>(new MaterialId(callerId, "foreign-input"),
                 fixture.input(), "hello", Sensitivity.S2);
         OperationCall<String, String> call = OperationCall.withoutEffect(
                 fixture.publicOperation(), input);
