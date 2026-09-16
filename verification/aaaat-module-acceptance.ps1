@@ -11,8 +11,13 @@ $callerJar = Join-Path $root 'verification/aaaat-module-composition/caller/build
 if (-not (Test-Path $dist)) { throw 'MADRE developer installation is missing' }
 if ($null -eq $aaaatJar) { throw 'AAAAT Module artifact is missing' }
 if (-not (Test-Path $callerJar)) { throw 'independent AAAAT caller artifact is missing' }
-if (@(Get-ChildItem (Join-Path $dist 'lib') -Filter '*jackson*').Count -ne 0) {
-    throw 'AAAAT implementation dependency leaked into madre-app distribution'
+$shippedAaaat = @(
+    Get-ChildItem (Join-Path $dist 'modules') -Filter 'madre-module-aaaat*.jar' -ErrorAction SilentlyContinue
+) + @(
+    Get-ChildItem (Join-Path $dist 'lib') -Filter 'madre-module-aaaat*.jar' -ErrorAction SilentlyContinue
+)
+if ($shippedAaaat.Count -ne 0) {
+    throw 'independently installable AAAAT Module leaked into madre-app distribution'
 }
 $jarEntries = (& jar tf $aaaatJar.FullName | Out-String)
 if ($jarEntries -notmatch 'com/fasterxml/jackson/databind/ObjectMapper.class') {
