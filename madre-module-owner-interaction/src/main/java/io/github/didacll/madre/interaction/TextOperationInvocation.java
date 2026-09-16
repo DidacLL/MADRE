@@ -37,12 +37,13 @@ final class TextOperationInvocation {
         Material<String> input = new Material<>(
                 new MaterialId(callerId, UUID.randomUUID().toString()), targetInput, text,
                 sensitivity);
-        OperationCall<String, String> call = candidate.effectProfile()
-                .<OperationCall<String, String>>map(profile -> OperationCall.withEffect(
-                        candidate.reachable().operation(), profile, input,
-                        List.of(causalIntegrity)))
-                .orElseGet(() -> OperationCall.withoutEffect(
-                        candidate.reachable().operation(), input));
+        OperationCall<String, String> call;
+        if (candidate.effectProfile().isPresent()) {
+            call = OperationCall.withEffect(candidate.reachable().operation(),
+                    candidate.effectProfile().orElseThrow(), input, List.of(causalIntegrity));
+        } else {
+            call = OperationCall.withoutEffect(candidate.reachable().operation(), input);
+        }
 
         return invoker.invoke(call).thenApply(result -> {
             if (!result.id().moduleId().equals(candidate.reachable().moduleId())) {
