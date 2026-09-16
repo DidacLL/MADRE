@@ -133,7 +133,7 @@ Build with the product repository explicitly:
 gradle -PmadreRepository="$MADRE_REPOSITORY" clean check jar
 ```
 
-`verification/sdk-consumer` is the executable external-Module reference. `verification/reasoning-consumer` is the corresponding independently built reasoning-provider reference. Cross-platform extended acceptance copies the packaged repository into a source-free workspace, deletes the checkout-local publication repository and builds/checks both fixtures before installing them into the same packaged owner MADRE.
+`verification/sdk-consumer` is the executable external-Module reference. It is an agentless durable workspace application used by R4 to prove both the ordinary independent developer lifecycle and runtime composition by an already-built shipped CORE that has no compile-time knowledge of the application. `verification/reasoning-consumer` is the corresponding independently built reasoning-provider reference. Cross-platform extended acceptance first builds the packaged MADRE, copies only its packaged developer surface into a source-free workspace, deletes checkout-local publication output, then builds/checks the independent artifacts before installing them into that same already-built MADRE.
 
 ## Minimal agentless Module
 
@@ -202,9 +202,20 @@ MaterialId.moduleId      value creator/owner
 MaterialTypeId.moduleId  nominal contract definer/owner
 ```
 
-A Module may explicitly reference a foreign Material type contract and create a value conforming to it. For Java authors this is declared with `foreignMaterialReferences()`. The set is a structural foreign nominal-contract reference; it is not `Privacy.PUBLIC` disclosure and does not transfer concrete value ownership.
+For compile-time composition, a Module may explicitly reference a foreign Material type contract and create a value conforming to it. Java authors declare those structural references with `foreignMaterialReferences()`. The set is not `Privacy.PUBLIC` disclosure and does not transfer concrete value ownership.
 
-For example, a callee may produce a callee-owned `MaterialId` whose `MaterialTypeId` is defined by the caller. If that type is declared structurally and Sensitivity can reach `Privacy.MODULE`, the exact callee-owned value can cross unchanged.
+For source-independent composition with a target that did not exist when the caller was compiled, use the caller-bound directory's structural Operation view:
+
+```java
+List<ReachableOperation> operations =
+        context.directory().reachableOperations(carriedSensitivity);
+```
+
+Each `ReachableOperation` contains one exact target-exposed `OperationDefinition` plus only the target-owned portable `MaterialTypeDefinition`s that Operation references. This is contract discovery, not semantic ranking or invocation authority. A caller that understands one of those portable contracts may create caller-owned concrete Material conforming exactly to the selected target-owned input definition and invoke the exact Operation through its ordinary caller-bound `ModuleInvoker`.
+
+The dynamic allowance is deliberately target-scoped. The runtime validates the selected target's installed canonical definition and execution binding. It does not authorize arbitrary third-party nominal contracts and does not add discovered contracts to the caller's portable definition.
+
+Returned target-owned Material follows the analogous rule: when the nominal definition exactly matches the selected target's canonical definition and its Sensitivity can reach `Privacy.MODULE`, the exact target-created value can cross unchanged even though the earlier-compiled caller had no static reference to that type. Unrelated foreign result types still require the caller's static structural reference.
 
 ## Agents, typed state, Skills and Workflows
 
@@ -222,13 +233,15 @@ Agent state does not create another MADRE-arbitrated execution path. Behavior th
 
 The normal owner semantic path is separate from generic host/debug invocation, external/public disclosure and Module composition.
 
-A Module that can serve as the default CORE semantic application may expose one `OwnerInteractionAgent` from its ordinary Agent collection. The host selects only the Module through `roles.core`, transports ordinary owner text to that Agent and presents returned `OwnerMessage` values. It does not need to know which private Operation, Material type, reasoning path or continuation mode represents that turn.
+A Module that can serve as the default CORE semantic application may expose one `OwnerInteractionAgent` from its ordinary Agent collection. The host selects only the Module through `roles.core`, transports ordinary owner text to that Agent and presents returned `OwnerMessage` values. It does not need to know which private Operation, Material type, reasoning path, target Module or continuation mode represents that turn.
 
-`OwnerInteractionAgent.respond(OwnerInteractionInvoker, ownerText, sensitivity)` owns the immediate semantic decision. `followUps(...)` lets the same Agent surface delayed messages it has semantically approved. The supplied invoker is already restricted to exact `ownerInteractionOperation(...)` bindings in the selected CORE Module; it is not a general host privilege and is not present in `ModuleContext`.
+`OwnerInteractionAgent.respond(OwnerInteractionInvoker, ownerText, sensitivity)` owns the immediate semantic decision. `followUps(...)` lets the same Agent surface delayed messages it has semantically approved. The supplied `OwnerInteractionInvoker` is restricted to exact `ownerInteractionOperation(...)` bindings in the selected CORE Module and is not present in `ModuleContext`.
 
-An Agent in CORE may reach capabilities of an agentless Module through the target Module's ordinary `exposedOperations`. CORE interprets owner intent and continuation; the callee does not need an Agent merely to be callable.
+Cross-Module coordination is separate. Every installed Module, including one assigned CORE, receives the same caller-bound `ModuleContext.directory()` and `ModuleContext.invoker()`. An Agent in CORE may therefore discover and invoke exposed Operations of an agentless Module without any CORE-specific port. CORE interprets owner intent, supplies its actual causal Integrity for any selected target EffectProfile, receives the foreign target Material through the fixed Module receiver, and decides whether/how to derive a new CORE-owned value from it. The callee does not need an Agent merely to be callable.
 
-Do not copy the shipped CORE's private Operation names, knowledge parser/categories or background protocol into a new CORE contract. Current console representation, private semantic knowledge experiment and polling are implementation evidence, not universal SDK protocol.
+The shipped CORE currently demonstrates only a deliberately narrow generic composition shape: one target-owned UTF-8 text input, one target-owned UTF-8 text output and at most one EffectProfile, with conservative semantic matching that declines ambiguity. That is current implementation evidence, not a universal planner/tool/routing contract for other CORE Modules.
+
+Do not copy the shipped CORE's private Operation names, matching heuristic, knowledge parser/categories or background protocol into a new CORE contract. Current console representation, private semantic knowledge experiment and polling are implementation evidence, not universal SDK protocol.
 
 ## Provider lifecycle and configuration
 
@@ -258,13 +271,15 @@ META-INF/services/io.github.didacll.madre.sdk.registration.ModuleProvider
 
 `ModuleContext.directory()` and `ModuleContext.invoker()` are caller-bound. Module code cannot forge caller identity or choose receiver Privacy.
 
-Directory discovery/invocation targets only Operations in the target Module's exposed interface. Accepted input Privacy still determines whether the offered Material can reach a particular Operation.
+There are two discovery situations. `reachable(ReachabilityQuery)` is exact discovery when the nominal input type is already known. `reachableOperations(Sensitivity)` is structural discovery for later-installed targets; it returns exact exposed Operation contracts and the target-owned portable definitions needed to understand those contracts. Neither form performs semantic ranking or changes authority.
 
-Returned Material crosses the fixed Module receiver `Privacy.MODULE` only when the calling Module structurally declares the nominal contract and the result Sensitivity can reach that receiver. The exact concrete Material value remains owned by the Module that produced it.
+Invocation still uses the exact selected `OperationDefinition` in a canonical `OperationCall` through `ModuleInvoker`. Accepted input Privacy must be reachable from the actual carried Sensitivity. A consequential target call uses one exact target-declared `EffectProfile` plus the actual non-user causal Integrity participants; the target implementation does not inspect CORE status or receive synthetic trust.
 
-Generic owner/debug invocation is a separate host-only expert path and may invoke an exact installed Operation without depending on cross-Module exposure. External/public invocation is another host-only path and requires an explicit `publicDisclosure(...)` binding. Ordinary owner interaction is a third product path through the selected CORE Agent; the restricted owner-interaction invoker remains that Agent's lower-level bounded execution route.
+Returned Material crosses the fixed Module receiver `Privacy.MODULE` only when its nominal contract is structurally valid under either the caller's static references or the exact selected target-owned dynamic contract, and the result Sensitivity can reach that receiver. The exact concrete `MaterialId`, nominal type, payload and Sensitivity remain target-owned/unchanged. A caller creates a new caller-owned Material only when it deliberately interprets or derives something new.
 
-Security Algebra governs MADRE-mediated information/effect composition. Module exposure, host entry and CORE designation are not Algebra carriers.
+Generic owner/debug invocation is a separate host-only expert path and may invoke an exact installed Operation without depending on cross-Module exposure. External/public invocation is another host-only path and requires an explicit `publicDisclosure(...)` binding. Ordinary owner interaction is a third product path through the selected CORE Agent; its restricted owner-interaction invoker remains only the lower-level route for CORE's own interaction bindings.
+
+Security Algebra governs MADRE-mediated information/effect composition. Module exposure, runtime discovery, host entry and CORE designation are not Algebra carriers.
 
 ## Reasoning
 
@@ -294,7 +309,7 @@ The provider JAR exposes `ReasoningMechanismProvider` through `ServiceLoader`. I
 
 `madre-sdk-testkit` materializes a real `ModuleProvider` and invokes public SDK contracts without pretending to reproduce Kernel policy. `ProgrammableReasoningService` is generic over arbitrary `ReasoningComputation<R>` and exposes controllable immediate/durable behavior.
 
-Use ordinary unit/testkit tests for Module semantics and installed/integration tests when a claim depends on Module receiver exposure, Kernel mechanism selection, durable recovery or package/product mechanics.
+Use ordinary unit/testkit tests for Module semantics and installed/integration tests when a claim depends on Module receiver exposure, runtime structural discovery, Kernel mechanism selection, durable recovery or package/product mechanics.
 
 ## Local Module lifecycle
 
