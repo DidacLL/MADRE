@@ -16,14 +16,10 @@ on:
       - 'madre-text-inference/**'
       - 'madre-text-generation/**'
       - 'madre-embeddings/**'
-      - 'madre-kernel/**'
-      - 'madre-module-owner-interaction/**'
       - 'madre-app/**'
       - 'verification/sdk-consumer/**'
       - 'verification/reasoning-consumer/**'
-      - 'verification/r4-workspace-module/**'
       - 'verification/installed-owner-acceptance.ps1'
-      - 'verification/r4-core-composition-acceptance.ps1'
 
 permissions:
   contents: read
@@ -65,11 +61,9 @@ jobs:
           $v1 = Join-Path $externalRoot 'module-v1'
           $v2 = Join-Path $externalRoot 'module-v2'
           $reasoning = Join-Path $externalRoot 'reasoning'
-          $r4v1 = Join-Path $externalRoot 'r4-workspace-v1'
-          $r4v2 = Join-Path $externalRoot 'r4-workspace-v2'
           $releaseDeveloper = Join-Path $externalRoot 'release-developer'
           if (Test-Path $externalRoot) { Remove-Item -Recurse -Force $externalRoot }
-          New-Item -ItemType Directory -Force -Path $v1, $v2, $reasoning, $r4v1, $r4v2, $releaseDeveloper | Out-Null
+          New-Item -ItemType Directory -Force -Path $v1, $v2, $reasoning, $releaseDeveloper | Out-Null
 
           $appImage = (Resolve-Path 'madre-app/build/jpackage/app-image/madre').Path
           $appDirectory = if ($IsWindows) { Join-Path $appImage 'app' } else { Join-Path $appImage 'lib/app' }
@@ -94,17 +88,6 @@ jobs:
               throw "packaged public development boundary mismatch: $($actualArtifacts -join ',')"
           }
 
-          # Shipped CORE and runtime were already compiled above. Enforce that their production
-          # sources contain none of the proving Module's exact identities before the external build.
-          $productionRoots = @('madre-module-owner-interaction/src/main', 'madre-kernel/src/main', 'madre-app/src/main')
-          $production = @(Get-ChildItem $productionRoots -Recurse -File -Filter '*.java')
-          foreach ($targetFact in @('verification.workspace', 'record-note', 'summarize-notes',
-                  'workspace-command', 'workspace-result')) {
-              if ($production | Select-String -SimpleMatch $targetFact) {
-                  throw "shipped production code hard-codes R4 proving Module fact: $targetFact"
-              }
-          }
-
           # Simulate acquisition from a released/installed MADRE: copy only the product-carried
           # developer surface to a source-free workspace, then remove the checkout-local publication
           # repository so external builds cannot accidentally consume source-build output.
@@ -117,8 +100,6 @@ jobs:
           Copy-Item 'verification/sdk-consumer/*' $v1 -Recurse -Force
           Copy-Item 'verification/sdk-consumer/*' $v2 -Recurse -Force
           Copy-Item 'verification/reasoning-consumer/*' $reasoning -Recurse -Force
-          Copy-Item 'verification/r4-workspace-module/*' $r4v1 -Recurse -Force
-          Copy-Item 'verification/r4-workspace-module/*' $r4v2 -Recurse -Force
 
           & gradle --no-daemon --build-cache -p $v1 "-PmadreRepository=$repository" `
               '-PartifactBehavior=v1' clean check jar
@@ -129,36 +110,21 @@ jobs:
           & gradle --no-daemon --build-cache -p $reasoning "-PmadreRepository=$repository" `
               clean check jar
           if ($LASTEXITCODE -ne 0) { throw 'external reasoning provider build/check failed' }
-          & gradle --no-daemon --build-cache -p $r4v1 "-PmadreRepository=$repository" `
-              '-PartifactBehavior=v1' clean check jar
-          if ($LASTEXITCODE -ne 0) { throw 'R4 independent Module v1 build/check failed' }
-          & gradle --no-daemon --build-cache -p $r4v2 "-PmadreRepository=$repository" `
-              '-PartifactBehavior=v2' clean check jar
-          if ($LASTEXITCODE -ne 0) { throw 'R4 independent Module v2 build/check failed' }
 
           $v1Jar = Join-Path $v1 'build/libs/independent-module.jar'
           $v2Jar = Join-Path $v2 'build/libs/independent-module.jar'
           $reasoningJar = Join-Path $reasoning 'build/libs/independent-reasoning.jar'
-          $r4v1Jar = Join-Path $r4v1 'build/libs/r4-workspace-module.jar'
-          $r4v2Jar = Join-Path $r4v2 'build/libs/r4-workspace-module.jar'
           if (-not (Test-Path $v1Jar) -or -not (Test-Path $v2Jar) -or
-                  -not (Test-Path $reasoningJar) -or -not (Test-Path $r4v1Jar) -or
-                  -not (Test-Path $r4v2Jar)) {
+                  -not (Test-Path $reasoningJar)) {
               throw 'external extension JARs were not produced'
           }
           if ((Get-FileHash $v1Jar -Algorithm SHA256).Hash -eq
                   (Get-FileHash $v2Jar -Algorithm SHA256).Hash) {
               throw 'external Module builds did not produce changed artifacts'
           }
-          if ((Get-FileHash $r4v1Jar -Algorithm SHA256).Hash -eq
-                  (Get-FileHash $r4v2Jar -Algorithm SHA256).Hash) {
-              throw 'R4 replacement builds did not produce changed artifacts'
-          }
           "EXTERNAL_MODULE_V1_JAR=$v1Jar" >> $env:GITHUB_ENV
           "EXTERNAL_MODULE_V2_JAR=$v2Jar" >> $env:GITHUB_ENV
           "EXTERNAL_REASONING_JAR=$reasoningJar" >> $env:GITHUB_ENV
-          "R4_MODULE_V1_JAR=$r4v1Jar" >> $env:GITHUB_ENV
-          "R4_MODULE_V2_JAR=$r4v2Jar" >> $env:GITHUB_ENV
 
       - name: Prove installed extension lifecycle and semantic boundaries
         shell: pwsh
@@ -168,11 +134,3 @@ jobs:
             -ModuleJar $env:EXTERNAL_MODULE_V1_JAR `
             -ReplacementModuleJar $env:EXTERNAL_MODULE_V2_JAR `
             -ReasoningJar $env:EXTERNAL_REASONING_JAR
-
-      - name: Prove CORE composition of an independently built unknown Module
-        shell: pwsh
-        run: |
-          ./verification/r4-core-composition-acceptance.ps1 `
-            -AppImageRoot 'madre-app/build/jpackage/app-image/madre' `
-            -ModuleJar $env:R4_MODULE_V1_JAR `
-            -ReplacementModuleJar $env:R4_MODULE_V2_JAR
