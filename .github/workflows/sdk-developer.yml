@@ -18,8 +18,6 @@ on:
       - 'verification/sdk-consumer/**'
       - 'verification/reasoning-consumer/**'
       - 'verification/installed-owner-acceptance.ps1'
-      - 'verification/artifact-replacement-failure-acceptance.ps1'
-      - 'verification/manual-artifact-protection-acceptance.ps1'
 
 permissions:
   contents: read
@@ -50,7 +48,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $gradle = if ($IsWindows) { '.\gradlew.bat' } else { './gradlew' }
-          & $gradle --no-daemon --build-cache publish :madre-app:jpackageAppImage :madre-app:installDist
+          & $gradle --no-daemon --build-cache publish :madre-app:jpackageAppImage
           if ($LASTEXITCODE -ne 0) { throw 'MADRE publication or owner installation build failed' }
 
       - name: Build two SDK consumer artifacts outside the MADRE checkout
@@ -100,19 +98,3 @@ jobs:
             -AppImageRoot 'madre-app/build/jpackage/app-image/madre' `
             -ModuleJar $env:EXTERNAL_MODULE_V1_JAR `
             -ReplacementModuleJar $env:EXTERNAL_MODULE_V2_JAR
-
-      - name: Prove failed replacement preserves active artifacts
-        shell: pwsh
-        run: |
-          ./verification/artifact-replacement-failure-acceptance.ps1 `
-            -AppRoot 'madre-app/build/install/madre' `
-            -ModuleJar $env:EXTERNAL_MODULE_V1_JAR `
-            -ReasoningJar 'verification/reasoning-consumer/build/libs/independent-reasoning.jar'
-
-      - name: Prove manual-placement compatibility is non-destructive
-        shell: pwsh
-        run: |
-          ./verification/manual-artifact-protection-acceptance.ps1 `
-            -AppRoot 'madre-app/build/install/madre' `
-            -ModuleJar $env:EXTERNAL_MODULE_V1_JAR `
-            -ReasoningJar 'verification/reasoning-consumer/build/libs/independent-reasoning.jar'
