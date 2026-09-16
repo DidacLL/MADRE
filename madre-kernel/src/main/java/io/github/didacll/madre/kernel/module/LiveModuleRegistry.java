@@ -191,7 +191,7 @@ public final class LiveModuleRegistry implements ModuleRegistration, PublicModul
         if (caller.materialTypes().containsKey(materialType)) {
             return materialType.moduleId().equals(caller.id());
         }
-        return caller.publicMaterialReferences().contains(materialType)
+        return caller.foreignMaterialReferences().contains(materialType)
                 && sensitivity.canReach(Privacy.MODULE);
     }
 
@@ -203,7 +203,7 @@ public final class LiveModuleRegistry implements ModuleRegistration, PublicModul
         if (local != null) {
             return local.equals(material.type().definition());
         }
-        return caller.publicMaterialReferences().contains(material.type().id())
+        return caller.foreignMaterialReferences().contains(material.type().id())
                 && material.sensitivity().canReach(Privacy.MODULE);
     }
 
@@ -214,7 +214,7 @@ public final class LiveModuleRegistry implements ModuleRegistration, PublicModul
                 throw new IllegalStateException(
                         "received Material does not match the caller-owned nominal contract");
             }
-        } else if (!caller.publicMaterialReferences().contains(result.type().id())) {
+        } else if (!caller.foreignMaterialReferences().contains(result.type().id())) {
             throw new IllegalStateException("calling Module does not declare Material type "
                     + result.type().id());
         }

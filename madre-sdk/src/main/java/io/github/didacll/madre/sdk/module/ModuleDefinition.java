@@ -20,7 +20,7 @@ public final class ModuleDefinition {
     private final String version;
     private final String purpose;
     private final Map<MaterialTypeId, MaterialTypeDefinition> materialTypes;
-    private final Set<MaterialTypeId> publicMaterialReferences;
+    private final Set<MaterialTypeId> foreignMaterialReferences;
     private final Map<AgentId, AgentDefinition> agents;
     private final Map<SkillId, SkillDefinition> skills;
     private final Map<OperationId, OperationDefinition> operations;
@@ -28,17 +28,17 @@ public final class ModuleDefinition {
 
     public ModuleDefinition(ModuleId id, String version, String purpose,
             Map<MaterialTypeId, MaterialTypeDefinition> materialTypes,
-            Set<MaterialTypeId> publicMaterialReferences,
+            Set<MaterialTypeId> foreignMaterialReferences,
             Map<AgentId, AgentDefinition> agents,
             Map<SkillId, SkillDefinition> skills,
             Map<OperationId, OperationDefinition> operations) {
-        this(id, version, purpose, materialTypes, publicMaterialReferences, agents, skills,
+        this(id, version, purpose, materialTypes, foreignMaterialReferences, agents, skills,
                 operations, Set.of());
     }
 
     public ModuleDefinition(ModuleId id, String version, String purpose,
             Map<MaterialTypeId, MaterialTypeDefinition> materialTypes,
-            Set<MaterialTypeId> publicMaterialReferences,
+            Set<MaterialTypeId> foreignMaterialReferences,
             Map<AgentId, AgentDefinition> agents,
             Map<SkillId, SkillDefinition> skills,
             Map<OperationId, OperationDefinition> operations,
@@ -47,7 +47,7 @@ public final class ModuleDefinition {
         this.version = requireText(version, "version");
         this.purpose = requireText(purpose, "purpose");
         this.materialTypes = Map.copyOf(materialTypes);
-        this.publicMaterialReferences = Set.copyOf(publicMaterialReferences);
+        this.foreignMaterialReferences = Set.copyOf(foreignMaterialReferences);
         this.agents = Map.copyOf(agents);
         this.skills = Map.copyOf(skills);
         this.operations = Map.copyOf(operations);
@@ -81,9 +81,9 @@ public final class ModuleDefinition {
         if (!owned) {
             throw new IllegalArgumentException("all canonical declarations must be owned by the Module");
         }
-        if (publicMaterialReferences.stream().anyMatch(reference -> reference.moduleId().equals(id))) {
+        if (foreignMaterialReferences.stream().anyMatch(reference -> reference.moduleId().equals(id))) {
             throw new IllegalArgumentException(
-                    "a public Material reference cannot duplicate an owned declaration");
+                    "a foreign Material reference cannot duplicate an owned declaration");
         }
         if (!operations.keySet().containsAll(exposedOperations)) {
             throw new IllegalArgumentException(
@@ -119,14 +119,14 @@ public final class ModuleDefinition {
     }
 
     private boolean resolvesMaterialType(MaterialTypeId type) {
-        return materialTypes.containsKey(type) || publicMaterialReferences.contains(type);
+        return materialTypes.containsKey(type) || foreignMaterialReferences.contains(type);
     }
 
     public ModuleId id() { return id; }
     public String version() { return version; }
     public String purpose() { return purpose; }
     public Map<MaterialTypeId, MaterialTypeDefinition> materialTypes() { return materialTypes; }
-    public Set<MaterialTypeId> publicMaterialReferences() { return publicMaterialReferences; }
+    public Set<MaterialTypeId> foreignMaterialReferences() { return foreignMaterialReferences; }
     public Map<AgentId, AgentDefinition> agents() { return agents; }
     public Map<SkillId, SkillDefinition> skills() { return skills; }
     public Map<OperationId, OperationDefinition> operations() { return operations; }
@@ -149,7 +149,7 @@ public final class ModuleDefinition {
                     throw new IllegalArgumentException(
                             "reachable Material does not match its owned nominal contract");
                 }
-            } else if (!publicMaterialReferences.contains(material.type().id())) {
+            } else if (!foreignMaterialReferences.contains(material.type().id())) {
                 throw new IllegalArgumentException(
                         "reachable Material uses an undeclared foreign nominal contract");
             }

@@ -77,7 +77,7 @@ public final class CalleeProvider implements ModuleProvider {
         @Override public Collection<? extends MaterialType<?>> materialTypes() {
             return List.of(REQUEST, RESULT, OTHER_RESULT);
         }
-        @Override public Set<MaterialTypeId> publicMaterialReferences() {
+        @Override public Set<MaterialTypeId> foreignMaterialReferences() {
             return Set.of(CALLER_REQUEST);
         }
         @Override public Set<OperationId> exposedOperations() {

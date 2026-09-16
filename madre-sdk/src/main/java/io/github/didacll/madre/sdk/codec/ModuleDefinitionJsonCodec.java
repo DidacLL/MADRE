@@ -53,8 +53,8 @@ public final class ModuleDefinitionJsonCodec {
                     node.put("name", type.id().name());
                     node.put("contentType", type.contentType());
                 });
-        ArrayNode references = root.putArray("publicMaterialReferences");
-        definition.publicMaterialReferences().stream()
+        ArrayNode references = root.putArray("foreignMaterialReferences");
+        definition.foreignMaterialReferences().stream()
                 .sorted(java.util.Comparator.comparing(ModuleDefinitionJsonCodec::qualified))
                 .forEach(id -> references.add(qualified(id)));
         ArrayNode exposed = root.putArray("exposedOperations");
@@ -139,7 +139,7 @@ public final class ModuleDefinitionJsonCodec {
             JsonNode parsed = mapper.readTree(json);
             ObjectNode root = object(parsed, "root");
             exactFields(root, Set.of("formatVersion", "module", "version", "purpose",
-                    "materialTypes", "publicMaterialReferences", "exposedOperations", "skills",
+                    "materialTypes", "foreignMaterialReferences", "exposedOperations", "skills",
                     "effectProfiles", "operations", "agents"));
             if (requiredInt(root, "formatVersion") != FORMAT_VERSION) {
                 throw new CodecException("unsupported formatVersion");
@@ -147,7 +147,7 @@ public final class ModuleDefinitionJsonCodec {
             ModuleId module = new ModuleId(requiredText(root, "module"));
             Map<MaterialTypeId, MaterialTypeDefinition> typeDefinitions = decodeTypes(root, module);
             Set<MaterialTypeId> references = new HashSet<>();
-            for (JsonNode node : requiredArray(root, "publicMaterialReferences")) {
+            for (JsonNode node : requiredArray(root, "foreignMaterialReferences")) {
                 references.add(parseMaterialTypeId(requiredTextNode(node), module));
             }
             Set<OperationId> exposedOperations = new HashSet<>();
