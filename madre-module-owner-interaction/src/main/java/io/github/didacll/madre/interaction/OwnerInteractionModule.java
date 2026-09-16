@@ -241,7 +241,7 @@ public final class OwnerInteractionModule implements Module {
         @Override public String purpose() {
             return "Owner-facing stateful conversation through bounded MADRE Operations";
         }
-        @Override public Integrity integrity() { return Integrity.I5; }
+        @Override public Integrity integrity() { return Integrity.I2; }
         @Override public Collection<? extends SkillDefinition> skills() {
             return List.of(PROMPTING, ANALYSIS, KNOWLEDGE);
         }

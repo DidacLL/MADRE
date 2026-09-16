@@ -1,6 +1,15 @@
 # MADRE SDK developer guide
 
-This guide describes the current Java 21 Module-development surface for projects outside MADRE's own Gradle build. Verification publications are currently `0.1.0-SNAPSHOT` artifacts written by repository `publish` tasks to `build/isolated-repository`; this proves dependency isolation and is not yet a public remote release channel.
+This guide describes the current Java 21 Module/reasoning-development surface for projects outside MADRE's own Gradle build. A released/installed MADRE carries the compatible public Maven development repository in its application payload under `developer/repository`, plus this guide as `developer/README.md`. An independent developer does not need the MADRE source checkout or a repository produced by running MADRE's source build.
+
+For a jpackage app image the repository is relative to the image root as:
+
+```text
+Windows: <madre-app-image>/app/developer/repository
+Linux:   <madre-app-image>/lib/app/developer/repository
+```
+
+Native installers preserve the same application payload inside the installed product. Point the independent build at that product-carried directory. MADRE currently has no remote artifact registry/catalog/update channel; this local version-matched repository is the supported source-independent acquisition surface.
 
 ## Design rule
 
@@ -39,7 +48,7 @@ MADRE arbitrates the declared boundary: typed Material, accepted receiving Priva
 
 Use `OperationCall.withoutEffect(...)` when no EffectProfile is declared. Use `OperationCall.withEffect(...)` with one exact declared profile and actual non-user causal Integrity participants when consequential behavior is being selected.
 
-PUBLIC/PRIVATE is not part of `OperationDefinition` and there is no `OperationVisibility` type.
+PUBLIC/PRIVATE is not part of `OperationDefinition` and there is no `OperationVisibility` type. Ordinary cross-Module exposure is Module-exposed behavior, not `Privacy.PUBLIC` behavior.
 
 ## Exposure and executable binding choices
 
@@ -70,7 +79,7 @@ Most domain Operations need only `operation(...)`. Add Module exposure when othe
 
 ## Artifact roles
 
-Use only artifacts the Module genuinely needs:
+The packaged `developer/repository` contains exactly the public MADRE development artifacts for that product version:
 
 - `madre-bom`: compatible public artifact versions;
 - `madre-algebra`: Security Algebra carriers;
@@ -80,19 +89,19 @@ Use only artifacts the Module genuinely needs:
 - `madre-reasoning-spi`: reasoning-provider SPI, normally not a Module dependency;
 - `madre-text-inference`, `madre-text-generation`, `madre-embeddings`: provider-independent reasoning computation contracts.
 
-Concrete adapters, `madre-kernel` and `madre-app` are runtime/product implementation artifacts and are not normal Module dependencies.
+Concrete adapters, `madre-kernel` and `madre-app` are runtime/product implementation artifacts. They are not published into the packaged development repository and are not normal extension dependencies.
 
 Technical reuse does not create Module ownership. Files, databases, HTTP, search, MCP, ML libraries, application APIs and devices may remain ordinary implementation facilities inside the Module that owns their semantic use.
 
 ## Independent Gradle project
 
-Publish verification artifacts from a MADRE checkout:
+Choose the `developer/repository` directory from the installed/released MADRE you intend to extend. For example:
 
 ```text
-./gradlew --no-daemon publish
+MADRE_REPOSITORY=/path/to/installed/madre/application-payload/developer/repository
 ```
 
-Then an independent project can use:
+Then an independent Gradle project can use:
 
 ```kotlin
 plugins { java }
@@ -118,7 +127,13 @@ java { toolchain.languageVersion = JavaLanguageVersion.of(21) }
 tasks.test { useJUnitPlatform() }
 ```
 
-`verification/sdk-consumer` is the executable external-project reference.
+Build with the product repository explicitly:
+
+```text
+gradle -PmadreRepository="$MADRE_REPOSITORY" clean check jar
+```
+
+`verification/sdk-consumer` is the executable external-Module reference. `verification/reasoning-consumer` is the corresponding independently built reasoning-provider reference. Cross-platform extended acceptance copies the packaged repository into a source-free workspace, deletes the checkout-local publication repository and builds/checks both fixtures before installing them into the same packaged owner MADRE.
 
 ## Minimal agentless Module
 
@@ -195,7 +210,7 @@ For example, a callee may produce a callee-owned `MaterialId` whose `MaterialTyp
 
 Use an `Agent` when the Module genuinely owns a semantic actor. Agent is optional and defines no universal loop, planner, memory model, prompt format or execution context.
 
-If the author cannot justify stronger causal assurance, `Agent.integrity()` defaults to `Integrity.I1`.
+If the author cannot justify stronger causal assurance, `Agent.integrity()` defaults to `Integrity.I1`. A stronger value must have a concrete assurance basis; locality, shipped status, CORE assignment or being built into the product are not such a basis.
 
 A stateful Agent may extend `StatefulAgent<S>` to reuse serialized typed state reads/transitions and optional commit-before-publish persistence. The concrete Module owns state meaning, representation and persistence semantics.
 
@@ -213,7 +228,7 @@ A Module that can serve as the default CORE semantic application may expose one 
 
 An Agent in CORE may reach capabilities of an agentless Module through the target Module's ordinary `exposedOperations`. CORE interprets owner intent and continuation; the callee does not need an Agent merely to be callable.
 
-Do not copy the shipped CORE's private Operation names or background protocol into a new CORE contract. Current console representation and polling are presentation mechanics, not universal SDK protocol.
+Do not copy the shipped CORE's private Operation names, knowledge parser/categories or background protocol into a new CORE contract. Current console representation, private semantic knowledge experiment and polling are implementation evidence, not universal SDK protocol.
 
 ## Provider lifecycle and configuration
 
@@ -261,6 +276,20 @@ Any Operation may request reasoning. Mechanism eligibility depends on computatio
 
 Kernel owns compatible selection, resources, immediate/durable execution, retry/cancellation and opaque persistence. The Module owns interpretation and continuation. Provider/model/runtime-specific tuning remains in the provider/adapter.
 
+## Independent reasoning provider
+
+A reasoning provider uses the same product-carried repository but depends on the public provider surface rather than runtime implementation:
+
+```kotlin
+dependencies {
+    implementation(platform("io.github.didacll:madre-bom:0.1.0-SNAPSHOT"))
+    implementation("io.github.didacll:madre-reasoning-spi")
+    implementation("io.github.didacll:madre-text-inference")
+}
+```
+
+The provider JAR exposes `ReasoningMechanismProvider` through `ServiceLoader`. It must not compile against `madre-app`, Kernel implementation or concrete adapters. Install it through the ordinary reasoning lifecycle, then configure/enable a provider-owned mechanism instance with `madre reasoning ...`.
+
 ## Deterministic contract tests
 
 `madre-sdk-testkit` materializes a real `ModuleProvider` and invokes public SDK contracts without pretending to reproduce Kernel policy. `ProgrammableReasoningService` is generic over arbitrary `ReasoningComputation<R>` and exposes controllable immediate/durable behavior.
@@ -284,6 +313,16 @@ madre modules uninstall <module-id> --purge-configuration
 Shipped artifacts are protected. MADRE-managed owner artifacts occupy deterministic slots. Manually copied JARs remain discoverable but are not silently adopted/replaced/deleted. Module semantic state is distinct from artifact bytes.
 
 Reasoning-provider lifecycle remains a separate product domain under `madre reasoning ...`.
+
+## MADRE source-development note
+
+A MADRE source checkout still uses the repository's own Gradle publication tasks for implementation verification:
+
+```text
+./gradlew --no-daemon publish
+```
+
+That checkout-local `build/isolated-repository` is an implementation verification facility, not the independent developer acquisition path. Extension authors should consume the `developer/repository` carried by the installed/released product they target.
 
 ## Experimentation posture
 

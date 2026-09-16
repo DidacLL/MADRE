@@ -35,9 +35,9 @@ These are targeted acceptance gates, not a policy that every PR or commit must r
 
 The following workflows remain available through `workflow_dispatch`; some also run automatically under the narrow PR path triggers described above:
 
-- `Extended SDK developer acceptance` — builds/tests independent SDK and reasoning consumers outside the checkout, then exercises installed-product Module/reasoning lifecycle, semantic owner/PUBLIC boundaries and replacement behavior on Windows and Linux. Its owner-interaction assertion uses ordinary plain text rather than CORE-private commands.
+- `Extended SDK developer acceptance` — builds the packaged owner release candidate, extracts only its version-matched `developer/repository` into a source-free temporary workspace, deletes the checkout-local publication repository, then builds/checks independent Module and reasoning-provider consumers on Windows and Linux. Their JARs are installed/replaced/configured and executed against that same packaged owner MADRE through the ordinary lifecycle. The packaged repository is also checked to contain only the public development artifacts rather than `madre-app`, Kernel implementation or concrete adapters.
 - `Extended reasoning owner configuration` — owner reasoning-provider configuration and lifecycle journey on Windows and Linux.
-- `Extended native owner package` — native application/package build and packaged owner journey on Windows and Linux. Its sustained owner-conversation acceptance exercises ordinary foreground response, persisted multi-turn context, durable continuation, restart recovery and natural Agent-approved follow-up without exposing the CORE-private Operation/Material protocol.
+- `Extended native owner package` — native application/package build and packaged owner journey on Windows and Linux. Its sustained owner-conversation acceptance exercises ordinary foreground response, persisted multi-turn context, durable continuation, R3 classified semantic knowledge/Security-Algebra reasoning selection, highly-sensitive opaque mediation, credential non-storage, restart recovery and natural Agent-approved follow-up without exposing the CORE-private Operation/Material protocol.
 
 Use extended verification when one of these conditions applies:
 

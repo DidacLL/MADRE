@@ -78,15 +78,45 @@ val jpackageExecutable = javaToolchains.launcherFor {
     launcher.metadata.installationPath.file("bin/${if (windowsHost) "jpackage.exe" else "jpackage"}").asFile
 }
 
+val publicDevelopmentArtifactIds = listOf(
+    "madre-bom",
+    "madre-algebra",
+    "madre-sdk",
+    "madre-sdk-testkit",
+    "madre-sdk-experimental",
+    "madre-reasoning-spi",
+    "madre-text-inference",
+    "madre-text-generation",
+    "madre-embeddings"
+)
+val publicDevelopmentRepository = rootProject.layout.buildDirectory.dir("isolated-repository")
+val publishPublicDevelopmentArtifacts by tasks.registering {
+    group = "distribution"
+    description = "Publishes the version-matched public MADRE development artifacts for packaging."
+    dependsOn(publicDevelopmentArtifactIds.map { ":$it:publish" })
+}
+
 val stageJpackageInput by tasks.registering(Sync::class) {
     group = "distribution"
-    description = "Stages the application runtime and shipped artifacts for jpackage."
+    description = "Stages the application runtime, shipped artifacts and public development contracts for jpackage."
     dependsOn(tasks.named("jar"))
+    dependsOn(publishPublicDevelopmentArtifacts)
     into(jpackageInput)
     from(tasks.named("jar"))
     from(runtimeClasspath)
     from(shippedModules) { into("modules") }
     from(shippedReasoning) { into("reasoning") }
+    from(publicDevelopmentRepository) {
+        publicDevelopmentArtifactIds.forEach { artifactId ->
+            include("io/github/didacll/$artifactId/${project.version}/**")
+            include("io/github/didacll/$artifactId/maven-metadata.xml*")
+        }
+        into("developer/repository")
+    }
+    from(rootProject.file("docs/sdk-development.md")) {
+        into("developer")
+        rename { "README.md" }
+    }
     from(rootProject.file("config/madre.bootstrap.properties")) {
         into("defaults")
         rename { "madre.properties" }

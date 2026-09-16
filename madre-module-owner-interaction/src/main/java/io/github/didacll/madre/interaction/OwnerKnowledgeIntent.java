@@ -58,6 +58,13 @@ record OwnerKnowledgeIntent(Action action, OwnerKnowledgeKind kind, String key, 
         Matcher remember = REMEMBER.matcher(value);
         if (remember.matches()) {
             String key = remember.group(1).strip();
+            // CORE knowledge is not a credential vault. Treat explicit credential-like storage
+            // attempts as a bounded removal request so the value is neither persisted nor sent
+            // through ordinary reasoning, while also clearing matching legacy experiment state.
+            if (credentialLike(key)) {
+                return Optional.of(new OwnerKnowledgeIntent(Action.REMOVE,
+                        OwnerKnowledgeKind.HIGHLY_SENSITIVE, key, ""));
+            }
             Optional<OwnerKnowledgeKind> kind = classify(key);
             if (kind.isPresent()) {
                 return Optional.of(new OwnerKnowledgeIntent(Action.PUT, kind.orElseThrow(), key,
@@ -72,22 +79,31 @@ record OwnerKnowledgeIntent(Action action, OwnerKnowledgeKind kind, String key, 
         }
         Matcher reveal = REVEAL.matcher(value);
         if (reveal.matches()) {
+            String key = reveal.group(1).strip();
+            if (credentialLike(key)) {
+                return Optional.of(new OwnerKnowledgeIntent(Action.REMOVE,
+                        OwnerKnowledgeKind.HIGHLY_SENSITIVE, key, ""));
+            }
             return Optional.of(new OwnerKnowledgeIntent(Action.REVEAL,
-                    OwnerKnowledgeKind.OWNER_FACT, reveal.group(1), ""));
+                    OwnerKnowledgeKind.OWNER_FACT, key, ""));
         }
         Matcher what = WHAT_IS_MY.matcher(value);
         if (what.matches()) {
+            String key = what.group(1).strip();
+            if (credentialLike(key)) {
+                return Optional.of(new OwnerKnowledgeIntent(Action.REMOVE,
+                        OwnerKnowledgeKind.HIGHLY_SENSITIVE, key, ""));
+            }
             return Optional.of(new OwnerKnowledgeIntent(Action.REVEAL,
-                    OwnerKnowledgeKind.OWNER_FACT, what.group(1), ""));
+                    OwnerKnowledgeKind.OWNER_FACT, key, ""));
         }
         return Optional.empty();
     }
 
     private static Optional<OwnerKnowledgeKind> classify(String key) {
         String normalized = key.toLowerCase(Locale.ROOT);
-        if (containsAny(normalized, "password", "passphrase", "access code", "pin",
-                "private key", "recovery code", "recovery phrase", "api key", "token",
-                "account number", "social security", "tax id")) {
+        if (containsAny(normalized, "private note", "confidential note", "sensitive note",
+                "private reference", "sensitive reference", "confidential reference")) {
             return Optional.of(OwnerKnowledgeKind.HIGHLY_SENSITIVE);
         }
         if (containsAny(normalized, "reply", "response", "tone", "style", "verbosity",
@@ -104,6 +120,13 @@ record OwnerKnowledgeIntent(Action action, OwnerKnowledgeKind kind, String key, 
             return Optional.of(OwnerKnowledgeKind.OWNER_FACT);
         }
         return Optional.empty();
+    }
+
+    private static boolean credentialLike(String key) {
+        String normalized = key.toLowerCase(Locale.ROOT);
+        return containsAny(normalized, "password", "passphrase", "access code", "pin",
+                "private key", "recovery code", "recovery phrase", "api key", "token",
+                "account number", "social security", "tax id");
     }
 
     private static boolean containsAny(String value, String... needles) {

@@ -4,7 +4,7 @@ This document records executable truth on the active Java 21 branch. Durable pro
 
 ## Product/runtime baseline
 
-MADRE is implemented as both an owner-installed local application and a public Module/reasoning experimentation platform. Windows and Linux packages contain the application, shipped artifacts and a bundled Java runtime. Mutable configuration/data/state live in owner-writable per-user locations; Kernel durable reasoning state and Module-owned state are separate resources.
+MADRE is implemented as both an owner-installed local application and a public Module/reasoning experimentation platform. Windows and Linux packages contain the application, shipped artifacts, a bundled Java runtime and the version-matched public development contracts used to build independent extensions for that same product. Mutable configuration/data/state live in owner-writable per-user locations; Kernel durable reasoning state and Module-owned state are separate resources.
 
 The product can boot with no configured reasoning mechanism. Module installation and reasoning-provider installation are separate domains. CORE remains an optional ordinary Module role with no registration, Module-composition, Security-Algebra or reasoning privilege.
 
@@ -42,7 +42,7 @@ A Java `Agent` is an optional Module-owned actor. It defines no universal loop, 
 
 An `Operation<I,O>` is a generic bounded executable unit of Module logic. Its implementation may be pure computation, file/database/network access, a script/process call, reasoning-backed behavior, or any other Module-owned Java code. `OperationCall` is the current typed MADRE arbitration boundary: it validates accepted Material/Privacy and, when the Operation declares consequential variants, the selected EffectProfile against actual non-user causal Integrity. Output type/value-owner/maximum Sensitivity is validated before the result escapes the bounded call.
 
-`OperationDefinition` has no PUBLIC/PRIVATE visibility field. Cross-Module exposure is a Module-interface fact represented by `Module.exposedOperations()` / `ModuleDefinition.exposedOperations()`. External/public disclosure and bounded owner-interaction execution are executable receiver/product bindings, not Operation ontology.
+`OperationDefinition` has no PUBLIC/PRIVATE visibility field. Cross-Module exposure is a Module-interface fact represented by `Module.exposedOperations()` / `ModuleDefinition.exposedOperations()`. Ordinary exposed Module behavior is therefore Module-exposed behavior, not "PUBLIC behavior". External/public disclosure and bounded owner-interaction execution are executable receiver/product bindings, not Operation ontology.
 
 `OperationBinding.operation(...)` binds ordinary bounded execution. `OperationBinding.publicDisclosure(...)` adds an explicit Module-owned transformation used only when information crosses the external/public receiver boundary. `OperationBinding.ownerInteractionOperation(...)` marks an exact Operation as eligible for the restricted selected-CORE interaction invoker used internally by an owner-interaction Agent. These binding facts do not change Security Algebra or cross-Module exposure and do not define the ordinary owner UI/API.
 
@@ -118,7 +118,13 @@ Stable computation-contract artifacts remain `madre-text-inference`, `madre-text
 
 The testkit deliberately does not emulate Kernel mechanism selection, resource scheduling, retry timing, receiver-boundary enforcement or SQLite durability.
 
-`verification/sdk-consumer` remains a separate Gradle project depending only on published public MADRE artifacts. Its Module implements the same code-first stable `Module` contract used by shipped code. Its tests exercise deterministic Module behavior, heterogeneous reasoning contracts and projection from executable Module objects to the portable `ModuleDefinition`.
+The packaged owner MADRE now carries its compatible public development artifacts in `developer/repository` inside the jpackage application payload, together with the SDK developer guide. The packaged repository contains only the public BOM, Algebra, stable SDK, testkit, experimental authoring artifact, reasoning SPI and stable computation-contract artifacts; it does not publish or expose `madre-app`, Kernel implementation or concrete adapters as development dependencies.
+
+`verification/sdk-consumer` remains a separate Gradle project depending only on that public MADRE surface. Its Module implements the same code-first stable `Module` contract used by shipped code. Its tests exercise deterministic Module behavior, heterogeneous reasoning contracts and projection from executable Module objects to the portable `ModuleDefinition`.
+
+`verification/reasoning-consumer` likewise accepts an explicit public-repository location, builds against the public reasoning SPI/computation contracts and rejects MADRE runtime/product implementation dependencies.
+
+Cross-platform extended SDK acceptance first builds the release candidate owner image, copies only its packaged `developer` surface and the independent fixture sources into a source-free temporary workspace, deletes the checkout-local publication repository, then builds/checks the independent Module and reasoning provider from the copied product surface. The resulting artifacts are installed/replaced/configured and executed against that same packaged owner MADRE through the ordinary lifecycle.
 
 `verification/module-interoperability` independently proves Module-boundary exposure, caller-bound discovery/invocation, `Privacy.MODULE` result reachability, foreign nominal-contract references and unchanged callee-owned Material crossing between Modules.
 
@@ -144,11 +150,21 @@ When historical/contextual values participate in a reasoning payload, the Module
 
 For an ordinary owner turn, the Agent currently chooses the fast foreground path and may continue useful analysis durably. Host presentation polls `followUps(...)` as a physical delivery mechanism; the Agent invokes the private collection Operation and returns only approved `OwnerMessage` values. Normal owner output does not expose private Operation/Material names, collection payloads or sentinel protocol.
 
-The cross-platform packaged acceptance proves foreground response, persisted multi-turn context, durable continuation without an owner updates command, graceful stop/restart while work is relevant, Module-state and Kernel-work recovery, natural Agent-approved follow-up after restart, and absence of the private interaction protocol from normal product output.
+### Current R3 CORE knowledge experiment
+
+The shipped CORE currently persists explicit owner-controlled semantic knowledge in CORE-private Module state. Its private experimental categories are `OWNER_FACT` (minimum S3), `INTERACTION_PREFERENCE` (minimum S2), `ENVIRONMENT_FACT` (minimum S3) and `HIGHLY_SENSITIVE` (minimum S5). These names, category defaults, keyword parser and selection cues are executable evidence from this CORE experiment only; they are not public SDK concepts, a generic memory taxonomy or a Security-Algebra ontology.
+
+When selected owner/environment knowledge participates in reasoning, CORE creates the actual contextual Material and combines its Sensitivity with conversation/current-turn Material before constructing the bounded `OperationCall`. Kernel reasoning selection then applies the unchanged Security Algebra to that carried Sensitivity. Highly sensitive source Material remains S5. For ordinary reasoning use, CORE may derive a new S2 opaque-reference Material that states only that a highly sensitive owner value exists; the raw source value is omitted. Explicit owner-visible raw resolution remains a direct CORE knowledge read and does not call a reasoning mechanism.
+
+The experiment deliberately does not provide credential-vault semantics. Credential-like password/passphrase/PIN/private-key/recovery/API-key/token/account-identifier store or reveal phrases are intercepted as non-storing removal requests, which also clears matching legacy experimental entries. R3's S5 mediation proof instead uses an ordinary private note. MADRE still has no credential vault or secret-manager subsystem.
+
+The shipped CORE Agent now declares `Integrity.I2`, not I5. I2 is the strongest claim currently tied to concrete assurance evidence for this exact implementation: direct repository tests exercise its bounded consequential `OperationCall` construction and the packaged Windows/Linux owner acceptances exercise those effects through real lifecycle/restart/security paths. There is no independent provenance, signature, formal-verification or comparable assurance basis for I3-I5. The value is not inferred from CORE assignment, locality, shipped status or built-in identity. Current CORE consequential profiles have `D = min(Risk, Autonomy)` no greater than 2, so I2 continues to satisfy their existing Security-Algebra causal-integrity requirement without changing the lattice or causal equation.
+
+The cross-platform packaged acceptance proves foreground response, persisted multi-turn context, durable continuation without an owner updates command, graceful stop/restart while work is relevant, Module-state and Kernel-work recovery, natural Agent-approved follow-up after restart, R3 classified-knowledge reasoning selection, opaque S5 mediation, credential non-storage, and absence of the private interaction protocol from normal product output.
 
 ## Installed owner deployment and artifact lifecycle
 
-The native app image contains the shipped owner-interaction Module plus llama.cpp and OpenAI-compatible reasoning adapters. First launch creates owner-writable configuration/data/state roots and can run with zero configured mechanisms.
+The native app image contains the shipped owner-interaction Module plus llama.cpp and OpenAI-compatible reasoning adapters. It also carries the version-matched public development repository and developer guide under the packaged `developer` directory. First launch creates owner-writable configuration/data/state roots and can run with zero configured mechanisms.
 
 Managed local Module/reasoning JAR lifecycle remains unchanged:
 
@@ -162,7 +178,7 @@ Managed local Module/reasoning JAR lifecycle remains unchanged:
 
 ## Current intentional limitations
 
-There is no public remote artifact repository/catalog, marketplace, update feed, dependency bundle protocol, signature/PKI trust model, credential vault, sandbox, external-process Module transport, universal Agent loop, generic planner/tool framework, workflow scheduler, universal memory abstraction, RAG abstraction, semantic-database abstraction or arbitrary metadata/property framework.
+There is no public remote artifact repository/catalog, marketplace, update feed, dependency bundle protocol, signature/PKI trust model, credential vault, sandbox, external-process Module transport, universal Agent loop, generic planner/tool framework, workflow scheduler, universal memory abstraction, RAG abstraction, semantic-database abstraction or arbitrary metadata/property framework. The packaged version-matched Maven repository is a local development distribution surface, not a registry, catalog or update service.
 
 `OwnerInteractionAgent` is intentionally narrow. It is not a universal presentation taxonomy, remote API taxonomy or claim that every Module should expose owner interaction. Likewise, the owner-interaction Operation marker remains a lower-level selected-CORE execution boundary, and Module exposure remains only the explicit installed Module interface for ordinary composition rather than a replacement access-control lattice.
 

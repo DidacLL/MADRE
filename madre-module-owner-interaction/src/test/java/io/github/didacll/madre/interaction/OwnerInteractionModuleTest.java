@@ -182,24 +182,24 @@ final class OwnerInteractionModuleTest {
         String raw = "cedar-7391-private";
 
         OwnerMessage stored = agent.respond(invoker,
-                "Remember my access code is " + raw, Sensitivity.S1)
+                "Remember my private note is " + raw, Sensitivity.S1)
                 .toCompletableFuture().join();
         assertFalse(stored.text().contains(raw));
         assertEquals(0, reasoning.executeCount);
 
-        agent.respond(invoker, "Help me use my access code without revealing it",
+        agent.respond(invoker, "Help me use my private note without revealing it",
                 Sensitivity.S1).toCompletableFuture().join();
         TextInferenceCommand prompt =
                 (TextInferenceCommand) reasoning.immediateRequest.computation();
         assertTrue(prompt.prompt().contains(
-                "access code: a highly sensitive owner value is stored inside CORE"));
+                "private note: a highly sensitive owner value is stored inside CORE"));
         assertFalse(prompt.prompt().contains(raw));
         assertEquals(Sensitivity.S2, reasoning.immediateRequest.carriedSensitivity());
         assertFalse(((TextInferenceCommand) reasoning.durableRequests.get(0).computation())
                 .prompt().contains(raw));
 
         int reasoningCalls = reasoning.executeCount;
-        OwnerMessage revealed = agent.respond(invoker, "Show me my access code", Sensitivity.S1)
+        OwnerMessage revealed = agent.respond(invoker, "Show me my private note", Sensitivity.S1)
                 .toCompletableFuture().join();
         assertTrue(revealed.text().contains(raw));
         assertEquals(Sensitivity.S5, revealed.sensitivity());
@@ -208,14 +208,14 @@ final class OwnerInteractionModuleTest {
 
         OwnerMessage summary = agent.respond(invoker, "What do you remember about me?",
                 Sensitivity.S1).toCompletableFuture().join();
-        assertTrue(summary.text().contains("access code"));
+        assertTrue(summary.text().contains("private note"));
         assertFalse(summary.text().contains(raw));
         assertEquals(Sensitivity.S2, summary.sensitivity());
 
         OwnerInteractionModule restarted = new OwnerInteractionModule(
                 new RecordingReasoning(), state);
         OwnerMessage recovered = ownerAgent(restarted).respond(new BoundOwnerInvoker(restarted),
-                "Show me my access code", Sensitivity.S1).toCompletableFuture().join();
+                "Show me my private note", Sensitivity.S1).toCompletableFuture().join();
         assertTrue(recovered.text().contains(raw));
         assertEquals(Sensitivity.S5, recovered.sensitivity());
     }
@@ -223,7 +223,7 @@ final class OwnerInteractionModuleTest {
     @Test void sourceAndOpaqueKnowledgeMaterialsRemainDistinct() {
         OwnerKnowledgeStore store = new OwnerKnowledgeStore(temporary.resolve("knowledge"));
         OwnerKnowledgeEntry entry = store.put(OwnerKnowledgeKind.HIGHLY_SENSITIVE,
-                "access code", "raw-value", Sensitivity.S5);
+                "private note", "raw-value", Sensitivity.S5);
 
         Material<String> source = entry.sourceMaterial(OwnerInteractionModule.OWNER_KNOWLEDGE);
         Material<String> reference = entry.opaqueReference(

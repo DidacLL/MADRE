@@ -12,6 +12,7 @@ New-Item -ItemType Directory -Force -Path $temp | Out-Null
 $gate = Join-Path $temp 'background.gate'
 $leak = Join-Path $temp 'raw-sensitive-leak.txt'
 $rawSensitive = 's5-owner-value-7391'
+$unsupportedCredential = 'unsupported-api-key-5813'
 $oldHome = $env:HOME
 $oldAppData = $env:APPDATA
 $oldLocalAppData = $env:LOCALAPPDATA
@@ -63,7 +64,7 @@ $server = Start-Job -ArgumentList $prefix, $gate, $leak, $rawSensitive -ScriptBl
                             $prompt -match 'interaction style: concise replies' -and
                             $prompt -match 'workspace: /srv/madre') {
                         $text = "$model`:knowledge-grounded"
-                    } elseif ($prompt -match 'access code: a highly sensitive owner value is stored inside CORE' -and
+                    } elseif ($prompt -match 'private note: a highly sensitive owner value is stored inside CORE' -and
                             $prompt -notmatch [regex]::Escape($rawSensitive)) {
                         $text = "$model`:opaque-mediated"
                     } elseif ($prompt -match 'OWNER TURN 1:' -and $prompt -match 'remember alpha') {
@@ -172,13 +173,14 @@ try {
         $process.StandardInput.WriteLine('Remember my preferred name is Ada')
         $process.StandardInput.WriteLine('I prefer concise replies')
         $process.StandardInput.WriteLine('Remember my workspace is /srv/madre')
-        $process.StandardInput.WriteLine("Remember my access code is $rawSensitive")
+        $process.StandardInput.WriteLine("Remember my private note is $rawSensitive")
+        $process.StandardInput.WriteLine("Remember my API key is $unsupportedCredential")
         Start-Sleep -Milliseconds 500
         $process.StandardInput.WriteLine('Use my preferred name and workspace when you answer')
         Start-Sleep -Milliseconds 700
-        $process.StandardInput.WriteLine('Help me use my access code without revealing it')
+        $process.StandardInput.WriteLine('Help me use my private note without revealing it')
         Start-Sleep -Milliseconds 700
-        $process.StandardInput.WriteLine('Show me my access code')
+        $process.StandardInput.WriteLine('Show me my private note')
         $process.StandardInput.WriteLine('Remember my preferred name is Grace')
         Start-Sleep -Milliseconds 500
         $process.StandardInput.WriteLine('/sensitivity S5')
@@ -203,6 +205,12 @@ try {
     if ($first -notmatch [regex]::Escape($rawSensitive)) {
         throw 'controlled owner-visible resolution did not return the stored sensitive value'
     }
+    if ($first -notmatch "wasn't storing your API key") {
+        throw 'credential-like knowledge request did not make non-storage visible to the owner'
+    }
+    if ($first -match [regex]::Escape($unsupportedCredential)) {
+        throw 'credential-like value was echoed into ordinary owner output'
+    }
     if ($first -notmatch 'secret-model:first-answer') {
         throw 'S5 ordinary context did not select the SECRET-compatible mechanism'
     }
@@ -218,6 +226,9 @@ try {
     }
     if (-not (Test-Path $knowledgeState) -or (Get-Item $knowledgeState).Length -eq 0) {
         throw 'CORE semantic knowledge was not persisted in Module-owned state before restart'
+    }
+    if ((Get-Content $knowledgeState -Raw) -match [regex]::Escape($unsupportedCredential)) {
+        throw 'credential-like value was persisted as CORE semantic knowledge'
     }
     if (-not (Test-Path (Join-Path $stateDirectory 'kernel-work.sqlite'))) {
         throw 'Kernel durable state was not persisted independently before restart'

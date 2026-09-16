@@ -11,6 +11,8 @@ on:
       - 'madre-bom/**'
       - 'madre-sdk/**'
       - 'madre-sdk-testkit/**'
+      - 'madre-sdk-experimental/**'
+      - 'madre-reasoning-spi/**'
       - 'madre-text-inference/**'
       - 'madre-text-generation/**'
       - 'madre-embeddings/**'
@@ -43,26 +45,61 @@ jobs:
         with:
           gradle-version: '8.12'
 
-      - name: Publish public artifacts and build owner installation
+      - name: Build owner release image with public development contracts
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $gradle = if ($IsWindows) { '.\gradlew.bat' } else { './gradlew' }
-          & $gradle --no-daemon --build-cache publish :madre-app:jpackageAppImage
-          if ($LASTEXITCODE -ne 0) { throw 'MADRE publication or owner installation build failed' }
+          & $gradle --no-daemon --build-cache :madre-app:jpackageAppImage
+          if ($LASTEXITCODE -ne 0) { throw 'MADRE owner release image build failed' }
 
-      - name: Build two SDK consumer artifacts outside the MADRE checkout
+      - name: Build independent extensions from the packaged development surface
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $externalRoot = Join-Path $env:RUNNER_TEMP 'madre-external-sdk-consumer'
-          $v1 = Join-Path $externalRoot 'v1'
-          $v2 = Join-Path $externalRoot 'v2'
+          $externalRoot = Join-Path $env:RUNNER_TEMP 'madre-source-independent-developer'
+          $v1 = Join-Path $externalRoot 'module-v1'
+          $v2 = Join-Path $externalRoot 'module-v2'
+          $reasoning = Join-Path $externalRoot 'reasoning'
+          $releaseDeveloper = Join-Path $externalRoot 'release-developer'
           if (Test-Path $externalRoot) { Remove-Item -Recurse -Force $externalRoot }
-          New-Item -ItemType Directory -Force -Path $v1, $v2 | Out-Null
+          New-Item -ItemType Directory -Force -Path $v1, $v2, $reasoning, $releaseDeveloper | Out-Null
+
+          $appImage = (Resolve-Path 'madre-app/build/jpackage/app-image/madre').Path
+          $appDirectory = if ($IsWindows) { Join-Path $appImage 'app' } else { Join-Path $appImage 'lib/app' }
+          $packagedDeveloper = Join-Path $appDirectory 'developer'
+          $packagedRepository = Join-Path $packagedDeveloper 'repository'
+          $packagedGuide = Join-Path $packagedDeveloper 'README.md'
+          if (-not (Test-Path $packagedRepository)) {
+              throw 'owner release image is missing developer/repository'
+          }
+          if (-not (Test-Path $packagedGuide)) {
+              throw 'owner release image is missing the packaged SDK developer guide'
+          }
+
+          $expectedArtifacts = @(
+              'madre-algebra', 'madre-bom', 'madre-embeddings', 'madre-reasoning-spi',
+              'madre-sdk', 'madre-sdk-experimental', 'madre-sdk-testkit',
+              'madre-text-generation', 'madre-text-inference'
+          ) | Sort-Object
+          $groupRoot = Join-Path $packagedRepository 'io/github/didacll'
+          $actualArtifacts = @(Get-ChildItem $groupRoot -Directory | Select-Object -ExpandProperty Name | Sort-Object)
+          if (($actualArtifacts -join ',') -ne ($expectedArtifacts -join ',')) {
+              throw "packaged public development boundary mismatch: $($actualArtifacts -join ',')"
+          }
+
+          # Simulate acquisition from a released/installed MADRE: copy only the product-carried
+          # developer surface to a source-free workspace, then remove the checkout-local publication
+          # repository so external builds cannot accidentally consume source-build output.
+          Copy-Item (Join-Path $packagedDeveloper '*') $releaseDeveloper -Recurse -Force
+          $repository = (Resolve-Path (Join-Path $releaseDeveloper 'repository')).Path
+          if (Test-Path 'build/isolated-repository') {
+              Remove-Item 'build/isolated-repository' -Recurse -Force
+          }
+
           Copy-Item 'verification/sdk-consumer/*' $v1 -Recurse -Force
           Copy-Item 'verification/sdk-consumer/*' $v2 -Recurse -Force
-          $repository = (Resolve-Path 'build/isolated-repository').Path
+          Copy-Item 'verification/reasoning-consumer/*' $reasoning -Recurse -Force
 
           & gradle --no-daemon --build-cache -p $v1 "-PmadreRepository=$repository" `
               '-PartifactBehavior=v1' clean check jar
@@ -70,11 +107,16 @@ jobs:
           & gradle --no-daemon --build-cache -p $v2 "-PmadreRepository=$repository" `
               '-PartifactBehavior=v2' clean check jar
           if ($LASTEXITCODE -ne 0) { throw 'external Module v2 build/test failed' }
+          & gradle --no-daemon --build-cache -p $reasoning "-PmadreRepository=$repository" `
+              clean check jar
+          if ($LASTEXITCODE -ne 0) { throw 'external reasoning provider build/check failed' }
 
           $v1Jar = Join-Path $v1 'build/libs/independent-module.jar'
           $v2Jar = Join-Path $v2 'build/libs/independent-module.jar'
-          if (-not (Test-Path $v1Jar) -or -not (Test-Path $v2Jar)) {
-              throw 'external Module JARs were not produced'
+          $reasoningJar = Join-Path $reasoning 'build/libs/independent-reasoning.jar'
+          if (-not (Test-Path $v1Jar) -or -not (Test-Path $v2Jar) -or
+                  -not (Test-Path $reasoningJar)) {
+              throw 'external extension JARs were not produced'
           }
           if ((Get-FileHash $v1Jar -Algorithm SHA256).Hash -eq
                   (Get-FileHash $v2Jar -Algorithm SHA256).Hash) {
@@ -82,14 +124,7 @@ jobs:
           }
           "EXTERNAL_MODULE_V1_JAR=$v1Jar" >> $env:GITHUB_ENV
           "EXTERNAL_MODULE_V2_JAR=$v2Jar" >> $env:GITHUB_ENV
-
-      - name: Build independent reasoning fixture
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $gradle = if ($IsWindows) { '.\gradlew.bat' } else { './gradlew' }
-          & $gradle --no-daemon --build-cache -p verification/reasoning-consumer jar
-          if ($LASTEXITCODE -ne 0) { throw 'independent reasoning provider build failed' }
+          "EXTERNAL_REASONING_JAR=$reasoningJar" >> $env:GITHUB_ENV
 
       - name: Prove installed extension lifecycle and semantic boundaries
         shell: pwsh
@@ -97,4 +132,5 @@ jobs:
           ./verification/installed-owner-acceptance.ps1 `
             -AppImageRoot 'madre-app/build/jpackage/app-image/madre' `
             -ModuleJar $env:EXTERNAL_MODULE_V1_JAR `
-            -ReplacementModuleJar $env:EXTERNAL_MODULE_V2_JAR
+            -ReplacementModuleJar $env:EXTERNAL_MODULE_V2_JAR `
+            -ReasoningJar $env:EXTERNAL_REASONING_JAR
