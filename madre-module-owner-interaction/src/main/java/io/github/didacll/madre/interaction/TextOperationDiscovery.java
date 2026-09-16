@@ -42,10 +42,10 @@ final class TextOperationDiscovery {
         List<ScoredCandidate> scored = new ArrayList<>();
         for (ReachableOperation reachable : directory.reachableOperations(sensitivity)) {
             candidate(reachable, sensitivity).ifPresent(candidate -> {
-                String description = candidate.reachable().operation().description();
-                Optional<String> action = actionTerm(description);
+                String purpose = candidate.reachable().operation().purpose();
+                Optional<String> action = actionTerm(purpose);
                 if (action.isEmpty() || !ownerTerms.contains(action.orElseThrow())) return;
-                int score = score(ownerTerms, terms(description));
+                int score = score(ownerTerms, terms(purpose));
                 if (score >= MIN_SHARED_TERMS) scored.add(new ScoredCandidate(candidate, score));
             });
         }
