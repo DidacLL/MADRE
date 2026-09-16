@@ -19,7 +19,6 @@ import io.github.didacll.madre.sdk.material.Material;
 import io.github.didacll.madre.sdk.material.MaterialCodec;
 import io.github.didacll.madre.sdk.material.MaterialType;
 import io.github.didacll.madre.sdk.module.OperationDefinition;
-import io.github.didacll.madre.sdk.module.OperationVisibility;
 import io.github.didacll.madre.sdk.operation.OperationCall;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -34,7 +33,7 @@ final class ProgrammableReasoningServiceTest {
     private static final MaterialType<String> OUTPUT = textType("output");
     private static final OperationDefinition OPERATION =
             new OperationDefinition(new OperationId(MODULE, "compute"), "test computation",
-                    OperationVisibility.PRIVATE, Map.of(INPUT.id(), Privacy.SECRET),
+                    Map.of(INPUT.id(), Privacy.SECRET),
                     Map.of(OUTPUT.id(), Sensitivity.S3), Map.of());
 
     @Test
