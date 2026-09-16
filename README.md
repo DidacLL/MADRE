@@ -46,6 +46,8 @@ Kernel stays narrow. It owns live Module receiver mechanics plus shared reasonin
 
 CORE is an ordinary Module role for default owner interaction/coordination. It has no Security Algebra, Module-composition, reasoning, installation or host privilege.
 
+For ordinary owner conversation, the host presents input/output while the selected CORE Agent owns the semantic interaction: turn interpretation, conversation context, reasoning/continuation choices and useful delayed follow-up.
+
 ## Code-first Module SDK
 
 Java Module authors implement executable `Module` objects. MADRE projects portable contracts from those objects:
@@ -56,6 +58,8 @@ Java execution side             Portable description side
 Module                          ModuleDefinition
 Agent                           AgentDefinition
 StatefulAgent<S>                (execution-side specialization only)
+OwnerInteractionAgent           (execution-side specialization only)
+OwnerMessage                    (execution-side semantic message)
 MaterialType<T>                 MaterialTypeDefinition
 Operation<I,O>                  OperationDefinition
 OperationBinding<I,O>           SkillDefinition
@@ -68,12 +72,12 @@ OperationCall<I,O>              WorkflowDefinition
 Executable binding choices are independent from exposure:
 
 ```text
-OperationBinding.operation(...)               ordinary bounded execution
-OperationBinding.ownerInteractionOperation(...) exact selected owner-interaction entry
-OperationBinding.publicDisclosure(...)        explicit external/public transformation
+OperationBinding.operation(...)                 ordinary bounded execution
+OperationBinding.ownerInteractionOperation(...) selected-CORE bounded interaction entry
+OperationBinding.publicDisclosure(...)          explicit external/public transformation
 ```
 
-A single concern must not be overloaded to mean Module exposure, owner interaction and actual public disclosure.
+A single concern must not be overloaded to mean Module exposure, ordinary owner conversation and actual public disclosure. `ownerInteractionOperation(...)` is a lower-level execution entry that a selected CORE Agent may use; it is not the owner-facing conversational API.
 
 A concrete Material value and its nominal contract also have distinct ownership. `MaterialId.moduleId` owns the value; `MaterialTypeId.moduleId` owns the nominal type. A Module may create a value conforming to an explicitly referenced foreign nominal contract without transferring concrete value ownership.
 
@@ -89,7 +93,7 @@ Module-to-Module composition uses caller-bound `ModuleDirectory` / `ModuleInvoke
 
 Generic owner/debug invocation is host-only and may enter an exact installed Operation without implying Module exposure or public disclosure. It returns valid Module Material unchanged.
 
-Ordinary owner interaction is another host-only product boundary. It may enter only exact `ownerInteractionOperation(...)` bindings in the installed Module assigned `roles.core`. The port is not supplied to Modules, so CORE receives no authority over another Module's internal behavior.
+Ordinary owner interaction is a host presentation path into the `OwnerInteractionAgent` supplied by the installed Module assigned `roles.core`. The host sends ordinary owner text and presents Agent-approved `OwnerMessage` values. The Agent may internally use the host/runtime `OwnerInteractionInvoker`, which can enter only exact `ownerInteractionOperation(...)` bindings in the selected CORE Module. The port is not supplied through `ModuleContext`, so CORE receives no authority over another Module's internal behavior.
 
 Actual external/public disclosure uses `publicDisclosure(...)`. The Module-owned transformer must create new declared Material with a new identity whose Sensitivity can reach `Privacy.PUBLIC`. This is the durable meaning of a public receiver boundary.
 
@@ -129,7 +133,7 @@ JDK 21 `jpackage` produces Windows MSI and Linux DEB packages containing MADRE, 
 
 A fresh installation does not invent reasoning endpoints, models, credentials or Privacy values. Zero configured reasoning mechanisms is valid.
 
-The shipped first-run configuration assigns `io.github.didacll.madre.owner-interaction` to `roles.core`. Current `interaction.*` settings bind replaceable console presentation to exact owner-interaction Operations and Material types on that selected Module; they are not a second Module identity or a universal UI contract.
+The shipped first-run configuration assigns `io.github.didacll.madre.owner-interaction` to `roles.core`. Ordinary conversation requires no host configuration of CORE-private Operation names, Material types, reasoning modes or background collection protocol.
 
 Reasoning providers are configured generically through provider-owned metadata, for example:
 
@@ -165,9 +169,11 @@ Reasoning adapters have a separate `madre reasoning ...` lifecycle; installing a
 
 ## Current owner interaction
 
-The shipped owner-interaction Module is an ordinary reference consumer. Its interaction Agent demonstrates bounded persisted multi-turn conversation state, contextual Material with combined Sensitivity, immediate foreground reasoning, independently durable background reasoning, Module-owned pending WorkId association, restart recovery, Module interpretation of completed reasoning and optional visible follow-up.
+The shipped owner-interaction Module is an ordinary reference consumer. Its stateful `OwnerInteractionAgent` demonstrates bounded persisted multi-turn conversation state, contextual Material with combined Sensitivity, immediate foreground reasoning, independently durable background reasoning, Module-owned pending WorkId association, restart recovery, Module interpretation of completed reasoning and optional visible follow-up.
 
-Its current Operations are exact owner-interaction entries, not cross-Module exposed capabilities merely because the Module is CORE. `/updates` remains a compatibility/debug command; normal active presentation can surface a useful Module-approved follow-up automatically.
+Launch the packaged application and type an ordinary request. The Agent selects its own private conversational execution path. A second ordinary turn reuses persisted context. If useful durable continuation is started, the host may poll the Agent physically, but only the Agent invokes/interprets its private collection protocol and decides whether a follow-up is worth presenting. That follow-up can recover naturally after restart.
+
+The private Operations and Material protocol are not cross-Module exposed merely because the Module is CORE, and normal product output does not expose their names or collection sentinels. Expert `/invoke-owner` and external `/invoke-public` remain separate explicit host boundaries.
 
 ## Development
 
@@ -178,6 +184,6 @@ Source development uses JDK 21 and the checked-in Gradle wrapper:
 ./gradlew --no-daemon publish
 ```
 
-Independent verification projects exercise SDK consumption, Module-to-Module interoperability and reasoning-provider SPI consumption against published public artifacts.
+Independent verification projects exercise SDK consumption, Module-to-Module interoperability and reasoning-provider SPI consumption against published public artifacts. Installed-owner acceptance proves independently built Module/reasoning artifacts continue to work with plain owner conversation. Native owner acceptance proves foreground, multi-turn, durable continuation and restart recovery across Windows and Linux packages.
 
 Stable architecture should continue to be recovered from substantial owner/developer experiments. Do not pre-build a universal Agent loop, planner/tool framework, memory/RAG system, semantic database, workflow scheduler, Module taxonomy or replacement visibility/access-control lattice.
