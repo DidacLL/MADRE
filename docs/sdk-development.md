@@ -10,6 +10,8 @@ Execution-side objects:
 
 - `Module`;
 - optional `Agent` / `StatefulAgent<S>`;
+- optional `OwnerInteractionAgent` for a Module that can own the default CORE semantic surface;
+- `OwnerMessage` for Agent-approved owner-visible semantic messages;
 - `MaterialType<T>` / `Material<T>`;
 - `Operation<I,O>`;
 - `OperationBinding<I,O>`;
@@ -25,7 +27,7 @@ Portable descriptions:
 - `WorkflowDefinition`;
 - `EffectProfile`.
 
-`OperationDefinition` is deliberately non-generic and contains bounded execution facts only. Java payload typing belongs to `Operation<I,O>`, `OperationCall<I,O>` and `OperationBinding<I,O>`. `ModuleInstance` is validated runtime/adaptor assembly and normally is not constructed by a Module author.
+`OperationDefinition` is deliberately non-generic and contains bounded execution facts only. Java payload typing belongs to `Operation<I,O>`, `OperationCall<I,O>` and `OperationBinding<I,O>`. `ModuleInstance` is validated runtime/adaptor assembly and normally is not constructed by a Module author. `OwnerInteractionAgent` is execution-side only; it is not serialized into the portable Module definition.
 
 ## Operations are bounded Module logic
 
@@ -60,11 +62,11 @@ OperationBinding.publicDisclosure(definition, implementation, publicTransformer)
 
 `operation(...)` is ordinary bounded execution.
 
-`ownerInteractionOperation(...)` marks an exact Operation as eligible for the host's selected owner-interaction surface. The runtime additionally requires that the owning Module be the installed Module assigned `roles.core`. This does not expose the Operation to other Modules, does not make it externally public and does not change Security Algebra.
+`ownerInteractionOperation(...)` marks an exact Operation as eligible for the host/runtime selected-CORE interaction invoker. It is a lower-level bounded execution mechanism that an `OwnerInteractionAgent` may use internally. The runtime additionally requires that the owning Module be the installed Module assigned `roles.core`. This does not expose the Operation to other Modules, does not make it externally public, does not define the normal owner API and does not change Security Algebra.
 
 `publicDisclosure(...)` provides the Module-owned transformation required when information actually crosses the external/public receiver boundary. The transformer must create new declared Material with a new identity and Sensitivity capable of reaching `Privacy.PUBLIC`. Whether that Operation is also in `exposedOperations()` is independent.
 
-Most domain Operations need only `operation(...)`. Add Module exposure when other installed Modules should discover/invoke the capability. Add owner-interaction or public-disclosure bindings only for those distinct boundaries.
+Most domain Operations need only `operation(...)`. Add Module exposure when other installed Modules should discover/invoke the capability. Add an owner-interaction binding only when a CORE Agent genuinely needs that bounded entry; add public disclosure only for the external receiver boundary.
 
 ## Artifact roles
 
@@ -203,13 +205,15 @@ Agent state does not create another MADRE-arbitrated execution path. Behavior th
 
 ## Owner interaction
 
-The normal owner semantic path is separate from generic host/debug invocation and Module composition.
+The normal owner semantic path is separate from generic host/debug invocation, external/public disclosure and Module composition.
 
-A Module that owns owner-facing semantic interaction can bind exact Operations using `ownerInteractionOperation(...)`. The host's `OwnerInteractionInvoker` may call such entries only when that Module is currently assigned `roles.core`.
+A Module that can serve as the default CORE semantic application may expose one `OwnerInteractionAgent` from its ordinary Agent collection. The host selects only the Module through `roles.core`, transports ordinary owner text to that Agent and presents returned `OwnerMessage` values. It does not need to know which private Operation, Material type, reasoning path or continuation mode represents that turn.
+
+`OwnerInteractionAgent.respond(OwnerInteractionInvoker, ownerText, sensitivity)` owns the immediate semantic decision. `followUps(...)` lets the same Agent surface delayed messages it has semantically approved. The supplied invoker is already restricted to exact `ownerInteractionOperation(...)` bindings in the selected CORE Module; it is not a general host privilege and is not present in `ModuleContext`.
 
 An Agent in CORE may reach capabilities of an agentless Module through the target Module's ordinary `exposedOperations`. CORE interprets owner intent and continuation; the callee does not need an Agent merely to be callable.
 
-Current console Operation names and `interaction.*` settings are product wiring, not universal SDK protocol.
+Do not copy the shipped CORE's private Operation names or background protocol into a new CORE contract. Current console representation and polling are presentation mechanics, not universal SDK protocol.
 
 ## Provider lifecycle and configuration
 
@@ -243,7 +247,7 @@ Directory discovery/invocation targets only Operations in the target Module's ex
 
 Returned Material crosses the fixed Module receiver `Privacy.MODULE` only when the calling Module structurally declares the nominal contract and the result Sensitivity can reach that receiver. The exact concrete Material value remains owned by the Module that produced it.
 
-Generic owner/debug invocation is a separate host-only expert path and may invoke an exact installed Operation without depending on cross-Module exposure. External/public invocation is another host-only path and requires an explicit `publicDisclosure(...)` binding. Owner interaction is a third host-only path through exact CORE interaction bindings.
+Generic owner/debug invocation is a separate host-only expert path and may invoke an exact installed Operation without depending on cross-Module exposure. External/public invocation is another host-only path and requires an explicit `publicDisclosure(...)` binding. Ordinary owner interaction is a third product path through the selected CORE Agent; the restricted owner-interaction invoker remains that Agent's lower-level bounded execution route.
 
 Security Algebra governs MADRE-mediated information/effect composition. Module exposure, host entry and CORE designation are not Algebra carriers.
 
