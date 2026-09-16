@@ -77,6 +77,8 @@ new inference feature
 
 The host product owns installation/uninstallation, persistent product configuration, Module/reasoning artifact lifecycle, CORE selection, startup/shutdown, diagnostics/health and owner-facing product/presentation mechanics.
 
+For ordinary conversation, the host transports owner text to the Agent supplied by the Module assigned CORE and presents only Agent-approved semantic messages. It must not select CORE-private Operations, Material protocol, reasoning mode, continuation mode or delayed-work collection semantics.
+
 A Module owns meaning, domain state/persistence, Material, transformations, optional Agents, Skills, Workflows, interpretation, continuation, domain integrations/UX and bounded Operations. Ordinary application I/O stays in application/Module code unless a concrete shared Kernel responsibility is established.
 
 An Agent is an optional Module-owned intelligent actor. A concrete Agent may own typed state when its semantics require it. There is no universal Agent loop, planner, memory model, prompt framework or tool loop.
@@ -97,6 +99,8 @@ Java executable objects are the authoring source of truth:
 Module
 Agent                     optional
 StatefulAgent<S>           optional Agent specialization
+OwnerInteractionAgent      optional owner-semantic Agent specialization
+OwnerMessage               Agent-approved owner-visible message
 MaterialType<T>
 Operation<I,O>
 OperationBinding<I,O>
@@ -119,7 +123,9 @@ EffectProfile
 
 Cross-Module discoverability/invocation is owned by the Module interface through `Module.exposedOperations()` / `ModuleDefinition.exposedOperations()`. Exposure is neither Material confidentiality nor external publication.
 
-The executable binding shapes are responsibility-specific: `OperationBinding.operation(...)` for an ordinary bounded execution, `OperationBinding.publicDisclosure(...)` when the Module supplies explicit transformation for a real external/public receiver, and `OperationBinding.ownerInteractionOperation(...)` when an exact Operation is an entry for the selected host owner-interaction surface. None changes the Operation's semantic ontology or Security Algebra.
+The executable binding shapes are responsibility-specific: `OperationBinding.operation(...)` for an ordinary bounded execution, `OperationBinding.publicDisclosure(...)` when the Module supplies explicit transformation for a real external/public receiver, and `OperationBinding.ownerInteractionOperation(...)` when an exact Operation is available through the selected-CORE interaction invoker. None changes the Operation's semantic ontology or Security Algebra. Owner-interaction bindings are lower-level bounded execution mechanics, not the normal owner-facing conversation API.
+
+`OwnerInteractionAgent` is a narrow execution-side specialization for the Agent that owns default owner semantic interaction when its Module is selected as CORE. The host supplies owner text plus presentation Sensitivity and may ask for Agent-approved follow-ups. The Agent owns its internal Operation selection, reasoning/continuation behavior and delayed-result interpretation. The type is not portable metadata, is not required of every Agent or Module and grants no privilege.
 
 `ModuleInstance` is validated runtime/adaptor assembly, not the ordinary Module authoring model. `ModuleProvider.create(...)` returns the executable `Module`.
 
@@ -145,7 +151,7 @@ Generic owner/debug entry is a separate host-only path. It resolves an exact ins
 
 External/public disclosure is another host-only receiver boundary. `PublicModuleInvoker` can disclose only an exact binding created with `publicDisclosure(...)`; the Module-owned transformer must create new declared Material with a new identity whose Sensitivity can reach `Privacy.PUBLIC`. Whether the same Operation is exposed to other Modules is independent.
 
-Ordinary product conversation uses the host-only `OwnerInteractionInvoker`. It can enter only exact bindings created with `ownerInteractionOperation(...)` in the installed Module assigned `roles.core`. This port is not present in `ModuleContext`; CORE therefore receives no generic authority over other Modules.
+Ordinary product conversation uses the `OwnerInteractionAgent` discovered in the installed Module assigned `roles.core`. Host presentation transports text and presents `OwnerMessage` values. The Agent may use the host/runtime `OwnerInteractionInvoker`, which can enter only exact `ownerInteractionOperation(...)` bindings in that selected CORE Module. The port is not present in `ModuleContext`; CORE therefore receives no generic authority over other Modules.
 
 Do not generalize these distinct receiver/product concerns into a universal presentation or visibility lattice without new concrete evidence.
 
@@ -155,9 +161,9 @@ CORE identifies MADRE's default owner-interaction/coordinator Module. It is sema
 
 CORE assignment must not alter Security Algebra, Module exposure, Module-composition authority, generic host/debug authority, external disclosure, reasoning installation/selection, scheduling, classloader treatment, installation authority or host ports. Do not create a privileged `CoreModule` subtype.
 
-The current product uses `roles.core` as the single Module identity for ordinary owner interaction. `interaction.*` configures exact presentation Operation/Material details on that selected Module; it no longer carries a duplicated `interaction.module` identity.
+The current product uses `roles.core` as the single Module identity for ordinary owner interaction. Normal conversation requires no `interaction.*` mapping of private Operations, Material names, reasoning modes or background collection payloads.
 
-The target owner experience is semantically led by CORE: foreground conversation, reasoning choices, useful delayed semantic follow-up and ordinary coordination/routing to installed Modules. The host still owns product management and presentation timing.
+The target owner experience is semantically led by the selected CORE Agent: foreground conversation, semantic use of persisted context, reasoning/continuation choices, useful delayed semantic follow-up and ordinary coordination/routing to installed Modules. The host owns product management and physical presentation timing only.
 
 Do not freeze current Operation names, console commands, polling interval or text update representation into a universal CORE/UI API.
 
@@ -211,13 +217,13 @@ Kernel durable work remains opaque physical reasoning state. Module owns semanti
 
 ## Verification economics
 
-Verification is proportional to engineering risk. The standing PR signal is one lightweight Ubuntu root `check`. Expensive Windows/Linux SDK, reasoning configuration and native package journeys are explicit/manual acceptance tools used for relevant boundary changes, release checkpoints or Owner request.
+Verification is proportional to engineering risk. The normal PR signal remains lightweight root `check`; selected SDK/application and native owner-package paths additionally trigger the existing cross-platform acceptance workflows because those claims cannot be proven cheaply by unit tests alone.
 
 Use focused tests during implementation and root `check` at coherent cross-project checkpoints. A relevant failing check is real evidence and must be understood before dependent work continues. Do not turn hosted CI into the development scheduler.
 
-Cross-platform evidence remains important because Windows and Linux are first-class hosts, but do not reflexively dispatch every expensive workflow after every commit.
+Cross-platform evidence remains important because Windows and Linux are first-class hosts, but do not reflexively dispatch every expensive workflow after every commit. Path-triggered extended workflows should remain narrow and tied to the boundary they protect.
 
-For owner-interaction/package changes, `Extended native owner package` is the relevant cross-platform workflow. Its sustained conversation acceptance must exercise the shipped real adapter path with a deterministic local endpoint rather than mock away provider/Kernel/Module/application boundaries.
+For owner-interaction/package changes, `Extended native owner package` is the relevant cross-platform workflow. Its sustained conversation acceptance must exercise the shipped real adapter path with a deterministic local endpoint rather than mock away provider/Kernel/Module/application boundaries. It must prove plain owner turns, persisted context, durable continuation, restart recovery and Agent-approved follow-up without exposing the private CORE protocol.
 
 ## Active product posture
 
@@ -225,7 +231,7 @@ Native owner deployment, Module/reasoning configuration, local artifact lifecycl
 
 Choose new work from concrete owner/developer/semantic-programming friction. Prefer substantial end-to-end owner/developer experiments over repeated framework-only cleanup.
 
-The shipped owner-interaction Module is the first sustained owner-deployment reference consumer. It uses exact owner-interaction Operation bindings, `StatefulAgent<OwnerConversationState>`, bounded persisted conversation state, Security-Algebra-preserving contextual Material, immediate and durable reasoning, Module-owned pending association, independent Kernel durable state and natural Module-approved follow-up presentation after restart. Its Operations are not made cross-Module exposed merely because the Module is CORE. `/updates` remains only a compatibility/debug path.
+The shipped owner-interaction Module is the first sustained owner-deployment reference consumer. It uses a stateful `OwnerInteractionAgent`, exact private owner-interaction Operation bindings, bounded persisted conversation state, Security-Algebra-preserving contextual Material, immediate and durable reasoning, Module-owned pending association, independent Kernel durable state and natural Agent-approved follow-up presentation after restart. Its Operations are not made cross-Module exposed merely because the Module is CORE. The owner no longer selects an interaction mode or invokes an updates protocol for normal use.
 
 Promote small orthogonal SDK abstractions when a real implementation proves their usefulness, even when they are optional specializations rather than universal concepts. Do not pre-build a universal Agent framework, universal memory/RAG system, planner/tool API, workflow language, semantic database abstraction or Module taxonomy.
 
