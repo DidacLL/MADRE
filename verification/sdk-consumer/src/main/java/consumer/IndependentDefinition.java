@@ -62,21 +62,21 @@ public final class IndependentDefinition implements Module {
 
     static final OperationDefinition SAVE_OPERATION = new OperationDefinition(SAVE_NOTE,
             "Save this workspace note in durable application state",
-            Map.of(WORKSPACE_COMMAND.id(), Privacy.MODULE),
+            Map.of(WORKSPACE_COMMAND.id(), Privacy.SECRET),
             Map.of(WORKSPACE_RESULT.id(), Sensitivity.S2),
             Map.of(SAVE_PROFILE.id(), SAVE_PROFILE));
     static final OperationDefinition COUNT_OPERATION = new OperationDefinition(COUNT_NOTES,
             "Report how many workspace notes are saved in durable application state",
-            Map.of(WORKSPACE_COMMAND.id(), Privacy.MODULE),
+            Map.of(WORKSPACE_COMMAND.id(), Privacy.SECRET),
             Map.of(WORKSPACE_RESULT.id(), Sensitivity.S2), Map.of());
     static final OperationDefinition RESET_OPERATION = new OperationDefinition(RESET_NOTES,
             "Delete every workspace note from durable application state",
-            Map.of(WORKSPACE_COMMAND.id(), Privacy.MODULE),
+            Map.of(WORKSPACE_COMMAND.id(), Privacy.SECRET),
             Map.of(WORKSPACE_RESULT.id(), Sensitivity.S2),
             Map.of(RESET_PROFILE.id(), RESET_PROFILE));
     static final OperationDefinition PRIVATE_OPERATION = new OperationDefinition(PRIVATE_NOTES,
-            "Show private workspace material that cannot cross a Module receiver",
-            Map.of(WORKSPACE_COMMAND.id(), Privacy.MODULE),
+            "Show private workspace details reserved for this application",
+            Map.of(WORKSPACE_COMMAND.id(), Privacy.SECRET),
             Map.of(PRIVATE_RESULT.id(), Sensitivity.S5), Map.of());
 
     private final OperationBinding<String, String> inspect;
