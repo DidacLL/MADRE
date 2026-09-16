@@ -37,7 +37,8 @@ public final class IndependentModuleProvider implements ModuleProvider {
         java.util.Objects.requireNonNull(context, "context");
         ModuleProviderConfiguration canonical = canonical(configuration);
         String prefix = canonical.value(RESULT_PREFIX).orElse("");
-        return IndependentDefinition.create(context.reasoning(), prefix, artifactBehavior());
+        return IndependentDefinition.create(context.reasoning(), context.stateDirectory(), prefix,
+                artifactBehavior());
     }
 
     private static String artifactBehavior() {
