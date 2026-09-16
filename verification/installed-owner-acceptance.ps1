@@ -117,8 +117,6 @@ try {
         throw 'owner reasoning directory was not initially empty'
     }
 
-    # The app image was already built before either external Module artifact. Installing the first
-    # artifact through the ordinary owner command also exercises packaged first-run configuration.
     $moduleInstall = Invoke-Madre @('modules', 'install', $independentModule)
     if ($moduleInstall -notmatch 'module\.installed\s+phd\.module' -or $moduleInstall -notmatch 'source=owner') {
         throw 'independent Module was not installed as an owner artifact'
@@ -132,8 +130,6 @@ try {
     }
     Invoke-Madre @('modules', 'configure', 'phd.module', '--set', 'result-prefix=configured-') | Out-Null
 
-    # External/public disclosure and generic owner/debug entry are independent mechanical receiver
-    # paths. They prove installed execution without pretending the agentless target owns semantic intent.
     $initialPublicExpected = "public:${InitialBehavior}:configured-hello"
     $public = Invoke-Madre @('--invoke-public', 'phd.module', 'inspect', 'request', 'S4', 'hello')
     if ($public -notmatch [regex]::Escape($initialPublicExpected)) {
@@ -145,8 +141,6 @@ try {
         throw "generic owner/debug entry did not execute initial installed behavior: $initialOwnerExpected"
     }
 
-    # Replace the managed owner artifact with a separately built same-identity artifact. Configuration
-    # is host-owned installation state, so it must survive byte replacement and reach the new Module.
     $moduleReplace = Invoke-Madre @('modules', 'install', $replacementModule, '--replace')
     if ($moduleReplace -notmatch 'module\.replaced\s+phd\.module' -or
             $moduleReplace -notmatch 'source=owner') {
@@ -171,7 +165,6 @@ try {
         throw "generic owner/debug entry did not execute replacement behavior: $replacementOwnerExpected"
     }
 
-    # Independently compiled provider lifecycle remains separate from Module installation.
     $providerInstall = Invoke-Madre @('reasoning', 'install', $independentReasoning)
     if ($providerInstall -notmatch 'reasoning\.provider\.installed\s+independent-text' -or
             $providerInstall -notmatch 'source=owner') {
@@ -192,22 +185,24 @@ try {
         throw 'configured independent reasoning mechanism did not materialize'
     }
 
-    # Owner interaction is not external/public disclosure. Without a public transformation the
-    # external receiver must reject the same Operation even though the selected CORE host can enter it.
     $publicFailure = Invoke-MadreFailure @('--invoke-public', $ownerModuleId,
         'standard-prompt', 'owner-prompt', 'S5', 'must-not-be-public')
     if ($publicFailure -notmatch 'external/public disclosure transformation') {
         throw 'external public path did not require an explicit disclosure transformation'
     }
 
-    # The ordinary console reaches the selected Module's explicit interaction entry and the real
-    # OperationCall/ReasoningService path still carries S5 Material to the SECRET fixture.
-    $console = Invoke-Console @('/standard sdk-owner', '/exit')
-    if ($console -notmatch 'S5\s+independent:sdk-owner') {
+    # Ordinary owner text must reach the selected CORE Agent without an implementation command.
+    # The real OperationCall/ReasoningService path still carries S5 Material to the SECRET fixture.
+    $console = Invoke-Console @('sdk-owner', '/exit')
+    if ($console -notmatch 'independent:sdk-owner') {
         throw 'ordinary owner interaction did not execute through the configured reasoning mechanism'
     }
+    foreach ($privateToken in @('/standard', 'standard-prompt', 'fast-lane', 'owner-prompt')) {
+        if ($console -match [regex]::Escape($privateToken)) {
+            throw "ordinary installed-owner output exposed CORE implementation protocol: $privateToken"
+        }
+    }
 
-    # Shipped artifacts remain immutable through owner lifecycle operations.
     $shippedUninstall = Invoke-MadreFailure @('modules', 'uninstall', $ownerModuleId)
     if ($shippedUninstall -notmatch 'shipped Module cannot be uninstalled') {
         throw 'shipped owner-interaction Module was not protected from uninstall'

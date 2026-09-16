@@ -172,7 +172,10 @@ try {
     Set-Content -Path $gate -Value 'open' -Encoding utf8
     $second = Invoke-Console {
         param($process)
-        Start-Sleep -Seconds 3
+        # Graceful shutdown interrupted the in-flight attempt. The durable request is re-queued by
+        # its existing retry policy with a 5-second delay, so keep the restarted host alive past
+        # that eligibility time and let presentation polling surface the Agent-approved result.
+        Start-Sleep -Seconds 8
         $process.StandardInput.WriteLine('after restart')
         Start-Sleep -Milliseconds 900
     }
