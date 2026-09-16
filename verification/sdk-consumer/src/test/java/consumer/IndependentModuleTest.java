@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import io.github.didacll.madre.algebra.Integrity;
 import io.github.didacll.madre.algebra.Privacy;
 import io.github.didacll.madre.algebra.Sensitivity;
 import io.github.didacll.madre.embedding.EmbeddingSpace;
@@ -33,6 +34,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 final class IndependentModuleTest {
@@ -59,6 +61,40 @@ final class IndependentModuleTest {
             assertEquals("private:reasoned:fixture-model:hello", result.payload());
             assertEquals(Sensitivity.S4, result.sensitivity());
             assertTrue(testContext.stateDirectory().toFile().isDirectory());
+        }
+    }
+
+    @Test
+    void agentlessWorkspaceOwnsDurableReadWriteBehaviorAndExposure() {
+        try (ModuleTestContext testContext = ModuleTestContext.create(
+                new ProgrammableReasoningService())) {
+            ModuleTestHarness module = ModuleTestHarness.materialize(
+                    new IndependentModuleProvider(), testContext.context(),
+                    new ModuleProviderConfiguration(IndependentDefinition.ID, Map.of()));
+
+            assertTrue(module.instance().definition().agents().isEmpty());
+            assertEquals(Set.of(IndependentDefinition.SAVE_NOTE,
+                            IndependentDefinition.COUNT_NOTES, IndependentDefinition.PRIVATE_NOTES),
+                    module.instance().definition().exposedOperations());
+            assertFalse(module.instance().definition().exposedOperations()
+                    .contains(IndependentDefinition.RESET_NOTES));
+
+            Material<String> save = new Material<>(
+                    new MaterialId(IndependentDefinition.ID, "workspace-save"),
+                    IndependentDefinition.WORKSPACE_COMMAND,
+                    "Save this workspace note: source-independent R4 evidence", Sensitivity.S2);
+            Material<String> saved = module.<String, String>invoke(OperationCall.withEffect(
+                    IndependentDefinition.SAVE_OPERATION, IndependentDefinition.SAVE_PROFILE, save,
+                    List.of(Integrity.I1))).toCompletableFuture().join();
+            assertEquals("Saved 1 workspace note.", saved.payload());
+
+            Material<String> count = new Material<>(
+                    new MaterialId(IndependentDefinition.ID, "workspace-count"),
+                    IndependentDefinition.WORKSPACE_COMMAND,
+                    "Report how many workspace notes are saved", Sensitivity.S2);
+            Material<String> counted = module.<String, String>invoke(OperationCall.withoutEffect(
+                    IndependentDefinition.COUNT_OPERATION, count)).toCompletableFuture().join();
+            assertEquals("There is 1 saved workspace note.", counted.payload());
         }
     }
 
@@ -121,8 +157,8 @@ final class IndependentModuleTest {
         var definition = module.definition();
 
         assertEquals(IndependentDefinition.ID, definition.id());
-        assertEquals(2, definition.materialTypes().size());
-        assertEquals(2, definition.operations().size());
+        assertEquals(5, definition.materialTypes().size());
+        assertEquals(6, definition.operations().size());
         assertEquals("text/plain; charset=utf-8",
                 definition.materialTypes().get(IndependentDefinition.REQUEST.id()).contentType());
     }
