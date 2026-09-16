@@ -81,23 +81,23 @@ final class ModuleCompositionCoordinator {
         for (ReachableModule module : directory.exposed(sensitivity)) {
             module.operations().values().stream()
                     .sorted(Comparator.comparing(operation -> operation.id().name()))
-                    .forEach(operation -> operation.acceptedMaterial().entrySet().stream()
-                            .sorted(java.util.Map.Entry.comparingByKey(
-                                    Comparator.comparing(ModuleCompositionCoordinator::materialTypeName)))
-                            .filter(entry -> sensitivity.canReach(entry.getValue()))
-                            .forEach(entry -> {
-                                MaterialTypeDefinition input = module.materialTypes().get(entry.getKey());
-                                if (input == null || !isUtf8Text(input)) return;
-                                if (operation.effectProfiles().isEmpty()) {
-                                    values.add(new Candidate(module, operation, input,
-                                            Optional.empty()));
-                                } else {
-                                    operation.effectProfiles().values().stream()
-                                            .sorted(Comparator.comparing(profile -> profile.id().name()))
-                                            .forEach(profile -> values.add(new Candidate(module,
-                                                    operation, input, Optional.of(profile))));
-                                }
-                            }));
+                    .forEach(operation -> {
+                        if (operation.effectProfiles().size() > 1) return;
+                        List<MaterialTypeDefinition> inputs = operation.acceptedMaterial().entrySet()
+                                .stream()
+                                .sorted(java.util.Map.Entry.comparingByKey(
+                                        Comparator.comparing(
+                                                ModuleCompositionCoordinator::materialTypeName)))
+                                .filter(entry -> sensitivity.canReach(entry.getValue()))
+                                .map(entry -> module.materialTypes().get(entry.getKey()))
+                                .filter(java.util.Objects::nonNull)
+                                .filter(ModuleCompositionCoordinator::isUtf8Text)
+                                .toList();
+                        if (inputs.size() != 1) return;
+                        Optional<EffectProfile> effectProfile = operation.effectProfiles().values()
+                                .stream().findFirst();
+                        values.add(new Candidate(module, operation, inputs.getFirst(), effectProfile));
+                    });
         }
         return List.copyOf(values);
     }
