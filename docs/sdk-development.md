@@ -133,7 +133,7 @@ Build with the product repository explicitly:
 gradle -PmadreRepository="$MADRE_REPOSITORY" clean check jar
 ```
 
-`verification/sdk-consumer` is the executable external-Module reference. `verification/reasoning-consumer` is the corresponding independently built reasoning-provider reference. `verification/r4-workspace-module` is an additional independently built agentless application used to prove runtime composition with a Module that the shipped CORE did not know at build time. Cross-platform extended acceptance first builds the packaged MADRE, then copies its `developer/repository` into a source-free workspace, removes checkout-local publication output, builds the independent artifacts from that packaged public surface, and installs/uses them against that same already-built MADRE.
+`verification/sdk-consumer` is the executable external-Module reference. `verification/reasoning-consumer` is the corresponding independently built reasoning-provider reference. Cross-platform extended acceptance copies the packaged repository into a source-free workspace, deletes the checkout-local publication repository and builds/checks both fixtures before installing them into the same packaged owner MADRE.
 
 ## Minimal agentless Module
 
@@ -202,13 +202,9 @@ MaterialId.moduleId      value creator/owner
 MaterialTypeId.moduleId  nominal contract definer/owner
 ```
 
-A Module may explicitly reference a foreign Material type contract and create a value conforming to it. For Java authors a structural compile-time reference is declared with `foreignMaterialReferences()`. The set is a foreign nominal-contract reference; it is not `Privacy.PUBLIC` disclosure and does not transfer concrete value ownership.
+A Module may explicitly reference a foreign Material type contract and create a value conforming to it. For Java authors this is declared with `foreignMaterialReferences()`. The set is a structural foreign nominal-contract reference; it is not `Privacy.PUBLIC` disclosure and does not transfer concrete value ownership.
 
-Runtime discovery also supports an exact target-owned contract that the caller did not know at build time. `ModuleDirectory.exposed(Sensitivity)` returns exposed Operation definitions together with the target-owned `MaterialTypeDefinition`s needed to understand their contracts. A caller may then create caller-owned concrete Material conforming exactly to a target-owned input definition published by that target. This dynamic relationship is scoped to the target being invoked and does not add the contract to the caller's portable definition.
-
-Likewise, an invoked target may return target-owned Material using one of its own canonical nominal definitions even when the caller did not statically declare that type. If its Sensitivity can reach the fixed `Privacy.MODULE` receiver, the exact target-created Material crosses unchanged. A foreign type owned by some unrelated third Module still requires the caller's structural `foreignMaterialReferences()` declaration.
-
-For the static case, a callee may also produce a callee-owned `MaterialId` whose `MaterialTypeId` is defined by the caller. If that type is declared structurally and Sensitivity can reach `Privacy.MODULE`, the exact callee-owned value can cross unchanged.
+For example, a callee may produce a callee-owned `MaterialId` whose `MaterialTypeId` is defined by the caller. If that type is declared structurally and Sensitivity can reach `Privacy.MODULE`, the exact callee-owned value can cross unchanged.
 
 ## Agents, typed state, Skills and Workflows
 
@@ -230,9 +226,9 @@ A Module that can serve as the default CORE semantic application may expose one 
 
 `OwnerInteractionAgent.respond(OwnerInteractionInvoker, ownerText, sensitivity)` owns the immediate semantic decision. `followUps(...)` lets the same Agent surface delayed messages it has semantically approved. The supplied invoker is already restricted to exact `ownerInteractionOperation(...)` bindings in the selected CORE Module; it is not a general host privilege and is not present in `ModuleContext`.
 
-An Agent in CORE may reach capabilities of an agentless Module through the target Module's ordinary exposed interface using the same caller-bound `ModuleContext.directory()` and `ModuleContext.invoker()` available to every Module. CORE interprets owner intent, selects only among structurally exposed contracts, supplies its actual causal Integrity when selecting a consequential target EffectProfile, interprets the returned foreign Material, and decides continuation. The callee does not need an Agent merely to be callable, and CORE designation grants no additional discovery or invocation authority.
+An Agent in CORE may reach capabilities of an agentless Module through the target Module's ordinary `exposedOperations`. CORE interprets owner intent and continuation; the callee does not need an Agent merely to be callable.
 
-Do not copy the shipped CORE's private coordination Operation, selection prompt, knowledge parser/categories or background protocol into a new CORE contract. Current console representation, private semantic knowledge experiment, coordination strategy and polling are implementation evidence, not universal SDK protocol.
+Do not copy the shipped CORE's private Operation names, knowledge parser/categories or background protocol into a new CORE contract. Current console representation, private semantic knowledge experiment and polling are implementation evidence, not universal SDK protocol.
 
 ## Provider lifecycle and configuration
 
@@ -262,23 +258,11 @@ META-INF/services/io.github.didacll.madre.sdk.registration.ModuleProvider
 
 `ModuleContext.directory()` and `ModuleContext.invoker()` are caller-bound. Module code cannot forge caller identity or choose receiver Privacy.
 
-There are two directory queries for two authoring situations:
+Directory discovery/invocation targets only Operations in the target Module's exposed interface. Accepted input Privacy still determines whether the offered Material can reach a particular Operation.
 
-```java
-List<ReachableModule> exact = context.directory().reachable(
-        new ReachabilityQuery(knownTypeId, carriedSensitivity));
-List<ReachableModule> exposed = context.directory().exposed(carriedSensitivity);
-```
+Returned Material crosses the fixed Module receiver `Privacy.MODULE` only when the calling Module structurally declares the nominal contract and the result Sensitivity can reach that receiver. The exact concrete Material value remains owned by the Module that produced it.
 
-`reachable(...)` is the exact path when the nominal input type is already known. `exposed(...)` is structural discovery for independently installed Modules that may not have existed when the caller was compiled. It returns only Module-exposed Operations whose declared input receiver can accept the supplied carried Sensitivity, includes target-owned Material definitions needed to understand those contracts, and performs no semantic ranking. Neither form means `Privacy.PUBLIC`.
-
-Invocation still targets an exact discovered `OperationDefinition`. The caller may use one of its own/static foreign nominal contracts or an exact target-owned input definition obtained from that target's runtime discovery result. Concrete input Material remains owned by the caller through its `MaterialId` even when the nominal `MaterialTypeId` is target-owned.
-
-Returned Material crosses the fixed Module receiver `Privacy.MODULE` only if its Sensitivity can reach that receiver and its nominal contract is structurally valid. Statically referenced foreign/third-party contracts remain governed by `foreignMaterialReferences()`. A target-owned result from the invoked target can instead be validated against that target's installed canonical Material definition, allowing a caller compiled earlier to receive a newly installed target's own result type. The exact Material remains owned by the Module that produced it; the runtime does not relabel or public-transform it.
-
-Consequential target calls must select one exact target-declared `EffectProfile` and supply the actual non-user causal Integrity participants. Semantic selection/reasoning before that target call does not itself acquire the target's Risk or Autonomy.
-
-Generic owner/debug invocation is a separate host-only expert path and may invoke an exact installed Operation without depending on cross-Module exposure. External/public invocation is another host-only path and requires an explicit `publicDisclosure(...)` binding. Ordinary owner interaction is a third product path through the selected CORE Agent; the restricted owner-interaction invoker remains that Agent's lower-level bounded execution route for its own Module.
+Generic owner/debug invocation is a separate host-only expert path and may invoke an exact installed Operation without depending on cross-Module exposure. External/public invocation is another host-only path and requires an explicit `publicDisclosure(...)` binding. Ordinary owner interaction is a third product path through the selected CORE Agent; the restricted owner-interaction invoker remains that Agent's lower-level bounded execution route.
 
 Security Algebra governs MADRE-mediated information/effect composition. Module exposure, host entry and CORE designation are not Algebra carriers.
 
@@ -310,7 +294,7 @@ The provider JAR exposes `ReasoningMechanismProvider` through `ServiceLoader`. I
 
 `madre-sdk-testkit` materializes a real `ModuleProvider` and invokes public SDK contracts without pretending to reproduce Kernel policy. `ProgrammableReasoningService` is generic over arbitrary `ReasoningComputation<R>` and exposes controllable immediate/durable behavior.
 
-Use ordinary unit/testkit tests for Module semantics and installed/integration tests when a claim depends on Module receiver exposure, dynamic discovery, Kernel mechanism selection, durable recovery or package/product mechanics.
+Use ordinary unit/testkit tests for Module semantics and installed/integration tests when a claim depends on Module receiver exposure, Kernel mechanism selection, durable recovery or package/product mechanics.
 
 ## Local Module lifecycle
 
