@@ -125,13 +125,13 @@ Cross-Module discoverability/invocation is owned by the Module interface through
 
 The executable binding shapes are responsibility-specific: `OperationBinding.operation(...)` for an ordinary bounded execution, `OperationBinding.publicDisclosure(...)` when the Module supplies explicit transformation for a real external/public receiver, and `OperationBinding.ownerInteractionOperation(...)` when an exact Operation is available through the selected-CORE interaction invoker. None changes the Operation's semantic ontology or Security Algebra. Owner-interaction bindings are lower-level bounded execution mechanics, not the normal owner-facing conversation API.
 
-`OwnerInteractionAgent` is a narrow execution-side specialization for the Agent that owns default owner semantic interaction when its Module is selected as CORE. The host supplies owner text plus presentation Sensitivity and may ask for Agent-approved follow-ups. The Agent owns its internal Operation selection, reasoning/continuation behavior and delayed-result interpretation. The type is not portable metadata, is not required of every Agent or Module and grants no privilege.
+`OwnerInteractionAgent` is a narrow execution-side specialization for the Agent that owns default owner semantic interaction when its Module is selected as CORE. The host supplies owner text plus presentation Sensitivity and may ask for Agent-approved follow-ups. The Agent owns its internal Operation selection, ordinary Module-composition choices, reasoning/continuation behavior and delayed-result interpretation. The type is not portable metadata, is not required of every Agent or Module and grants no privilege.
 
 `ModuleInstance` is validated runtime/adaptor assembly, not the ordinary Module authoring model. `ModuleProvider.create(...)` returns the executable `Module`.
 
 `StatefulAgent<S>` is a stable execution-side OOP convenience for typed Agent-owned state. It provides serialized state reads/transitions and optional commit-before-publish persistence. It defines no state schema, memory semantics, persistence format or execution loop. Subclasses still express MADRE-arbitrable behavior through ordinary Operation bindings and calls.
 
-A Material value and its nominal type have distinct ownership. `MaterialId.moduleId` identifies the Module that created/owns the concrete value. `MaterialTypeId.moduleId` identifies the Module that defines the nominal contract. A Module may create a value conforming to a foreign nominal contract when that contract is explicitly referenced. Do not collapse value ownership into type ownership.
+A Material value and its nominal type have distinct ownership. `MaterialId.moduleId` identifies the Module that created/owns the concrete value. `MaterialTypeId.moduleId` identifies the Module that defines the nominal contract. Compile-time foreign contracts remain explicit through `foreignMaterialReferences()`. Runtime structural discovery may additionally support exact target-owned contracts published by the selected target Operation without converting them into static references. Do not collapse value ownership into type ownership.
 
 An unproven Java Agent defaults to `Integrity.I1`; generated or experimental code must not invent stronger assurance. Lack of proof should reduce trust/composability, not make arbitrary local software impossible.
 
@@ -143,15 +143,17 @@ Add SDK conveniences when concrete software demonstrates an ownership-correct pr
 
 Installed Module composition uses caller-bound `ModuleDirectory` / `ModuleInvoker`. Runtime binds canonical caller identity; Module code cannot provide caller identity or arbitrary receiving Privacy.
 
-Module-to-Module calls target Operations explicitly exposed by the target Module. Exposure is a Module-interface fact, not an Operation visibility level. The fixed receiver remains `Privacy.MODULE`.
+Module-to-Module calls target Operations explicitly exposed by the target Module. Exposure is a Module-interface fact, not an Operation visibility level. `ModuleDirectory.reachable(...)` is exact discovery for a nominal Material type the caller already knows. `ModuleDirectory.reachableOperations(Sensitivity)` is structural discovery for later-installed targets: it returns exact exposed Operations whose accepted receiver can carry the supplied Sensitivity plus only the target-owned portable Material definitions referenced by those Operations. Structural discovery performs no semantic ranking and creates no authority.
 
-A result crosses unchanged only when the calling Module structurally declares the nominal Material type it receives and the result Sensitivity can reach `Privacy.MODULE`. The concrete Material value remains owned by the Module that created it even when its nominal type is defined by the caller or another Module. The caller may then create new caller-owned interpretation Material.
+There are two valid nominal-contract paths. A caller can use its own or statically declared foreign contract as before. For an exact target-owned contract published by the selected target Operation, an earlier-compiled caller may instead create caller-owned Material conforming exactly to that target definition. Runtime validates the target's canonical portable definition and execution binding; the exception is target-scoped and does not authorize unrelated third-party types.
+
+The result receiver remains fixed at `Privacy.MODULE`. A target-owned result may cross without a prior static caller reference only when it exactly matches the selected target's canonical nominal definition and its Sensitivity can reach `Privacy.MODULE`. Other foreign types continue to require the caller's static structural reference. In every successful case the exact concrete Material remains owned by the Module that created it, with its original identity, nominal type and Sensitivity unchanged. The caller may then create new caller-owned interpretation Material.
 
 Generic owner/debug entry is a separate host-only path. It resolves an exact installed Operation and returns its contract-valid Module Material unchanged. It is not Module exposure and is not external/public disclosure.
 
 External/public disclosure is another host-only receiver boundary. `PublicModuleInvoker` can disclose only an exact binding created with `publicDisclosure(...)`; the Module-owned transformer must create new declared Material with a new identity whose Sensitivity can reach `Privacy.PUBLIC`. Whether the same Operation is exposed to other Modules is independent.
 
-Ordinary product conversation uses the `OwnerInteractionAgent` discovered in the installed Module assigned `roles.core`. Host presentation transports text and presents `OwnerMessage` values. The Agent may use the host/runtime `OwnerInteractionInvoker`, which can enter only exact `ownerInteractionOperation(...)` bindings in that selected CORE Module. The port is not present in `ModuleContext`; CORE therefore receives no generic authority over other Modules.
+Ordinary product conversation uses the `OwnerInteractionAgent` discovered in the installed Module assigned `roles.core`. Host presentation transports text and presents `OwnerMessage` values. The Agent may use the host/runtime `OwnerInteractionInvoker`, which can enter only exact `ownerInteractionOperation(...)` bindings in that selected CORE Module; this port is absent from `ModuleContext`. Cross-Module coordination instead uses the same caller-bound `ModuleContext.directory()` and `ModuleContext.invoker()` supplied to every ordinary Module. CORE therefore receives no additional composition authority by being CORE.
 
 Do not generalize these distinct receiver/product concerns into a universal presentation or visibility lattice without new concrete evidence.
 
@@ -165,7 +167,9 @@ The current product uses `roles.core` as the single Module identity for ordinary
 
 The target owner experience is semantically led by the selected CORE Agent: foreground conversation, semantic use of persisted context, reasoning/continuation choices, useful delayed semantic follow-up and ordinary coordination/routing to installed Modules. The host owns product management and physical presentation timing only.
 
-Do not freeze current Operation names, console commands, polling interval or text update representation into a universal CORE/UI API.
+The shipped CORE currently proves one deliberately narrow dynamic-composition case: its existing Agent can structurally discover a later-installed exposed Operation, conservatively select an unambiguous portable UTF-8 text contract, invoke it through the ordinary caller-bound `ModuleInvoker`, pass its actual causal Integrity to a target-owned EffectProfile, receive the target-created foreign Material through the ordinary Module receiver, and deliberately derive a new CORE-owned owner-facing Material. This is implementation evidence, not a universal planner/tool protocol. Ambiguous or unsupported contracts are declined rather than guessed.
+
+Do not freeze current Operation names, matching heuristic, console commands, polling interval or text update representation into a universal CORE/UI API.
 
 ## Installation and configuration
 
@@ -197,7 +201,7 @@ One EffectProfile uses only its own Risk and Autonomy. Its non-user causal deman
 
 Material carries Sensitivity. Accepted Operation input contracts carry receiving Privacy. Agent carries/derives Integrity. EffectProfile carries Risk+Autonomy. Reasoning mechanism declares receiving Privacy.
 
-Module exposure, owner/debug entry, owner-interaction entry and external/public disclosure binding are not Algebra carriers and never change actual Material Sensitivity or reasoning-mechanism receiving Privacy. `Privacy.PUBLIC` means an actual public receiver boundary; it does not mean Module exposure.
+Module exposure, runtime discovery, owner/debug entry, owner-interaction entry and external/public disclosure binding are not Algebra carriers and never change actual Material Sensitivity or reasoning-mechanism receiving Privacy. `Privacy.PUBLIC` means an actual public receiver boundary; it does not mean Module exposure.
 
 Never infer algebra values from provider identity, endpoint, model, localhost, process/classloader placement, shipped status, Module bundling, Module exposure, owner-interaction binding, public-disclosure binding or CORE assignment.
 
@@ -225,13 +229,17 @@ Cross-platform evidence remains important because Windows and Linux are first-cl
 
 For owner-interaction/package changes, `Extended native owner package` is the relevant cross-platform workflow. Its sustained conversation acceptance must exercise the shipped real adapter path with a deterministic local endpoint rather than mock away provider/Kernel/Module/application boundaries. It must prove plain owner turns, persisted context, durable continuation, restart recovery and Agent-approved follow-up without exposing the private CORE protocol.
 
+For public Module-development/composition changes, `Extended SDK developer acceptance` must build the packaged owner product first, copy only its version-matched `developer` surface into a source-free workspace, build independent artifacts afterward, install them into the already-built MADRE and prove both ordinary lifecycle and any claimed cross-Module behavior without checkout-local dependency fallback.
+
 ## Active product posture
 
 Native owner deployment, Module/reasoning configuration, local artifact lifecycle, public SDK/testkit/experimental boundaries, independent developer fixtures and heterogeneous reasoning contracts are implemented substrate.
 
 Choose new work from concrete owner/developer/semantic-programming friction. Prefer substantial end-to-end owner/developer experiments over repeated framework-only cleanup.
 
-The shipped owner-interaction Module is the first sustained owner-deployment reference consumer. It uses a stateful `OwnerInteractionAgent`, exact private owner-interaction Operation bindings, bounded persisted conversation state, Security-Algebra-preserving contextual Material, immediate and durable reasoning, Module-owned pending association, independent Kernel durable state and natural Agent-approved follow-up presentation after restart. Its Operations are not made cross-Module exposed merely because the Module is CORE. The owner no longer selects an interaction mode or invokes an updates protocol for normal use.
+The shipped owner-interaction Module is the first sustained owner-deployment reference consumer. It uses a stateful `OwnerInteractionAgent`, exact private owner-interaction Operation bindings, bounded persisted conversation state, Security-Algebra-preserving contextual Material, immediate and durable reasoning, Module-owned pending association, independent Kernel durable state, natural Agent-approved follow-up presentation after restart and ordinary caller-bound Module composition. Its Operations are not made cross-Module exposed merely because the Module is CORE. The owner no longer selects an interaction mode or invokes an updates protocol for normal use.
+
+The independent SDK fixture also acts as an agentless durable workspace application. It proves that later-installed Module-owned state/read/write behavior can become useful to the already-built shipped CORE through exposed Operations without compile-time target knowledge, target-specific CORE code or special target trust requirements.
 
 Promote small orthogonal SDK abstractions when a real implementation proves their usefulness, even when they are optional specializations rather than universal concepts. Do not pre-build a universal Agent framework, universal memory/RAG system, planner/tool API, workflow language, semantic database abstraction or Module taxonomy.
 
