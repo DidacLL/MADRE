@@ -69,6 +69,8 @@ Security Algebra is cross-cutting behavior of values and contracts in this syste
 
 The host product owns installation/uninstallation, persistent product configuration, Module/reasoning artifact lifecycle, CORE selection, startup/shutdown, diagnostics/health and owner-facing presentation mechanics. These responsibilities must not be pushed into CORE merely because CORE is owner-facing.
 
+For ordinary conversation, the host transports owner input to the selected CORE Agent and presents only that Agent's approved responses/follow-ups. The host does not choose the CORE's private Operation, Material protocol, reasoning mode, continuation mode or delayed-work collection protocol.
+
 ### Kernel
 
 Kernel is deliberately narrow. It owns live executable Module registration/receiver mechanics and shared reasoning-runtime responsibilities: reasoning-mechanism registration and deterministic selection, resources, immediate/durable execution, retry, cancellation, persistence, result delivery and ordinary runtime logging.
@@ -88,6 +90,8 @@ Reusable technical primitives such as search clients, embeddings, databases, tra
 An Agent is an optional Module-owned semantic actor. It owns semantic intent, interpretation, agent-specific state and continuation when the Module's behavior requires agency. There is no universal Agent loop, planner, prompt framework, tool loop or memory model.
 
 An agentless Module remains fully valid. When an ordinary Owner wants to use capabilities of an agentless Module semantically, an Agent in another Module—normally the Agent in the ordinary Module assigned CORE—interprets intent, invokes the exposed capability, interprets the result and owns continuation. Agency must not be invented inside Kernel or an agentless callee merely for convenience.
+
+The current SDK has a narrow optional `OwnerInteractionAgent` specialization for an Agent that owns the default owner semantic interaction of a Module capable of serving as CORE. It is execution-side only, grants no privilege, and is not required of ordinary Agents or Modules. The host gives it owner text and presents `OwnerMessage` values; the Agent owns the semantic choices that produce them.
 
 ### Skill and Workflow
 
@@ -148,13 +152,13 @@ This path is not Module exposure, ordinary owner conversation or external/public
 
 ### Owner interaction
 
-Owner interaction is another distinct host/product entry concern. The product uses `roles.core` as the single Module identity for ordinary owner interaction. The selected Module is ordinary and non-privileged.
+Owner interaction is another distinct host/product concern. The product uses `roles.core` as the single Module identity for ordinary owner interaction. The selected Module is ordinary and non-privileged.
 
-An owning Module may create an exact `OperationBinding.ownerInteractionOperation(...)`; the host-only `OwnerInteractionInvoker` may enter only such a binding in the installed Module currently assigned CORE. The port is not supplied through `ModuleContext`, so CORE gains no authority to invoke another Module's internal Operations.
+Ordinary owner text is transported to the selected CORE's `OwnerInteractionAgent`; the Agent owns intent interpretation, conversation state/context use, selection of its own reasoning/continuation behavior, interpretation of delayed work and the decision that a follow-up is useful. The host presents only Agent-approved `OwnerMessage` values.
 
-Every owner-interaction entry still executes a canonical `OperationCall`, preserving accepted-Material Privacy, EffectProfile selection, causal Integrity and output validation.
+The Agent may execute exact bounded behavior through `OperationBinding.ownerInteractionOperation(...)` and the host/runtime `OwnerInteractionInvoker`. That invoker remains restricted to the installed Module assigned CORE. It is absent from `ModuleContext`, so CORE gains no authority to invoke another Module's internal Operations. Every internal entry still executes a canonical `OperationCall`, preserving accepted-Material Privacy, EffectProfile selection, causal Integrity and output validation.
 
-The current `interaction.*` settings bind replaceable host presentation mechanics to exact Operations/Material types on the selected CORE Module. They are not a second Module-selection identity and are not a universal UI protocol.
+The private Operation/Material protocol used by the selected CORE is not ordinary owner API and is not host semantic configuration. The normal owner journey requires no `interaction.*`, Operation names, Material names, reasoning-mode selector or background collection payload.
 
 ### External/public disclosure
 
@@ -172,19 +176,23 @@ CORE is the installation role identifying MADRE's default owner-interaction/coor
 
 A Module assigned CORE is still an ordinary Module. CORE assignment changes no Security Algebra value, Module exposure, generic owner/debug authority, external/public disclosure, Module-composition authority, reasoning selection, scheduling, class-loader treatment, installation authority or host authority. There is no privileged `CoreModule` subtype.
 
-The target CORE responsibility is to lead ordinary agentic owner interaction: foreground conversation, reasoning choices, useful delayed follow-up, and coordination/routing to installed Modules through ordinary Module composition. It may own interaction state and semantics appropriate to that role. It does not own product installation, global lifecycle or host administration.
+For ordinary owner interaction, the selected CORE Agent owns interpretation of the owner's turn, semantic use of remembered conversation, its own reasoning/continuation choices, whether useful work continues durably, interpretation of completed delayed reasoning, the decision that a delayed result is worth presenting, and conversational continuation after that result.
+
+The host owns physical presentation and product-management mechanics. It may poll the Agent for approved follow-ups or use another presentation mechanism, but it must not know CORE-private Operation names, Material protocol or delayed-result sentinels merely to conduct normal conversation.
+
+The target CORE responsibility also includes coordination/routing to installed Modules through ordinary Module composition. It may own interaction state and semantics appropriate to that role. It does not own product installation, global lifecycle or host administration.
 
 CORE is also a reference experiment for MADRE's SDK and inference surfaces. Improving its UX should exercise real Module/Agent/Operation engineering and heterogeneous inference capabilities. Stable interaction abstractions should be recovered from repeated successful experiments rather than frozen directly from the current console or current Operation names.
 
 ## Current owner-interaction implementation
 
-The present local text console is a replaceable `madre-app` adapter. The shipped owner-interaction Module is an ordinary Module containing a stateful interaction Agent.
+The present local text console is a replaceable `madre-app` presentation adapter. The shipped owner-interaction Module is an ordinary Module containing a stateful `OwnerInteractionAgent`.
 
-That Agent owns bounded persisted conversation state, contextual Material construction, foreground/background reasoning choices, pending durable-work association, interpretation, acknowledgement and the decision whether a useful owner-visible follow-up exists. Kernel persists only opaque reasoning-runtime state.
+That Agent owns bounded persisted conversation state, contextual Material construction, selection of its foreground/background reasoning behavior, pending durable-work association, interpretation, acknowledgement and the decision whether a useful owner-visible follow-up exists. Kernel persists only opaque reasoning-runtime state.
 
-The current bounded Operations are `standard-prompt`, `fast-lane` and `collect-background`. They are exact owner-interaction entries, not cross-Module exposed capabilities merely because the Module is CORE. Their names and text representation remain 0.x implementation evidence rather than universal CORE contracts.
+The Module still implements its bounded semantic work with private Operations, including the existing prompt and background-collection behaviors. Those Operation names and private Material representations remain 0.x implementation evidence. They are not cross-Module exposed merely because the Module is CORE and they are not the ordinary owner API.
 
-While the owner interaction surface is active, host presentation polls the Module's bounded collection Operation. If the Module decides completed work produces a useful follow-up, the host presents it. After restart, Module-owned conversation/pending state and Kernel durable work recover independently and rejoin through ordinary Module logic. `/updates` remains only a compatibility/debug command.
+Host presentation sends ordinary text to the Agent and may poll the Agent for approved follow-ups. The Agent itself invokes and interprets its private collection behavior. After restart, Module-owned conversation/pending state and Kernel durable work recover independently and rejoin through the Agent's ordinary Module logic. The owner does not invoke an updates protocol or select an internal interaction mode.
 
 ## Security Algebra
 
