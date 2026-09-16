@@ -64,7 +64,7 @@ public final class OwnerInteractionModuleProvider implements ModuleProvider {
             ModuleProviderConfiguration configuration) {
         java.util.Objects.requireNonNull(context, "context");
         OwnerInteractionSettings settings = OwnerInteractionSettings.fromInstallation(configuration);
-        return new OwnerInteractionModule(context.reasoning(),
+        return new OwnerInteractionCompositionModule(context,
                 context.stateDirectory().resolve("owner-interaction-background.state"), settings);
     }
 }

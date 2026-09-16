@@ -23,6 +23,7 @@ public final class OperationCall<I, O> {
     private final OperationDefinition operation;
     private final Optional<EffectProfile> effectProfile;
     private final Material<I> input;
+    private final List<Integrity> nonUserCausalParticipants;
 
     private OperationCall(OperationDefinition operation,
             Optional<EffectProfile> effectProfile, Material<I> input,
@@ -30,8 +31,8 @@ public final class OperationCall<I, O> {
         this.operation = Objects.requireNonNull(operation, "operation");
         this.effectProfile = Objects.requireNonNull(effectProfile, "effectProfile");
         this.input = Objects.requireNonNull(input, "input");
-        List<Integrity> participants = List.copyOf(nonUserCausalParticipants);
-        if (participants.contains(Integrity.SYSTEM_RESERVED)) {
+        this.nonUserCausalParticipants = List.copyOf(nonUserCausalParticipants);
+        if (this.nonUserCausalParticipants.contains(Integrity.SYSTEM_RESERVED)) {
             throw new IllegalArgumentException(
                     "SYSTEM_RESERVED Integrity is not an ordinary causal participant value");
         }
@@ -44,7 +45,7 @@ public final class OperationCall<I, O> {
             if (!operation.effectProfiles().isEmpty()) {
                 throw new IllegalArgumentException("this Operation requires one of its EffectProfiles");
             }
-            if (!participants.isEmpty()) {
+            if (!this.nonUserCausalParticipants.isEmpty()) {
                 throw new IllegalArgumentException(
                         "non-user causal participants require an EffectProfile");
             }
@@ -56,7 +57,8 @@ public final class OperationCall<I, O> {
                 || !profile.equals(operation.effectProfiles().get(profile.id()))) {
             throw new IllegalArgumentException("EffectProfile is not declared by this Operation");
         }
-        Integrity causalIntegrity = participants.stream().reduce(Integrity.I5, Integrity::combine);
+        Integrity causalIntegrity = this.nonUserCausalParticipants.stream()
+                .reduce(Integrity.I5, Integrity::combine);
         if (!profile.isSupportedBy(causalIntegrity)) {
             throw new IllegalArgumentException(
                     "non-user causal participants do not support this EffectProfile");
@@ -80,6 +82,9 @@ public final class OperationCall<I, O> {
     public OperationDefinition operation() { return operation; }
     public Optional<EffectProfile> effectProfile() { return effectProfile; }
     public Material<I> input() { return input; }
+
+    /** Actual non-user causal Integrity values supplied for this consequential invocation. */
+    public List<Integrity> nonUserCausalParticipants() { return nonUserCausalParticipants; }
 
     /** Confirms that Module-created output stays inside this Operation's declared contract. */
     public Material<O> acceptOutput(Material<O> output) {

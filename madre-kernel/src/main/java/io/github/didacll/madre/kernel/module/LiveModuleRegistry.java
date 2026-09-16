@@ -1,14 +1,17 @@
 package io.github.didacll.madre.kernel.module;
 
 import io.github.didacll.madre.algebra.Privacy;
+import io.github.didacll.madre.algebra.Sensitivity;
 import io.github.didacll.madre.sdk.directory.ModuleDirectory;
 import io.github.didacll.madre.sdk.directory.ReachabilityQuery;
 import io.github.didacll.madre.sdk.directory.ReachableAgent;
 import io.github.didacll.madre.sdk.directory.ReachableModule;
 import io.github.didacll.madre.sdk.identity.AgentId;
+import io.github.didacll.madre.sdk.identity.MaterialTypeId;
 import io.github.didacll.madre.sdk.identity.ModuleId;
 import io.github.didacll.madre.sdk.identity.OperationId;
 import io.github.didacll.madre.sdk.material.Material;
+import io.github.didacll.madre.sdk.material.MaterialType;
 import io.github.didacll.madre.sdk.material.MaterialTypeDefinition;
 import io.github.didacll.madre.sdk.module.AgentDefinition;
 import io.github.didacll.madre.sdk.module.ModuleDefinition;
@@ -24,6 +27,7 @@ import io.github.didacll.madre.sdk.registration.ModuleRegistration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -70,11 +74,19 @@ public final class LiveModuleRegistry implements ModuleRegistration, PublicModul
 
     /**
      * Creates the read-only directory supplied to one exact installed Module. The caller identity
-     * is captured here and is therefore absent from the SDK query object.
+     * is captured here and is therefore absent from SDK discovery objects.
      */
     public ModuleDirectory directoryFor(ModuleId caller) {
         ModuleId boundCaller = Objects.requireNonNull(caller, "caller");
-        return query -> reachable(boundCaller, query);
+        return new ModuleDirectory() {
+            @Override public List<ReachableModule> reachable(ReachabilityQuery query) {
+                return LiveModuleRegistry.this.reachable(boundCaller, query);
+            }
+
+            @Override public List<ReachableModule> exposed(Sensitivity sensitivity) {
+                return LiveModuleRegistry.this.exposed(boundCaller, sensitivity);
+            }
+        };
     }
 
     /**
@@ -109,23 +121,70 @@ public final class LiveModuleRegistry implements ModuleRegistration, PublicModul
                         }
                     });
                     if (operations.isEmpty()) return;
-                    Map<AgentId, ReachableAgent> agents = new HashMap<>();
-                    for (AgentDefinition agent : module.agents().values()) {
-                        java.util.Set<OperationId> exposed = agent.operations().stream()
-                                .filter(operations::containsKey)
-                                .collect(java.util.stream.Collectors.toUnmodifiableSet());
-                        if (!exposed.isEmpty()) {
-                            Privacy effective = exposed.stream()
-                                    .flatMap(id -> operations.get(id).acceptedMaterial().values().stream())
-                                    .reduce(Privacy.SECRET, Privacy::combine);
-                            agents.put(agent.id(), new ReachableAgent(agent.id(), agent.purpose(),
-                                    exposed, effective));
-                        }
-                    }
-                    result.add(new ReachableModule(module.id(), module.version(), module.purpose(),
-                            agents, operations));
+                    result.add(reachableModule(module, operations));
                 });
         return List.copyOf(result);
+    }
+
+    private List<ReachableModule> exposed(ModuleId callerId, Sensitivity sensitivity) {
+        installedCaller(callerId);
+        Sensitivity carried = Objects.requireNonNull(sensitivity, "sensitivity");
+        List<ReachableModule> result = new ArrayList<>();
+        entries.values().stream().map(Entry::definition)
+                .sorted(Comparator.comparing(module -> module.id().value())).forEach(module -> {
+                    Map<OperationId, OperationDefinition> operations = new HashMap<>();
+                    module.operations().forEach((id, operation) -> {
+                        boolean compatibleInput = operation.acceptedMaterial().values().stream()
+                                .anyMatch(carried::canReach);
+                        if (module.exposedOperations().contains(id) && compatibleInput) {
+                            operations.put(id, operation);
+                        }
+                    });
+                    if (operations.isEmpty()) return;
+                    result.add(reachableModule(module, operations));
+                });
+        return List.copyOf(result);
+    }
+
+    private static ReachableModule reachableModule(ModuleDefinition module,
+            Map<OperationId, OperationDefinition> operations) {
+        Map<AgentId, ReachableAgent> agents = new HashMap<>();
+        for (AgentDefinition agent : module.agents().values()) {
+            java.util.Set<OperationId> exposed = agent.operations().stream()
+                    .filter(operations::containsKey)
+                    .collect(java.util.stream.Collectors.toUnmodifiableSet());
+            if (!exposed.isEmpty()) {
+                Privacy effective = exposed.stream()
+                        .flatMap(id -> operations.get(id).acceptedMaterial().values().stream())
+                        .reduce(Privacy.SECRET, Privacy::combine);
+                agents.put(agent.id(), new ReachableAgent(agent.id(), agent.purpose(),
+                        exposed, effective));
+            }
+        }
+        return new ReachableModule(module.id(), module.version(), module.purpose(),
+                referencedOwnedMaterialTypes(module, operations), agents, operations);
+    }
+
+    private static Map<MaterialTypeId, MaterialTypeDefinition> referencedOwnedMaterialTypes(
+            ModuleDefinition module, Map<OperationId, OperationDefinition> operations) {
+        Map<MaterialTypeId, MaterialTypeDefinition> result = new LinkedHashMap<>();
+        operations.values().stream()
+                .sorted(Comparator.comparing(operation -> operation.id().name()))
+                .forEach(operation -> {
+                    operation.acceptedMaterial().keySet().stream()
+                            .sorted(Comparator.comparing(MaterialTypeId::name))
+                            .forEach(id -> addOwnedMaterialType(module, result, id));
+                    operation.producedMaterial().keySet().stream()
+                            .sorted(Comparator.comparing(MaterialTypeId::name))
+                            .forEach(id -> addOwnedMaterialType(module, result, id));
+                });
+        return Map.copyOf(result);
+    }
+
+    private static void addOwnedMaterialType(ModuleDefinition module,
+            Map<MaterialTypeId, MaterialTypeDefinition> result, MaterialTypeId id) {
+        MaterialTypeDefinition definition = module.materialTypes().get(id);
+        if (definition != null) result.putIfAbsent(id, definition);
     }
 
     @Override public <I, O> CompletionStage<Material<O>> invokePublic(OperationCall<I, O> call) {
@@ -164,17 +223,18 @@ public final class LiveModuleRegistry implements ModuleRegistration, PublicModul
             OperationCall<I, O> call) {
         OperationCall<I, O> requested = Objects.requireNonNull(call, "call");
         ModuleDefinition caller = installedCaller(callerId).definition();
-        if (!callerCanOffer(caller, requested.input())) {
+        Entry callee = installedCallee(requested.operation().id().moduleId());
+        if (!callerCanOffer(caller, callee, requested.input())) {
             throw new IllegalArgumentException(
                     "input Material is not structurally reachable from calling Module " + callerId);
         }
         OperationBinding<?, ?> binding = exactBinding(requested);
-        ModuleDefinition callee = entries.get(requested.operation().id().moduleId()).definition();
-        if (!callee.exposedOperations().contains(requested.operation().id())) {
+        if (!callee.definition().exposedOperations().contains(requested.operation().id())) {
             throw new IllegalArgumentException("Operation is not exposed by its Module: "
                     + requested.operation().id());
         }
-        return invokeModuleExact(binding, requested).thenApply(result -> receive(caller, result));
+        return invokeModuleExact(binding, requested)
+                .thenApply(result -> receive(caller, callee.definition(), result));
     }
 
     private Entry installedCaller(ModuleId callerId) {
@@ -185,9 +245,16 @@ public final class LiveModuleRegistry implements ModuleRegistration, PublicModul
         return caller;
     }
 
+    private Entry installedCallee(ModuleId calleeId) {
+        Entry callee = entries.get(Objects.requireNonNull(calleeId, "calleeId"));
+        if (callee == null) {
+            throw new IllegalArgumentException("Module is not installed: " + calleeId);
+        }
+        return callee;
+    }
+
     private static boolean callerCanOffer(ModuleDefinition caller,
-            io.github.didacll.madre.sdk.identity.MaterialTypeId materialType,
-            io.github.didacll.madre.algebra.Sensitivity sensitivity) {
+            MaterialTypeId materialType, Sensitivity sensitivity) {
         if (caller.materialTypes().containsKey(materialType)) {
             return materialType.moduleId().equals(caller.id());
         }
@@ -195,7 +262,8 @@ public final class LiveModuleRegistry implements ModuleRegistration, PublicModul
                 && sensitivity.canReach(Privacy.MODULE);
     }
 
-    private static boolean callerCanOffer(ModuleDefinition caller, Material<?> material) {
+    private static boolean callerCanOffer(ModuleDefinition caller, Entry callee,
+            Material<?> material) {
         if (!material.id().moduleId().equals(caller.id())) {
             return false;
         }
@@ -203,20 +271,37 @@ public final class LiveModuleRegistry implements ModuleRegistration, PublicModul
         if (local != null) {
             return local.equals(material.type().definition());
         }
+        MaterialTypeDefinition receiverPublished = callee.definition().materialTypes()
+                .get(material.type().id());
+        if (receiverPublished != null) {
+            MaterialType<?> receiverBinding = callee.instance().materialTypes().get(material.type().id());
+            return receiverPublished.equals(material.type().definition())
+                    && receiverBinding != null
+                    && receiverBinding.javaType().isInstance(material.payload());
+        }
         return caller.foreignMaterialReferences().contains(material.type().id())
                 && material.sensitivity().canReach(Privacy.MODULE);
     }
 
-    private static <O> Material<O> receive(ModuleDefinition caller, Material<O> result) {
+    private static <O> Material<O> receive(ModuleDefinition caller, ModuleDefinition callee,
+            Material<O> result) {
         MaterialTypeDefinition local = caller.materialTypes().get(result.type().id());
         if (local != null) {
             if (!local.equals(result.type().definition())) {
                 throw new IllegalStateException(
                         "received Material does not match the caller-owned nominal contract");
             }
-        } else if (!caller.foreignMaterialReferences().contains(result.type().id())) {
-            throw new IllegalStateException("calling Module does not declare Material type "
-                    + result.type().id());
+        } else {
+            MaterialTypeDefinition producerPublished = callee.materialTypes().get(result.type().id());
+            if (producerPublished != null) {
+                if (!producerPublished.equals(result.type().definition())) {
+                    throw new IllegalStateException(
+                            "received Material does not match the producer-owned nominal contract");
+                }
+            } else if (!caller.foreignMaterialReferences().contains(result.type().id())) {
+                throw new IllegalStateException("calling Module does not declare Material type "
+                        + result.type().id());
+            }
         }
         if (!result.sensitivity().canReach(Privacy.MODULE)) {
             throw new IllegalStateException("foreign Material Sensitivity cannot reach the "
