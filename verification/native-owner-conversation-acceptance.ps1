@@ -11,7 +11,7 @@ $temp = Join-Path ([IO.Path]::GetTempPath()) ('madre-owner-conversation-' + [gui
 New-Item -ItemType Directory -Force -Path $temp | Out-Null
 $gate = Join-Path $temp 'background.gate'
 $leak = Join-Path $temp 'raw-sensitive-leak.txt'
-$rawSensitive = 'cedar-7391-package-private'
+$rawSensitive = 's5-owner-value-7391'
 $oldHome = $env:HOME
 $oldAppData = $env:APPDATA
 $oldLocalAppData = $env:LOCALAPPDATA
@@ -169,8 +169,6 @@ try {
         Start-Sleep -Milliseconds 600
         $process.StandardInput.WriteLine('what did I ask you to remember?')
         Start-Sleep -Milliseconds 600
-        $process.StandardInput.WriteLine('start durable analysis')
-        Start-Sleep -Milliseconds 600
         $process.StandardInput.WriteLine('Remember my preferred name is Ada')
         $process.StandardInput.WriteLine('I prefer concise replies')
         $process.StandardInput.WriteLine('Remember my workspace is /srv/madre')
@@ -186,6 +184,9 @@ try {
         $process.StandardInput.WriteLine('/sensitivity S5')
         $process.StandardInput.WriteLine('sensitive mechanism check')
         Start-Sleep -Milliseconds 700
+        $process.StandardInput.WriteLine('/sensitivity S1')
+        $process.StandardInput.WriteLine('start durable analysis')
+        Start-Sleep -Milliseconds 600
     }
     if ($first -notmatch 'public-model:first-answer') {
         throw 'low-sensitivity ordinary owner turn did not use the PUBLIC-compatible mechanism'
