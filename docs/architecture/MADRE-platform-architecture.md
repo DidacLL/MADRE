@@ -72,7 +72,7 @@ The host currently exposes three semantically distinct invocation responsibiliti
 - `PublicModuleInvoker`: actual external/public disclosure, requiring a Module-owned public-disclosure transformation;
 - ordinary owner interaction: host presentation resolves the Agent supplied by the Module assigned `roles.core`, transports owner text and Agent-approved messages, while the Agent may use the restricted `OwnerInteractionInvoker` to execute its own exact owner-interaction bindings.
 
-`OwnerModuleInvoker`, `PublicModuleInvoker` and `OwnerInteractionInvoker` are host/runtime ports and are absent from `ModuleContext`. The owner-interaction Agent receives only the already CORE-restricted interaction invoker for its own semantic execution; this does not create authority over another Module.
+`OwnerModuleInvoker`, `PublicModuleInvoker` and `OwnerInteractionInvoker` are host/runtime ports and are absent from `ModuleContext`. Every ordinary Module instead receives caller-bound `ModuleDirectory` and `ModuleInvoker` ports through `ModuleContext`; this includes a Module assigned CORE and grants no additional authority because caller identity and the Module receiver remain runtime-bound.
 
 ## Module boundary
 
@@ -90,7 +90,7 @@ An Agent is an optional Module-owned semantic actor. It owns semantic intent, in
 
 An agentless Module is valid. If the Owner reaches its capability through normal product interaction, an Agent in another Module—normally the Agent in the Module assigned CORE—owns intent interpretation, invokes the exposed Module capability, interprets the result and decides continuation.
 
-The optional `OwnerInteractionAgent` execution-side specialization represents exactly that default owner semantic surface for a Module capable of serving the CORE role. It is not portable Module metadata, does not apply to every Agent or Module, and grants no privilege. The host transports owner text and presents `OwnerMessage` values; the Agent owns which of its internal Operations, reasoning paths and continuation behavior produce those messages.
+The optional `OwnerInteractionAgent` execution-side specialization represents exactly that default owner semantic surface for a Module capable of serving the CORE role. It is not portable Module metadata, does not apply to every Agent or Module, and grants no privilege. The host transports owner text and presents `OwnerMessage` values; the Agent owns which of its internal Operations, ordinary Module composition, reasoning paths and continuation behavior produce those messages.
 
 Kernel does not acquire semantic agency merely because it routes or executes calls.
 
@@ -123,6 +123,8 @@ Shipped and independently built Modules use the same route. Bundling, class-load
 
 The live registry is rebuilt at boot. Caller-bound `ModuleDirectory` and `ModuleInvoker` facades capture installed caller identity structurally; Module code cannot provide another caller identity or arbitrary receiver Privacy.
 
+The directory has two structural discovery forms. `reachable(ReachabilityQuery)` is exact discovery when a caller already knows the nominal Material type it can offer. `reachableOperations(Sensitivity)` supports an earlier-compiled caller that does not know a later target's nominal types: it returns exact target-exposed Operations whose declared input receiver can carry the supplied Sensitivity, together with only the target-owned portable Material definitions referenced by each returned Operation. Structural discovery performs no semantic ranking, creates no authority and implies no public disclosure.
+
 ## Module configuration boundary
 
 The host owns generic Module configuration persistence and rendering. Providers own key vocabulary, defaults, validation, parsing and typed settings. Provider metadata/configuration is separate from Module execution semantics and separate from reasoning-provider configuration.
@@ -135,7 +137,7 @@ The target Module owns its ordinary composition interface through `Module.expose
 
 Only those Operations are discoverable/invocable from another Module through `ModuleDirectory` / `ModuleInvoker`. Exposure is a Module boundary fact, not an Operation security/visibility level and not a Security-Algebra carrier.
 
-Reachability still applies the target Operation's accepted-Material Privacy to the offered information. The caller identity is runtime-bound.
+Reachability applies the target Operation's accepted-Material Privacy to the information the caller proposes to carry. The caller identity is runtime-bound. Broad structural discovery only says which exposed contracts are structurally reachable for that carried Sensitivity; the calling Module remains responsible for semantic selection.
 
 The caller-bound invoker executes the ordinary Operation binding and does not run a public-disclosure transformer.
 
@@ -143,11 +145,11 @@ The caller-bound invoker executes the ordinary Operation binding and does not ru
 
 Cross-Module invocation represents one installed application calling another while remaining a Module receiver. It is not owner-local host authority and not external/public disclosure.
 
-The receiver Privacy is fixed at `Privacy.MODULE`. Before result delivery, the runtime requires the calling Module to structurally declare the nominal Material contract it receives through `foreignMaterialReferences()` and requires result Sensitivity to reach `Privacy.MODULE`.
+Nominal contract use has two valid forms. A Module may statically declare a foreign nominal contract through `foreignMaterialReferences()` when its own portable definition structurally references that contract. Alternatively, after caller-bound runtime discovery, a caller may create caller-owned Material conforming exactly to a nominal input definition owned and published by the selected target Operation. The runtime validates the exact target definition and target execution binding before invocation. This dynamic rule is target-scoped; it does not authorize unrelated third-party nominal contracts or mutate the caller's portable definition.
 
-Concrete Material ownership and nominal type ownership are independent. A callee may create and return callee-owned Material conforming to a nominal contract defined by the caller or another Module. When the receiver checks succeed, the exact callee value crosses unchanged with its concrete owner, nominal type and Sensitivity intact.
+The result receiver remains fixed at `Privacy.MODULE`. A result using a caller-owned or statically referenced foreign nominal contract follows the existing structural rules. A target-owned result from the selected target may also cross without a prior static caller reference when its nominal definition exactly matches the target's installed canonical declaration and its Sensitivity can reach `Privacy.MODULE`. Unrelated third-party nominal types still require the caller's static foreign reference.
 
-The caller may then create new caller-owned Material representing its own interpretation. No CORE privilege participates in this path.
+Concrete Material ownership and nominal type ownership remain independent. When receiver checks succeed, the exact target-created Material crosses unchanged with its concrete `MaterialId`, nominal `MaterialTypeId`, payload and Sensitivity intact. The caller may then deliberately create new caller-owned Material representing its interpretation. No CORE privilege participates in this path.
 
 ## Generic owner/debug boundary
 
@@ -165,13 +167,13 @@ Ordinary owner interaction is a host presentation boundary into the semantic Age
 
 The host chooses no CORE-private Operation, Material protocol, reasoning mode, continuation mode or background collection protocol for an ordinary turn. It transports owner text plus current presentation Sensitivity to the selected `OwnerInteractionAgent` and presents only Agent-approved `OwnerMessage` values.
 
-The Agent may execute bounded Module behavior through exact `OperationBinding.ownerInteractionOperation(...)` bindings using the host/runtime `OwnerInteractionInvoker`. That invoker additionally requires that the target Operation belong to the currently installed Module selected by `roles.core`; it therefore remains a narrow execution boundary rather than a generic privilege. The Agent—not the host—constructs and interprets those internal calls.
+The Agent may execute bounded behavior inside its own Module through exact `OperationBinding.ownerInteractionOperation(...)` bindings using the host/runtime `OwnerInteractionInvoker`. That invoker additionally requires that the target Operation belong to the currently installed Module selected by `roles.core`; it therefore remains a narrow execution boundary rather than a generic privilege. The Agent—not the host—constructs and interprets those internal calls.
 
-The port is absent from `ModuleContext`; CORE code receives no hidden authority to invoke another Module's interaction entries or internal Operations. Every internal entry still executes a canonical `OperationCall`, and no Security Algebra value is inferred from owner presentation or CORE selection.
+`OwnerInteractionInvoker` is absent from `ModuleContext`, so CORE receives no hidden authority to enter another Module's interaction entries or internal Operations. Cross-Module coordination instead uses the same caller-bound `ModuleDirectory` and `ModuleInvoker` supplied to every ordinary Module. Only target-exposed Operations are eligible; accepted input Privacy, canonical target contracts, exact `OperationCall` validation, target EffectProfiles, actual causal Integrity and the fixed Module result receiver remain enforced.
 
-The shipped owner-interaction Module preserves bounded conversation state, foreground reasoning, durable background reasoning, pending-work association, result interpretation, acknowledgement and useful follow-up behavior. Its Agent now owns selection of the foreground/continuation behavior and interpretation of delayed results. Host polling is only a physical presentation mechanism used to ask the Agent for approved follow-ups; the host does not know the Module's private collection Operation, Material names or result protocol.
+The shipped owner-interaction Module preserves bounded conversation state, foreground reasoning, durable background reasoning, pending-work association, result interpretation, acknowledgement and useful follow-up behavior. R4 additionally demonstrates narrow semantic selection among independently installed exposed text Operations. The shipped Agent only composes an unambiguous portable UTF-8 text shape it can honestly instantiate—one target-owned text input, one target-owned text output and at most one EffectProfile—and declines ambiguous or unsupported contracts. That matcher is current CORE implementation evidence, not a universal planner, tool protocol or SDK routing abstraction.
 
-Current Operation names, private Material types, console commands and polling cadence remain 0.x implementation evidence, not owner API or universal CORE protocol.
+Current Operation names, private Material types, matching heuristics, console commands and polling cadence remain 0.x implementation evidence, not owner API or universal CORE protocol.
 
 ## External/public Material boundary
 
@@ -192,7 +194,7 @@ Material has two relevant nominal identities with distinct owners:
 
 The Module creating a value owns that value even when it conforms to a foreign nominal contract. This permits generic composition without pretending that using another Module's type transfers ownership of the concrete result.
 
-A Module must explicitly declare foreign Material contracts it structurally uses through `foreignMaterialReferences()`. That declaration is not an S1/public-disclosure classification.
+`foreignMaterialReferences()` records foreign nominal contracts that a Module's portable definition structurally references. Exact runtime use of a target-owned contract discovered from the selected target is a separate target-scoped case; it does not become a static declaration, does not authorize arbitrary foreign contracts and is not an S1/public-disclosure classification.
 
 ## CORE role
 
@@ -200,9 +202,11 @@ A Module must explicitly declare foreign Material contracts it structurally uses
 
 CORE is not a privileged runtime class. Assignment changes no Module definition, Security Algebra value, cross-Module exposure, generic owner/debug authority, external disclosure, reasoning installation/selection, scheduling, class-loader treatment or host installation authority. There is no privileged `CoreModule` subtype.
 
-For the ordinary owner path, the selected CORE's Agent owns interpretation of the turn, conversation state/context use, its own reasoning and continuation choices, interpretation of completed delayed reasoning, the semantic decision that a delayed result is worth presenting, and conversational continuation after that result. The host owns presentation/product mechanics only.
+For the ordinary owner path, the selected CORE's Agent owns interpretation of the turn, conversation state/context use, its own reasoning and continuation choices, semantic selection of exposed installed Module behavior when useful, interpretation of the returned foreign Material, interpretation of completed delayed reasoning, the semantic decision that a delayed result is worth presenting, and conversational continuation after those results. The host owns presentation/product mechanics only.
 
-Target CORE behavior also includes coordination with installed Modules through their ordinary exposed interfaces. The structural qualification for future CORE Modules remains intentionally narrow and unfrozen beyond the optional semantic owner-interaction surface demonstrated by the shipped CORE. Do not derive a universal assistant protocol from the current console or shipped Operation names.
+The shipped CORE demonstrates ordinary coordination without compile-time knowledge of the independently installed target. It receives no extra composition port for being CORE: it uses its ordinary caller-bound `ModuleContext.directory()` and `ModuleContext.invoker()`, invokes an exact exposed target Operation through canonical `OperationCall`, receives the target-created foreign Material unchanged when the Module receiver permits it, and creates a new CORE-owned Material only when deliberately interpreting that value for owner presentation.
+
+The structural qualification for future CORE Modules remains intentionally narrow and unfrozen beyond the optional semantic owner-interaction surface demonstrated by the shipped CORE. Do not derive a universal assistant, planner, tool or workflow protocol from the current implementation.
 
 ## Reasoning architecture
 
