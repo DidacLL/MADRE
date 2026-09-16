@@ -142,10 +142,10 @@ Receiver semantics apply only after the Module has produced contract-valid Mater
 
 - Module-to-Module composition uses the target Module's exposed interface and fixed `Privacy.MODULE`; no public-disclosure transformer runs;
 - generic owner/debug entry returns contract-valid Module Material unchanged;
-- owner interaction uses an exact owner-interaction binding in the Module assigned CORE and returns normal contract-valid Material;
+- ordinary owner interaction is semantically owned by the `OwnerInteractionAgent` in the Module assigned CORE; that Agent may use exact selected-CORE owner-interaction bindings internally and returns Agent-approved `OwnerMessage` values to host presentation;
 - external/public disclosure uses a binding with `PublicResultTransformer`, which must create new declared Material capable of reaching `Privacy.PUBLIC`.
 
-These receiver/product boundaries do not change the reasoning request that occurred inside the Operation.
+These receiver/product boundaries do not change the reasoning request that occurred inside the Operation. In particular, host presentation does not choose reasoning semantics for the selected CORE.
 
 ## Immediate and durable reasoning
 
@@ -157,7 +157,7 @@ Queued input survives restart. Interrupted running work returns to an eligible s
 
 Kernel cannot inspect persisted computation bytes as Module knowledge and owns no semantic continuation.
 
-The shipped owner-interaction Module demonstrates the intended split: Kernel persists durable reasoning work while the Module owns pending WorkId association, conversation state, interpretation, acknowledgement and whether a completed result warrants visible follow-up.
+The shipped owner-interaction Module demonstrates the intended split: Kernel persists durable reasoning work while the Module owns pending WorkId association, conversation state, interpretation, acknowledgement and whether a completed result warrants visible follow-up. Its `OwnerInteractionAgent` owns the decision to surface that follow-up; host polling is only physical delivery.
 
 ## Failures
 
