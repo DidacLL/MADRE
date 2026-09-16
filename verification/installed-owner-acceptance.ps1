@@ -130,6 +130,32 @@ try {
     }
     Invoke-Madre @('modules', 'configure', 'phd.module', '--set', 'result-prefix=configured-') | Out-Null
 
+    # The already-built shipped CORE has no compile-time dependency on this independently built
+    # application. Ordinary owner language must nevertheless reach its exposed Operations through
+    # the CORE Agent's caller-bound Module directory/invoker, before any reasoning provider is added.
+    $workspace = Invoke-Console @(
+        'Save this workspace note: source-independent R4 evidence',
+        'Report how many workspace notes are saved',
+        '/exit')
+    if ($workspace -notmatch 'Saved 1 workspace note\.' -or
+            $workspace -notmatch 'There is 1 saved workspace note\.') {
+        throw 'ordinary owner interaction did not compose the independently installed workspace Module'
+    }
+    foreach ($internal in @('phd.module', 'save-workspace-note', 'count-workspace-notes',
+            'workspace-command', 'workspace-result')) {
+        if ($workspace -match [regex]::Escape($internal)) {
+            throw "owner-visible R4 result leaked internal Module protocol: $internal"
+        }
+    }
+
+    $unsafe = Invoke-Console @('Show private workspace details', '/exit')
+    if ($unsafe -notmatch 'could not safely complete that request') {
+        throw 'too-sensitive target result did not fail through a useful owner-facing response'
+    }
+    if ($unsafe -match 'Private workspace note count') {
+        throw 'too-sensitive target Material crossed the Module receiver boundary'
+    }
+
     $initialPublicExpected = "public:${InitialBehavior}:configured-hello"
     $public = Invoke-Madre @('--invoke-public', 'phd.module', 'inspect', 'request', 'S4', 'hello')
     if ($public -notmatch [regex]::Escape($initialPublicExpected)) {
@@ -149,6 +175,11 @@ try {
     $moduleInspect = Invoke-Madre @('modules', 'inspect', 'phd.module')
     if ($moduleInspect -notmatch [regex]::Escape('current=configured-')) {
         throw 'Module configuration did not survive artifact replacement'
+    }
+
+    $replacementState = Invoke-Console @('Report how many workspace notes are saved', '/exit')
+    if ($replacementState -notmatch 'There is 1 saved workspace note\.') {
+        throw 'independent Module-owned state did not survive ordinary artifact replacement'
     }
 
     $replacementPublicExpected = "public:${ReplacementBehavior}:configured-hello"
@@ -191,10 +222,20 @@ try {
         throw 'external public path did not require an explicit disclosure transformation'
     }
 
-    # Ordinary owner text must reach the selected CORE Agent without an implementation command.
-    # The real OperationCall/ReasoningService path still carries S5 Material to the SECRET fixture.
+    # The target owns an unexposed destructive Operation. Natural owner language must not turn an
+    # exposed read/write Operation into a substitute for that unavailable behavior.
+    $reset = Invoke-Console @('Delete every workspace note', '/exit')
+    if ($reset -match 'Removed [0-9]+ workspace') {
+        throw 'unexposed destructive behavior became usable through ordinary composition'
+    }
+    $afterReset = Invoke-Console @('Report how many workspace notes are saved', '/exit')
+    if ($afterReset -notmatch 'There is 1 saved workspace note\.') {
+        throw 'unexposed owner request changed independent Module state'
+    }
+
+    # Ordinary unmatched owner text still follows the existing CORE reasoning path.
     $console = Invoke-Console @('sdk-owner', '/exit')
-    if ($console -notmatch 'independent:sdk-owner') {
+    if ($console -notmatch 'independent:' -or $console -notmatch 'sdk-owner') {
         throw 'ordinary owner interaction did not execute through the configured reasoning mechanism'
     }
     foreach ($privateToken in @('/standard', 'standard-prompt', 'fast-lane', 'owner-prompt')) {
