@@ -11,6 +11,8 @@ The execution-side model is:
 - `Module`: one semantic/application owner;
 - `Agent`: optional Module-owned semantic actor;
 - `StatefulAgent<S>`: optional execution-side convenience for typed Agent-owned state;
+- `OwnerInteractionAgent`: optional execution-side Agent specialization for the default owner semantic surface of a Module that can serve as CORE;
+- `OwnerMessage`: one Agent-approved owner-visible semantic message;
 - `MaterialType<T>` / `Material<T>`: typed semantic contracts and values;
 - `Operation<I,O>`: one bounded executable unit of Module logic;
 - `OperationBinding<I,O>`: one exact executable binding and any receiver/product-specific executable adaptation owned by the Module;
@@ -26,7 +28,7 @@ The portable description model is:
 - `WorkflowDefinition`;
 - `EffectProfile`.
 
-Portable descriptions contain only facts needed for discovery, composition, arbitration, adaptation and validation. They do not encode Java implementation classes, codecs, prompts, scripts or arbitrary metadata bags.
+Portable descriptions contain only facts needed for discovery, composition, arbitration, adaptation and validation. They do not encode Java implementation classes, codecs, prompts, scripts or arbitrary metadata bags. `OwnerInteractionAgent` is deliberately execution-side only; it is not a portable requirement imposed on Modules or Agents.
 
 `Module.definition()` projects the portable `ModuleDefinition`. `Module.instance()` creates the validated runtime `ModuleInstance` joining that contract to exact Java Material and Operation bindings. `ModuleInstance` is runtime/adaptor assembly, not the primary authoring API.
 
@@ -40,7 +42,7 @@ Do not define an Operation by who invokes it or where it is presented:
 bounded Module execution       -> Operation
 cross-Module interface         -> Module exposure
 owner/debug host entry         -> host product boundary
-owner interaction              -> selected CORE product entry
+owner interaction              -> selected CORE Agent semantic surface
 external/public disclosure     -> explicit public receiver boundary
 reasoning eligibility          -> Material Sensitivity vs mechanism Privacy
 transport/locality             -> implementation/provider concern
@@ -48,7 +50,7 @@ transport/locality             -> implementation/provider concern
 
 `OperationDefinition` deliberately contains no PUBLIC/PRIVATE visibility. Its portable facts are identity/purpose, accepted Material type to receiving Privacy, produced Material type to maximum Sensitivity, and declared EffectProfiles.
 
-Cross-Module discoverability and invocation are owned by the Module interface through `exposedOperations`. External/public disclosure and owner interaction are executable boundary bindings. None of those facts changes whether the underlying bounded execution is an Operation.
+Cross-Module discoverability and invocation are owned by the Module interface through `exposedOperations`. External/public disclosure and bounded owner-interaction execution are executable boundary bindings. None of those facts changes whether the underlying bounded execution is an Operation.
 
 Any Operation may use local or remote reasoning. Exposure and presentation never determine reasoning eligibility.
 
@@ -83,6 +85,8 @@ An Agent owns intent, interpretation, semantic state and continuation appropriat
 
 An agentless Module remains directly callable through its exposed Module interface. When ordinary owner intent must be interpreted semantically, another Module's Agent—normally the Agent in the Module assigned CORE—owns that interpretation, invokes the agentless Module, interprets the result and owns continuation. Kernel does not invent agency on behalf of the callee.
 
+`OwnerInteractionAgent` is a narrow optional specialization for the Agent that owns default owner semantic interaction when its Module is selected as CORE. The host transports owner text and current presentation Sensitivity to `respond(...)` and may ask `followUps(...)` for already Agent-approved delayed messages. The Agent owns its internal Operation selection, reasoning/continuation behavior and delayed-result interpretation. This contract grants no privilege and is not a requirement for unrelated Modules or Agents.
+
 An unproven Java Agent defaults to `Integrity.I1`. Stronger Integrity is an explicit assurance claim that must be justified.
 
 `StatefulAgent<S>` is an optional execution-side OOP convenience. It supplies serialized reads/transitions and optional commit-before-publish persistence without defining a universal memory model or an alternate execution path around Operations.
@@ -108,7 +112,7 @@ Duplicate provider identities, configuration for an uninstalled identity, provid
 
 ## Runtime assembly invariants
 
-`ModuleInstance` validates that Java Material bindings exactly match Material declarations and are owned by the Module, and that executable Operation bindings exactly match declared Operations and are owned by the Module.
+`ModuleInstance` validates that Java Material bindings exactly match Material declarations and are owned by the Module, and that executable Operation bindings exactly match declared Operations and are owned by the Module. It may also discover at most one execution-side `OwnerInteractionAgent` from the Module's existing Agent collection for host presentation use; this does not alter the portable Module definition.
 
 The portable Module definition separately validates that canonical map keys match values, owned declarations use Module identity, foreign nominal Material references do not duplicate owned declarations, each Operation's accepted/produced Material contracts resolve to owned or explicitly referenced nominal types, each exposed Operation is owned by the Module, and Agent/Workflow/Skill references resolve canonically.
 
@@ -140,13 +144,13 @@ Accepted Material Privacy, EffectProfile arbitration and output validation remai
 
 ## Owner interaction
 
-Owner interaction is a distinct host/product boundary. An owning Module can bind an exact Operation with `OperationBinding.ownerInteractionOperation(...)`.
+Ordinary owner conversation is a distinct host presentation boundary into the semantic Agent supplied by the installed Module selected through `roles.core`.
 
-`OwnerInteractionInvoker` may enter only such a binding in the currently installed Module selected by `roles.core`. A binding in another Module remains unreachable through this product port even if it is marked as an interaction entry.
+The host does not choose an Operation, Material type, reasoning path, continuation mode or collection payload for an ordinary turn. It transports owner text to the selected `OwnerInteractionAgent` and presents only the returned `OwnerMessage` values.
 
-The port is host-only and absent from `ModuleContext`; assigning CORE therefore does not let Module code invoke another Module's interaction entries or internal Operations.
+The Agent may execute its own bounded semantic work through exact `OperationBinding.ownerInteractionOperation(...)` bindings. The host/runtime `OwnerInteractionInvoker` may enter only such a binding in the currently installed Module selected by `roles.core`. The Agent receives that already restricted invoker only for its own semantic execution; it is not present in `ModuleContext` and does not grant authority over another Module's internal Operations.
 
-Owner-interaction entry is not portable UI taxonomy and does not alter cross-Module exposure or Security Algebra. Every entry still executes through canonical `OperationCall` validation.
+Owner-interaction Operation bindings are therefore lower-level execution mechanics, not the ordinary owner API or portable UI taxonomy. Every internal call still executes through canonical `OperationCall` validation. CORE-private Operation/Material names and delayed-work result protocol remain Module-owned details.
 
 ## External/public disclosure
 
@@ -186,7 +190,7 @@ Kernel owns compatible reasoning selection, resources, immediate/durable executi
 
 Durable Kernel work is physical reasoning state. Domain meaning remains Module-owned.
 
-The shipped owner-interaction Module demonstrates the split: it owns WorkId-to-pending association and bounded conversation state; Kernel owns opaque durable reasoning work; the Module later interprets a terminal result into its own Material before acknowledgement/removal.
+The shipped owner-interaction Module demonstrates the split: it owns WorkId-to-pending association and bounded conversation state; Kernel owns opaque durable reasoning work; the Module later interprets a terminal result into its own semantic result before acknowledgement/removal. Its `OwnerInteractionAgent` decides whether that interpretation warrants an owner-visible `OwnerMessage`.
 
 There is no generic Kernel callback/continuation object, semantic result router or workflow scheduler.
 
@@ -194,15 +198,17 @@ There is no generic Kernel callback/continuation object, semantic result router 
 
 CORE is an installation role assigned to one ordinary installed Module. It is expected to lead default owner interaction and coordination, but it has no private runtime authority.
 
-The shipped owner-interaction Module owns bounded persisted multi-turn conversation state through a concrete `StatefulAgent<OwnerConversationState>`. Its three current owner-interaction Operations remain ordinary Operations and are not cross-Module exposed merely because their Module is CORE.
+The shipped owner-interaction Module owns bounded persisted multi-turn conversation state through a concrete stateful `OwnerInteractionAgent`. Its current private owner-interaction Operations remain ordinary Operations and are not cross-Module exposed merely because their Module is CORE.
 
-Current Operation names and `interaction.*` host bindings are implementation evidence, not a universal assistant/UI protocol.
+Ordinary owner interaction does not expose or configure those Operation names. The Agent selects and interprets its own bounded execution paths, including durable continuation and delayed follow-up. Current Operation names, Material names, polling cadence and console representation are implementation evidence, not a universal assistant/UI protocol.
 
 ## Independent interoperability proof
 
 `verification/sdk-consumer` builds independently against published public artifacts and implements the same code-first `Module` contract used by shipped Modules. It exercises the stable testkit and heterogeneous reasoning contracts without application/Kernel implementation dependencies.
 
 `verification/module-interoperability` independently builds an installed caller and callee. It proves Module-owned exposure, caller-bound discovery/invocation, unchanged callee-owned Material receipt, foreign nominal-contract semantics, S5 blocking at `Privacy.MODULE`, undeclared-type blocking and invisibility of unexposed Operations. External/public transformation is independently exercised through the host receiver boundary.
+
+The installed-owner acceptance additionally proves that independently installed Module/reasoning artifacts continue to work with ordinary plain-text CORE interaction rather than requiring an implementation-specific owner command.
 
 Integration experiments may expose SDK friction, but external application/domain semantics do not become MADRE product dependencies or architecture authority by default.
 
