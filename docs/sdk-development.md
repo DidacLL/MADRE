@@ -1,6 +1,6 @@
 # MADRE SDK developer guide
 
-This guide describes the current Java 21 Module-development surface for projects outside MADRE's own Gradle build. The verification publications are currently `0.1.0-SNAPSHOT` artifacts written by the repository `publish` tasks to `build/isolated-repository`; this is an executable dependency-isolation proof, not yet a public remote release channel.
+This guide describes the current Java 21 Module-development surface for projects outside MADRE's own Gradle build. Verification publications are currently `0.1.0-SNAPSHOT` artifacts written by repository `publish` tasks to `build/isolated-repository`; this proves dependency isolation and is not yet a public remote release channel.
 
 ## Design rule
 
@@ -20,22 +20,31 @@ This keeps the SDK suitable for ordinary developers, generated code and future n
 
 An Operation is not an LLM primitive and not a special semantic workflow concept. It is one bounded callable unit of Module logic that the developer chooses to place under MADRE arbitration.
 
-An Operation may, for example:
-
-- calculate a value;
-- read or write a text file;
-- call a weather or other public HTTP API;
-- query/update a database;
-- run a script, executable and command arguments;
-- invoke one or more reasoning computations;
-- call ordinary Java libraries;
-- combine any of those techniques inside one bounded function.
+An Operation may calculate a value, read/write a file, call an HTTP API, query/update a database, run a script/process, invoke one or more reasoning computations, call ordinary Java libraries, or combine those techniques inside one bounded function.
 
 The developer owns the implementation. MADRE owns only the declared/arbitrated boundary around that invocation: typed Material, accepted receiving Privacy, declared output bounds, and an EffectProfile when the bounded execution has a consequential variant that needs Risk/Autonomy arbitration.
 
-An Operation with no consequential profile can be called with `OperationCall.withoutEffect(...)`. An Operation that declares consequential profiles is invoked with the exact selected `EffectProfile` and actual non-user causal Integrity values through `OperationCall.withEffect(...)`. For example, a pure calculator may need no effect profile; a file-writing or process-executing Operation may declare the profile appropriate to what it actually does.
+An Operation with no consequential profile can be called with `OperationCall.withoutEffect(...)`. An Operation that declares consequential profiles is invoked with the exact selected `EffectProfile` and actual non-user causal Integrity values through `OperationCall.withEffect(...)`. A pure calculator may need no effect profile; a file-writing or process-executing Operation may declare the profile appropriate to what it actually does.
 
-`OperationVisibility.PUBLIC/PRIVATE` is currently only the 0.x generic installed-runtime exposure marker. It does not mean data is public/private, does not determine reasoning locality, and does not define the Operation itself.
+`OperationVisibility.PUBLIC/PRIVATE` is only the current generic installed-runtime exposure marker. It does not mean data is public/private, does not determine owner visibility or reasoning locality, and does not define the Operation itself.
+
+## Executable binding choices
+
+Use the binding that matches the actual executable boundary rather than the implementation technique inside the Operation:
+
+```java
+OperationBinding.publicOperation(definition, implementation, publicTransformer);
+OperationBinding.privateOperation(definition, implementation);
+OperationBinding.ownerInteractionOperation(definition, implementation);
+```
+
+`publicOperation(...)` requires a `PUBLIC` definition and a Module-owned public-result transformer. It supports the current generic installed PUBLIC/external boundary.
+
+`privateOperation(...)` requires a `PRIVATE` definition and creates no generic host or Module exposure.
+
+`ownerInteractionOperation(...)` also requires a `PRIVATE` definition, but marks that exact executable binding as an entry intentionally offered by its owning Module to MADRE's selected local owner-interaction surface. This is a narrow 0.x product contract recovered from the shipped owner journey. It does **not** make the Operation PUBLIC, externally published, Module-to-Module callable, or generically host-callable. It grants no authority over another Module's PRIVATE Operations and does not change Security Algebra.
+
+Most Modules do not need an owner-interaction entry. Use it only when the Module itself owns an owner-facing interaction responsibility. Do not use it for a calculator/file/HTTP/process Operation merely because a UI might eventually trigger that Operation; ordinary domain Operations remain ordinary PUBLIC or PRIVATE bindings according to their actual installed-runtime exposure.
 
 ## Artifact roles
 
@@ -75,8 +84,6 @@ repositories {
 dependencies {
     implementation(platform("io.github.didacll:madre-bom:0.1.0-SNAPSHOT"))
     implementation("io.github.didacll:madre-sdk")
-
-    // Add only the reasoning computation contracts actually used by the Module.
     implementation("io.github.didacll:madre-text-inference")
 
     testImplementation(platform("io.github.didacll:madre-bom:0.1.0-SNAPSHOT"))
@@ -95,8 +102,6 @@ tasks.test { useJUnitPlatform() }
 
 A Module can have zero Agents. Agents are not mandatory wrappers around every piece of code. A Module can also use arbitrary private implementation classes and libraries that MADRE never sees.
 
-A small executable Module can look like this:
-
 ```java
 final class ExampleModule implements Module {
     static final ModuleId ID = new ModuleId("example.module");
@@ -109,12 +114,9 @@ final class ExampleModule implements Module {
 
     static final OperationId INSPECT = new OperationId(ID, "inspect");
     static final OperationDefinition INSPECT_CONTRACT = new OperationDefinition(
-            INSPECT,
-            "Inspect one request",
-            OperationVisibility.PUBLIC,
+            INSPECT, "Inspect one request", OperationVisibility.PUBLIC,
             Map.of(REQUEST.id(), Privacy.SECRET),
-            Map.of(RESULT.id(), Sensitivity.S4),
-            Map.of());
+            Map.of(RESULT.id(), Sensitivity.S4), Map.of());
 
     private final OperationBinding<String, String> inspect =
             OperationBinding.publicOperation(
@@ -143,47 +145,17 @@ final class ExampleModule implements Module {
 
 `Material` validates Java payload type, ordinary Sensitivity and identity/type ownership at construction. `OperationCall` validates the input receiver boundary and selected effect profile. `Operation.invoke(...)` validates produced Material against the declared output contract.
 
-The example happens to use a `PUBLIC` binding because it demonstrates the current generic installed invocation/public-result path. An Operation used only inside its owning Module can be `PRIVATE`; whether it uses reasoning, files, scripts or another implementation technique is unrelated to that choice.
+The example happens to use a PUBLIC binding because it demonstrates the current generic installed/public-result path. An Operation used only inside its owning Module can be PRIVATE; whether it uses reasoning, files, scripts or another implementation technique is unrelated to that choice.
 
 ## Agents, typed state, Skills and Workflows
 
 Use an `Agent` when the Module genuinely owns an intelligent actor. It is optional and defines no universal loop, planner, memory model, prompt format or execution context.
 
-```java
-final class ExampleAgent implements Agent {
-    @Override public AgentId id() { return new AgentId(ExampleModule.ID, "assistant"); }
-    @Override public String purpose() { return "Coordinate example behavior"; }
-    @Override public Set<OperationId> operations() { return Set.of(ExampleModule.INSPECT); }
-}
-```
-
 If the author cannot justify a stronger causal-integrity claim, `Agent.integrity()` defaults conservatively to `Integrity.I1`. A Module may explicitly return a stronger value when that claim is actually established.
 
-When a concrete Agent genuinely owns state, it may extend the optional `StatefulAgent<S>` base rather than reimplementing synchronization and commit-before-publish semantics:
+When a concrete Agent genuinely owns state, it may extend the optional `StatefulAgent<S>` base rather than reimplementing synchronization and commit-before-publish semantics. `StatefulAgent<S>` deliberately says nothing about what `S` means, how it is serialized, whether it represents conversation, memory, knowledge or another application concept, or which Operations use it. The concrete Module owns those choices.
 
-```java
-final class StatefulExampleAgent extends StatefulAgent<ExampleState> {
-    StatefulExampleAgent(ExampleState initial, Consumer<ExampleState> persist) {
-        super(initial, persist);
-    }
-
-    ExampleState snapshot() {
-        return readState(state -> state);
-    }
-
-    void remember(String value) {
-        updateState(state -> state.remember(value));
-    }
-
-    @Override public AgentId id() { return new AgentId(ExampleModule.ID, "stateful"); }
-    @Override public String purpose() { return "Own example state"; }
-    @Override public Set<OperationId> operations() { return Set.of(ExampleModule.INSPECT); }
-}
-```
-
-`StatefulAgent<S>` deliberately says nothing about what `S` means, how it is serialized, whether it represents conversation, memory, knowledge or another application concept, or which Operations use it. The concrete Module owns those choices. It is an OOP authoring convenience, not a generic memory subsystem.
-
-Most importantly, state does not create another MADRE-arbitrated execution route. Agent behavior that should participate in MADRE arbitration still executes through declared `OperationDefinition`, `OperationBinding` and `OperationCall` contracts. `StatefulAgent<S>` provides state ownership only; there is no `Agent.execute(...)` bypass around Operation validation, EffectProfiles or Security Algebra.
+Most importantly, state does not create another MADRE-arbitrated execution route. Agent behavior that should participate in MADRE arbitration still executes through declared `OperationDefinition`, `OperationBinding` and `OperationCall` contracts. There is no `Agent.execute(...)` bypass around Operation validation, EffectProfiles or Security Algebra.
 
 `SkillDefinition` remains lightweight ability/knowledge/instruction metadata. `WorkflowDefinition` is currently only an Agent-owned ordered Operation description; it is not a Kernel scheduler or universal agent-loop language.
 
@@ -230,7 +202,9 @@ with the provider class name as its content.
 
 A Module-to-Module call currently targets an installed `PUBLIC` Operation. The fixed receiver is `Privacy.MODULE`. A returned foreign Material must use a type listed by the caller in `publicMaterialReferences` and its Sensitivity must be able to reach that receiver. Successful receipt preserves the callee Material identity, owner, type and Sensitivity; caller interpretation creates a new caller-owned Material.
 
-Owner-local invocation is currently a host-only path that reuses a `PUBLIC` Operation and returns valid Module Material unchanged. External/PUBLIC invocation is a different host-only path and currently requires the Module's explicit `PublicResultTransformer` to create new PUBLIC-capable Material. Runtime validates; it does not invent sanitization. The shared `PUBLIC` exposure marker is transitional 0.x wiring rather than a universal owner-interaction contract.
+Generic owner/debug invocation is a host-only path to a PUBLIC Operation and returns valid Module Material unchanged. External/PUBLIC invocation is a different host-only path and requires the Module's explicit `PublicResultTransformer` to create new PUBLIC-capable Material.
+
+Selected owner interaction is a third host-only path. It can enter only an exact executable PRIVATE binding created with `ownerInteractionOperation(...)`; generic PRIVATE bindings remain unreachable. The port is never supplied to Modules and CORE selection does not grant it as Module authority. Every call remains an `OperationCall`, so accepted Privacy, EffectProfile and output validation are unchanged.
 
 MADRE does not claim to sandbox arbitrary installed Java code. The Owner chooses local software to install. Security Algebra governs MADRE-mediated information/effect composition; it is not an operating-system permission model. Unknown or unproven facts should be represented conservatively rather than by fabricated certainty.
 
@@ -246,23 +220,9 @@ Provider/model/runtime-specific tuning belongs to the reasoning provider/adapter
 
 ## Deterministic contract tests
 
-`madre-sdk-testkit` materializes a real `ModuleProvider` and exercises public SDK contracts without simulating Kernel policy:
+`madre-sdk-testkit` materializes a real `ModuleProvider` and exercises public SDK contracts without simulating Kernel policy. `ProgrammableReasoningService` is generic over arbitrary `ReasoningComputation<R>` and exposes a controlled durable lifecycle. The testkit deliberately does not reproduce Kernel mechanism selection, receiver-boundary enforcement, resource coordination, retry timing or SQLite behavior.
 
-```java
-ProgrammableReasoningService reasoning = new ProgrammableReasoningService()
-        .respond(TextInferenceCommand.class,
-                command -> new TextInferenceResult(
-                        "deterministic:" + command.prompt(),
-                        TextInferenceResult.CompletionReason.STOP, -1, -1));
-
-try (ModuleTestContext fixture = ModuleTestContext.create(reasoning)) {
-    ModuleTestHarness module = ModuleTestHarness.materialize(
-            new ExampleProvider(), fixture.context());
-    // Invoke exact Operations and assert behavior.
-}
-```
-
-`ProgrammableReasoningService` is generic over arbitrary `ReasoningComputation<R>` and exposes a controlled durable lifecycle. The testkit deliberately does not reproduce Kernel mechanism selection, receiver-boundary enforcement, resource coordination, retry timing or SQLite behavior.
+Use ordinary unit/testkit tests for Module semantics, and integration/package tests when the claim depends on Kernel selection, durable recovery, receiver exposure or installed-product mechanics. The shipped owner journey is tested at the native app-image boundary with a deterministic loopback OpenAI-compatible endpoint so CI needs no internet credentials while still exercising the real adapter/Kernel/Module/application path.
 
 ## Install and operate a local Module
 
@@ -286,6 +246,6 @@ Reasoning-provider installation/configuration remains a separate product domain 
 
 The stable SDK should stay small, but small does not mean only lowest-common-denominator interfaces. A narrow optional OOP abstraction can belong in the stable SDK when it has one clear owner, does not impose semantics on unrelated Modules, materially removes ordinary Java ceremony, preserves MADRE's execution/security invariants, and is validated by real product code plus focused tests. It does not need to describe every Agent or every application.
 
-`StatefulAgent<S>` is the current example: it captures typed Agent-owned state mechanics without defining conversation, memory or execution semantics. Higher-level facilities whose ownership or semantics are still unclear should incubate in `madre-sdk-experimental` or remain ordinary Module code until stronger evidence exists.
+`StatefulAgent<S>` and the narrow executable owner-interaction binding are different kinds of evidence: the former is generic Agent-state ergonomics; the latter is an installed-product entry distinction. Neither defines a universal Agent/UI framework.
 
 Do not introduce a universal Agent loop, planner/tool framework, memory model, semantic database, workflow scheduler, arbitrary metadata tree or new Module merely because an experiment uses one of those techniques. Build substantial applications and ordinary Operations first, then extract the smallest orthogonal SDK concepts that make them easier to author without turning one experiment into the framework.

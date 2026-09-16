@@ -42,7 +42,7 @@ installed ordinary Module
 
 The Security Algebra is cross-cutting behavior of values and contracts in this graph. It is not a runtime component.
 
-The current console does not yet realize this complete product layering. `MadreMain` and `interaction.*` currently own presentation/command mechanics independently of `roles.core`, and the current host owner-local/external adapters reuse Operations marked `PUBLIC`. Those are transitional executable facts documented in `docs/implementation-baseline.md`, not target definitions of owner interaction or Operation semantics.
+The current console now realizes the smallest owner-interaction boundary demonstrated by the shipped product: `roles.core` selects the ordinary interaction Module, while `interaction.*` configures only presentation entry Operation/Material details for that selected Module. Exact executable PRIVATE Operations may opt into the host owner-interaction path without becoming PUBLIC Module-composition APIs. `MadreMain` still owns replaceable console mechanics, so this remains a 0.x product surface rather than a frozen universal UI contract.
 
 ## Experimentation architecture and SDK lifecycle
 
@@ -73,11 +73,19 @@ The host product owns mechanics required to operate MADRE as installed software 
 - CORE assignment/selection;
 - application startup and shutdown;
 - diagnostics and health;
-- owner-facing management surfaces over those responsibilities.
+- owner-facing management and presentation surfaces over those responsibilities.
 
 These mechanics do not belong to CORE. Moving owner interaction into CORE must not move installation authority, artifact management or host lifecycle into a Module.
 
-The current host has `OwnerModuleInvoker` and `PublicModuleInvoker`. They are host-only implementation ports and are not supplied through `ModuleContext` or granted by CORE assignment. Their current requirement that a target Operation be `PUBLIC` is 0.x executable wiring, not a durable rule that owner-facing Module execution must also be public Module-composition behavior.
+The host currently has three distinct invocation ports:
+
+- `OwnerModuleInvoker` for generic owner/debug invocation of PUBLIC Operations without public minimization;
+- `PublicModuleInvoker` for actual external/PUBLIC disclosure through Module-owned result transformation;
+- `OwnerInteractionInvoker` for exact executable bindings explicitly offered by their owning Module to the selected local owner-interaction surface.
+
+All are host-only and are not supplied through `ModuleContext`. `OwnerInteractionInvoker` does not make every PRIVATE Operation host-callable, does not become a CORE port, and still executes a canonical `OperationCall`. The owning Module opts an exact PRIVATE executable binding into this product entry through `OperationBinding.ownerInteractionOperation(...)`.
+
+This executable distinction is intentionally narrower than a universal exposure enum. It solves the demonstrated installed owner boundary without claiming that all future UIs, remote APIs or presentation modes share one taxonomy.
 
 ## Module boundary
 
@@ -119,13 +127,13 @@ modules.config[<canonical ModuleId>].<module-owned-key>=<value>
 
 This is a sound ownership boundary but not yet a generic owner Module configurator contract. An owner-facing Module configurator cannot hard-code keys owned by independently installed Modules. The eventual configurator therefore needs the minimum provider-owned typed metadata required to render/validate real Module configuration. The exact public metadata API is intentionally not designed here; it must be recovered from the first Module configurator implementation rather than from a speculative schema framework or by generalizing the reasoning-provider descriptor contract prematurely.
 
-`roles.core` and current `interaction.*` are separate installation facts today. Neither changes Module configuration delivery.
+`roles.core` is the current selected ordinary owner-interaction/coordinator Module identity. Current `interaction.*` settings bind the host presentation surface to exact Operations/Material types on that identity; they do not carry another architectural Module identity and do not change Module configuration delivery.
 
 ## Module-to-Module Material boundary
 
 Module-to-Module invocation represents one installed application calling another while remaining a Module receiver. It is neither owner-local host authority nor external/public disclosure.
 
-The caller-bound directory currently exposes only exact target Operations declared `PUBLIC` whose accepted-Material Privacy can receive the offered information. PRIVATE Operations are unavailable to this generic Module-composition path.
+The caller-bound directory currently exposes only exact target Operations declared `PUBLIC` whose accepted-Material Privacy can receive the offered information. PRIVATE Operations are unavailable to this generic Module-composition path, including PRIVATE owner-interaction entries.
 
 The caller-bound invoker resolves the canonical target binding and executes ordinary `OperationBinding.invoke`, which validates the Module-created internal result. It does not run `PublicResultTransformer`.
 
@@ -140,45 +148,53 @@ If valid, the exact callee Material crosses unchanged with the same identity, ow
 
 No caller identity or receiver Privacy is supplied per call. No CORE privilege is involved.
 
-## Owner-local Material boundary
+## Generic owner/debug Material boundary
 
-The current owner-local host adapter resolves an installed `PUBLIC` Operation and executes a canonical `OperationCall`, preserving accepted-Material Privacy, exact EffectProfile selection, causal Integrity composition and output validation.
+The generic owner-local host adapter resolves an installed `PUBLIC` Operation and executes a canonical `OperationCall`, preserving accepted-Material Privacy, exact EffectProfile selection, causal Integrity composition and output validation.
 
-`OwnerModuleInvoker.invokeOwner` currently returns the Material created by the Module at the Sensitivity created by that Module. It does not apply `PublicResultTransformer` or lower Sensitivity merely because the Owner sees the result locally.
+`OwnerModuleInvoker.invokeOwner` returns the Material created by the Module at the Sensitivity created by that Module. It does not apply `PublicResultTransformer` or lower Sensitivity merely because the Owner sees the result locally.
 
-This is useful executable behavior but not the target definition of owner interaction. In particular, it does not establish that an Operation used only by an owning Module's local owner conversation must be `PUBLIC` to generic Module composition. The reusable owner-interaction exposure boundary remains intentionally unfrozen.
+This path remains useful for expert/debug invocation but is no longer the ordinary conversation entry. It does not establish that owner-facing behavior must be PUBLIC.
+
+## Owner-interaction Material boundary
+
+The installed product has a separate host-only owner-interaction entry for the selected Module. `OperationBinding.ownerInteractionOperation(...)` requires a PRIVATE `OperationDefinition` and marks only that exact executable binding as an owner-interaction entry. `OwnerInteractionInvoker` rejects other PRIVATE bindings, PUBLIC bindings and forged/mismatched contracts.
+
+The host still constructs and executes a canonical `OperationCall`; accepted-Material Privacy, EffectProfile selection, causal Integrity and output validation therefore remain ordinary Operation arbitration. No Security Algebra value is inferred from owner presentation, CORE selection or binding marker.
+
+This contract is intentionally local and narrow. It does not grant CORE arbitrary access to other Modules' PRIVATE Operations because Modules never receive the host port. It does not create a privileged `CoreModule` subtype and it is not a general external/public exposure mechanism.
 
 ## External/PUBLIC Material boundary
 
-`PublicModuleInvoker.invokePublic` is the current host external/public disclosure path. It targets a `PUBLIC` binding and applies the Module-owned `PublicResultTransformer` after internal output validation and before Material crosses this receiver boundary.
+`PublicModuleInvoker.invokePublic` is the host external/public disclosure path. It targets a `PUBLIC` binding and applies the Module-owned `PublicResultTransformer` after internal output validation and before Material crosses this receiver boundary.
 
 The external result must be new declared Material with a new identity and Sensitivity able to reach `Privacy.PUBLIC`. Raw sensitive internal Material cannot cross.
 
-Explicit transformation belongs to Module logic; runtime validation prevents bypass. Mandatory transformation at an actual public disclosure boundary is durable. Coupling that public transformation to the same two-state visibility marker used for Module composition is current implementation, not a permanent architectural requirement.
+Explicit transformation belongs to Module logic; runtime validation prevents bypass. Mandatory transformation at an actual public disclosure boundary is durable. PUBLIC Module composition and external publication still share the current 0.x `PUBLIC` marker, but owner interaction no longer depends on that coupling.
 
 ## CORE installation role
 
 `roles.core`, when configured, identifies the ordinary installed Module expected to provide MADRE's default owner-interaction/coordinator role.
 
-CORE is not a privileged runtime class. Assignment changes no Module definition, Security Algebra value, Operation exposure, configuration authority, reasoning installation/selection, scheduling, class-loader treatment or host installation authority. There is no `CoreModule` subtype and neither host invocation port becomes a CORE port.
+CORE is not a privileged runtime class. Assignment changes no Module definition, Security Algebra value, generic Operation exposure, configuration authority, reasoning installation/selection, scheduling, class-loader treatment or host installation authority. There is no `CoreModule` subtype.
 
-Target CORE behavior is to lead foreground owner conversation, make ordinary reasoning choices, turn completed durable reasoning into useful delayed follow-up, and coordinate with other installed Modules through ordinary MADRE composition. Its own internal owner-conversation Operations do not need to become generic public Module-composition APIs merely because the Module is CORE.
+Target CORE behavior is to lead foreground owner conversation, make ordinary reasoning choices, turn completed durable reasoning into useful delayed follow-up, and coordinate with other installed Modules through ordinary MADRE composition. Its own owner-conversation Operations may remain PRIVATE explicit interaction entries rather than generic public Module-composition APIs.
 
 CORE is also a primary experimentation consumer and owner-UX benchmark. The exact structural qualification for CORE should be stabilized only after interaction experiments demonstrate the smallest reusable contract worth freezing. The shipped owner-interaction Module and current console are evidence, not a universal assistant protocol. This document deliberately does not freeze exact CORE Operation names, a surface interface or a generic UI API.
 
-The current runtime only resolves the configured identity and tolerates absence/unresolved assignment. Current console binding remains separately configured through `interaction.*`. That is a transitional implementation detail, not the target definition of CORE.
+The current product resolves `roles.core` for interaction identity. `interaction.*` remains transitional host presentation configuration for exact Operation/material names and Sensitivity defaults, not a second Module selection mechanism.
 
 ## Current application adapter and interaction transition
 
-`madre-app` currently has no compile-time dependency on the concrete owner-interaction Module. It discovers installed declarations/codecs generically and can exercise the current owner-local and external/PUBLIC host boundaries.
+`madre-app` has no compile-time dependency on the concrete owner-interaction Module. It discovers installed executable bindings/codecs generically and can exercise owner-interaction, generic owner/debug and external/PUBLIC host boundaries.
 
-`MadreMain` is a replaceable developer/local console. It currently owns the foreground read/evaluate loop, generic invocation commands, `/standard`, `/updates` and session Sensitivity selection. `LocalInteractionBinding` resolves `interaction.*` against exact installed Module declarations.
+`MadreMain` is a replaceable local console. It owns the foreground read/evaluate loop, generic invocation commands, `/standard`, compatibility `/updates`, session Sensitivity selection and presentation timing. `LocalInteractionBinding` resolves `interaction.*` against the exact Module selected by `roles.core` and requires every configured conversation/collection Operation to be an explicit owner-interaction binding.
 
-The shipped example currently maps ordinary text to the owner-interaction Module's `PUBLIC` fast path because that is what the host adapter can enter. `/updates` similarly invokes the Module-specific collection Operation. The application does not inspect Kernel reasoning output or perform Module interpretation. The Module itself owns bounded persisted conversation state, contextual Material construction, foreground/background reasoning choices, pending durable-work association, interpretation, acknowledgement and any visible follow-up Material.
+The shipped Module owns bounded persisted conversation state, contextual Material construction, foreground/background reasoning choices, pending durable-work association, result interpretation, acknowledgement and the decision that any visible follow-up is useful. The application never inspects Kernel reasoning output.
 
-This proves useful execution/runtime separation but not the completed owner product or the final exposure contract. The target remains for CORE to lead ordinary owner interaction while host product surfaces retain product-management mechanics and presentation/adaptation. The exact interaction boundary should emerge from real owner-interaction experiments rather than from mechanically standardizing present `PUBLIC` Operation wiring. Natural delayed follow-up remains an important UX benchmark, not a command name to freeze.
+While the interaction surface is active, host presentation periodically enters the Module's bounded collection Operation. Empty/no-useful updates are not presented. This lets completed durable work naturally re-enter owner interaction after foreground return or process restart without making Kernel a conversation service and without requiring the normal owner workflow to type `/updates`.
 
-Do not implement that target by giving CORE privileged host ports, by making every PRIVATE Operation host-callable, or by turning Kernel into a conversation/router service.
+The current text representation and poll interval remain implementation details. A future GUI/speech surface may adapt the same responsibility split differently. Do not generalize this checkpoint into a universal UI framework merely because the console now has a usable continuation path.
 
 ## Heterogeneous inference boundary
 
@@ -251,17 +267,17 @@ Operation Risk is not carried into reasoning. Reasoning mechanisms do not own Mo
 
 The shipped owner-interaction Module is ordinary installed behavior and may be assigned CORE. Its invocation/reasoning behavior does not depend on CORE privilege.
 
-Its current implementation has three bounded Operations:
+Its current implementation has three bounded PRIVATE owner-interaction Operations:
 
-- `standard-prompt`: currently `PUBLIC` because of host wiring; it constructs contextual Material from bounded Agent-owned conversation state, performs immediate reasoning, returns Module-created response Material and commits the completed exchange through an explicit `WRITE + LIVE_INTERACTION` effect profile;
-- `fast-lane`: currently `PUBLIC`; it uses the same security-preserving context for immediate foreground reasoning plus durable background reasoning and Module-owned pending-state persistence;
-- `collect-background`: currently `PUBLIC`; it interprets terminal reasoning, optionally creates visible follow-up, acknowledges Kernel work and removes pending Module state.
+- `standard-prompt`: constructs contextual Material from bounded Agent-owned conversation state, performs immediate reasoning, returns Module-created response Material and commits the completed exchange through an explicit `WRITE + LIVE_INTERACTION` effect profile;
+- `fast-lane`: uses the same security-preserving context for immediate foreground reasoning plus durable background reasoning and Module-owned pending-state persistence;
+- `collect-background`: interprets terminal reasoning, optionally creates visible follow-up, acknowledges Kernel work and removes pending Module state.
 
 All three bounded executions occur through declared `OperationBinding` / `OperationCall` contracts. `StatefulAgent<OwnerConversationState>` provides typed state ownership and commit mechanics only; it is not an `Agent.execute(...)` path and does not bypass EffectProfile or Security Algebra validation.
 
-Their exact names, exposure markers and current shape are implementation/experimentation evidence, not universal CORE API requirements.
+Their exact names and current presentation binding are implementation/experimentation evidence, not universal CORE API requirements.
 
-Kernel SQLite stores opaque durable reasoning state. The Module separately stores the association it needs to interpret eventual results and its own bounded conversation state. On restart these persistence domains recover independently and rejoin through ordinary Module logic and `ReasoningService`.
+Kernel SQLite stores opaque durable reasoning state. The Module separately stores the association it needs to interpret eventual results and its own bounded conversation state. On restart these persistence domains recover independently and rejoin through ordinary Module logic and `ReasoningService`; host presentation may then surface only the Module-approved follow-up.
 
 If historical/contextual values participate in inference, the Module first creates the actual contextual Material at the combined maximum Sensitivity and derives the reasoning request from a bounded call over that Material. The SDK exposes no raw Sensitivity override.
 

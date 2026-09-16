@@ -75,7 +75,7 @@ new inference feature
 
 ## Product responsibilities
 
-The host product owns installation/uninstallation, persistent product configuration, Module/reasoning artifact lifecycle, CORE selection, startup/shutdown, diagnostics/health and owner-facing product mechanics.
+The host product owns installation/uninstallation, persistent product configuration, Module/reasoning artifact lifecycle, CORE selection, startup/shutdown, diagnostics/health and owner-facing product/presentation mechanics.
 
 A Module owns meaning, domain state/persistence, Material, transformations, optional Agents, Skills, Workflows, interpretation, continuation, domain integrations/UX and bounded Operations. Ordinary application I/O stays in application/Module code unless a concrete shared Kernel responsibility is established.
 
@@ -117,7 +117,9 @@ EffectProfile
 
 `OperationDefinition` is language-neutral and non-generic. Java payload typing lives on executable Operation/Call/Binding objects. `MaterialTypeDefinition` contains nominal identity/content type; Java class and codec belong to `MaterialType<T>`.
 
-The current `OperationVisibility.PUBLIC/PRIVATE` is a 0.x installed-runtime exposure marker. It is not Material confidentiality, external publication, owner visibility or reasoning locality. Current owner-local and external/PUBLIC host adapters reuse `PUBLIC` Operations as transitional wiring; do not turn that fact into the definition of Operation or invent a larger exposure enum without concrete product evidence.
+The current `OperationVisibility.PUBLIC/PRIVATE` is a 0.x installed-runtime exposure marker. It is not Material confidentiality, external publication, owner visibility or reasoning locality.
+
+The executable SDK has three binding shapes with distinct responsibilities: `publicOperation(...)`, ordinary `privateOperation(...)`, and narrow `ownerInteractionOperation(...)`. The last requires a PRIVATE definition and marks only that exact executable binding as eligible for the selected local owner-interaction surface. It is not a larger exposure taxonomy, is not portable UI metadata, does not make the Operation PUBLIC, and does not grant CORE generic PRIVATE authority.
 
 `ModuleInstance` is validated runtime/adaptor assembly, not the ordinary Module authoring model. `ModuleProvider.create(...)` returns the executable `Module`.
 
@@ -133,23 +135,27 @@ Add SDK conveniences when concrete software demonstrates an ownership-correct pr
 
 Installed Module composition uses caller-bound `ModuleDirectory` / `ModuleInvoker`. Runtime binds canonical caller identity; Module code cannot provide caller identity or arbitrary receiving Privacy.
 
-In the current runtime, Module-to-Module calls target installed `PUBLIC` Operations and use fixed `Privacy.MODULE`. `PRIVATE` Operations are unavailable to generic Module composition.
+Module-to-Module calls target installed `PUBLIC` Operations and use fixed `Privacy.MODULE`. `PRIVATE` Operations, including explicit owner-interaction entries, are unavailable to generic Module composition.
 
 A foreign result crosses unchanged only when the caller declares its type in `publicMaterialReferences` and its Sensitivity can reach `Privacy.MODULE`. The caller may then create new caller-owned interpretation Material.
 
-The current external/PUBLIC host boundary also targets a `PUBLIC` Operation and requires `PublicResultTransformer`; the durable rule is the explicit semantic transformation at actual public disclosure, not the coupling to one visibility bit. The current owner-local host boundary also reuses `PUBLIC` Operations and returns valid Module Material unchanged. That owner wiring is transitional and does not imply owner-facing conversation must be public to other Modules.
+The external/PUBLIC host boundary targets a `PUBLIC` Operation and requires `PublicResultTransformer`; the durable rule is explicit semantic transformation at actual public disclosure. The generic owner/debug boundary also targets PUBLIC and returns valid Module Material unchanged.
 
-Do not make every PRIVATE Operation host-callable to fix this. Preserve Module encapsulation and recover a reusable owner-interaction exposure only from concrete product evidence. Neither host-only port is present in `ModuleContext` and CORE assignment grants neither one.
+The ordinary product conversation uses a separate host-only `OwnerInteractionInvoker`. It can enter only exact PRIVATE bindings created with `ownerInteractionOperation(...)`; generic PRIVATE bindings remain unreachable. This port is not present in `ModuleContext`, so CORE cannot use it to invoke another Module's PRIVATE Operations. Every entry still uses a canonical `OperationCall` and ordinary contract validation.
+
+Do not generalize this into a universal presentation/exposure enum without new concrete product evidence.
 
 ## CORE
 
 CORE identifies MADRE's default owner-interaction/coordinator Module. It is semantically meaningful and non-privileged.
 
-CORE assignment must not alter Security Algebra, Operation exposure, Module-composition authority, reasoning installation/selection, scheduling, classloader treatment, installation authority or host ports. Do not create a privileged `CoreModule` subtype.
+CORE assignment must not alter Security Algebra, generic Operation exposure, Module-composition authority, reasoning installation/selection, scheduling, classloader treatment, installation authority or host ports. Do not create a privileged `CoreModule` subtype.
 
-The target owner experience is semantically led by CORE: foreground conversation, reasoning choices, useful delayed semantic follow-up and ordinary coordination/routing to installed Modules. The host still owns product management.
+The current product uses `roles.core` as the single Module identity for ordinary owner interaction. `interaction.*` configures exact presentation Operation/Material details on that selected Module; it no longer carries a duplicated `interaction.module` identity.
 
-The current `roles.core`, `interaction.*` and `MadreMain` split is transitional executable behavior. Do not freeze current Operation names, current `PUBLIC` owner-interaction wiring or console commands into a universal CORE API.
+The target owner experience is semantically led by CORE: foreground conversation, reasoning choices, useful delayed semantic follow-up and ordinary coordination/routing to installed Modules. The host still owns product management and presentation timing.
+
+Do not freeze current Operation names, console commands, polling interval or text update representation into a universal CORE/UI API.
 
 ## Installation and configuration
 
@@ -181,9 +187,9 @@ One EffectProfile uses only its own Risk and Autonomy. Its non-user causal deman
 
 Material carries Sensitivity. Accepted Operation input contracts carry receiving Privacy. Agent carries/derives Integrity. EffectProfile carries Risk+Autonomy. Reasoning mechanism declares receiving Privacy.
 
-Operation visibility/exposure is not an Algebra carrier and never changes the actual Material Sensitivity or receiving Privacy of a reasoning mechanism.
+Operation visibility/exposure and the executable owner-interaction entry marker are not Algebra carriers and never change actual Material Sensitivity or reasoning-mechanism receiving Privacy.
 
-Never infer algebra values from provider identity, endpoint, model, localhost, process/classloader placement, shipped status, Module bundling, Operation visibility or CORE assignment.
+Never infer algebra values from provider identity, endpoint, model, localhost, process/classloader placement, shipped status, Module bundling, Operation visibility, owner-interaction binding or CORE assignment.
 
 Security Algebra governs MADRE-mediated semantic composition. It is not a general OS sandbox or a promise that arbitrary software the Owner installs is safe. The Owner is the sovereign installation/user authority, not a synthetic Integrity-bearing Agent. User presence affects an Operation only through declared Autonomy semantics; it does not bypass information reach or invent trust for non-user causal participants.
 
@@ -195,7 +201,7 @@ A Module creates a typed `ReasoningComputation<R>` and `ReasoningRequest` from a
 
 If semantic context contains multiple source values, the Module must construct the actual contextual Material at combined Sensitivity and derive reasoning from a call over it. Do not add a raw Sensitivity override.
 
-A PRIVATE Operation may request local or remote reasoning. Eligibility depends only on the actual request's carried Sensitivity, computation compatibility and mechanism receiving Privacy/availability/resources. If information cannot reach a candidate mechanism, either the Module deliberately derives suitably minimized new Material or that mechanism is not eligible. Do not mutate Operation exposure as a substitute for information transformation.
+A PRIVATE Operation may request local or remote reasoning. Eligibility depends only on actual carried Sensitivity, computation compatibility and mechanism receiving Privacy/availability/resources. If information cannot reach a candidate mechanism, either the Module deliberately derives suitably minimized new Material or that mechanism is not eligible. Do not mutate Operation exposure as a substitute for information transformation.
 
 Kernel durable work remains opaque physical reasoning state. Module owns semantic association, interpretation and continuation. Do not add generic Kernel callbacks, continuation routers or scheduler languages.
 
@@ -207,13 +213,15 @@ Use focused tests during implementation and root `check` at coherent cross-proje
 
 Cross-platform evidence remains important because Windows and Linux are first-class hosts, but do not reflexively dispatch every expensive workflow after every commit.
 
+For owner-interaction/package changes, `Extended native owner package` is the relevant cross-platform workflow. Its sustained conversation acceptance must exercise the shipped real adapter path with a deterministic local endpoint rather than mock away provider/Kernel/Module/application boundaries.
+
 ## Active product posture
 
 Native owner deployment, Module/reasoning configuration, local artifact lifecycle, public SDK/testkit/experimental boundaries, independent developer fixtures and heterogeneous reasoning contracts are implemented substrate.
 
-Choose new work from concrete owner/developer/semantic-programming friction. Prefer substantial end-to-end owner/developer experiments over repeated framework-only cleanup. The goal is to reach a first genuinely deployable MADRE installation that can be used to learn which semantic and inference abstractions deserve further investment.
+Choose new work from concrete owner/developer/semantic-programming friction. Prefer substantial end-to-end owner/developer experiments over repeated framework-only cleanup.
 
-The shipped owner-interaction Module is now a real stateful reference consumer. It uses `StatefulAgent<OwnerConversationState>`, bounded persisted conversation state, Security-Algebra-preserving contextual Material, immediate and durable reasoning, and ordinary Operation-bound execution. It remains transitional: `interaction.*` is still independent from CORE, its conversational Operations are `PUBLIC` because of current host wiring rather than a durable requirement, and delayed follow-up still requires explicit `/updates` presentation.
+The shipped owner-interaction Module is now the first sustained owner-deployment reference consumer. It uses PRIVATE explicit owner-interaction Operations, `StatefulAgent<OwnerConversationState>`, bounded persisted conversation state, Security-Algebra-preserving contextual Material, immediate and durable reasoning, Module-owned pending association, independent Kernel durable state and natural Module-approved follow-up presentation after restart. `/updates` remains only a compatibility/debug path.
 
 Promote small orthogonal SDK abstractions when a real implementation proves their usefulness, even when they are optional specializations rather than universal concepts. Do not pre-build a universal Agent framework, universal memory/RAG system, planner/tool API, workflow language, semantic database abstraction or Module taxonomy.
 
