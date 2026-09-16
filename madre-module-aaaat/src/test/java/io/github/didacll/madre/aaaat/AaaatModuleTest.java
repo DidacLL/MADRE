@@ -141,10 +141,10 @@ final class AaaatModuleTest {
         return script("fake-aaaat", """
                 #!/bin/sh
                 IFS= read -r init
-                printf '%s\\n' '{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-06-18"}}'
+                printf '%%s\\n' '{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-06-18"}}'
                 IFS= read -r initialized
                 IFS= read -r call
-                printf '%s\\n' '%s'
+                printf '%%s\\n' '%s'
                 """.formatted(toolResult));
     }
 
