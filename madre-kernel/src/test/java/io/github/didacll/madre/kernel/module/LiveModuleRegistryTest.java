@@ -90,8 +90,8 @@ final class LiveModuleRegistryTest {
                 MaterialCodecs.utf8String());
         Material<String> input = new Material<>(new MaterialId(CALLER, "dynamic-input"),
                 inputType, "hello", Sensitivity.S2);
-        Material<String> result = registry.invokerFor(CALLER)
-                .invoke(OperationCall.withoutEffect(DYNAMIC, input))
+        OperationCall<String, String> call = OperationCall.withoutEffect(DYNAMIC, input);
+        Material<String> result = registry.invokerFor(CALLER).invoke(call)
                 .toCompletableFuture().join();
 
         assertSame(produced.get(), result);
@@ -127,11 +127,10 @@ final class LiveModuleRegistryTest {
                 new MaterialType<>(TARGET_COMMAND.definition(), String.class,
                         MaterialCodecs.utf8String()),
                 "hello", Sensitivity.S2);
+        OperationCall<String, String> call = OperationCall.withoutEffect(sensitive, input);
 
         assertThrows(java.util.concurrent.CompletionException.class,
-                () -> registry.invokerFor(CALLER)
-                        .invoke(OperationCall.withoutEffect(sensitive, input))
-                        .toCompletableFuture().join());
+                () -> registry.invokerFor(CALLER).invoke(call).toCompletableFuture().join());
     }
 
     @Test void callerOwnedNominalContractAcceptsCalleeOwnedConcreteResult() {
