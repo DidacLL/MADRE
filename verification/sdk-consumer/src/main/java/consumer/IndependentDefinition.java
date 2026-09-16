@@ -40,13 +40,18 @@ public final class IndependentDefinition implements Module {
 
     private final OperationBinding<String, String> inspect;
     private final OperationBinding<String, String> reason;
+    private final String artifactBehavior;
 
-    private IndependentDefinition(ReasoningService reasoning, String resultPrefix) {
+    private IndependentDefinition(ReasoningService reasoning, String resultPrefix,
+            String artifactBehavior) {
         java.util.Objects.requireNonNull(reasoning, "reasoning");
         String prefix = java.util.Objects.requireNonNull(resultPrefix, "resultPrefix");
+        String behavior = java.util.Objects.requireNonNull(artifactBehavior, "artifactBehavior");
+        this.artifactBehavior = behavior;
         Operation<String, String> inspectBehavior = Operation.of(call ->
                 CompletableFuture.completedFuture(material(RESULT,
-                        "private:" + prefix + call.input().payload(), Sensitivity.S4)));
+                        "private:" + behavior + ":" + prefix + call.input().payload(),
+                        Sensitivity.S4)));
         Operation<String, String> reasonBehavior = Operation.of(call -> {
             ReasoningRequest<io.github.didacll.madre.text.TextInferenceResult,
                     TextInferenceCommand> request = ReasoningRequest.immediate(call,
@@ -63,11 +68,15 @@ public final class IndependentDefinition implements Module {
     }
 
     static Module create(ReasoningService reasoning, String resultPrefix) {
-        return new IndependentDefinition(reasoning, resultPrefix);
+        return create(reasoning, resultPrefix, "baseline");
+    }
+
+    static Module create(ReasoningService reasoning, String resultPrefix, String artifactBehavior) {
+        return new IndependentDefinition(reasoning, resultPrefix, artifactBehavior);
     }
 
     @Override public ModuleId id() { return ID; }
-    @Override public String version() { return "1.0.0"; }
+    @Override public String version() { return "1.0.0-" + artifactBehavior; }
     @Override public String purpose() {
         return "Independent installation, reasoning and public-boundary fixture";
     }

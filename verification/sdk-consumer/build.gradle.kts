@@ -1,7 +1,13 @@
 plugins { java }
 
 val madreRepository = providers.gradleProperty("madreRepository")
-        .orElse("../../build/isolated-repository")
+val artifactBehavior = providers.gradleProperty("artifactBehavior").orElse("baseline").map { value ->
+    val normalized = value.trim()
+    if (!Regex("[A-Za-z0-9._-]+").matches(normalized)) {
+        throw GradleException("artifactBehavior must match [A-Za-z0-9._-]+")
+    }
+    normalized
+}
 
 repositories {
     maven { url = uri(madreRepository.get()) }
@@ -28,7 +34,53 @@ tasks.withType<JavaCompile>().configureEach {
     options.compilerArgs.addAll(listOf("-Xlint:all", "-Werror"))
 }
 
+tasks.processResources {
+    inputs.property("artifactBehavior", artifactBehavior)
+    filesMatching("consumer-build.properties") {
+        expand("artifactBehavior" to artifactBehavior.get())
+    }
+}
+
 tasks.test { useJUnitPlatform() }
+
+val allowedMadreArtifacts = setOf(
+    "madre-algebra",
+    "madre-bom",
+    "madre-sdk",
+    "madre-sdk-testkit",
+    "madre-text-inference",
+    "madre-text-generation",
+    "madre-embeddings"
+)
+
+tasks.register("verifyMadreDependencyBoundary") {
+    group = "verification"
+    description = "Rejects MADRE runtime/product implementation dependencies from the independent Module project."
+    doLast {
+        val violations = mutableSetOf<String>()
+        listOf("compileClasspath", "runtimeClasspath", "testCompileClasspath", "testRuntimeClasspath")
+                .forEach { configurationName ->
+                    configurations.getByName(configurationName).incoming.resolutionResult.allComponents
+                            .forEach { component ->
+                                val moduleVersion = component.moduleVersion
+                                if (moduleVersion != null
+                                        && moduleVersion.group == "io.github.didacll"
+                                        && moduleVersion.name !in allowedMadreArtifacts) {
+                                    violations += "$configurationName -> ${moduleVersion.group}:${moduleVersion.name}:${moduleVersion.version}"
+                                }
+                            }
+                }
+        if (violations.isNotEmpty()) {
+            throw GradleException(violations.sorted().joinToString(
+                    separator = "\n",
+                    prefix = "Independent Module resolved forbidden MADRE implementation artifacts:\n"))
+        }
+    }
+}
+
+tasks.named("check") {
+    dependsOn("verifyMadreDependencyBoundary")
+}
 
 tasks.jar {
     archiveFileName.set("independent-module.jar")

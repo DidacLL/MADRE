@@ -1,20 +1,49 @@
-param()
+param(
+    [Parameter(Mandatory = $true)]
+    [string]$ModuleJar,
+    [Parameter(Mandatory = $true)]
+    [string]$ReplacementModuleJar,
+    [string]$ReasoningJar,
+    [string]$InitialBehavior = 'v1',
+    [string]$ReplacementBehavior = 'v2'
+)
 
 $ErrorActionPreference = 'Stop'
 
 function Slash([string]$value) { return $value.Replace('\', '/') }
 
 $root = (Get-Location).Path
+$rootPath = [IO.Path]::GetFullPath($root)
+$separator = [IO.Path]::DirectorySeparatorChar.ToString()
+$rootPrefix = if ($rootPath.EndsWith($separator)) { $rootPath } else { $rootPath + $separator }
+
+function Resolve-ExternalModuleArtifact([string]$path, [string]$label) {
+    if (-not (Test-Path -LiteralPath $path)) { throw "$label is missing: $path" }
+    $full = [IO.Path]::GetFullPath((Resolve-Path -LiteralPath $path).Path)
+    if ($full.Equals($rootPath, [StringComparison]::OrdinalIgnoreCase) -or
+            $full.StartsWith($rootPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "$label must be built outside the MADRE checkout: $full"
+    }
+    return $full
+}
+
 $dist = Join-Path $root 'madre-app/build/install/madre'
 $moduleDir = Join-Path $dist 'modules'
 $reasoningDir = Join-Path $dist 'reasoning'
-$independentModule = Join-Path $root 'verification/sdk-consumer/build/libs/independent-module.jar'
-$independentReasoning = Join-Path $root 'verification/reasoning-consumer/build/libs/independent-reasoning.jar'
+$independentModule = Resolve-ExternalModuleArtifact $ModuleJar 'independent Module'
+$replacementModule = Resolve-ExternalModuleArtifact $ReplacementModuleJar 'replacement Module'
+if ([string]::IsNullOrWhiteSpace($ReasoningJar)) {
+    $ReasoningJar = Join-Path $root 'verification/reasoning-consumer/build/libs/independent-reasoning.jar'
+}
+$independentReasoning = [IO.Path]::GetFullPath($ReasoningJar)
 $ownerModuleId = 'io.github.didacll.madre.owner-interaction'
 
 if (-not (Test-Path $dist)) { throw 'built MADRE distribution is missing' }
-if (-not (Test-Path $independentModule)) { throw 'independent Module fixture is missing' }
 if (-not (Test-Path $independentReasoning)) { throw 'independent reasoning fixture is missing' }
+if ((Get-FileHash -LiteralPath $independentModule -Algorithm SHA256).Hash -eq
+        (Get-FileHash -LiteralPath $replacementModule -Algorithm SHA256).Hash) {
+    throw 'initial and replacement Module artifacts are byte-identical'
+}
 if (@(Get-ChildItem $moduleDir -Filter 'madre-module-owner-interaction*.jar').Count -lt 1) {
     throw 'shipped owner-interaction Module is missing from modules/'
 }
@@ -85,7 +114,8 @@ try {
         throw 'owner reasoning directory was not initially empty'
     }
 
-    # Independently compiled SDK Module lifecycle remains product-managed and source-classified.
+    # The Module projects were built outside the checkout after this distribution already existed.
+    # Install through the normal owner lifecycle, then prove Module-owned configuration reaches it.
     $moduleInstall = Invoke-Madre @('modules', 'install', $independentModule)
     if ($moduleInstall -notmatch 'module\.installed\s+phd\.module' -or $moduleInstall -notmatch 'source=owner') {
         throw 'independent Module was not installed as an owner artifact'
@@ -96,14 +126,43 @@ try {
     }
     Invoke-Madre @('modules', 'configure', 'phd.module', '--set', 'result-prefix=configured-') | Out-Null
 
-    # External/public disclosure and generic owner/debug entry are independent receiver paths.
+    # External/public disclosure and generic owner/debug entry are independent mechanical receiver
+    # paths. They prove installed execution without pretending the agentless target owns semantic intent.
+    $initialPublicExpected = "public:${InitialBehavior}:configured-hello"
     $public = Invoke-Madre @('--invoke-public', 'phd.module', 'inspect', 'request', 'S4', 'hello')
-    if ($public -notmatch 'public:configured-hello') {
-        throw 'independent Module configuration did not reach external/public disclosure'
+    if ($public -notmatch [regex]::Escape($initialPublicExpected)) {
+        throw "initial independent Module behavior was not observed: $initialPublicExpected"
     }
+    $initialOwnerExpected = "private:${InitialBehavior}:configured-hello"
     $owner = Invoke-Madre @('--invoke-owner', 'phd.module', 'inspect', 'request', 'S4', 'hello')
-    if ($owner -notmatch 'S4\s+private:configured-hello') {
-        throw 'generic owner/debug entry did not preserve untransformed Module Material'
+    if ($owner -notmatch ('S4\s+' + [regex]::Escape($initialOwnerExpected))) {
+        throw "generic owner/debug entry did not execute initial installed behavior: $initialOwnerExpected"
+    }
+
+    # Replace the managed owner artifact with a separately built same-identity artifact. The owner
+    # configuration is host state, so it must survive replacement and reach the new Module instance.
+    $moduleReplace = Invoke-Madre @('modules', 'install', $replacementModule, '--replace')
+    if ($moduleReplace -notmatch 'module\.replaced\s+phd\.module' -or
+            $moduleReplace -notmatch 'source=owner') {
+        throw 'independent Module replacement was not committed as an owner artifact'
+    }
+    $moduleInspect = Invoke-Madre @('modules', 'inspect', 'phd.module')
+    if ($moduleInspect -notmatch [regex]::Escape('current=configured-')) {
+        throw 'Module configuration did not survive artifact replacement'
+    }
+
+    $replacementPublicExpected = "public:${ReplacementBehavior}:configured-hello"
+    $replacementPublic = Invoke-Madre @('--invoke-public', 'phd.module', 'inspect', 'request', 'S4', 'hello')
+    if ($replacementPublic -notmatch [regex]::Escape($replacementPublicExpected)) {
+        throw "replacement behavior was not observed: $replacementPublicExpected"
+    }
+    if ($replacementPublic -match [regex]::Escape($initialPublicExpected)) {
+        throw 'replacement execution still exposed initial artifact behavior'
+    }
+    $replacementOwnerExpected = "private:${ReplacementBehavior}:configured-hello"
+    $replacementOwner = Invoke-Madre @('--invoke-owner', 'phd.module', 'inspect', 'request', 'S4', 'hello')
+    if ($replacementOwner -notmatch ('S4\s+' + [regex]::Escape($replacementOwnerExpected))) {
+        throw "generic owner/debug entry did not execute replacement behavior: $replacementOwnerExpected"
     }
 
     # Independently compiled provider lifecycle remains separate from Module installation.

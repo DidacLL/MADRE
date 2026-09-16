@@ -2,12 +2,30 @@ name: Extended SDK developer acceptance
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/sdk-developer.yml'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - 'madre-algebra/**'
+      - 'madre-bom/**'
+      - 'madre-sdk/**'
+      - 'madre-sdk-testkit/**'
+      - 'madre-text-inference/**'
+      - 'madre-text-generation/**'
+      - 'madre-embeddings/**'
+      - 'madre-app/**'
+      - 'verification/sdk-consumer/**'
+      - 'verification/reasoning-consumer/**'
+      - 'verification/installed-owner-acceptance.ps1'
+      - 'verification/artifact-replacement-failure-acceptance.ps1'
+      - 'verification/manual-artifact-protection-acceptance.ps1'
 
 permissions:
   contents: read
 
 concurrency:
-  group: sdk-developer-${{ github.ref }}
+  group: sdk-developer-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -31,48 +49,63 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $gradle = if ($IsWindows) { '.\\gradlew.bat' } else { './gradlew' }
+          $gradle = if ($IsWindows) { '.\gradlew.bat' } else { './gradlew' }
           & $gradle --no-daemon --build-cache publish :madre-app:installDist
           if ($LASTEXITCODE -ne 0) { throw 'MADRE publication or developer installation failed' }
 
-      - name: Build SDK consumer outside the MADRE checkout
+      - name: Build two SDK consumer artifacts outside the MADRE checkout
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $gradle = if ($IsWindows) { '.\\gradlew.bat' } else { './gradlew' }
-          $external = Join-Path $env:RUNNER_TEMP 'madre-external-sdk-consumer'
-          if (Test-Path $external) { Remove-Item -Recurse -Force $external }
-          New-Item -ItemType Directory -Force -Path $external | Out-Null
-          Copy-Item 'verification/sdk-consumer/*' $external -Recurse -Force
+          $externalRoot = Join-Path $env:RUNNER_TEMP 'madre-external-sdk-consumer'
+          $v1 = Join-Path $externalRoot 'v1'
+          $v2 = Join-Path $externalRoot 'v2'
+          if (Test-Path $externalRoot) { Remove-Item -Recurse -Force $externalRoot }
+          New-Item -ItemType Directory -Force -Path $v1, $v2 | Out-Null
+          Copy-Item 'verification/sdk-consumer/*' $v1 -Recurse -Force
+          Copy-Item 'verification/sdk-consumer/*' $v2 -Recurse -Force
           $repository = (Resolve-Path 'build/isolated-repository').Path
-          & $gradle --no-daemon --build-cache -p $external "-PmadreRepository=$repository" clean test jar
-          if ($LASTEXITCODE -ne 0) { throw 'external Module build/test failed' }
-          $jar = Join-Path $external 'build/libs/independent-module.jar'
-          if (-not (Test-Path $jar)) { throw 'external Module JAR was not produced' }
-          "EXTERNAL_MODULE_JAR=$jar" >> $env:GITHUB_ENV
+
+          & gradle --no-daemon --build-cache -p $v1 "-PmadreRepository=$repository" `
+              '-PartifactBehavior=v1' clean check jar
+          if ($LASTEXITCODE -ne 0) { throw 'external Module v1 build/test failed' }
+          & gradle --no-daemon --build-cache -p $v2 "-PmadreRepository=$repository" `
+              '-PartifactBehavior=v2' clean check jar
+          if ($LASTEXITCODE -ne 0) { throw 'external Module v2 build/test failed' }
+
+          $v1Jar = Join-Path $v1 'build/libs/independent-module.jar'
+          $v2Jar = Join-Path $v2 'build/libs/independent-module.jar'
+          if (-not (Test-Path $v1Jar) -or -not (Test-Path $v2Jar)) {
+              throw 'external Module JARs were not produced'
+          }
+          if ((Get-FileHash $v1Jar -Algorithm SHA256).Hash -eq
+                  (Get-FileHash $v2Jar -Algorithm SHA256).Hash) {
+              throw 'external Module builds did not produce changed artifacts'
+          }
+          "EXTERNAL_MODULE_V1_JAR=$v1Jar" >> $env:GITHUB_ENV
+          "EXTERNAL_MODULE_V2_JAR=$v2Jar" >> $env:GITHUB_ENV
 
       - name: Build independent reasoning fixture
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $gradle = if ($IsWindows) { '.\\gradlew.bat' } else { './gradlew' }
+          $gradle = if ($IsWindows) { '.\gradlew.bat' } else { './gradlew' }
           & $gradle --no-daemon --build-cache -p verification/reasoning-consumer jar
           if ($LASTEXITCODE -ne 0) { throw 'independent reasoning provider build failed' }
 
-      - name: Prove installed owner lifecycle and semantic boundaries
+      - name: Prove installed extension lifecycle and semantic boundaries
         shell: pwsh
         run: |
-          $target = 'verification/sdk-consumer/build/libs/independent-module.jar'
-          New-Item -ItemType Directory -Force -Path (Split-Path $target -Parent) | Out-Null
-          Copy-Item $env:EXTERNAL_MODULE_JAR $target -Force
-          ./verification/installed-owner-acceptance.ps1
+          ./verification/installed-owner-acceptance.ps1 `
+            -ModuleJar $env:EXTERNAL_MODULE_V1_JAR `
+            -ReplacementModuleJar $env:EXTERNAL_MODULE_V2_JAR
 
       - name: Prove failed replacement preserves active artifacts
         shell: pwsh
         run: |
           ./verification/artifact-replacement-failure-acceptance.ps1 `
             -AppRoot 'madre-app/build/install/madre' `
-            -ModuleJar $env:EXTERNAL_MODULE_JAR `
+            -ModuleJar $env:EXTERNAL_MODULE_V1_JAR `
             -ReasoningJar 'verification/reasoning-consumer/build/libs/independent-reasoning.jar'
 
       - name: Prove manual-placement compatibility is non-destructive
@@ -80,5 +113,5 @@ jobs:
         run: |
           ./verification/manual-artifact-protection-acceptance.ps1 `
             -AppRoot 'madre-app/build/install/madre' `
-            -ModuleJar $env:EXTERNAL_MODULE_JAR `
+            -ModuleJar $env:EXTERNAL_MODULE_V1_JAR `
             -ReasoningJar 'verification/reasoning-consumer/build/libs/independent-reasoning.jar'
