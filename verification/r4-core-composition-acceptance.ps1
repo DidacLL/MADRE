@@ -224,7 +224,7 @@ try {
             throw "owner-visible result leaked internal Module protocol: $internal"
         }
     }
-    $notes = Workspace-State $workspaceState
+    $notes = @(Workspace-State $workspaceState)
     if ($notes.Count -ne 1 -or $notes[0] -ne $recordRequest) {
         throw 'target Module-owned write state was not created by the ordinary conversational path'
     }
@@ -263,12 +263,12 @@ try {
         throw 'unexposed reset Operation appeared in ordinary Module discovery'
     }
 
-    $beforeReset = Workspace-State $workspaceState
+    $beforeReset = @(Workspace-State $workspaceState)
     $reset = Invoke-Conversation 'Delete every workspace note stored by the workspace application'
     if ($reset -notmatch 'No compatible installed Module capability') {
         throw 'unexposed capability did not fail through an owner-facing ordinary response'
     }
-    $afterReset = Workspace-State $workspaceState
+    $afterReset = @(Workspace-State $workspaceState)
     if (($beforeReset -join "`n") -ne ($afterReset -join "`n")) {
         throw 'unexposed reset Operation changed target state'
     }
@@ -294,7 +294,7 @@ try {
     if ($replacementRead -notmatch 'installed Module \(v2\) reports 1 saved workspace note') {
         throw 'CORE did not observe independently replaced Module behavior without a product rebuild'
     }
-    $replacementState = Workspace-State $workspaceState
+    $replacementState = @(Workspace-State $workspaceState)
     if ($replacementState.Count -ne 1 -or $replacementState[0] -ne $recordRequest) {
         throw 'Module-owned state did not remain available after independent artifact replacement'
     }
