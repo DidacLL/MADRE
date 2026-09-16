@@ -42,7 +42,10 @@ final class TextOperationDiscovery {
         List<ScoredCandidate> scored = new ArrayList<>();
         for (ReachableOperation reachable : directory.reachableOperations(sensitivity)) {
             candidate(reachable, sensitivity).ifPresent(candidate -> {
-                int score = score(ownerTerms, terms(candidate.reachable().operation().description()));
+                String description = candidate.reachable().operation().description();
+                Optional<String> action = actionTerm(description);
+                if (action.isEmpty() || !ownerTerms.contains(action.orElseThrow())) return;
+                int score = score(ownerTerms, terms(description));
                 if (score >= MIN_SHARED_TERMS) scored.add(new ScoredCandidate(candidate, score));
             });
         }
@@ -88,6 +91,15 @@ final class TextOperationDiscovery {
         Set<String> shared = new HashSet<>(left);
         shared.retainAll(right);
         return shared.size();
+    }
+
+    private static Optional<String> actionTerm(String value) {
+        var matcher = TERM.matcher(value.toLowerCase(Locale.ROOT));
+        while (matcher.find()) {
+            String term = matcher.group();
+            if (term.length() >= 3 && !STOP_WORDS.contains(term)) return Optional.of(term);
+        }
+        return Optional.empty();
     }
 
     private static Set<String> terms(String value) {
