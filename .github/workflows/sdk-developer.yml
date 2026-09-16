@@ -45,13 +45,13 @@ jobs:
         with:
           gradle-version: '8.12'
 
-      - name: Publish public artifacts and build developer installation
+      - name: Publish public artifacts and build owner installation
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $gradle = if ($IsWindows) { '.\gradlew.bat' } else { './gradlew' }
-          & $gradle --no-daemon --build-cache publish :madre-app:installDist
-          if ($LASTEXITCODE -ne 0) { throw 'MADRE publication or developer installation failed' }
+          & $gradle --no-daemon --build-cache publish :madre-app:jpackageAppImage :madre-app:installDist
+          if ($LASTEXITCODE -ne 0) { throw 'MADRE publication or owner installation build failed' }
 
       - name: Build two SDK consumer artifacts outside the MADRE checkout
         shell: pwsh
@@ -97,6 +97,7 @@ jobs:
         shell: pwsh
         run: |
           ./verification/installed-owner-acceptance.ps1 `
+            -AppImageRoot 'madre-app/build/jpackage/app-image/madre' `
             -ModuleJar $env:EXTERNAL_MODULE_V1_JAR `
             -ReplacementModuleJar $env:EXTERNAL_MODULE_V2_JAR
 

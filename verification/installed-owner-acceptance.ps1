@@ -1,5 +1,7 @@
 param(
     [Parameter(Mandatory = $true)]
+    [string]$AppImageRoot,
+    [Parameter(Mandatory = $true)]
     [string]$ModuleJar,
     [Parameter(Mandatory = $true)]
     [string]$ReplacementModuleJar,
@@ -9,8 +11,6 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-
-function Slash([string]$value) { return $value.Replace('\', '/') }
 
 $root = (Get-Location).Path
 $rootPath = [IO.Path]::GetFullPath($root)
@@ -27,9 +27,7 @@ function Resolve-ExternalModuleArtifact([string]$path, [string]$label) {
     return $full
 }
 
-$dist = Join-Path $root 'madre-app/build/install/madre'
-$moduleDir = Join-Path $dist 'modules'
-$reasoningDir = Join-Path $dist 'reasoning'
+$appImage = [IO.Path]::GetFullPath((Resolve-Path -LiteralPath $AppImageRoot).Path)
 $independentModule = Resolve-ExternalModuleArtifact $ModuleJar 'independent Module'
 $replacementModule = Resolve-ExternalModuleArtifact $ReplacementModuleJar 'replacement Module'
 if ([string]::IsNullOrWhiteSpace($ReasoningJar)) {
@@ -38,60 +36,64 @@ if ([string]::IsNullOrWhiteSpace($ReasoningJar)) {
 $independentReasoning = [IO.Path]::GetFullPath($ReasoningJar)
 $ownerModuleId = 'io.github.didacll.madre.owner-interaction'
 
-if (-not (Test-Path $dist)) { throw 'built MADRE distribution is missing' }
 if (-not (Test-Path $independentReasoning)) { throw 'independent reasoning fixture is missing' }
 if ((Get-FileHash -LiteralPath $independentModule -Algorithm SHA256).Hash -eq
         (Get-FileHash -LiteralPath $replacementModule -Algorithm SHA256).Hash) {
     throw 'initial and replacement Module artifacts are byte-identical'
 }
+
+if ($IsWindows) {
+    $launcher = Join-Path $appImage 'madre.exe'
+    $appDirectory = Join-Path $appImage 'app'
+} else {
+    $launcher = Join-Path $appImage 'bin/madre'
+    $appDirectory = Join-Path $appImage 'lib/app'
+}
+$moduleDir = Join-Path $appDirectory 'modules'
+$reasoningDir = Join-Path $appDirectory 'reasoning'
+$defaults = Join-Path $appDirectory 'defaults/madre.properties'
+if (-not (Test-Path $launcher)) { throw "packaged MADRE launcher is missing: $launcher" }
+if (-not (Test-Path $defaults)) { throw 'owner app image is missing packaged first-run defaults' }
 if (@(Get-ChildItem $moduleDir -Filter 'madre-module-owner-interaction*.jar').Count -lt 1) {
-    throw 'shipped owner-interaction Module is missing from modules/'
+    throw 'shipped owner-interaction Module is missing from the owner app image'
 }
 if (@(Get-ChildItem $reasoningDir -Filter 'madre-adapter-openai-compatible*.jar').Count -lt 1) {
-    throw 'shipped OpenAI-compatible adapter is missing from reasoning/'
+    throw 'shipped OpenAI-compatible adapter is missing from the owner app image'
 }
 
-$launcher = if ($IsWindows) { Join-Path $dist 'bin/madre.bat' } else { Join-Path $dist 'bin/madre' }
-$temp = Join-Path ([IO.Path]::GetTempPath()) ('madre-owner-acceptance-' + [guid]::NewGuid())
+$temp = Join-Path ([IO.Path]::GetTempPath()) ('madre-installed-extension-' + [guid]::NewGuid())
 New-Item -ItemType Directory -Force -Path $temp | Out-Null
+$oldHome = $env:HOME
+$oldAppData = $env:APPDATA
 $oldLocalAppData = $env:LOCALAPPDATA
+$oldXdgConfig = $env:XDG_CONFIG_HOME
 $oldXdgData = $env:XDG_DATA_HOME
+$oldXdgState = $env:XDG_STATE_HOME
+$env:HOME = Join-Path $temp 'home'
 if ($IsWindows) {
-    $env:LOCALAPPDATA = Join-Path $temp 'local-app-data'
+    $env:APPDATA = Join-Path $temp 'roaming'
+    $env:LOCALAPPDATA = Join-Path $temp 'local'
+    $configuration = Join-Path $env:APPDATA 'MADRE/madre.properties'
     $ownerModuleDir = Join-Path $env:LOCALAPPDATA 'MADRE/modules'
     $ownerReasoningDir = Join-Path $env:LOCALAPPDATA 'MADRE/reasoning'
 } else {
+    $env:XDG_CONFIG_HOME = Join-Path $temp 'xdg-config'
     $env:XDG_DATA_HOME = Join-Path $temp 'xdg-data'
+    $env:XDG_STATE_HOME = Join-Path $temp 'xdg-state'
+    $configuration = Join-Path $env:XDG_CONFIG_HOME 'madre/madre.properties'
     $ownerModuleDir = Join-Path $env:XDG_DATA_HOME 'madre/modules'
     $ownerReasoningDir = Join-Path $env:XDG_DATA_HOME 'madre/reasoning'
 }
 
-$config = Join-Path $temp 'madre.properties'
-$state = Join-Path $temp 'state'
-$db = Join-Path $temp 'kernel.sqlite'
-@(
-    "kernel.database=$(Slash $db)",
-    "modules.state-directory=$(Slash $state)",
-    "roles.core=$ownerModuleId",
-    'interaction.default-operation=fast-lane',
-    'interaction.standard-operation=standard-prompt',
-    'interaction.prompt-material-type=owner-prompt',
-    'interaction.default-sensitivity=S5',
-    'interaction.updates-operation=collect-background',
-    'interaction.updates-material-type=background-collection-request',
-    'interaction.updates-payload=collect',
-    'interaction.updates-sensitivity=S1'
-) | Set-Content -Path $config -Encoding utf8
-
 function Invoke-Madre([string[]]$arguments) {
-    $output = (& $launcher $config @arguments 2>&1 | Out-String).Trim()
+    $output = (& $launcher @arguments 2>&1 | Out-String).Trim()
     if ($LASTEXITCODE -ne 0) { Write-Host $output; throw "MADRE invocation failed with $LASTEXITCODE" }
     Write-Host $output
     return $output
 }
 
 function Invoke-MadreFailure([string[]]$arguments) {
-    $output = (& $launcher $config @arguments 2>&1 | Out-String).Trim()
+    $output = (& $launcher @arguments 2>&1 | Out-String).Trim()
     $status = $LASTEXITCODE
     Write-Host $output
     if ($status -eq 0) { throw 'MADRE invocation unexpectedly succeeded' }
@@ -100,13 +102,14 @@ function Invoke-MadreFailure([string[]]$arguments) {
 
 function Invoke-Console([string[]]$lines) {
     $input = ($lines -join [Environment]::NewLine) + [Environment]::NewLine
-    $output = ($input | & $launcher $config 2>&1 | Out-String).Trim()
+    $output = ($input | & $launcher 2>&1 | Out-String).Trim()
     if ($LASTEXITCODE -ne 0) { Write-Host $output; throw "MADRE console failed with $LASTEXITCODE" }
     Write-Host $output
     return $output
 }
 
 try {
+    if (Test-Path $configuration) { throw 'fresh owner configuration unexpectedly exists' }
     if ((Test-Path $ownerModuleDir) -and @(Get-ChildItem $ownerModuleDir -Filter '*.jar').Count -ne 0) {
         throw 'owner Module directory was not initially empty'
     }
@@ -114,11 +117,14 @@ try {
         throw 'owner reasoning directory was not initially empty'
     }
 
-    # The Module projects were built outside the checkout after this distribution already existed.
-    # Install through the normal owner lifecycle, then prove Module-owned configuration reaches it.
+    # The app image was already built before either external Module artifact. Installing the first
+    # artifact through the ordinary owner command also exercises packaged first-run configuration.
     $moduleInstall = Invoke-Madre @('modules', 'install', $independentModule)
     if ($moduleInstall -notmatch 'module\.installed\s+phd\.module' -or $moduleInstall -notmatch 'source=owner') {
         throw 'independent Module was not installed as an owner artifact'
+    }
+    if (-not (Test-Path $configuration)) {
+        throw 'normal owner lifecycle did not bootstrap persistent owner configuration'
     }
     $moduleList = Invoke-Madre @('modules', 'list')
     if ($moduleList -notmatch 'module\s+phd\.module.*source=owner') {
@@ -139,8 +145,8 @@ try {
         throw "generic owner/debug entry did not execute initial installed behavior: $initialOwnerExpected"
     }
 
-    # Replace the managed owner artifact with a separately built same-identity artifact. The owner
-    # configuration is host state, so it must survive replacement and reach the new Module instance.
+    # Replace the managed owner artifact with a separately built same-identity artifact. Configuration
+    # is host-owned installation state, so it must survive byte replacement and reach the new Module.
     $moduleReplace = Invoke-Madre @('modules', 'install', $replacementModule, '--replace')
     if ($moduleReplace -notmatch 'module\.replaced\s+phd\.module' -or
             $moduleReplace -notmatch 'source=owner') {
@@ -218,7 +224,11 @@ try {
         throw 'generic provider enable did not re-materialize the independent mechanism'
     }
 } finally {
+    $env:HOME = $oldHome
+    $env:APPDATA = $oldAppData
     $env:LOCALAPPDATA = $oldLocalAppData
+    $env:XDG_CONFIG_HOME = $oldXdgConfig
     $env:XDG_DATA_HOME = $oldXdgData
+    $env:XDG_STATE_HOME = $oldXdgState
     Remove-Item $temp -Recurse -Force -ErrorAction SilentlyContinue
 }
