@@ -10,9 +10,9 @@ The product can boot with no configured reasoning mechanism. Module installation
 
 The shipped first-run owner product selects the ordinary owner-interaction Module through `roles.core`. First-run configuration no longer carries `interaction.*` Operation/Material/background-protocol keys for normal conversation.
 
-Ordinary console text is transported to the `OwnerInteractionAgent` discovered in the Module assigned CORE. The host supplies presentation Sensitivity and presents only Agent-approved `OwnerMessage` values. It does not choose `fast-lane`, `standard-prompt`, `collect-background`, private Material types or a delayed-work payload/protocol.
+Ordinary console text is transported to the `OwnerInteractionAgent` discovered in the Module assigned CORE. The host supplies presentation Sensitivity and presents only Agent-approved `OwnerMessage` values. It does not choose `fast-lane`, `standard-prompt`, `collect-background`, private Material types, target Module Operations or a delayed-work payload/protocol.
 
-The Agent may use the host/runtime `OwnerInteractionInvoker` to execute exact `OperationBinding.ownerInteractionOperation(...)` bindings in its own selected CORE Module. That lower-level port remains absent from `ModuleContext`, remains restricted to the selected CORE, and therefore grants no generic Module authority.
+The Agent may use the host/runtime `OwnerInteractionInvoker` to execute exact `OperationBinding.ownerInteractionOperation(...)` bindings in its own selected CORE Module. That lower-level port remains absent from `ModuleContext` and remains restricted to the selected CORE. Cross-Module coordination is separate: every installed Module, including one assigned CORE, receives the same caller-bound `ModuleDirectory` and `ModuleInvoker` through `ModuleContext`.
 
 While the interaction surface is active, host presentation may poll the Agent's `followUps(...)` method as a physical delivery mechanism. The Agent itself invokes and interprets the Module's private collection behavior, owns durable-work association/acknowledgement and decides whether a visible follow-up is useful. There is no ordinary `/updates` workflow or host-parsed collection result protocol.
 
@@ -38,7 +38,7 @@ A Java `Agent` is an optional Module-owned actor. It defines no universal loop, 
 
 `StatefulAgent<S>` is an optional OOP authoring base for an Agent that owns typed private state. It serializes reads/transitions and can commit one transition through a Module-owned persistence function before publishing the new in-memory state. It is not a portable memory schema, generic persistence service or second execution model: concrete state meaning remains Module/Agent-owned, and MADRE-arbitrated executions still occur through Operations and `OperationCall` values.
 
-`OwnerInteractionAgent` is another optional execution-side specialization. It is discovered from the Module's existing Agent collection when that Module is selected as CORE. It receives owner text plus presentation Sensitivity and returns semantic `OwnerMessage` values; it may also produce delayed approved messages through `followUps(...)`. It is not serialized into `ModuleDefinition`, does not apply to every Module or Agent and grants no authority beyond the already CORE-restricted interaction invoker supplied for execution.
+`OwnerInteractionAgent` is another optional execution-side specialization. It is discovered from the Module's existing Agent collection when that Module is selected as CORE. It receives owner text plus presentation Sensitivity and returns semantic `OwnerMessage` values; it may also produce delayed approved messages through `followUps(...)`. It is not serialized into `ModuleDefinition`, does not apply to every Module or Agent and grants no special Module-composition authority.
 
 An `Operation<I,O>` is a generic bounded executable unit of Module logic. Its implementation may be pure computation, file/database/network access, a script/process call, reasoning-backed behavior, or any other Module-owned Java code. `OperationCall` is the current typed MADRE arbitration boundary: it validates accepted Material/Privacy and, when the Operation declares consequential variants, the selected EffectProfile against actual non-user causal Integrity. Output type/value-owner/maximum Sensitivity is validated before the result escapes the bounded call.
 
@@ -60,11 +60,11 @@ EffectProfile
 
 `OperationDefinition` is non-generic and language-neutral. Java payload typing remains on `Operation<I,O>`, `OperationCall<I,O>` and `OperationBinding<I,O>`. `MaterialTypeDefinition` contains nominal `MaterialTypeId` plus content type; Java `Class<T>` and `MaterialCodec<T>` remain on `MaterialType<T>`.
 
-`ModuleDefinitionJsonCodec` serializes/deserializes format version 3. Module exposure is represented by the top-level `exposedOperations` set and structural foreign nominal Material contracts by `foreignMaterialReferences`; Operation objects themselves contain no visibility marker.
+`ModuleDefinitionJsonCodec` serializes/deserializes format version 3. Module exposure is represented by the top-level `exposedOperations` set and structural compile-time foreign nominal Material contracts by `foreignMaterialReferences`; Operation objects themselves contain no visibility marker.
 
 `ModuleInstance` is not the ordinary authoring model. It is the validated runtime/adaptor assembly containing one portable `ModuleDefinition`, exact Java Material bindings, exact executable Operation bindings, and optionally one discovered execution-side `OwnerInteractionAgent`.
 
-A concrete Material value and its nominal type have independent ownership. `MaterialId.moduleId` identifies the Module that created/owns the value. `MaterialTypeId.moduleId` identifies the Module that defines the nominal contract. A Module may create a value using an explicitly referenced foreign nominal contract. This is not an ownership transfer of the contract and it does not bypass receiver Privacy.
+A concrete Material value and its nominal type have independent ownership. `MaterialId.moduleId` identifies the Module that created/owns the value. `MaterialTypeId.moduleId` identifies the Module that defines the nominal contract. Compile-time foreign contracts remain explicit through `foreignMaterialReferences()`. R4 adds a distinct runtime case for an exact target-owned nominal contract published by the exact selected target Operation; this does not transfer contract ownership or authorize unrelated third-party contracts.
 
 ## Provider and owner configuration
 
@@ -88,7 +88,7 @@ The public Security Algebra remains unchanged. It governs MADRE-mediated values 
 
 Current receiver/entry paths are intentionally distinct:
 
-- Module-to-Module: caller-bound `ModuleDirectory` / `ModuleInvoker`, targets Operations explicitly present in the target Module's `exposedOperations`, uses fixed `Privacy.MODULE`, and does not run a public result transformer;
+- Module-to-Module: caller-bound `ModuleDirectory` / `ModuleInvoker`, targets Operations explicitly present in the target Module's `exposedOperations`, and does not run a public result transformer;
 - generic owner/debug: host-only `OwnerModuleInvoker`, resolves any exact installed Operation contract and returns canonical valid Module Material unchanged;
 - ordinary owner interaction: host presentation resolves the optional `OwnerInteractionAgent` in the installed Module assigned `roles.core`, transports owner text/approved messages and does not select the Module's private semantic protocol;
 - selected-CORE bounded interaction execution: host/runtime `OwnerInteractionInvoker`, usable by that Agent to enter only exact bindings created as owner-interaction entries in the installed Module assigned `roles.core`;
@@ -96,7 +96,11 @@ Current receiver/entry paths are intentionally distinct:
 
 The durable principles are caller-bound Module composition, explicit receiver Privacy, explicit public transformation, Agent-owned owner semantics and Module encapsulation. Module exposure does not imply external publication; owner interaction does not imply Module exposure; CORE designation does not grant generic authority.
 
-A Module-to-Module result crosses unchanged only when the caller structurally declares the nominal Material contract in `foreignMaterialReferences` and its Sensitivity can reach `Privacy.MODULE`. The concrete value remains owned by the Module that produced it even when the nominal type is defined by the caller or another Module. The caller may then create new caller-owned interpretation Material.
+`ModuleDirectory.reachable(ReachabilityQuery)` remains exact discovery for a caller-known nominal input type. R4 adds `ModuleDirectory.reachableOperations(Sensitivity)` for an earlier-compiled caller that cannot know a later target's nominal types. It returns exact target-exposed Operation contracts whose accepted receiver can carry the supplied Sensitivity plus only the target-owned portable `MaterialTypeDefinition`s referenced by those Operations. Kernel performs no semantic ranking.
+
+For invocation, caller identity remains runtime-bound and `ModuleInvoker` remains the only ordinary cross-Module execution port. An earlier-compiled caller may create caller-owned Material conforming exactly to a target-owned input definition returned for the exact selected target Operation. Runtime validates that portable definition against the target's installed canonical definition and Java execution binding. This target-scoped allowance does not authorize unrelated foreign contracts or mutate the caller's portable definition.
+
+The result receiver remains fixed at `Privacy.MODULE`. A target-owned result may cross without a static caller reference only when its nominal definition matches the selected target's installed canonical definition and its Sensitivity can reach the Module receiver. The exact target-created Material crosses unchanged: concrete owner, `MaterialId`, nominal `MaterialTypeId`, payload and Sensitivity are not relabelled. Other foreign nominal types continue to require the caller's static structural reference. The caller may then deliberately create new caller-owned interpretation Material.
 
 Material adaptation/minimization is Module behavior. Runtime does not lower Sensitivity automatically. `Privacy.PUBLIC` is reserved for an actual public receiver boundary and is not a synonym for Module exposure.
 
@@ -108,7 +112,7 @@ Reasoning eligibility is independent from Module exposure and host entry. Any Op
 
 Kernel remains responsible for compatible reasoning-mechanism selection, resource coordination, immediate/durable execution, retry/cancellation and opaque durable persistence. Modules remain responsible for application/domain meaning, association, interpretation and continuation.
 
-The reasoning SPI remains intentionally unchanged by R2. `ReasoningCapabilityManifest` contains genuine pre-execution mechanism-selection facts: nominal reasoning contract, receiving Privacy, location, expected latency and resources. Those facts are not a duplicate Module-definition graph.
+The reasoning SPI remains intentionally independent of R4 Module composition. `ReasoningCapabilityManifest` contains genuine pre-execution mechanism-selection facts: nominal reasoning contract, receiving Privacy, location, expected latency and resources. Those facts are not a duplicate Module-definition graph.
 
 Stable computation-contract artifacts remain `madre-text-inference`, `madre-text-generation` and `madre-embeddings`. Inference families do not imply corresponding Modules or higher-level SDK abstractions.
 
@@ -118,23 +122,23 @@ Stable computation-contract artifacts remain `madre-text-inference`, `madre-text
 
 The testkit deliberately does not emulate Kernel mechanism selection, resource scheduling, retry timing, receiver-boundary enforcement or SQLite durability.
 
-The packaged owner MADRE now carries its compatible public development artifacts in `developer/repository` inside the jpackage application payload, together with the SDK developer guide. The packaged repository contains only the public BOM, Algebra, stable SDK, testkit, experimental authoring artifact, reasoning SPI and stable computation-contract artifacts; it does not publish or expose `madre-app`, Kernel implementation or concrete adapters as development dependencies.
+The packaged owner MADRE carries its compatible public development artifacts in `developer/repository` inside the jpackage application payload, together with the SDK developer guide. The packaged repository contains only the public BOM, Algebra, stable SDK, testkit, experimental authoring artifact, reasoning SPI and stable computation-contract artifacts; it does not publish or expose `madre-app`, Kernel implementation or concrete adapters as development dependencies.
 
-`verification/sdk-consumer` remains a separate Gradle project depending only on that public MADRE surface. Its Module implements the same code-first stable `Module` contract used by shipped code. Its tests exercise deterministic Module behavior, heterogeneous reasoning contracts and projection from executable Module objects to the portable `ModuleDefinition`.
+`verification/sdk-consumer` remains a separate Gradle project depending only on that public MADRE surface. R4 makes the fixture a small agentless durable workspace application while preserving its existing independent SDK/reasoning/public-boundary checks. The application owns its own note state, exposes meaningful save/count behavior, keeps destructive reset behavior unexposed and exposes a deliberately too-sensitive read used to prove the Module receiver boundary.
 
 `verification/reasoning-consumer` likewise accepts an explicit public-repository location, builds against the public reasoning SPI/computation contracts and rejects MADRE runtime/product implementation dependencies.
 
-Cross-platform extended SDK acceptance first builds the release candidate owner image, copies only its packaged `developer` surface and the independent fixture sources into a source-free temporary workspace, deletes the checkout-local publication repository, then builds/checks the independent Module and reasoning provider from the copied product surface. The resulting artifacts are installed/replaced/configured and executed against that same packaged owner MADRE through the ordinary lifecycle.
+Cross-platform extended SDK acceptance first builds the release candidate owner image, copies only its packaged `developer` surface and the independent fixture sources into a source-free temporary workspace, deletes the checkout-local publication repository, then builds/checks the independent Module and reasoning provider from the copied product surface. The resulting artifacts are installed/replaced/configured and executed against that same already-built packaged owner MADRE through the ordinary lifecycle.
 
-`verification/module-interoperability` independently proves Module-boundary exposure, caller-bound discovery/invocation, `Privacy.MODULE` result reachability, foreign nominal-contract references and unchanged callee-owned Material crossing between Modules.
+`verification/module-interoperability` continues to prove the established compile-time Module-boundary path. Kernel tests additionally prove R4 target-scoped dynamic input/output contracts, unchanged target Material delivery, forged-contract rejection and S5 result rejection at `Privacy.MODULE`.
 
-`verification/installed-owner-acceptance.ps1` proves an independently built Module and independently built reasoning provider can be installed/replaced/configured while ordinary owner interaction remains plain text through the selected CORE rather than an implementation command.
+`verification/installed-owner-acceptance.ps1` now also proves the complete R4 product path before the independent reasoning provider is installed: natural owner text reaches the existing shipped CORE Agent, CORE structurally discovers and invokes the independently built agentless workspace application, the target's Module-owned state changes and remains readable after artifact replacement, a target-created S5 result does not cross the Module receiver, and an unexposed destructive Operation cannot be reached through ordinary composition. Owner-visible output contains no target Module/Operation/Material identifiers.
 
 External application integrations may be used as temporary experiments to expose SDK friction. They are not product dependencies or architecture authority merely because they were useful evidence.
 
 ## Owner-interaction implementation baseline
 
-`madre-module-owner-interaction` is an ordinary shipped code-first Module whose interaction actor is a concrete stateful `OwnerInteractionAgent`. The stateful abstraction and owner-interaction specialization grant no privilege and do not replace MADRE Operations.
+`madre-module-owner-interaction` is an ordinary shipped code-first Module whose interaction actor remains one concrete stateful `OwnerInteractionAgent`. The stateful abstraction and owner-interaction specialization grant no privilege and do not replace MADRE Operations.
 
 Its existing bounded implementation still contains:
 
@@ -148,7 +152,11 @@ Conversation state is Module/Agent-owned, persisted separately from Kernel durab
 
 When historical/contextual values participate in a reasoning payload, the Module first constructs the actual contextual Material at the combined maximum Sensitivity and derives the reasoning request from a bounded call over that Material. A raw Sensitivity override is not part of the SDK.
 
-For an ordinary owner turn, the Agent currently chooses the fast foreground path and may continue useful analysis durably. Host presentation polls `followUps(...)` as a physical delivery mechanism; the Agent invokes the private collection Operation and returns only approved `OwnerMessage` values. Normal owner output does not expose private Operation/Material names, collection payloads or sentinel protocol.
+For an ordinary owner turn, explicit owner-knowledge intent remains handled first. The Agent may then use its ordinary caller-bound Module directory to look for an unambiguous later-installed textual Operation it can honestly instantiate. The shipped R4 matcher is intentionally narrow: exactly one target-owned UTF-8 text input, exactly one target-owned UTF-8 text output, at most one EffectProfile, input Privacy compatible with the carried owner Sensitivity, and conservative description/action-term matching with ambiguity declined rather than guessed. If no such target is selected, the existing fast foreground/durable reasoning path remains unchanged.
+
+When a target is selected, the Agent constructs caller-owned input using the exact target-owned nominal definition, supplies its actual `Integrity` for a consequential target call, and invokes the exact target Operation through its ordinary `ModuleInvoker`. The runtime returns the exact target-created foreign Material only when the target contract is canonical and the result can reach `Privacy.MODULE`. The Agent then deliberately creates a new CORE-owned `IMMEDIATE_ANSWER` Material for owner presentation, conservatively combining the owner prompt and foreign result Sensitivity. Module invocation failure or unsafe result delivery is converted into a generic owner-facing failure message rather than protocol identifiers.
+
+Host presentation polls `followUps(...)` as a physical delivery mechanism; the Agent invokes the private collection Operation and returns only approved `OwnerMessage` values. Normal owner output does not expose private Operation/Material names, collection payloads or sentinel protocol.
 
 ### Current R3 CORE knowledge experiment
 
@@ -158,9 +166,9 @@ When selected owner/environment knowledge participates in reasoning, CORE create
 
 The experiment deliberately does not provide credential-vault semantics. Credential-like password/passphrase/PIN/private-key/recovery/API-key/token/account-identifier store or reveal phrases are intercepted as non-storing removal requests, which also clears matching legacy experimental entries. R3's S5 mediation proof instead uses an ordinary private note. MADRE still has no credential vault or secret-manager subsystem.
 
-The shipped CORE Agent now declares `Integrity.I2`, not I5. I2 is the strongest claim currently tied to concrete assurance evidence for this exact implementation: direct repository tests exercise its bounded consequential `OperationCall` construction and the packaged Windows/Linux owner acceptances exercise those effects through real lifecycle/restart/security paths. There is no independent provenance, signature, formal-verification or comparable assurance basis for I3-I5. The value is not inferred from CORE assignment, locality, shipped status or built-in identity. Current CORE consequential profiles have `D = min(Risk, Autonomy)` no greater than 2, so I2 continues to satisfy their existing Security-Algebra causal-integrity requirement without changing the lattice or causal equation.
+The shipped CORE Agent declares `Integrity.I2`, not I5. I2 remains tied to concrete assurance evidence for this exact implementation and is not inferred from CORE assignment, locality, shipped status or built-in identity. R4 does not make target Modules depend on that value: the independent workspace's write profile is `Risk.WRITE` plus `Autonomy.LIVE_INTERACTION`, whose existing Algebra demand is I1, and the target implementation contains no CORE identity or trust-level special case. The actual CORE Agent I2 is simply the causal participant supplied by the caller.
 
-The cross-platform packaged acceptance proves foreground response, persisted multi-turn context, durable continuation without an owner updates command, graceful stop/restart while work is relevant, Module-state and Kernel-work recovery, natural Agent-approved follow-up after restart, R3 classified-knowledge reasoning selection, opaque S5 mediation, credential non-storage, and absence of the private interaction protocol from normal product output.
+The cross-platform packaged acceptance proves foreground response, persisted multi-turn context, durable continuation without an owner updates command, graceful stop/restart while work is relevant, Module-state and Kernel-work recovery, natural Agent-approved follow-up after restart, R3 classified-knowledge reasoning selection, opaque S5 mediation, credential non-storage, R4 source-independent Module composition and absence of private interaction/target protocol from normal product output.
 
 ## Installed owner deployment and artifact lifecycle
 
@@ -181,6 +189,8 @@ Managed local Module/reasoning JAR lifecycle remains unchanged:
 There is no public remote artifact repository/catalog, marketplace, update feed, dependency bundle protocol, signature/PKI trust model, credential vault, sandbox, external-process Module transport, universal Agent loop, generic planner/tool framework, workflow scheduler, universal memory abstraction, RAG abstraction, semantic-database abstraction or arbitrary metadata/property framework. The packaged version-matched Maven repository is a local development distribution surface, not a registry, catalog or update service.
 
 `OwnerInteractionAgent` is intentionally narrow. It is not a universal presentation taxonomy, remote API taxonomy or claim that every Module should expose owner interaction. Likewise, the owner-interaction Operation marker remains a lower-level selected-CORE execution boundary, and Module exposure remains only the explicit installed Module interface for ordinary composition rather than a replacement access-control lattice.
+
+R4 structural discovery is not a universal Tool/Capability/Action registry and does not guarantee that a caller can understand every exposed Operation. It publishes portable bounded contracts only. The shipped CORE currently understands one conservative textual subset and declines unsupported or ambiguous contracts. More capable semantic coordination requires future evidence rather than expanding Kernel or inventing a generic planner.
 
 `StatefulAgent<S>` remains typed OOP state ownership for a concrete Agent, while state shape, persistence and use remain application-owned. Further abstractions require real consumers rather than extrapolation from owner interaction alone.
 
