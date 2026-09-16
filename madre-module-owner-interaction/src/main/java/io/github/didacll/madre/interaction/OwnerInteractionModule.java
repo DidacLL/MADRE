@@ -285,7 +285,8 @@ public final class OwnerInteractionModule implements Module {
                             STORE_KNOWLEDGE_PROFILE, command, causalParticipants());
                 }
                 case REMOVE -> {
-                    commandSensitivity = commandSensitivity.combine(Sensitivity.S2);
+                    commandSensitivity = commandSensitivity.combine(Sensitivity.S2)
+                            .combine(intent.kind().minimumSensitivity());
                     Material<String> command = material(KNOWLEDGE_COMMAND, ownerText,
                             commandSensitivity);
                     call = OperationCall.withEffect(CHANGE_KNOWLEDGE_OPERATION,
