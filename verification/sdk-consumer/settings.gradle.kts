@@ -1,1 +1,1 @@
-rootProject.name = "madre-sdk-isolated-consumer"
+rootProject.name = "madre-external-sdk-consumer"

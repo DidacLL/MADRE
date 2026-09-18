@@ -17,7 +17,7 @@ public final class OperationBinding<I, O> {
         this.implementation = Objects.requireNonNull(implementation, "implementation");
     }
 
-    /** Binds an ordinary bounded Operation with no special host receiver boundary. */
+    /** Binds an ordinary bounded Operation with no special presentation receiver boundary. */
     public static <I, O> OperationBinding<I, O> operation(
             OperationDefinition definition, Operation<I, O> implementation) {
         return new OperationBinding<>(definition, implementation);
