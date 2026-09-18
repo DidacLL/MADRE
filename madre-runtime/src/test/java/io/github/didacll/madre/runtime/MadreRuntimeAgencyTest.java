@@ -8,6 +8,21 @@ import io.github.didacll.madre.algebra.Integrity;
 import io.github.didacll.madre.algebra.Privacy;
 import io.github.didacll.madre.algebra.Sensitivity;
 import io.github.didacll.madre.kernel.InferenceKernel;
+import io.github.didacll.madre.kernel.EngineAvailability;
+import io.github.didacll.madre.kernel.EngineCharacteristics;
+import io.github.didacll.madre.kernel.EngineExecution;
+import io.github.didacll.madre.kernel.EngineId;
+import io.github.didacll.madre.kernel.EngineLocation;
+import io.github.didacll.madre.kernel.InferenceEngine;
+import io.github.didacll.madre.kernel.InferenceType;
+import io.github.didacll.madre.kernel.InferenceTypes;
+import io.github.didacll.madre.kernel.TextInferenceInput;
+import io.github.didacll.madre.kernel.TextInferenceOutput;
+import io.github.didacll.madre.generation.TextGenerationCommand;
+import io.github.didacll.madre.sdk.execution.InferenceSelection;
+import io.github.didacll.madre.sdk.execution.ReasoningPreferences;
+import io.github.didacll.madre.sdk.execution.ReasoningRequest;
+import io.github.didacll.madre.sdk.execution.ReasoningRetryPolicy;
 import io.github.didacll.madre.sdk.identity.AgentId;
 import io.github.didacll.madre.sdk.identity.MaterialId;
 import io.github.didacll.madre.sdk.identity.MaterialTypeId;
@@ -23,11 +38,14 @@ import io.github.didacll.madre.sdk.module.OperationDefinition;
 import io.github.didacll.madre.sdk.operation.Operation;
 import io.github.didacll.madre.sdk.operation.OperationCall;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.Collection;
 import java.util.Map;
 import java.util.Set;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -72,6 +90,31 @@ final class MadreRuntimeAgencyTest {
         ambiguous.install(twoAgents.instance());
         assertThrows(AgentResolutionException.class,
                 () -> ambiguous.resolveAgent(twoAgents.operation.id(), java.util.Optional.empty()));
+    }
+
+    @Test
+    void ownerExactEngineSelectionCrossesAsTechnicalRequirementAndFailsHonestly() {
+        AtomicInteger executions = new AtomicInteger();
+        try (InferenceKernel kernel = new InferenceKernel(temporary.resolve("selection.db"), 1,
+                Map.of())) {
+            kernel.register(new TestTextEngine("installed", executions));
+            RuntimeInferenceService inference = new RuntimeInferenceService(kernel,
+                    temporary.resolve("selection-semantic"));
+            TestModule source = new TestModule("source", true, new AtomicReference<>());
+            OperationCall<String, String> call = OperationCall.withoutEffect(source.operation,
+                    source.material("request", "hard question"));
+            ReasoningPreferences preferences = new ReasoningPreferences(Optional.empty(),
+                    Optional.empty(), Optional.of(InferenceSelection.engine("missing")));
+            ReasoningRequest<?, ?> request = ReasoningRequest.immediate(call,
+                    TextGenerationCommand.demandingPrompt("hard question", 64, 2048), 100,
+                    Duration.ofSeconds(1), ReasoningRetryPolicy.none(), Optional.empty(),
+                    preferences);
+
+            assertThrows(java.util.concurrent.CompletionException.class,
+                    () -> inference.forAgent(source.agent.id()).execute(request)
+                            .toCompletableFuture().join());
+            assertEquals(0, executions.get());
+        }
     }
 
     private static final class TestModule implements Module {
@@ -130,6 +173,34 @@ final class MadreRuntimeAgencyTest {
                 OperationBinding<I, O> binding, OperationCall<I, O> call) {
             observer.set(this);
             return Agent.super.execute(context, binding, call);
+        }
+    }
+
+    private static final class TestTextEngine
+            implements InferenceEngine<TextInferenceInput, TextInferenceOutput> {
+        private final EngineId id;
+        private final AtomicInteger executions;
+
+        private TestTextEngine(String id, AtomicInteger executions) {
+            this.id = new EngineId(id);
+            this.executions = executions;
+        }
+        @Override public EngineId id() { return id; }
+        @Override public InferenceType<TextInferenceInput, TextInferenceOutput> type() {
+            return InferenceTypes.TEXT_GENERATION;
+        }
+        @Override public EngineCharacteristics characteristics() {
+            return new EngineCharacteristics(EngineLocation.LOCAL, "test", id.value(),
+                    Duration.ofMillis(10), 0,
+                    Optional.of(new EngineCharacteristics.TextCapability(true, 4096)),
+                    Optional.empty(), Optional.empty());
+        }
+        @Override public EngineAvailability availability() { return EngineAvailability.AVAILABLE; }
+        @Override public TextInferenceOutput execute(TextInferenceInput input,
+                EngineExecution execution) {
+            executions.incrementAndGet();
+            return new TextInferenceOutput("unexpected", TextInferenceOutput.FinishReason.COMPLETE,
+                    TextInferenceOutput.TokenUsage.unavailable());
         }
     }
 }

@@ -4,12 +4,13 @@ import java.time.Duration;
 import java.util.Objects;
 import java.util.Optional;
 
-/** Optional constraints for selecting one compatible reasoning mechanism. */
+/** Optional technical constraints translated by runtime for Kernel matching. */
 public record ReasoningPreferences(Optional<ReasoningLocation> location,
-        Optional<Duration> maximumLatency) {
+        Optional<Duration> maximumLatency, Optional<InferenceSelection> exactSelection) {
     public ReasoningPreferences {
         location = Objects.requireNonNull(location, "location");
         maximumLatency = Objects.requireNonNull(maximumLatency, "maximumLatency");
+        exactSelection = Objects.requireNonNull(exactSelection, "exactSelection");
         maximumLatency.ifPresent(value -> {
             if (value.isNegative() || value.isZero()) {
                 throw new IllegalArgumentException("maximumLatency must be positive");
@@ -18,6 +19,6 @@ public record ReasoningPreferences(Optional<ReasoningLocation> location,
     }
 
     public static ReasoningPreferences unconstrained() {
-        return new ReasoningPreferences(Optional.empty(), Optional.empty());
+        return new ReasoningPreferences(Optional.empty(), Optional.empty(), Optional.empty());
     }
 }

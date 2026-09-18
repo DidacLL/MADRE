@@ -45,7 +45,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /** Semantic inference persistence and translation owned by MADRE runtime. */
 public final class RuntimeInferenceService {
-    private static final int FORMAT_VERSION = 1;
+    private static final int FORMAT_VERSION = 2;
     private final InferenceKernel kernel;
     private final Path requests;
     private final Path results;
@@ -91,6 +91,7 @@ public final class RuntimeInferenceService {
             try {
                 persist(prepared);
                 kernel.submit(prepared.work(), prepared.input(), receiver(prepared.work().id()));
+                monitorImmediate(prepared.work(), future);
             } catch (RuntimeException exception) {
                 waiting.remove(prepared.work().id());
                 future.completeExceptionally(exception);
@@ -131,6 +132,42 @@ public final class RuntimeInferenceService {
         }
     }
 
+    private void monitorImmediate(InferenceWork<TextInferenceInput, TextInferenceOutput> work,
+            CompletableFuture<TextGenerationResult> future) {
+        CompletableFuture.runAsync(() -> {
+            try {
+                WorkSnapshot terminal = kernel.await(work.id(), maximumWait(work.requirements()));
+                if (!future.isDone() && terminal.status().terminal()
+                        && terminal.status() != io.github.didacll.madre.kernel.WorkStatus.DELIVERED) {
+                    String detail = terminal.failure().map(failure ->
+                            failure.category() + ": " + failure.message())
+                            .orElse(terminal.status().name());
+                    waiting.remove(work.id());
+                    future.completeExceptionally(new IllegalStateException(
+                            "Inference work " + work.id() + " failed: " + detail));
+                }
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                waiting.remove(work.id());
+                future.completeExceptionally(exception);
+            } catch (java.util.concurrent.TimeoutException exception) {
+                waiting.remove(work.id());
+                future.completeExceptionally(exception);
+            }
+        });
+    }
+
+    private static java.time.Duration maximumWait(InferenceRequirements requirements) {
+        int attempts = requirements.retryPolicy().maximumAttempts();
+        java.time.Duration execution = requirements.timeout().multipliedBy(attempts);
+        java.time.Duration retries = requirements.retryPolicy().delay()
+                .multipliedBy(Math.max(0, attempts - 1));
+        java.time.Duration eligibility = java.time.Duration.between(Instant.now(),
+                requirements.eligibleAt());
+        if (eligibility.isNegative()) eligibility = java.time.Duration.ZERO;
+        return eligibility.plus(execution).plus(retries).plusSeconds(1);
+    }
+
     private <R, C extends ReasoningComputation<R>> PreparedText prepare(AgentId actor,
             ReasoningRequest<R, C> request) {
         Objects.requireNonNull(request, "request");
@@ -147,12 +184,18 @@ public final class RuntimeInferenceService {
         Urgency urgency = request.priority() >= 100 ? Urgency.FAST_LANE
                 : request.priority() == 0 ? Urgency.BACKGROUND : Urgency.NORMAL;
         InferenceRequirements requirements = new InferenceRequirements(placement,
-                new TechnicalCapabilityRequirement.Text(false, 0), urgency,
+                new TechnicalCapabilityRequirement.Text(command.demandingReasoning(),
+                        command.minimumContextTokens()), urgency,
                 request.eligibleAt(), Optional.empty(), request.timeout(),
                 new RetryPolicy(request.retryPolicy().maximumAttempts(),
                         request.retryPolicy().delay()),
-                request.preferences().maximumLatency(), Optional.empty(), Optional.empty(),
-                Optional.empty(), List.of());
+                request.preferences().maximumLatency(),
+                request.preferences().exactSelection().flatMap(selection -> selection.engineId()
+                        .map(io.github.didacll.madre.kernel.EngineId::new)),
+                request.preferences().exactSelection().flatMap(
+                        io.github.didacll.madre.sdk.execution.InferenceSelection::provider),
+                request.preferences().exactSelection().flatMap(
+                        io.github.didacll.madre.sdk.execution.InferenceSelection::model), List.of());
         InferenceWork<TextInferenceInput, TextInferenceOutput> work =
                 InferenceWork.create(InferenceTypes.TEXT_GENERATION, requirements);
         return new PreparedText(actor, work, input, command.stopSequences());
@@ -248,25 +291,74 @@ public final class RuntimeInferenceService {
     private static void writeRequirements(DataOutputStream output, InferenceRequirements value)
             throws IOException {
         output.writeUTF(value.placement().name());
+        if (!(value.capability() instanceof TechnicalCapabilityRequirement.Text text)) {
+            throw new IOException("Runtime text persistence received a non-text capability");
+        }
+        output.writeBoolean(text.demandingReasoning());
+        output.writeInt(text.minimumContextTokens());
         output.writeUTF(value.urgency().name());
         output.writeLong(value.eligibleAt().toEpochMilli());
+        writeInstant(output, value.deadline());
         output.writeLong(value.timeout().toMillis());
         output.writeInt(value.retryPolicy().maximumAttempts());
         output.writeLong(value.retryPolicy().delay().toMillis());
         output.writeLong(value.maximumExpectedLatency().map(java.time.Duration::toMillis).orElse(-1L));
+        writeOptionalText(output, value.exactEngine().map(Object::toString));
+        writeOptionalText(output, value.exactProvider());
+        writeOptionalText(output, value.exactModel());
+        output.writeInt(value.resources().size());
+        for (io.github.didacll.madre.kernel.ResourceClaim resource : value.resources()) {
+            output.writeUTF(resource.resource().value());
+            output.writeLong(resource.units());
+        }
     }
 
     private static InferenceRequirements readRequirements(DataInputStream input) throws IOException {
         Placement placement = Placement.valueOf(input.readUTF());
+        TechnicalCapabilityRequirement.Text capability =
+                new TechnicalCapabilityRequirement.Text(input.readBoolean(), input.readInt());
         Urgency urgency = Urgency.valueOf(input.readUTF());
         Instant eligibleAt = Instant.ofEpochMilli(input.readLong());
+        Optional<Instant> deadline = readInstant(input);
         java.time.Duration timeout = java.time.Duration.ofMillis(input.readLong());
         RetryPolicy retry = new RetryPolicy(input.readInt(), java.time.Duration.ofMillis(input.readLong()));
         long latency = input.readLong();
-        return new InferenceRequirements(placement, new TechnicalCapabilityRequirement.Text(false, 0),
-                urgency, eligibleAt, Optional.empty(), timeout, retry,
+        Optional<io.github.didacll.madre.kernel.EngineId> engine = readOptionalText(input)
+                .map(io.github.didacll.madre.kernel.EngineId::new);
+        Optional<String> provider = readOptionalText(input);
+        Optional<String> model = readOptionalText(input);
+        int resourceCount = input.readInt();
+        List<io.github.didacll.madre.kernel.ResourceClaim> resources =
+                new ArrayList<>(resourceCount);
+        for (int index = 0; index < resourceCount; index++) {
+            resources.add(new io.github.didacll.madre.kernel.ResourceClaim(
+                    new io.github.didacll.madre.kernel.ResourceId(input.readUTF()), input.readLong()));
+        }
+        return new InferenceRequirements(placement, capability,
+                urgency, eligibleAt, deadline, timeout, retry,
                 latency < 0 ? Optional.empty() : Optional.of(java.time.Duration.ofMillis(latency)),
-                Optional.empty(), Optional.empty(), Optional.empty(), List.of());
+                engine, provider, model, resources);
+    }
+
+    private static void writeInstant(DataOutputStream output, Optional<Instant> value)
+            throws IOException {
+        output.writeBoolean(value.isPresent());
+        if (value.isPresent()) output.writeLong(value.orElseThrow().toEpochMilli());
+    }
+
+    private static Optional<Instant> readInstant(DataInputStream input) throws IOException {
+        return input.readBoolean() ? Optional.of(Instant.ofEpochMilli(input.readLong()))
+                : Optional.empty();
+    }
+
+    private static void writeOptionalText(DataOutputStream output, Optional<String> value)
+            throws IOException {
+        output.writeBoolean(value.isPresent());
+        if (value.isPresent()) output.writeUTF(value.orElseThrow());
+    }
+
+    private static Optional<String> readOptionalText(DataInputStream input) throws IOException {
+        return input.readBoolean() ? Optional.of(input.readUTF()) : Optional.empty();
     }
 
     private void writeAtomically(Path destination, IoWriter writer) {

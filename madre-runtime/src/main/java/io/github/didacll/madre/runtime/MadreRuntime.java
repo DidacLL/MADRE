@@ -1,6 +1,7 @@
 package io.github.didacll.madre.runtime;
 
 import io.github.didacll.madre.sdk.identity.AgentId;
+import io.github.didacll.madre.sdk.identity.ModuleId;
 import io.github.didacll.madre.sdk.directory.ModuleDirectory;
 import io.github.didacll.madre.sdk.directory.ReachabilityQuery;
 import io.github.didacll.madre.sdk.directory.ReachableModule;
@@ -52,7 +53,7 @@ public final class MadreRuntime {
         ModuleInvoker invoker = new ModuleInvoker() {
             @Override public <I, O> CompletionStage<Material<O>> invoke(
                     OperationCall<I, O> call) {
-                return MadreRuntime.this.invoke(call);
+                return MadreRuntime.this.invokeFrom(source.moduleId(), call);
             }
         };
         Path moduleState = stateDirectory.resolve("modules").resolve(source.moduleId().value());
@@ -69,6 +70,19 @@ public final class MadreRuntime {
         Agent actor = modules.resolveAgent(request.operation().id(),
                 Objects.requireNonNull(explicitAgent, "explicitAgent"));
         return invokeAs(actor, modules.typedBinding(request), request);
+    }
+
+    private <I, O> CompletionStage<Material<O>> invokeFrom(ModuleId caller,
+            OperationCall<I, O> call) {
+        OperationCall<I, O> request = Objects.requireNonNull(call, "call");
+        ModuleId target = request.operation().id().moduleId();
+        if (!target.equals(Objects.requireNonNull(caller, "caller"))
+                && !modules.requireModule(target).definition().exposedOperations()
+                        .contains(request.operation().id())) {
+            throw new IllegalArgumentException(
+                    "Operation is not exposed to another Module: " + request.operation().id());
+        }
+        return invoke(request);
     }
 
     private <I, O> CompletionStage<Material<O>> invokeAs(Agent actor,
