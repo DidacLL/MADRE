@@ -1,19 +1,19 @@
 package io.github.didacll.madre.sdk.module;
 
 import io.github.didacll.madre.sdk.identity.MaterialTypeId;
+import io.github.didacll.madre.sdk.identity.AgentId;
 import io.github.didacll.madre.sdk.identity.OperationId;
 import io.github.didacll.madre.sdk.material.MaterialType;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 
 /** Validated runtime assembly of portable Module contracts and Java execution bindings. */
 public final class ModuleInstance {
     private final ModuleDefinition definition;
     private final Map<MaterialTypeId, MaterialType<?>> materialTypes;
     private final Map<OperationId, OperationBinding<?, ?>> operations;
-    private final Optional<OwnerInteractionAgent> ownerInteractionAgent;
+    private final Map<AgentId, Agent> agents;
 
     /**
      * Adapter-oriented assembly path for an already available portable definition and Java-facing
@@ -23,18 +23,17 @@ public final class ModuleInstance {
     public ModuleInstance(ModuleDefinition definition,
             Map<MaterialTypeId, MaterialType<?>> materialTypes,
             Map<OperationId, OperationBinding<?, ?>> operations) {
-        this(definition, materialTypes, operations, Optional.empty());
+        this(definition, materialTypes, operations, Map.of());
     }
 
     private ModuleInstance(ModuleDefinition definition,
             Map<MaterialTypeId, MaterialType<?>> materialTypes,
             Map<OperationId, OperationBinding<?, ?>> operations,
-            Optional<OwnerInteractionAgent> ownerInteractionAgent) {
+            Map<AgentId, Agent> agents) {
         this.definition = Objects.requireNonNull(definition, "definition");
         this.materialTypes = Map.copyOf(materialTypes);
         this.operations = Map.copyOf(operations);
-        this.ownerInteractionAgent = Objects.requireNonNull(ownerInteractionAgent,
-                "ownerInteractionAgent");
+        this.agents = Map.copyOf(agents);
         validateBindings();
     }
 
@@ -56,24 +55,20 @@ public final class ModuleInstance {
                 throw new IllegalArgumentException("duplicate Operation identity: " + id);
             }
         }
-        OwnerInteractionAgent interaction = null;
+        Map<AgentId, Agent> agents = new LinkedHashMap<>();
         for (Agent agent : executable.agents()) {
-            if (agent instanceof OwnerInteractionAgent candidate) {
-                if (interaction != null) {
-                    throw new IllegalArgumentException(
-                            "Module declares more than one owner-interaction Agent: " + executable.id());
-                }
-                interaction = candidate;
+            Agent value = Objects.requireNonNull(agent, "agent");
+            if (agents.putIfAbsent(value.id(), value) != null) {
+                throw new IllegalArgumentException("duplicate Agent identity: " + value.id());
             }
         }
-        return new ModuleInstance(executable.definition(), types, bindings,
-                Optional.ofNullable(interaction));
+        return new ModuleInstance(executable.definition(), types, bindings, agents);
     }
 
     public ModuleDefinition definition() { return definition; }
     public Map<MaterialTypeId, MaterialType<?>> materialTypes() { return materialTypes; }
     public Map<OperationId, OperationBinding<?, ?>> operations() { return operations; }
-    public Optional<OwnerInteractionAgent> ownerInteractionAgent() { return ownerInteractionAgent; }
+    public Map<AgentId, Agent> agents() { return agents; }
 
     private void validateBindings() {
         if (!materialTypes.keySet().equals(definition.materialTypes().keySet())) {
@@ -110,14 +105,14 @@ public final class ModuleInstance {
                         "Operation binding is not owned by the Module: " + id);
             }
         });
-        ownerInteractionAgent.ifPresent(agent -> {
-            if (!agent.id().moduleId().equals(definition.id())) {
+        agents.forEach((id, agent) -> {
+            if (!id.equals(agent.id()) || !agent.id().moduleId().equals(definition.id())) {
                 throw new IllegalArgumentException(
-                        "owner-interaction Agent is not owned by the Module: " + agent.id());
+                        "Agent binding is not owned by the Module: " + agent.id());
             }
             if (!definition.agents().containsKey(agent.id())) {
                 throw new IllegalArgumentException(
-                        "owner-interaction Agent is absent from the Module declaration: " + agent.id());
+                        "Agent binding is absent from the Module declaration: " + agent.id());
             }
         });
     }

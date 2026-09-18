@@ -8,7 +8,6 @@ tasks.withType<JavaCompile>().configureEach {
 
 dependencies {
     api(project(":madre-sdk"))
-    implementation(project(":madre-text-inference"))
     testImplementation(platform("org.junit:junit-bom:5.11.4"))
     testImplementation("org.junit.jupiter:junit-jupiter")
 }

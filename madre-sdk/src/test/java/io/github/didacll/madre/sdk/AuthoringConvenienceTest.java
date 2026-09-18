@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import io.github.didacll.madre.algebra.Privacy;
 import io.github.didacll.madre.algebra.Sensitivity;
 import io.github.didacll.madre.sdk.identity.MaterialId;
+import io.github.didacll.madre.sdk.identity.AgentId;
 import io.github.didacll.madre.sdk.identity.MaterialTypeId;
 import io.github.didacll.madre.sdk.identity.ModuleId;
 import io.github.didacll.madre.sdk.identity.OperationId;
@@ -16,6 +17,7 @@ import io.github.didacll.madre.sdk.material.MaterialCodec;
 import io.github.didacll.madre.sdk.material.MaterialCodecs;
 import io.github.didacll.madre.sdk.material.MaterialType;
 import io.github.didacll.madre.sdk.module.ModuleDefinition;
+import io.github.didacll.madre.sdk.module.Agent;
 import io.github.didacll.madre.sdk.module.OperationBinding;
 import io.github.didacll.madre.sdk.module.OperationDefinition;
 import io.github.didacll.madre.sdk.operation.Operation;
@@ -58,19 +60,28 @@ final class AuthoringConvenienceTest {
                         "result", Sensitivity.S2)));
 
         CompletionException failure = assertThrows(CompletionException.class,
-                () -> implementation.invoke(call).toCompletableFuture().join());
+                () -> implementation.invoke(agent("owner", Set.of(definition.id())), call)
+                        .toCompletableFuture().join());
         assertInstanceOf(IllegalArgumentException.class, failure.getCause());
     }
 
     @Test
-    void publicDisclosureBindingStillRequiresExplicitSemanticTransformation() {
+    void operationBindingRequiresAnAgentThatOwnsLocalExecution() {
         OperationDefinition definition = operationDefinition();
         Operation<String, String> implementation = Operation.of(call ->
                 CompletableFuture.completedFuture(new Material<>(
                         new MaterialId(OWNER, "output"), TEXT, "result", Sensitivity.S2)));
+        OperationBinding<String, String> binding = OperationBinding.operation(
+                definition, implementation);
+        Material<String> input = new Material<>(new MaterialId(OWNER, "input"), TEXT,
+                "hello", Sensitivity.S2);
+        OperationCall<String, String> call = OperationCall.withoutEffect(definition, input);
+        Agent unrelated = agent("unrelated", Set.of());
+        Agent owner = agent("owner", Set.of(definition.id()));
 
-        assertThrows(NullPointerException.class,
-                () -> OperationBinding.publicDisclosure(definition, implementation, null));
+        assertThrows(NullPointerException.class, () -> binding.invoke(null, call));
+        assertThrows(IllegalArgumentException.class, () -> binding.invoke(unrelated, call));
+        assertEquals("result", binding.invoke(owner, call).toCompletableFuture().join().payload());
     }
 
     @Test
@@ -93,5 +104,13 @@ final class AuthoringConvenienceTest {
     private static OperationDefinition operationDefinition() {
         return new OperationDefinition(new OperationId(OWNER, "run"), "Run authoring test",
                 Map.of(TEXT.id(), Privacy.LOCAL), Map.of(TEXT.id(), Sensitivity.S3), Map.of());
+    }
+
+    private static Agent agent(String name, Set<OperationId> operations) {
+        return new Agent() {
+            @Override public AgentId id() { return new AgentId(OWNER, name); }
+            @Override public String purpose() { return "Test acting Agent"; }
+            @Override public Set<OperationId> operations() { return operations; }
+        };
     }
 }

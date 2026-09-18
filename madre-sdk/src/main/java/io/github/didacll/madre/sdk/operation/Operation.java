@@ -1,6 +1,7 @@
 package io.github.didacll.madre.sdk.operation;
 
 import io.github.didacll.madre.sdk.material.Material;
+import io.github.didacll.madre.sdk.module.Agent;
 import java.util.Objects;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Function;
@@ -16,7 +17,7 @@ import java.util.function.Function;
 public abstract class Operation<I, O> {
     /**
      * Creates an Operation from one functional body while preserving the normal
-     * {@link #invoke(OperationCall)} validation path.
+     * actor-bound invocation and output-validation path.
      */
     public static <I, O> Operation<I, O> of(
             Function<OperationCall<I, O>, CompletionStage<Material<O>>> body) {
@@ -37,7 +38,8 @@ public abstract class Operation<I, O> {
     protected abstract CompletionStage<Material<O>> execute(OperationCall<I, O> call);
 
     /** Invokes the behavior and keeps its Material result inside the declared contract. */
-    public final CompletionStage<Material<O>> invoke(OperationCall<I, O> call) {
+    public final CompletionStage<Material<O>> invoke(Agent actor, OperationCall<I, O> call) {
+        Objects.requireNonNull(actor, "actor");
         OperationCall<I, O> boundedCall = Objects.requireNonNull(call, "call");
         return Objects.requireNonNull(execute(boundedCall), "Operation result stage")
                 .thenApply(boundedCall::acceptOutput);
