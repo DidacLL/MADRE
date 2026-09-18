@@ -1,255 +1,230 @@
 # MADRE
 
-MADRE is personal, owner-sovereign, local-first software for modular agentic applications. It is simultaneously an installed owner product and a public software/inference experimentation platform. Neither identity is secondary.
+This file is the canonical product definition for MADRE. Current Owner instructions
+override it when they are more specific. Code, tests, documentation, history and prior
+agent reports are evidence only; they do not define the product by repetition.
 
-The installed product lets an Owner run, configure and evolve one coherent local system without needing to understand Java classpaths, Gradle, ServiceLoader, provider property namespaces or MADRE's internal runtime structure. The public platform lets independent developers build, test and package Modules and reasoning mechanisms against the same contracts used by shipped software.
+## Product
 
-MADRE is not a hosted AI platform, an assistant architecture, a universal Agent framework, a plugin marketplace model, a SaaS control plane, a service-container abstraction, or a taxonomy that promotes every reusable technical primitive into architecture. The Owner may deliberately install, replace, configure or remove Modules and reasoning mechanisms independently. MADRE does not promise to sandbox arbitrary software the Owner chooses to install; operating-system isolation and installation trust remain separate concerns.
+MADRE is an owner-sovereign, local-first environment for creating, installing,
+running, composing, inspecting, modifying and experimenting with modular agentic
+software.
 
-## Why MADRE exists
+It is one system with two inseparable uses:
 
-MADRE exists because useful owner-facing agentic software cannot be assumed to emerge from one assistant architecture, one model, one inference runtime or one fixed orchestration pattern chosen in advance.
+- an installed environment the Owner can use directly; and
+- the development platform for building MADRE-native software.
 
-Useful behavior may require experimentation with Module boundaries, Agents, Skills, Workflows, semantic state, retrieval/context construction, memory/knowledge structures, coordination, immediate/durable reasoning, alternative models and runtimes, richer generation controls, embeddings, multimodal work and mechanism-specific optimization. These are experimentation areas, not mandatory architectural components.
+The Owner may move continuously from simple use to inspection, configuration,
+development, debugging, modification, replacement and unrestricted experimentation.
+These are depths of ownership, not separate user roles or permission classes.
 
-MADRE therefore makes experimentation cheap while preserving explicit responsibility. The framework should make it easy to write ordinary local software around heterogeneous inference engines without collapsing application meaning into Kernel, provider configuration into the host, or information/security boundaries into convenience APIs.
+MADRE exists because existing assistant architectures, agent loops, provider routers,
+workflow engines, security products and AI platforms do not provide this environment.
+Common industry structure is therefore not a default design argument. A concept enters
+MADRE only because MADRE itself needs it.
 
-A technical capability earns a stable higher-level abstraction only when concrete semantic software demonstrates ownership and reusable value proportional to the abstraction's scope. A new inference primitive does not automatically justify a new Module, Material vocabulary, Agent model or Kernel subsystem.
+The engineering target is:
 
-`model-agnostic` means Kernel does not depend on concrete model/provider/runtime implementations. It does not mean inference contracts must be feature-poor. Portable inference semantics may be rich typed computation contracts; model/runtime-specific tuning remains provider-owned; shared execution mechanics remain Kernel-owned.
+> **powerful SDK, simple implementation, fast experimentation, minimal ceremony**
 
-## The Owner and learning curve
+MADRE is a single-developer research project becoming durable software. It must avoid
+enterprise decomposition, compatibility machinery without users, framework-within-
+framework designs, duplicated infrastructure, speculative abstraction hierarchies,
+large ritual test matrices and generated architectural bureaucracy.
 
-The ordinary final user wants an installed product that is useful without first learning MADRE's architecture. The Owner should be able to start the product, converse or otherwise use installed application capabilities, understand meaningful product state and change ordinary configuration with low ceremony.
+## Owner sovereignty
 
-Control is progressively disclosed:
+The Owner owns the entire installation and is never the adversary.
 
-- ordinary use should require little or no knowledge of Module/Operation/Material internals;
-- a power user should be able to inspect installed Modules and reasoning providers, the Module assigned CORE, relevant exposed capabilities, meaningful configuration and public-disclosure boundaries;
-- a developer should be able to work directly with Module, Agent, Operation, Material, reasoning and Security-Algebra contracts.
+The Owner may inspect, edit, replace, remove or bypass any Module, Agent state,
+Material store, CORE assignment, inference-engine configuration, runtime state,
+Kernel database, installed artifact, SDK-built software, source file or raw persistence.
 
-The Owner should be able to know which software is installed, which Module is assigned CORE, which Module Operations are exposed for ordinary composition, which reasoning mechanisms are installed/configured/enabled, and when information is crossing a meaningful external/public boundary. The Owner should be able to edit product/module/provider configuration and role assignment without being forced to edit internal runtime data structures or Module-private semantic state.
+MADRE should make those actions understandable and recoverable through descriptions,
+validation, warnings, diagnostics, backups and restore facilities. Those facilities
+assist the Owner; they do not gate the Owner. Shipped, manual and internal artifacts do
+not acquire authority over the Owner.
 
-Low learning curve does not mean flattening responsibilities. MADRE hides ceremony where possible while keeping semantic ownership, value ownership, receiver boundaries and trust facts explicit.
+The important adversarial concern is third-party providers obtaining or exploiting
+Owner information without the Owner understanding and managing the information
+journey. MADRE makes those journeys explicit without turning the Owner into a subject
+of an access-control system.
 
-## Product layering and ownership
+## SDK
 
-The durable responsibility model is:
+The MADRE SDK is a primary product, not a thin adapter around an internal platform.
+It is the ordinary construction environment for shipped and independent MADRE
+software.
 
-```text
-Owner
-  |
-  +--> MADRE host product-management surfaces
-  |      installation / uninstallation
-  |      persistent product configuration
-  |      Module and reasoning-artifact lifecycle
-  |      CORE selection
-  |      startup / shutdown
-  |      diagnostics / health
-  |
-  `--> owner interaction surfaces
-         semantically led by the ordinary Module assigned CORE
-         |
-         +--> other installed Modules through ordinary Module composition
-         |
-         `--> ReasoningService when Module logic needs reasoning
-                |
-                v
-              narrow Kernel reasoning/runtime machinery
-                |
-                v
-              independently installed ReasoningCapabilities
-```
+The SDK provides useful composable building blocks, including:
 
-Ordinary files, HTTP, databases, search, MCP, devices and similar application I/O remain Module/application responsibilities unless a concrete shared Kernel responsibility is established.
+- Modules, Material and bounded Operations;
+- Agents, conversational and stateful Agent facilities;
+- Skills and Agent-owned Workflows;
+- semantic inference constructions;
+- Security Algebra;
+- Module discovery and composition;
+- typed state, testing and authoring helpers;
+- reusable operation facilities such as search, generation and embeddings when they
+  are useful to Module developers.
 
-Security Algebra is cross-cutting behavior of values and contracts in this system. It is not another runtime service.
+An SDK facility does not require a shipped Module to justify its existence. Its test is
+whether it solves a reusable MADRE development problem clearly and cheaply. The SDK
+must not prescribe one universal Agent architecture, memory system, reasoning strategy,
+tool loop, planner or user experience.
 
-### Host product
+The shipped default Module uses the same public SDK model available to an independent
+Module developer. Building real Modules is how repeated development problems are
+discovered and how the SDK earns new abstractions.
 
-The host product owns installation/uninstallation, persistent product configuration, Module/reasoning artifact lifecycle, CORE selection, startup/shutdown, diagnostics/health and owner-facing presentation mechanics. These responsibilities must not be pushed into CORE merely because CORE is owner-facing.
+## Modules, Agents, Workflows and Operations
 
-For ordinary conversation, the host transports owner input to the selected CORE Agent and presents only that Agent's approved responses/follow-ups. The host does not choose the CORE's private Operation, Material protocol, reasoning mode, continuation mode or delayed-work collection protocol.
+A Module is an independently installable semantic/application unit. It owns a coherent
+domain or application responsibility, including its state, persistence, Material,
+Operations, integrations and optional specialised Agents.
 
-### Kernel
+A Module does not have to define an Agent.
 
-Kernel is deliberately narrow. It owns live executable Module registration/receiver mechanics and shared reasoning-runtime responsibilities: reasoning-mechanism registration and deterministic selection, resources, immediate/durable execution, retry, cancellation, persistence, result delivery and ordinary runtime logging.
+Agency nevertheless exists for every Operation execution. Only an Agent executes an
+Operation. The MADRE runtime resolves the acting Agent in this order:
 
-Kernel may resolve which ordinary installed Module is assigned CORE. That does not make CORE privileged.
+1. an Agent explicitly selected by the semantic caller;
+2. the unambiguous Module Agent that owns the Operation;
+3. the default Agent of the ordinary Module assigned CORE.
 
-### Module
+If no Agent can be resolved, or multiple Module Agents claim the Operation without an
+explicit choice, execution fails explicitly. An agentless Module therefore retains its
+domain ownership while the default CORE Agent supplies the agency needed to act.
 
-A Module is an independently installable semantic/application boundary. It exists because one coherent application/domain owns meaning, state, interpretation, bounded behavior and domain semantics. A Module may be agentless.
+An Agent owns semantic agency: intent, interpretation, context use, semantic decisions,
+composition, continuation and judgement about results. An Agent may execute Operations
+belonging to its own Module or bounded Operations exposed by another Module.
 
-A Module owns domain/application state and persistence, Material it creates, optional Agents, Skills and Workflows, bounded Operations, domain transformations, semantic interpretation, continuation, application integrations and domain-specific UX.
-
-Reusable technical primitives such as search clients, embeddings, databases, transports, storage, model APIs or MCP are not Modules merely because multiple applications may use them.
-
-### Agent
-
-An Agent is an optional Module-owned semantic actor. It owns semantic intent, interpretation, agent-specific state and continuation when the Module's behavior requires agency. There is no universal Agent loop, planner, prompt framework, tool loop or memory model.
-
-An agentless Module remains fully valid. When an ordinary Owner wants to use capabilities of an agentless Module semantically, an Agent in another Module—normally the Agent in the ordinary Module assigned CORE—interprets intent, invokes the exposed capability, interprets the result and owns continuation. Agency must not be invented inside Kernel or an agentless callee merely for convenience.
-
-The current SDK has a narrow optional `OwnerInteractionAgent` specialization for an Agent that owns the default owner semantic interaction of a Module capable of serving as CORE. It is execution-side only, grants no privilege, and is not required of ordinary Agents or Modules. The host gives it owner text and presents `OwnerMessage` values; the Agent owns the semantic choices that produce them.
-
-### Skill and Workflow
-
-A Skill is reusable Module-provided ability, knowledge or instruction. A Workflow is reusable Agent-owned semantic behavior. In the current minimal model a Workflow is an ordered sequence of Operations. It is not a Kernel scheduler language.
-
-### Operation
-
-An Operation is one bounded callable execution of Module logic through MADRE. It exists so that one execution can participate in MADRE's typed, modular, trust and Security-Algebra arbitration while the Module retains ownership of implementation and meaning.
-
-PUBLIC/PRIVATE is not intrinsic Operation ontology. `OperationDefinition` contains only bounded execution facts: identity/purpose, accepted Material receiver Privacy, produced Material maximum Sensitivity and optional EffectProfiles.
-
-Cross-Module exposure, generic owner/debug entry, owner interaction, external/public disclosure, presentation, reasoning use/locality and transport are separate concerns. None determines whether something is an Operation.
-
-### EffectProfile
-
-An EffectProfile describes one consequential execution variant of an Operation. It carries that variant's Risk and Autonomy. Reasoning computation is not itself a consequential external effect and does not justify an EffectProfile merely because reasoning contributed to a decision.
-
-### Material and nominal contracts
-
-A Material is a typed semantic value with nominal identity, payload and Sensitivity.
-
-Concrete value ownership and nominal type ownership are distinct:
-
-- `MaterialId.moduleId` identifies the Module that created/owns the concrete Material value;
-- `MaterialTypeId.moduleId` identifies the Module that defines the nominal Material contract.
-
-A Module may create a concrete value conforming to a foreign nominal contract when that contract is explicitly declared through `foreignMaterialReferences()`. The value remains owned by its creator. A callee may therefore return a callee-owned value conforming to a nominal contract defined by its caller or another Module.
-
-Adapting or minimizing information creates new Material with new identity and explicit Sensitivity. The source remains unchanged.
-
-### ReasoningCapability
-
-A ReasoningCapability is one executable model/mechanism implementation of a reasoning contract. It exposes only the facts Kernel needs for reasoning selection/execution, such as reasoning contract, receiving Privacy, location/latency, resources and availability. It knows nothing about Modules, Agents, Workflows, Operations, Material, external actions or semantic continuation.
-
-A reasoning adapter is an independently installable JVM artifact that provides one or more configured ReasoningCapability instances through the public reasoning-adapter SPI. Installation does not imply mechanism enablement.
-
-## Module exposure and receiver boundaries
-
-MADRE deliberately keeps four concerns distinct even where implementation mechanics can be shared.
-
-### Module-to-Module exposure
-
-Ordinary installed application composition uses caller-bound `ModuleDirectory` and `ModuleInvoker` supplied through `ModuleContext`. Runtime binds canonical caller identity; Module code cannot provide another caller identity or arbitrary receiver Privacy.
-
-The target Module owns its cross-Module interface through `Module.exposedOperations()` / `ModuleDefinition.exposedOperations()`. Only Operations in that set are discoverable/invocable through ordinary Module composition. Exposure is not an Operation visibility level and is not an Algebra carrier.
-
-Accepted-Material Privacy still governs whether the offered information can reach a particular Operation. Returned Material must be structurally understood by the caller—owned locally or declared in `foreignMaterialReferences`—and its Sensitivity must be able to reach fixed `Privacy.MODULE`.
-
-When valid, the exact callee-created Material crosses unchanged. The callee remains the concrete value owner even if the Material's nominal type contract is defined by the caller or another Module.
-
-`PublicResultTransformer` is not run on this path.
-
-### Generic owner/debug entry
-
-Generic host/debug entry is a separate host-only concern. It resolves an exact installed Operation and executes the same bounded `OperationCall` contract. It returns contract-valid Module Material unchanged.
-
-This path is not Module exposure, ordinary owner conversation or external/public disclosure. It exists for expert/debug use and should not define target product semantics.
-
-### Owner interaction
-
-Owner interaction is another distinct host/product concern. The product uses `roles.core` as the single Module identity for ordinary owner interaction. The selected Module is ordinary and non-privileged.
-
-Ordinary owner text is transported to the selected CORE's `OwnerInteractionAgent`; the Agent owns intent interpretation, conversation state/context use, selection of its own reasoning/continuation behavior, interpretation of delayed work and the decision that a follow-up is useful. The host presents only Agent-approved `OwnerMessage` values.
-
-The Agent may execute exact bounded behavior through `OperationBinding.ownerInteractionOperation(...)` and the host/runtime `OwnerInteractionInvoker`. That invoker remains restricted to the installed Module assigned CORE. It is absent from `ModuleContext`, so CORE gains no authority to invoke another Module's internal Operations. Every internal entry still executes a canonical `OperationCall`, preserving accepted-Material Privacy, EffectProfile selection, causal Integrity and output validation.
-
-The private Operation/Material protocol used by the selected CORE is not ordinary owner API and is not host semantic configuration. The normal owner journey requires no `interaction.*`, Operation names, Material names, reasoning-mode selector or background collection payload.
-
-### External/public disclosure
-
-Actual external/public disclosure is a distinct receiver boundary. `OperationBinding.publicDisclosure(...)` binds an exact Operation with a Module-owned `PublicResultTransformer` used only for this boundary.
-
-The transformer must create new declared Material with a new identity. The transformed Material must satisfy the Operation's output contract and its Sensitivity must be able to reach `Privacy.PUBLIC`.
-
-This is the durable meaning of `Privacy.PUBLIC`: information is actually crossing a public receiver boundary. It is not Module exposure, owner visibility, reasoning locality or an access-control label.
-
-Whether an Operation is exposed to other installed Modules is independent from whether it has an external/public disclosure binding.
-
-## CORE
-
-CORE is the installation role identifying MADRE's default owner-interaction/coordinator Module. It is semantically meaningful but non-privileged.
-
-A Module assigned CORE is still an ordinary Module. CORE assignment changes no Security Algebra value, Module exposure, generic owner/debug authority, external/public disclosure, Module-composition authority, reasoning selection, scheduling, class-loader treatment, installation authority or host authority. There is no privileged `CoreModule` subtype.
-
-For ordinary owner interaction, the selected CORE Agent owns interpretation of the owner's turn, semantic use of remembered conversation, its own reasoning/continuation choices, whether useful work continues durably, interpretation of completed delayed reasoning, the decision that a delayed result is worth presenting, and conversational continuation after that result.
-
-The host owns physical presentation and product-management mechanics. It may poll the Agent for approved follow-ups or use another presentation mechanism, but it must not know CORE-private Operation names, Material protocol or delayed-result sentinels merely to conduct normal conversation.
-
-The target CORE responsibility also includes coordination/routing to installed Modules through ordinary Module composition. It may own interaction state and semantics appropriate to that role. It does not own product installation, global lifecycle or host administration.
-
-CORE is also a reference experiment for MADRE's SDK and inference surfaces. Improving its UX should exercise real Module/Agent/Operation engineering and heterogeneous inference capabilities. Stable interaction abstractions should be recovered from repeated successful experiments rather than frozen directly from the current console or current Operation names.
-
-## Current owner-interaction implementation
-
-The present local text console is a replaceable `madre-app` presentation adapter. The shipped owner-interaction Module is an ordinary Module containing a stateful `OwnerInteractionAgent`.
-
-That Agent owns bounded persisted conversation state, contextual Material construction, selection of its foreground/background reasoning behavior, pending durable-work association, interpretation, acknowledgement and the decision whether a useful owner-visible follow-up exists. Kernel persists only opaque reasoning-runtime state.
-
-The Module still implements its bounded semantic work with private Operations, including the existing prompt and background-collection behaviors. Those Operation names and private Material representations remain 0.x implementation evidence. They are not cross-Module exposed merely because the Module is CORE and they are not the ordinary owner API.
-
-Host presentation sends ordinary text to the Agent and may poll the Agent for approved follow-ups. The Agent itself invokes and interprets its private collection behavior. After restart, Module-owned conversation/pending state and Kernel durable work recover independently and rejoin through the Agent's ordinary Module logic. The owner does not invoke an updates protocol or select an internal interaction mode.
+A Workflow belongs to the Agent whose reusable semantic behaviour it represents. It is
+executable Agent behaviour, not a Module declaration, Kernel schedule, generic DAG or
+universal workflow engine.
+
+An Operation is one bounded unit of Module-owned behaviour available to an Agent.
+It may calculate, access files or databases, call an API, search, use MCP, invoke a
+process, request inference or combine those actions. These ordinary transformations do
+not become Kernel work merely because they affect the physical world.
+
+CORE is an installation role assigned to an ordinary Module. Its default Agent normally
+provides general Owner interaction and fallback agency for agentless Modules. CORE is
+not a subtype, privilege, trust level, Kernel mode, execution bypass or protected
+artifact.
 
 ## Security Algebra
 
-MADRE has five distinct ordered carriers:
+Security Algebra is intrinsic compositional structure of semantic MADRE objects. Its
+five nominal dimensions are Sensitivity, Privacy, Integrity, Risk and Autonomy.
+Applicable values live on the semantic constructions where they mean something and
+compose as those constructions combine.
 
-```text
-Privacy      SYSTEM_RESERVED, PUBLIC, UNKNOWN, LOCAL, MODULE, SECRET
-Sensitivity  SYSTEM_RESERVED, S1, S2, S3, S4, S5
-Integrity    SYSTEM_RESERVED, I1, I2, I3, I4, I5
-Risk         SYSTEM_RESERVED, READ, WRITE, DELETE, EXECUTE, POTENTIALLY_HARMFUL
-Autonomy     SYSTEM_RESERVED, LIVE_INTERACTION, ASK_ALWAYS, ASK_ONCE, ACKNOWLEDGE, AUTONOMOUS
-```
+Security Algebra is not:
 
-Sensitivity combines by maximum; Privacy and Integrity combine by minimum. Information can reach a receiver iff accumulated Sensitivity is no greater than accumulated Privacy.
+- an authorization or policy service;
+- an evaluator consulted for permission;
+- IAM, credentials, clearance or provider trust;
+- a disclosure subsystem;
+- a global score;
+- Kernel state or an inference-engine selection algorithm.
 
-For one EffectProfile the non-user causal demand is `min(Risk, Autonomy)` and must be supported by the minimum Integrity of actual non-user causal participants, or I5 when none exist. Values from different EffectProfiles do not combine.
+A valid semantic composition may continue. An incompatible composition cannot continue
+as that construction. Publishing, revealing, minimising, transforming or sending
+information are ordinary semantic Operations and Material constructions, not a special
+universal disclosure architecture.
 
-Material carries Sensitivity. Accepted Operation input contracts carry receiving Privacy. Agent carries/derives Integrity. EffectProfile carries Risk and Autonomy. Reasoning mechanisms declare receiving Privacy.
+Semantic composition may yield a technical inference requirement such as local-only
+execution. Kernel receives that technical requirement, never the Algebra values or the
+semantic reason that produced it.
 
-Module exposure, owner/debug entry, owner-interaction entry, public-disclosure binding and CORE assignment are not Algebra carriers. They do not lower Material Sensitivity or grant a reasoning mechanism permission to receive information.
+## MADRE runtime
 
-Security Algebra never infers values from localhost, provider identity, model name, endpoint, process/classloader placement, shipped/bundled status, CORE designation or Module exposure.
+The MADRE runtime is the installed semantic environment around the SDK and Kernel. It
+is not a thin API host.
 
-`Privacy.MODULE` is the structural receiver used for ordinary cross-Module Material delivery. `Privacy.PUBLIC` is the actual public receiver boundary. Neither is an access-control role.
+It owns installation-wide responsibilities:
 
-## Reasoning execution and persistence
+- Module and inference-engine installation and configuration;
+- live Module discovery and composition;
+- CORE assignment and default-Agent resolution;
+- Agent execution and bounded Operation invocation;
+- Security Algebra application;
+- semantic inference-request persistence and continuation;
+- translation from semantic inference intent to technical requirements;
+- correlation of Kernel Work with the requesting Agent;
+- Owner interaction, inspection, diagnostics, modification, backup and recovery;
+- startup, shutdown and packaging.
 
-A Module creates a nominal `ReasoningComputation<R>` from a valid bounded `OperationCall` and submits a `ReasoningRequest` through `ReasoningService`. The request derives originating Module and carried Sensitivity and contains reasoning execution controls such as mode, priority, timing, timeout, cancellation, retry and typed selection preferences.
+Domain meaning and state remain with their Modules and Agents. Runtime coordination
+does not make the runtime the owner of those semantics.
 
-It contains no Agent, Workflow, concrete reasoning mechanism, semantic continuation or future output Material. It also contains no Operation Risk.
+## Inference Kernel
 
-A reasoning computation contract is a typed description of one portable family of inference work and its result. Current public families include preserved text inference (`madre.text-inference.v1`), richer text generation (`madre.text-generation.v2`) and text embeddings (`madre.text-embedding.v1`). These are inference contracts, not Module-domain concepts.
+Kernel manages physical inference work only. Inference includes local or remote LLMs
+and SLMs, multimodal and computer-vision systems, embeddings, classic machine-learning
+algorithms and experiments, and future inference families that demonstrate a real need.
 
-Any Operation may request reasoning. Reasoning eligibility depends on actual carried Sensitivity, computation compatibility and the mechanism's explicit receiving Privacy/availability/resources. Module exposure and host entry selection are irrelevant to reasoning eligibility.
+Kernel does not execute ordinary Module API calls, calculator functions, search clients,
+filesystem actions or other non-inference Operations.
 
-If a weaker receiver is desired, the Module must deliberately create new minimized/derived Material and issue work from that new context. Kernel never silently lowers Sensitivity.
+Kernel owns:
 
-Kernel durable work is opaque physical reasoning state. Module owns semantic association, interpretation and continuation. Durable work may outlive the foreground request and survive restart without turning Kernel into a conversation or workflow engine.
+- the inventory and technical characteristics of installed inference engines;
+- matching engine-agnostic inference requirements to available engines;
+- explicit Owner engine/model choices when supplied;
+- machine-resource allocation and admission;
+- physical inference scheduling, priority and timing;
+- retry, cancellation, interruption and recovery;
+- technical execution attempts and experiment measurements;
+- provision of the technical result back to MADRE runtime.
 
-## Installation and configuration
+Kernel is blind to Module, Agent, Material, Operation, Workflow, Skill, ReasoningRequest,
+Security Algebra, semantic continuation and result quality.
 
-Executable Modules are discovered as JVM JARs exposing `ModuleProvider`. Each provider declares canonical `ModuleId` before materialization and receives immutable identity-scoped owner configuration.
+MADRE runtime submits technical requirements rather than an eligible-engine list. Those
+requirements may describe inference family, locality, latency, urgency, family-specific
+ability and an optional exact Owner-selected engine. Kernel knows which engines are
+actually installed and chooses the best current match.
 
-Installed providers expose provider-owned configuration metadata and validation. The host renders this metadata generically through Module lifecycle/configuration commands without hard-coding domain keys or materializing Modules merely to inspect configuration.
+Llama.cpp and OpenAI-compatible inference are peer optional implementations. Neither is
+privileged, and a valid MADRE installation may configure neither.
 
-Reasoning-provider configuration is separate and provider-owned. Zero configured/materialized mechanisms remains valid.
+## Persistence and recovery
 
-Managed artifact lifecycle distinguishes shipped, lifecycle-managed owner, manually placed and development override sources. Manual files remain discoverable but are not silently adopted/replaced/deleted. Shipped artifacts are protected. Module semantic state and Kernel durable reasoning work are not artifact bytes and are not deleted merely because an artifact is uninstalled.
+Semantic and inference-runtime persistence remain deliberately separate.
 
-Windows and Linux are first-class hosts for the same MADRE application, Kernel, SDK, Module installation mechanism, reasoning-mechanism installation mechanism and persistence model. A concrete reasoning transport may be platform-specific; that difference remains inside its adapter.
+MADRE runtime or the owning Module/Agent persists prompts, context, semantic requests,
+acting Agent, origin, plans, continuation and interpreted results.
 
-## Development scope
+Kernel persists technical lifecycle only: opaque Work identity, inference type,
+requirements, scheduling state, attempts, selected engine, resources, timings,
+cancellation, retry, interruption and technical failures. Kernel does not persist or
+log prompt/input content, output content or semantic provenance.
 
-MADRE development covers the installed product, the stable public Module/Agent/Operation/Material/Security-Algebra contracts, the narrow Kernel/runtime machinery, owner interaction/default CORE experience, packaging/lifecycle, and the SDK/test tooling needed for independently developed software to target the same runtime.
+After restart, MADRE runtime reattaches the exact executable input for pending Work from
+semantic persistence. Kernel hands a completed technical result to runtime; runtime
+durably correlates it before Kernel records delivery. Unknown outcomes are represented
+honestly and never converted into silent duplicate inference.
 
-External applications used to test the SDK are evidence about developer friction; they are not automatically MADRE Modules, product dependencies or architecture authority. Examples, tests, UI shapes, current console commands, integration experiments, model strategies, retrieval techniques and provider adapters become durable architecture only when current authority explicitly adopts the underlying responsibility.
+## Development and evidence
 
-Do not pre-build a universal Agent framework, planner/tool system, workflow language, universal memory/RAG system, semantic-database abstraction, Module taxonomy, visibility/access-control lattice or SaaS control plane.
+Owner intent determines acceptance. Tests, CI, documentation and reports are evidence
+about a particular implementation, never architectural authority.
 
-MADRE should remain one coherent runtime with clear ownership, progressive disclosure for the Owner and low-friction code-first experimentation for developers.
+Use real execution for real-execution claims. Use deterministic tests for bounded
+failure behaviour and regressions. Prefer strong Java objects, dependency direction and
+executable behaviour over regex architecture policing, metadata bags and declarative
+files that merely promise another component will behave correctly.
+
+Development should remain autonomous and interruption-safe. Commit and push each
+coherent behaviour as it becomes usable. The Owner is not a recurring manual QA step.
+Cross-platform or real-provider checks are run by agents or automation when they prove a
+changed behaviour.
+
+There is no installed user base or production data requiring development compatibility.
+When a generated schema or API is wrong, replace it directly and recreate generated
+state. Do not leave migrations, adapters, deprecated fossils or duplicated models that
+teach future agents the rejected architecture.
