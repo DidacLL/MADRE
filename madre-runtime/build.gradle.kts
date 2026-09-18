@@ -12,9 +12,9 @@ tasks.withType<JavaCompile>().configureEach {
 dependencies {
     api(project(":madre-sdk"))
     implementation(project(":madre-kernel"))
+    implementation(project(":madre-inference-llamacpp"))
+    implementation(project(":madre-inference-openai-compatible"))
     runtimeOnly(project(":madre-module-owner-interaction"))
-    runtimeOnly(project(":madre-inference-llamacpp"))
-    runtimeOnly(project(":madre-inference-openai-compatible"))
     runtimeOnly("org.slf4j:slf4j-simple:2.0.16")
     testImplementation(platform("org.junit:junit-bom:5.11.4"))
     testImplementation("org.junit.jupiter:junit-jupiter")

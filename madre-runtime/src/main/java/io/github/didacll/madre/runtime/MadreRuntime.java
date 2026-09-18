@@ -1,6 +1,10 @@
 package io.github.didacll.madre.runtime;
 
 import io.github.didacll.madre.sdk.identity.AgentId;
+import io.github.didacll.madre.sdk.directory.ModuleDirectory;
+import io.github.didacll.madre.sdk.directory.ReachabilityQuery;
+import io.github.didacll.madre.sdk.directory.ReachableModule;
+import io.github.didacll.madre.sdk.directory.ReachableOperation;
 import io.github.didacll.madre.sdk.material.Material;
 import io.github.didacll.madre.sdk.module.Agent;
 import io.github.didacll.madre.sdk.module.AgentContext;
@@ -8,9 +12,12 @@ import io.github.didacll.madre.sdk.module.ModuleInstance;
 import io.github.didacll.madre.sdk.module.OperationBinding;
 import io.github.didacll.madre.sdk.operation.ModuleInvoker;
 import io.github.didacll.madre.sdk.operation.OperationCall;
+import io.github.didacll.madre.sdk.registration.ModuleContext;
+import io.github.didacll.madre.sdk.registration.ModuleProvider;
 import java.nio.file.Path;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.List;
 import java.util.concurrent.CompletionStage;
 
 /** Installed semantic environment that is deliberately outside the inference Kernel. */
@@ -28,6 +35,29 @@ public final class MadreRuntime {
     }
 
     public RuntimeModuleRegistry modules() { return modules; }
+
+    /** Installs one ordinary SDK Module using services that remain routed through this runtime. */
+    public void install(ModuleProvider provider) {
+        ModuleProvider source = Objects.requireNonNull(provider, "provider");
+        ModuleDirectory directory = new ModuleDirectory() {
+            private ModuleDirectory live() { return modules.directoryFor(source.moduleId()); }
+            @Override public List<ReachableModule> reachable(ReachabilityQuery query) {
+                return live().reachable(query);
+            }
+            @Override public List<ReachableOperation> reachableOperations(
+                    io.github.didacll.madre.algebra.Sensitivity sensitivity) {
+                return live().reachableOperations(sensitivity);
+            }
+        };
+        ModuleInvoker invoker = new ModuleInvoker() {
+            @Override public <I, O> CompletionStage<Material<O>> invoke(
+                    OperationCall<I, O> call) {
+                return MadreRuntime.this.invoke(call);
+            }
+        };
+        Path moduleState = stateDirectory.resolve("modules").resolve(source.moduleId().value());
+        modules.install(source.create(new ModuleContext(directory, invoker, moduleState)).instance());
+    }
 
     public <I, O> CompletionStage<Material<O>> invoke(OperationCall<I, O> call) {
         return invoke(call, Optional.empty());
