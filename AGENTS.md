@@ -1,98 +1,56 @@
 # MADRE Agent Harness
 
-MADRE is a personal, single-owner research and software project. Optimize for durable product progress, repository legibility and working behavior.
+MADRE is a personal single-Owner research and software project. Optimize for working
+behaviour, repository legibility and fast durable progress.
 
-## Sources of truth
+## Authority
 
-Use the current user request as the task goal.
+1. The current Owner request is the task goal.
+2. `MADRE.md` defines durable product meaning and ownership.
+3. Current code and direct runtime evidence describe implementation truth.
+4. Tests, documentation, history, commit messages, PR discussion and agent reports are
+   evidence only. They never become authority by agreeing with one another.
 
-Use `MADRE.md` for product meaning and ownership boundaries.
+Do not import a familiar assistant, enterprise-security, provider-platform, workflow,
+plugin or generic AI architecture merely because it is conventional. MADRE exists
+because those defaults do not provide the product the Owner needs.
 
-Use the current code, tests and runtime evidence for implementation truth.
+## Work
 
-Use repository history and supporting documents when provenance or a concrete unresolved question makes them relevant. Recover current product semantics from `MADRE.md`.
+- Start with `MADRE.md` and the smallest relevant code surface.
+- Identify the required observable behaviour and its proper owner.
+- Prefer concrete strongly typed Java objects and direct dependencies over metadata
+  bags, string protocols, generic schemas and speculative frameworks.
+- Complete coherent behaviour end to end. Remove superseded code, tests, docs and
+  generated state in the same change; there is no development-compatibility duty.
+- Keep Module/Agent semantics in the SDK/runtime and physical inference mechanics in
+  Kernel. Kernel must not know semantic MADRE concepts.
+- Every Operation executes through an Agent. Agentless Modules use the default CORE
+  Agent without transferring their domain ownership to CORE.
+- Ordinary API, calculator, filesystem, database, search and tool Operations remain
+  Module behaviour. Only inference work belongs to Kernel.
+- Preserve Owner sovereignty: warn, validate, back up and recover; do not prohibit the
+  Owner from changing their own installation.
 
-## Context loading
+## Evidence
 
-Start with `MADRE.md` and the smallest code surface that can answer the task.
+- Acceptance follows Owner requirements and real behaviour, not green tests.
+- Use focused deterministic checks during development and real execution for claims
+  about real providers, packaging or restart recovery.
+- Record exactly what ran and what it demonstrated.
+- Keep CI proportional to a one-developer project. Avoid duplicated matrices and long
+  ceremonial runs.
 
-For runtime implementation, read the short `docs/implementation-baseline.md` for the existing foundation and next behavior; `README.md` owns runnable setup. Keep enduring conclusions in their repository owner so fresh sessions need no PR/chat reconstruction.
+## Repository operation
 
-Expand context just in time through concrete dependencies, interfaces, failing behavior and tests. Prefer targeted repository search and direct inspection over broad ingestion.
+- Use explicit paths and command-local `safe.directory` on the mapped `V:` checkout.
+- Work on the active recovery branch in the root checkout; do not create nested
+  worktrees without a concrete Owner request.
+- Commit and push each coherent usable checkpoint so an interrupted agent run never
+  strands the project locally.
+- Do not force-push or merge without explicit Owner direction.
+- Keep only active branches, generated files and documentation. Historical recovery
+  belongs in Git history, not in active architecture documents or filesystem clutter.
 
-Keep persistent context only where it reduces future reasoning: durable product meaning in `MADRE.md`, recurring repository-wide operating knowledge here, and software behavior in code and tests.
-
-## Unit of work
-
-The explicit user request controls scope.
-
-Otherwise, one development session should complete one substantive coherent behavior, or a tightly coupled set of behaviors, that leaves the repository working and materially advances MADRE.
-
-Larger goals are realized through successive coherent changes. Finish the current behavior end to end, leave its evidence in the repository, and let later sessions continue from that evidence.
-
-Keep working plans in the active session unless the plan itself becomes durable product or architecture knowledge.
-
-## Engineering loop
-
-For each task:
-
-1. Identify the observable behavior or product decision required.
-2. Inspect the current implementation and nearest relevant evidence.
-3. Choose the simplest coherent implementation and concrete technologies suited to the present system.
-4. Implement the behavior end to end.
-5. Validate it with evidence proportional to the changed surface and use failures to steer corrections.
-6. Inspect the changed surface for correctness, unnecessary complexity and consistency with the ownership model in `MADRE.md`.
-7. Complete ordinary branch, commit and pull-request work when useful. Treat integration into the default branch as an Owner-controlled action unless the current request explicitly delegates it.
-8. Leave the repository in a usable state from which another fresh session can continue.
-
-When the user asks simply to continue, inspect the current code against the product acceptance path in `MADRE.md` and implement the next coherent behavior that most directly advances a useful MADRE system.
-
-## Design decisions
-
-Preserve the ownership model in `MADRE.md` while allowing implementation architecture to evolve from evidence.
-
-Use suitable concrete dependencies directly when they make the current solution simpler, clearer or more reliable. Introduce a distinct abstraction when an observed responsibility becomes clearer, safer, more reusable or easier to test because of it.
-
-A concrete language, database, library, transport, framework or provider integration may become a stable implementation dependency when the working system benefits from that choice. Product meaning remains defined by `MADRE.md`.
-
-Keep application semantics in the application, runtime execution semantics in MADRE, and provider or tool mechanics at the capability boundary.
-
-Resolve genuine product-meaning ambiguity with the Owner. Resolve implementation uncertainty through code, documentation, experiments and tests whenever those can provide the answer.
-
-## Development compatibility
-
-MADRE has no installed user base or production data to preserve during active development. Do not implement migrations, backward-compatibility paths or preservation machinery solely to carry generated runtime state from previous development revisions forward unless the Owner explicitly asks for it. When a persisted development format changes, prefer recreating that generated local state in the current format.
-
-This rule applies to generated development/runtime artifacts. It does **not** make prior product definitions, architectural/design material, source contracts or data-structure reasoning disposable, and it is not permission to rewrite or discard them.
-
-## Evidence and review
-
-Acceptance follows real behavior.
-
-Use real execution for claims about real execution. Use controlled fixtures and mocks for deterministic edge cases, protocol behavior and failure handling.
-
-Run validation proportional to the changed surface. Record exactly what was executed and what the result established, including behavior that the available environment could not exercise.
-
-Use deterministic tooling before additional model reasoning when a compiler, test, formatter, type checker, runtime probe or repository query can answer the question directly.
-
-Treat review as part of delivering the behavior. Add deeper or independent review only when the risk, uncertainty or blast radius makes it materially useful.
-
-## Repository learning
-
-Let recurring evidence improve the repository at the narrowest durable owner:
-
-- product semantics → `MADRE.md`;
-- cross-task agent operating knowledge → `AGENTS.md`;
-- implementation behavior → code and tests;
-- historical rationale → Git history, commit/PR context or a focused design record when that rationale remains operationally useful.
-
-Persistent guidance should reduce future context and repeated reasoning. Keep a rule while it continues to earn that cost.
-
-## Completion
-
-Finish a task with a concise report of:
-
-- what can now actually be used;
-- what was executed and verified;
-- any real blocker or unverified behavior;
-- the next substantive behavior or genuine product decision, when one remains.
+Finish with a concise report of usable behaviour, direct evidence, remaining real
+blockers and the exact pushed commit.
