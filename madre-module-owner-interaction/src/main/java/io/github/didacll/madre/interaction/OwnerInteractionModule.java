@@ -51,8 +51,16 @@ public final class OwnerInteractionModule implements Module {
             "Respond to one owner conversation message", Map.of(OWNER_TEXT.id(), Privacy.SECRET),
             Map.of(RESPONSE_TEXT.id(), Sensitivity.S5), Map.of());
     private final OperationBinding<String, String> respond = OperationBinding.operation(
-            respondDefinition, Operation.of(call -> CompletableFuture.completedFuture(
-                    text(RESPONSE_TEXT, call.input().payload(), call.input().sensitivity()))));
+            respondDefinition, Operation.of((context, call) -> {
+                TextGenerationCommand command = TextGenerationCommand.prompt(
+                        call.input().payload(), 512);
+                ReasoningRequest<TextGenerationResult, TextGenerationCommand> request =
+                        ReasoningRequest.immediate(call, command, 100, Duration.ofSeconds(90),
+                                ReasoningRetryPolicy.none(), Optional.empty(),
+                                ReasoningPreferences.unconstrained());
+                return context.reasoning().execute(request).thenApply(result ->
+                        text(RESPONSE_TEXT, result.text(), call.input().sensitivity()));
+            }));
     private final ConversationAgent agent = new ConversationAgent();
 
     @Override public ModuleId id() { return ID; }
@@ -87,14 +95,9 @@ public final class OwnerInteractionModule implements Module {
             Material<String> input = text(OWNER_TEXT, message.text(), message.sensitivity());
             OperationCall<String, String> bounded = OperationCall.withoutEffect(respondDefinition,
                     input);
-            ReasoningRequest<TextGenerationResult, TextGenerationCommand> request =
-                    ReasoningRequest.immediate(bounded,
-                            TextGenerationCommand.prompt(message.text(), 512), 100,
-                            Duration.ofSeconds(90), ReasoningRetryPolicy.none(), Optional.empty(),
-                            ReasoningPreferences.unconstrained());
-            return context.reasoning().execute(request).thenApply(result ->
-                    new ConversationMessage(ConversationMessage.Role.AGENT, result.text(),
-                            message.sensitivity()));
+            return context.modules().invoke(bounded).thenApply(result ->
+                    new ConversationMessage(ConversationMessage.Role.AGENT, result.payload(),
+                            result.sensitivity()));
         }
     }
 

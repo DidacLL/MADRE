@@ -38,7 +38,7 @@ public final class ExternalModuleProvider implements ModuleProvider {
                 new OperationId(ID, "echo"), "Echo text", Map.of(text.id(), Privacy.SECRET),
                 Map.of(text.id(), Sensitivity.S5), Map.of());
         private final OperationBinding<String, String> echo = OperationBinding.operation(definition,
-                Operation.of(call -> CompletableFuture.completedFuture(new Material<>(
+                Operation.of((context, call) -> CompletableFuture.completedFuture(new Material<>(
                         new MaterialId(ID, "echo-result"), text, call.input().payload(),
                         call.input().sensitivity()))));
 

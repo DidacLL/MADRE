@@ -128,8 +128,6 @@ final class SdkInvariantTest {
         assertEquals(agent.id(), workflow.id().agentId());
         assertEquals(List.of(workflow.operations().get(0), workflow.operations().get(0)),
                 workflow.operations());
-        assertEquals(Privacy.LOCAL, agent.effectivePrivacy(definition.operations()));
-        assertEquals(Sensitivity.S4, definition.effectiveSensitivity(List.of()).orElseThrow());
         ModuleDefinitionJsonCodec codec = new ModuleDefinitionJsonCodec();
         ModuleDefinition decoded = codec.decode(codec.encode(definition));
         AgentDefinition decodedAgent = decoded.agents().get(agent.id());

@@ -108,10 +108,7 @@ public final class ModuleDefinition {
         }
         for (AgentDefinition agent : agents.values()) {
             if (!skills.keySet().containsAll(agent.skills())
-                    || !operations.keySet().containsAll(agent.operations())
-                    || agent.workflows().values().stream()
-                            .flatMap(workflow -> workflow.operations().stream())
-                            .anyMatch(operation -> !operations.containsKey(operation))) {
+                    || !operations.keySet().containsAll(agent.operations())) {
                 throw new IllegalArgumentException(
                         "Agent contains an unresolved reference: " + agent.id());
             }

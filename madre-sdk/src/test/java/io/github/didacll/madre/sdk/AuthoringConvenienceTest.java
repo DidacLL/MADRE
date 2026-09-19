@@ -18,10 +18,14 @@ import io.github.didacll.madre.sdk.material.MaterialCodecs;
 import io.github.didacll.madre.sdk.material.MaterialType;
 import io.github.didacll.madre.sdk.module.ModuleDefinition;
 import io.github.didacll.madre.sdk.module.Agent;
+import io.github.didacll.madre.sdk.module.AgentContext;
 import io.github.didacll.madre.sdk.module.OperationBinding;
 import io.github.didacll.madre.sdk.module.OperationDefinition;
 import io.github.didacll.madre.sdk.operation.Operation;
 import io.github.didacll.madre.sdk.operation.OperationCall;
+import io.github.didacll.madre.sdk.operation.ModuleInvoker;
+import io.github.didacll.madre.sdk.testing.ProgrammableReasoningService;
+import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.Set;
@@ -54,13 +58,13 @@ final class AuthoringConvenienceTest {
         Material<String> input = new Material<>(new MaterialId(OWNER, "input"), TEXT,
                 "hello", Sensitivity.S2);
         OperationCall<String, String> call = OperationCall.withoutEffect(definition, input);
-        Operation<String, String> implementation = Operation.of(ignored ->
+        Operation<String, String> implementation = Operation.of((context, ignored) ->
                 CompletableFuture.completedFuture(new Material<>(
                         new MaterialId(OWNER, "undeclared-output"), UNDECLARED,
                         "result", Sensitivity.S2)));
 
         CompletionException failure = assertThrows(CompletionException.class,
-                () -> implementation.invoke(agent("owner", Set.of(definition.id())), call)
+                () -> implementation.invoke(context(agent("owner", Set.of(definition.id()))), call)
                         .toCompletableFuture().join());
         assertInstanceOf(IllegalArgumentException.class, failure.getCause());
     }
@@ -68,7 +72,7 @@ final class AuthoringConvenienceTest {
     @Test
     void operationBindingRequiresAnAgentThatOwnsLocalExecution() {
         OperationDefinition definition = operationDefinition();
-        Operation<String, String> implementation = Operation.of(call ->
+        Operation<String, String> implementation = Operation.of((context, call) ->
                 CompletableFuture.completedFuture(new Material<>(
                         new MaterialId(OWNER, "output"), TEXT, "result", Sensitivity.S2)));
         OperationBinding<String, String> binding = OperationBinding.operation(
@@ -80,8 +84,9 @@ final class AuthoringConvenienceTest {
         Agent owner = agent("owner", Set.of(definition.id()));
 
         assertThrows(NullPointerException.class, () -> binding.invoke(null, call));
-        assertThrows(IllegalArgumentException.class, () -> binding.invoke(unrelated, call));
-        assertEquals("result", binding.invoke(owner, call).toCompletableFuture().join().payload());
+        assertThrows(IllegalArgumentException.class, () -> binding.invoke(context(unrelated), call));
+        assertEquals("result", binding.invoke(context(owner), call)
+                .toCompletableFuture().join().payload());
     }
 
     @Test
@@ -112,5 +117,16 @@ final class AuthoringConvenienceTest {
             @Override public String purpose() { return "Test acting Agent"; }
             @Override public Set<OperationId> operations() { return operations; }
         };
+    }
+
+    private static AgentContext context(Agent actor) {
+        return new AgentContext(actor, new ProgrammableReasoningService(), query -> java.util.List.of(),
+                new ModuleInvoker() {
+                    @Override public <I, O> java.util.concurrent.CompletionStage<Material<O>> invoke(
+                            OperationCall<I, O> call) {
+                        return CompletableFuture.failedFuture(new UnsupportedOperationException());
+                    }
+                },
+                Path.of("build", "test-state"));
     }
 }

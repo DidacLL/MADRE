@@ -26,8 +26,9 @@ public final class OperationBinding<I, O> {
     public OperationDefinition definition() { return definition; }
 
     /** Executes inside the owning Module with an explicit semantic actor. */
-    public CompletionStage<Material<O>> invoke(Agent actor, OperationCall<I, O> call) {
-        Agent actingAgent = Objects.requireNonNull(actor, "actor");
+    public CompletionStage<Material<O>> invoke(AgentContext context, OperationCall<I, O> call) {
+        AgentContext execution = Objects.requireNonNull(context, "context");
+        Agent actingAgent = execution.actor();
         OperationCall<I, O> exactCall = Objects.requireNonNull(call, "call");
         if (!definition.equals(exactCall.operation())) {
             throw new IllegalArgumentException(
@@ -37,6 +38,6 @@ public final class OperationBinding<I, O> {
                 && !actingAgent.operations().contains(definition.id())) {
             throw new IllegalArgumentException("acting Agent does not own this Operation");
         }
-        return implementation.invoke(actingAgent, exactCall);
+        return implementation.invoke(execution, exactCall);
     }
 }

@@ -27,6 +27,7 @@ public final class RuntimeModuleRegistry {
     private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
     private final Map<ModuleId, ModuleInstance> modules = new LinkedHashMap<>();
     private ModuleId coreModule;
+    private AgentId defaultCoreAgent;
 
     public void install(ModuleInstance module) {
         ModuleInstance value = Objects.requireNonNull(module, "module");
@@ -57,27 +58,30 @@ public final class RuntimeModuleRegistry {
         Objects.requireNonNull(id, "id");
         lock.writeLock().lock();
         try {
-            if (id.equals(coreModule)) coreModule = null;
+            if (id.equals(coreModule)) {
+                coreModule = null;
+                defaultCoreAgent = null;
+            }
             return Optional.ofNullable(modules.remove(id));
         } finally {
             lock.writeLock().unlock();
         }
     }
 
-    public void assignCore(ModuleId id) {
+    public void assignCore(ModuleId id, AgentId defaultAgent) {
         Objects.requireNonNull(id, "id");
+        Objects.requireNonNull(defaultAgent, "defaultAgent");
         lock.writeLock().lock();
         try {
             ModuleInstance selected = modules.get(id);
             if (selected == null) throw new IllegalArgumentException("CORE Module is not installed: " + id);
-            if (selected.agents().isEmpty()) {
-                throw new IllegalArgumentException("CORE Module must provide a default Agent: " + id);
-            }
-            if (selected.agents().size() != 1) {
-                throw new IllegalArgumentException(
-                        "CORE Module must expose exactly one default Agent until one is selected explicitly: " + id);
+            if (!defaultAgent.moduleId().equals(id)
+                    || !selected.agents().containsKey(defaultAgent)) {
+                throw new IllegalArgumentException("Default CORE Agent is not provided by Module: "
+                        + defaultAgent);
             }
             coreModule = id;
+            defaultCoreAgent = defaultAgent;
         } finally {
             lock.writeLock().unlock();
         }
@@ -87,6 +91,15 @@ public final class RuntimeModuleRegistry {
         lock.readLock().lock();
         try {
             return Optional.ofNullable(coreModule);
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    public Optional<AgentId> defaultCoreAgentId() {
+        lock.readLock().lock();
+        try {
+            return Optional.ofNullable(defaultCoreAgent);
         } finally {
             lock.readLock().unlock();
         }
@@ -157,14 +170,10 @@ public final class RuntimeModuleRegistry {
     }
 
     private Agent defaultCoreAgent() {
-        if (coreModule == null) {
+        if (coreModule == null || defaultCoreAgent == null) {
             throw new AgentResolutionException("No explicit, owning, or default CORE Agent is available");
         }
-        ModuleInstance core = modules.get(coreModule);
-        if (core == null || core.agents().size() != 1) {
-            throw new AgentResolutionException("The assigned CORE Module has no unambiguous default Agent");
-        }
-        return core.agents().values().iterator().next();
+        return requireAgent(defaultCoreAgent);
     }
 
     private final class LiveDirectory implements ModuleDirectory {

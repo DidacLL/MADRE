@@ -1,10 +1,10 @@
 package io.github.didacll.madre.sdk.operation;
 
 import io.github.didacll.madre.sdk.material.Material;
-import io.github.didacll.madre.sdk.module.Agent;
+import io.github.didacll.madre.sdk.module.AgentContext;
 import java.util.Objects;
 import java.util.concurrent.CompletionStage;
-import java.util.function.Function;
+import java.util.function.BiFunction;
 
 /**
  * One executable bounded unit of Module logic that participates in MADRE arbitration.
@@ -20,13 +20,14 @@ public abstract class Operation<I, O> {
      * actor-bound invocation and output-validation path.
      */
     public static <I, O> Operation<I, O> of(
-            Function<OperationCall<I, O>, CompletionStage<Material<O>>> body) {
-        Function<OperationCall<I, O>, CompletionStage<Material<O>>> executable =
+            BiFunction<AgentContext, OperationCall<I, O>, CompletionStage<Material<O>>> body) {
+        BiFunction<AgentContext, OperationCall<I, O>, CompletionStage<Material<O>>> executable =
                 Objects.requireNonNull(body, "body");
         return new Operation<>() {
             @Override
-            protected CompletionStage<Material<O>> execute(OperationCall<I, O> call) {
-                return executable.apply(call);
+            protected CompletionStage<Material<O>> execute(AgentContext context,
+                    OperationCall<I, O> call) {
+                return executable.apply(context, call);
             }
         };
     }
@@ -35,13 +36,15 @@ public abstract class Operation<I, O> {
      * Performs Module-owned behavior after the bounded call has satisfied its declared MADRE
      * arbitration. This hook is deliberately not a separate public invocation path.
      */
-    protected abstract CompletionStage<Material<O>> execute(OperationCall<I, O> call);
+    protected abstract CompletionStage<Material<O>> execute(AgentContext context,
+            OperationCall<I, O> call);
 
     /** Invokes the behavior and keeps its Material result inside the declared contract. */
-    public final CompletionStage<Material<O>> invoke(Agent actor, OperationCall<I, O> call) {
-        Objects.requireNonNull(actor, "actor");
+    public final CompletionStage<Material<O>> invoke(AgentContext context,
+            OperationCall<I, O> call) {
+        AgentContext execution = Objects.requireNonNull(context, "context");
         OperationCall<I, O> boundedCall = Objects.requireNonNull(call, "call");
-        return Objects.requireNonNull(execute(boundedCall), "Operation result stage")
+        return Objects.requireNonNull(execute(execution, boundedCall), "Operation result stage")
                 .thenApply(boundedCall::acceptOutput);
     }
 }

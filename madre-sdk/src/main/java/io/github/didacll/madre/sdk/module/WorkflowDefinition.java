@@ -17,8 +17,5 @@ public record WorkflowDefinition(WorkflowId id, String purpose, List<OperationId
         if (operations.isEmpty()) {
             throw new IllegalArgumentException("a Workflow must contain at least one Operation");
         }
-        if (operations.stream().anyMatch(operation -> !operation.moduleId().equals(id.moduleId()))) {
-            throw new IllegalArgumentException("Workflow Operations must belong to its Agent's Module");
-        }
     }
 }

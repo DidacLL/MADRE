@@ -35,30 +35,9 @@ public record AgentDefinition(AgentId id, String purpose, Integrity integrity, S
                         && entry.getKey().agentId().equals(id))) {
             throw new IllegalArgumentException("Workflow declarations must be owned by this Agent");
         }
-        if (copiedWorkflows.values().stream()
-                .flatMap(workflow -> workflow.operations().stream())
-                .anyMatch(operation -> !copiedOperations.contains(operation))) {
-            throw new IllegalArgumentException("Workflow Operations must belong to the Agent repertoire");
-        }
         skills = copiedSkills;
         workflows = copiedWorkflows;
         operations = copiedOperations;
     }
 
-    public Privacy effectivePrivacy(Map<OperationId, OperationDefinition> definitions) {
-        return operations.stream()
-                .map(operationId -> Objects.requireNonNull(definitions.get(operationId),
-                        "unresolved Operation " + operationId))
-                .flatMap(operation -> operation.acceptedMaterial().values().stream())
-                .reduce(Privacy.SECRET, Privacy::combine);
-    }
-
-    public java.util.Optional<Sensitivity> effectiveSensitivity(
-            Map<OperationId, OperationDefinition> definitions) {
-        return operations.stream()
-                .map(operationId -> Objects.requireNonNull(definitions.get(operationId),
-                        "unresolved Operation " + operationId))
-                .flatMap(operation -> operation.producedMaterial().values().stream())
-                .reduce(Sensitivity::combine);
-    }
 }

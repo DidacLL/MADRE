@@ -6,6 +6,7 @@ import io.github.didacll.madre.kernel.EngineId;
 import io.github.didacll.madre.kernel.EngineLocation;
 import io.github.didacll.madre.kernel.InferenceKernel;
 import io.github.didacll.madre.sdk.identity.ModuleId;
+import io.github.didacll.madre.sdk.identity.AgentId;
 import io.github.didacll.madre.sdk.registration.ModuleProvider;
 import java.net.URI;
 import java.nio.file.Files;
@@ -32,7 +33,9 @@ public final class MadreMain {
             ServiceLoader.load(ModuleProvider.class).forEach(runtime::install);
             ModuleId core = new ModuleId(System.getProperty("madre.core", "owner-interaction"));
             if (registry.modules().stream().anyMatch(module -> module.definition().id().equals(core))) {
-                registry.assignCore(core);
+                AgentId defaultAgent = new AgentId(core,
+                        System.getProperty("madre.core.agent", "conversation"));
+                registry.assignCore(core, defaultAgent);
             }
             inference.recoverPending();
             System.out.printf("MADRE runtime ready: %d module(s), %d inference engine(s), CORE=%s%n",

@@ -60,7 +60,7 @@ final class MadreRuntimeAgencyTest {
         RuntimeModuleRegistry registry = new RuntimeModuleRegistry();
         registry.install(target.instance());
         registry.install(core.instance());
-        registry.assignCore(core.id());
+        registry.assignCore(core.id(), core.agent.id());
 
         try (InferenceKernel kernel = new InferenceKernel(temporary.resolve("kernel.db"), 1,
                 Map.of())) {
@@ -138,7 +138,9 @@ final class MadreRuntimeAgencyTest {
                     Map.of(text.id(), Privacy.SECRET), Map.of(text.id(), Sensitivity.S5), Map.of());
             binding = OperationBinding.operation(operation, new Operation<>() {
                 @Override protected java.util.concurrent.CompletionStage<Material<String>> execute(
+                        io.github.didacll.madre.sdk.module.AgentContext context,
                         OperationCall<String, String> call) {
+                    actor.set(context.actor());
                     return CompletableFuture.completedFuture(material("output",
                             call.input().payload().toUpperCase(java.util.Locale.ROOT)));
                 }

@@ -51,7 +51,7 @@ public interface Agent {
             OperationBinding<I, O> operation, OperationCall<I, O> call) {
         AgentContext execution = Objects.requireNonNull(context, "context");
         execution.requireActor(this);
-        return Objects.requireNonNull(operation, "operation").invoke(this,
+        return Objects.requireNonNull(operation, "operation").invoke(execution,
                 Objects.requireNonNull(call, "call"));
     }
 
