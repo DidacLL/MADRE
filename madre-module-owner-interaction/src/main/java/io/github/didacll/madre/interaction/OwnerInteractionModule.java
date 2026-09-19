@@ -55,11 +55,11 @@ public final class OwnerInteractionModule implements Module {
                 TextGenerationCommand command = TextGenerationCommand.prompt(
                         call.input().payload(), 512);
                 ReasoningRequest<TextGenerationResult, TextGenerationCommand> request =
-                        ReasoningRequest.immediate(call, command, 100, Duration.ofSeconds(90),
-                                ReasoningRetryPolicy.none(), Optional.empty(),
-                                ReasoningPreferences.requirements());
+                        ReasoningRequest.immediate(context.actor(), call, command, 100,
+                                Duration.ofSeconds(90), ReasoningRetryPolicy.none(),
+                                Optional.empty(), ReasoningPreferences.requirements());
                 return context.reasoning().execute(request).thenApply(result ->
-                        text(RESPONSE_TEXT, result.text(), call.input().sensitivity()));
+                        text(RESPONSE_TEXT, result.text(), request.sensitivity()));
             }));
     private final ConversationAgent agent = new ConversationAgent();
 

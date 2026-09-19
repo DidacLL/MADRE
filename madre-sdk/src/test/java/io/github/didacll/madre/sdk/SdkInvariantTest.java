@@ -108,23 +108,34 @@ final class SdkInvariantTest {
                 () -> call.acceptOutput(excessiveOutput));
     }
 
-    @Test void reasoningRequestCarriesActualInputSensitivity() {
+    @Test void reasoningRequestComposesActualCurrentSemanticConstituents() {
         ModuleId owner = new ModuleId("owner.module");
         MaterialType<String> type = new MaterialType<>(new MaterialTypeId(owner, "text"),
                 String.class, "text/plain", STRINGS);
         Material<String> input = new Material<>(new MaterialId(owner, "input"), type,
                 "hello", Sensitivity.S3);
-        OperationDefinition operation = new OperationDefinition(
-                new OperationId(owner, "read"), "Read text",
+        Material<String> currentContext = new Material<>(
+                new MaterialId(owner, "context"), type, "prior context", Sensitivity.S5);
+        OperationId operationId = new OperationId(owner, "read");
+        OperationDefinition operation = new OperationDefinition(operationId, "Read text",
                 Map.of(type.id(), Privacy.LOCAL), Map.of(type.id(), Sensitivity.S3), Map.of());
         OperationCall<String, String> call = OperationCall.withoutEffect(operation, input);
+        Agent actor = new Agent() {
+            @Override public AgentId id() { return new AgentId(owner, "reasoner"); }
+            @Override public String purpose() { return "Own current reasoning context"; }
+            @Override public Integrity integrity() { return Integrity.I4; }
+            @Override public Set<OperationId> operations() { return Set.of(operationId); }
+        };
 
         ReasoningRequest<String, FixtureReasoning> request = ReasoningRequest.immediate(
-                call, new FixtureReasoning("reason"), 1, Duration.ofSeconds(1),
-                ReasoningRetryPolicy.none(), Optional.empty(),
+                actor, call, List.of(currentContext), List.of(Privacy.PUBLIC),
+                List.of(Integrity.I2), new FixtureReasoning("reason"), 1,
+                Duration.ofSeconds(1), ReasoningRetryPolicy.none(), Optional.empty(),
                 ReasoningPreferences.requirements());
 
-        assertEquals(Sensitivity.S3, request.carriedSensitivity());
+        assertEquals(Sensitivity.S5, request.sensitivity());
+        assertEquals(Privacy.PUBLIC, request.privacy());
+        assertEquals(Integrity.I2, request.integrity());
         assertEquals(String.class, request.resultType());
     }
 
