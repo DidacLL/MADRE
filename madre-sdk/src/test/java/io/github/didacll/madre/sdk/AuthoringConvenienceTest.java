@@ -35,7 +35,6 @@ import org.junit.jupiter.api.Test;
 
 final class AuthoringConvenienceTest {
     private static final ModuleId OWNER = new ModuleId("authoring.owner");
-    private static final ModuleId FOREIGN = new ModuleId("authoring.foreign");
     private static final MaterialType<String> TEXT = new MaterialType<>(
             new MaterialTypeId(OWNER, "text"), String.class, "text/plain; charset=utf-8",
             MaterialCodecs.utf8String());
@@ -90,20 +89,17 @@ final class AuthoringConvenienceTest {
     }
 
     @Test
-    void stableModelStillRejectsForeignOwnershipAndNonCanonicalKeys() {
-        MaterialType<String> foreignType = new MaterialType<>(
-                new MaterialTypeId(FOREIGN, "text"), String.class, "text/plain",
-                MaterialCodecs.utf8String());
-
-        assertThrows(IllegalArgumentException.class, () -> new ModuleDefinition(
-                OWNER, "1.0.0", "Foreign ownership must fail",
-                Map.of(foreignType.id(), foreignType.definition()), Set.of(), Map.of(), Map.of(),
-                Map.of()));
-
+    void moduleDefinitionStillRejectsNonCanonicalDeclarationKeys() {
         MaterialTypeId alias = new MaterialTypeId(OWNER, "alias");
+
         assertThrows(IllegalArgumentException.class, () -> new ModuleDefinition(
-                OWNER, "1.0.0", "Non-canonical key must fail",
-                Map.of(alias, TEXT.definition()), Set.of(), Map.of(), Map.of(), Map.of()));
+                OWNER,
+                "1.0.0",
+                "Non-canonical key must fail",
+                Map.of(alias, TEXT.definition()),
+                Map.of(),
+                Map.of(),
+                Map.of()));
     }
 
     private static OperationDefinition operationDefinition() {

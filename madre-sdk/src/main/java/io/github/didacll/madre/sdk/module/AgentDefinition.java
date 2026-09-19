@@ -1,8 +1,6 @@
 package io.github.didacll.madre.sdk.module;
 
 import io.github.didacll.madre.algebra.Integrity;
-import io.github.didacll.madre.algebra.Privacy;
-import io.github.didacll.madre.algebra.Sensitivity;
 import io.github.didacll.madre.sdk.identity.AgentId;
 import io.github.didacll.madre.sdk.identity.OperationId;
 import io.github.didacll.madre.sdk.identity.SkillId;

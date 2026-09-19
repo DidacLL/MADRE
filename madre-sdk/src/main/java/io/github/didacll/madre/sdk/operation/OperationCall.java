@@ -13,7 +13,7 @@ import java.util.Optional;
  *
  * <p>The call does not care whether the Operation implementation is arithmetic, file/network I/O,
  * a script/process, reasoning-backed behavior or any other Module-owned code. It is the generic
- * arbitration boundary for the invocation, not a description of the implementation technique.</p>
+ * typed invocation boundary, not a description of the implementation technique.</p>
  */
 public final class OperationCall<I, O> {
     private final OperationDefinition operation;

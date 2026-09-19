@@ -26,7 +26,7 @@ public interface Module {
     String version();
     String purpose();
 
-    /** Java payload bindings owned by this executable Module. */
+    /** Java payload bindings this executable Module provides. */
     Collection<? extends MaterialType<?>> materialTypes();
 
     default Collection<? extends Agent> agents() { return Set.of(); }
@@ -59,7 +59,7 @@ public interface Module {
 
     Collection<? extends OperationBinding<?, ?>> operations();
 
-    /** Derives the portable semantic/security contract from executable Java objects. */
+    /** Derives the portable semantic contract from executable Java objects. */
     default ModuleDefinition definition() {
         Map<MaterialTypeId, MaterialTypeDefinition> materialDefinitions = new LinkedHashMap<>();
         for (MaterialType<?> materialType : materialTypes()) {

@@ -50,6 +50,15 @@ final class SdkInvariantTest {
         }
     };
 
+    @Test void establishedScalarAlgebraCompositionAccumulatesActualConstituents() {
+        assertEquals(Sensitivity.S5, Sensitivity.S2.combine(Sensitivity.S5));
+        assertEquals(Sensitivity.S5, Sensitivity.S5.combine(Sensitivity.S2));
+        assertEquals(Privacy.PUBLIC, Privacy.LOCAL.combine(Privacy.PUBLIC));
+        assertEquals(Privacy.PUBLIC, Privacy.PUBLIC.combine(Privacy.LOCAL));
+        assertEquals(Integrity.I2, Integrity.I4.combine(Integrity.I2));
+        assertEquals(Integrity.I2, Integrity.I2.combine(Integrity.I4));
+    }
+
     @Test void adaptationRequiresIndependentIdentityAndSensitivity() {
         ModuleId owner = new ModuleId("owner.module");
         MaterialType<String> type = new MaterialType<>(new MaterialTypeId(owner, "text"),
@@ -62,45 +71,44 @@ final class SdkInvariantTest {
         assertEquals(Sensitivity.S5, source.sensitivity());
     }
 
-    @Test void materialValueOwnerIsIndependentFromNominalTypeOwner() {
-        ModuleId contractOwner = new ModuleId("contract.module");
-        ModuleId creator = new ModuleId("creator.module");
-        MaterialType<String> type = new MaterialType<>(new MaterialTypeId(contractOwner, "text"),
+    @Test void materialIdentityModuleCanDifferFromNominalTypeModule() {
+        ModuleId contractModule = new ModuleId("contract.module");
+        ModuleId materialIdentityModule = new ModuleId("creator.module");
+        MaterialType<String> type = new MaterialType<>(new MaterialTypeId(contractModule, "text"),
                 String.class, "text/plain", STRINGS);
 
-        Material<String> material = new Material<>(new MaterialId(creator, "created"), type,
-                "value", Sensitivity.S2);
+        Material<String> material = new Material<>(
+                new MaterialId(materialIdentityModule, "created"), type, "value", Sensitivity.S2);
 
-        assertEquals(creator, material.id().moduleId());
-        assertEquals(contractOwner, material.type().id().moduleId());
+        assertEquals(materialIdentityModule, material.id().moduleId());
+        assertEquals(contractModule, material.type().id().moduleId());
     }
 
-    @Test void consequentialConstructionAppliesOnlyTheSelectedProfile() {
+    @Test void consequentialCallUsesSelectedProfileWithoutCrossDimensionEvaluation() {
         ModuleId owner = new ModuleId("owner.module");
         MaterialType<String> type = new MaterialType<>(new MaterialTypeId(owner, "text"),
                 String.class, "text/plain", STRINGS);
         Material<String> input = new Material<>(new MaterialId(owner, "input"), type,
-                "hello", Sensitivity.S2);
+                "hello", Sensitivity.S5);
         OperationId operationId = new OperationId(owner, "run");
         EffectProfile profile = new EffectProfile(new EffectProfileId(operationId, "bounded"),
                 Risk.DELETE, Autonomy.ASK_ALWAYS);
         OperationDefinition operation = new OperationDefinition(operationId,
-                "Run bounded behavior", Map.of(type.id(), Privacy.LOCAL),
+                "Run bounded behavior", Map.of(type.id(), Privacy.PUBLIC),
                 Map.of(type.id(), Sensitivity.S3), Map.of(profile.id(), profile));
-        OperationCall<String, String> call = OperationCall.withEffect(
-                operation, profile, input, List.of(Integrity.I2));
-        assertThrows(IllegalArgumentException.class, () ->
-                OperationCall.withEffect(operation, profile, input, List.of(Integrity.I1)));
-        assertThrows(IllegalArgumentException.class, () ->
-                OperationCall.withEffect(operation, profile, input,
-                        List.of(Integrity.SYSTEM_RESERVED)));
-        Material<String> undeclaredSensitivity = new Material<>(
+        OperationCall<String, String> call = OperationCall.withEffect(operation, profile, input);
+
+        assertEquals(profile, call.effectProfile().orElseThrow());
+        assertEquals(Sensitivity.S5, call.input().sensitivity());
+        assertEquals(Privacy.PUBLIC, operation.acceptedMaterial().get(type.id()));
+
+        Material<String> excessiveOutput = new Material<>(
                 new MaterialId(owner, "output"), type, "result", Sensitivity.S4);
         assertThrows(IllegalArgumentException.class,
-                () -> call.acceptOutput(undeclaredSensitivity));
+                () -> call.acceptOutput(excessiveOutput));
     }
 
-    @Test void reasoningRequestDerivesReachabilityFromTheBoundedOperationCall() {
+    @Test void reasoningRequestCarriesActualInputSensitivity() {
         ModuleId owner = new ModuleId("owner.module");
         MaterialType<String> type = new MaterialType<>(new MaterialTypeId(owner, "text"),
                 String.class, "text/plain", STRINGS);
@@ -141,23 +149,45 @@ final class SdkInvariantTest {
                 codec.encode(definition).replaceFirst("\\{", "{\"metadata\":{},")));
     }
 
-    @Test void moduleMayOwnConcreteMaterialUsingReferencedForeignNominalType() {
+    @Test void operationMayReferenceForeignMaterialTypeWithoutLocalDeclarationAndRoundTrips() {
         ModuleId owner = new ModuleId("owner.module");
-        ModuleId contractOwner = new ModuleId("contract.module");
-        MaterialType<String> foreign = new MaterialType<>(
-                new MaterialTypeId(contractOwner, "foreign-text"), String.class,
-                "text/plain", STRINGS);
-        Material<String> reachable = new Material<>(new MaterialId(owner, "foreign-value"),
-                foreign, "value", Sensitivity.S3);
+        MaterialTypeId foreign = new MaterialTypeId(
+                new ModuleId("contract.module"), "foreign-text");
         OperationDefinition operation = new OperationDefinition(new OperationId(owner, "emit"),
-                "Emit foreign contract", Map.of(foreign.id(), Privacy.MODULE),
-                Map.of(foreign.id(), Sensitivity.S3), Map.of());
-        ModuleDefinition definition = new ModuleDefinition(owner, "1", "Foreign contract creator",
-                Map.of(), Set.of(foreign.id()), Map.of(), Map.of(),
-                Map.of(operation.id(), operation), Set.of(operation.id()));
+                "Emit foreign contract", Map.of(foreign, Privacy.MODULE),
+                Map.of(foreign, Sensitivity.S3), Map.of());
+        ModuleDefinition definition = new ModuleDefinition(owner, "1", "Foreign contract consumer",
+                Map.of(), Map.of(), Map.of(), Map.of(operation.id(), operation),
+                Set.of(operation.id()));
 
-        assertEquals(Sensitivity.S3,
-                definition.effectiveSensitivity(List.of(reachable)).orElseThrow());
+        ModuleDefinition decoded = new ModuleDefinitionJsonCodec().decode(
+                new ModuleDefinitionJsonCodec().encode(definition));
+        OperationDefinition decodedOperation = decoded.operations().get(operation.id());
+
+        assertEquals(Map.of(), decoded.materialTypes());
+        assertEquals(Privacy.MODULE, decodedOperation.acceptedMaterial().get(foreign));
+        assertEquals(Sensitivity.S3, decodedOperation.producedMaterial().get(foreign));
+    }
+
+    @Test void descriptionsKeepOperationAlgebraAsContractFactsNotAgentAggregates() {
+        ModuleId owner = new ModuleId("owner.module");
+        MaterialTypeId type = new MaterialTypeId(new ModuleId("contract.module"), "text");
+        OperationId operationId = new OperationId(owner, "possible-operation");
+        OperationDefinition operation = new OperationDefinition(operationId,
+                "Possible bounded behavior", Map.of(type, Privacy.PUBLIC),
+                Map.of(type, Sensitivity.S5), Map.of());
+        AgentId agentId = new AgentId(owner, "agent");
+        AgentDefinition agent = new AgentDefinition(agentId, "Agent with possible behavior",
+                Integrity.I4, Set.of(), Map.of(), Set.of(operationId));
+        ModuleDefinition definition = new ModuleDefinition(owner, "1", "Description fixture",
+                Map.of(), Map.of(agentId, agent), Map.of(),
+                Map.of(operationId, operation));
+
+        assertEquals(Integrity.I4, definition.agents().get(agentId).integrity());
+        assertEquals(Privacy.PUBLIC,
+                definition.operations().get(operationId).acceptedMaterial().get(type));
+        assertEquals(Sensitivity.S5,
+                definition.operations().get(operationId).producedMaterial().get(type));
     }
 
     @Test void unprovenJavaAgentDefaultsToLowestOrdinaryIntegrity() {
@@ -235,7 +265,7 @@ final class SdkInvariantTest {
         AgentDefinition agent = new AgentDefinition(agentId, "Interact", Integrity.I4,
                 Set.of(), Map.of(workflowId, workflow), Set.of(operationId));
         return new ModuleDefinition(owner, "1.0.0", "Owner module",
-                Map.of(type.id(), type.definition()), Set.of(), Map.of(agentId, agent), Map.of(),
+                Map.of(type.id(), type.definition()), Map.of(agentId, agent), Map.of(),
                 Map.of(operationId, operation), Set.of(operationId));
     }
 

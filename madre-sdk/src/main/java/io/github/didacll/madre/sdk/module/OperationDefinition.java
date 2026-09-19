@@ -12,10 +12,10 @@ import java.util.Objects;
  * Portable contract for one bounded execution of Module logic through MADRE.
  *
  * <p>An Operation exists so one piece of Module execution can participate in MADRE's ordinary
- * typed, modular and Security-Algebra-aware arbitration. The Module still owns the implementation
- * and meaning of the execution. Cross-Module exposure, owner/product entry, external/public
- * disclosure, presentation, reasoning use/locality and transport are orthogonal concerns; none of
- * them is intrinsic Operation ontology.</p>
+ * typed, modular and Security-Algebra-aware composition. The Module still owns the implementation
+ * and meaning of the execution. Cross-Module exposure, owner/product entry, presentation, reasoning
+ * use/locality and transport are orthogonal concerns; none of them is intrinsic Operation
+ * ontology.</p>
  *
  * <p>This value is deliberately language-neutral and structural: independently decoded/adapted
  * contracts with the same canonical facts represent the same Operation. Java payload typing lives
