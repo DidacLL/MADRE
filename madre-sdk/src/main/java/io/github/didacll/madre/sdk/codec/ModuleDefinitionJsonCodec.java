@@ -117,8 +117,8 @@ public final class ModuleDefinitionJsonCodec {
                                 ObjectNode workflowNode = workflows.addObject();
                                 workflowNode.put("name", workflow.id().name());
                                 workflowNode.put("purpose", workflow.purpose());
-                                writeOperationNames(workflowNode.putArray("operations"),
-                                        workflow.operations());
+                                writeOperationReferences(workflowNode.putArray("operations"),
+                                        workflow.operations(), agent.id().moduleId());
                             });
                     writeNames(node.putArray("operations"), agent.operations().stream()
                             .map(OperationId::name).collect(java.util.stream.Collectors.toSet()));
@@ -271,7 +271,7 @@ public final class ModuleDefinitionJsonCodec {
     private static List<OperationId> operationIdList(ObjectNode node, ModuleId module) {
         List<OperationId> ids = new ArrayList<>();
         for (JsonNode name : requiredArray(node, "operations")) {
-            ids.add(new OperationId(module, requiredTextNode(name)));
+            ids.add(parseOperationId(requiredTextNode(name), module));
         }
         return List.copyOf(ids);
     }
@@ -327,8 +327,21 @@ public final class ModuleDefinitionJsonCodec {
         values.stream().sorted().forEach(array::add);
     }
 
-    private static void writeOperationNames(ArrayNode array, List<OperationId> values) {
-        values.stream().map(OperationId::name).forEach(array::add);
+    private static void writeOperationReferences(
+            ArrayNode array, List<OperationId> values, ModuleId owner) {
+        values.stream().map(value -> operationReference(value, owner)).forEach(array::add);
+    }
+
+    private static String operationReference(OperationId id, ModuleId owner) {
+        return id.moduleId().equals(owner) ? id.name()
+                : id.moduleId().value() + ":" + id.name();
+    }
+
+    private static OperationId parseOperationId(String value, ModuleId owner) {
+        int split = value.indexOf(':');
+        return split < 0 ? new OperationId(owner, value)
+                : new OperationId(new ModuleId(value.substring(0, split)),
+                        value.substring(split + 1));
     }
 
     private static String qualified(MaterialTypeId id) {

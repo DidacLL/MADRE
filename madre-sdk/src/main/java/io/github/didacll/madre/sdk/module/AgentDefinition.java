@@ -25,9 +25,6 @@ public record AgentDefinition(AgentId id, String purpose, Integrity integrity, S
         Set<SkillId> copiedSkills = Set.copyOf(skills);
         Map<WorkflowId, WorkflowDefinition> copiedWorkflows = Map.copyOf(workflows);
         Set<OperationId> copiedOperations = Set.copyOf(operations);
-        if (copiedOperations.isEmpty()) {
-            throw new IllegalArgumentException("an Agent must expose at least one Operation");
-        }
         if (!copiedWorkflows.entrySet().stream().allMatch(entry ->
                 entry.getKey().equals(entry.getValue().id())
                         && entry.getKey().agentId().equals(id))) {

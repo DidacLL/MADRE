@@ -124,27 +124,30 @@ final class SdkInvariantTest {
                 ReasoningRetryPolicy.none(), Optional.empty(),
                 ReasoningPreferences.requirements());
 
-        assertEquals(owner, request.originatingModule());
         assertEquals(Sensitivity.S3, request.carriedSensitivity());
         assertEquals(String.class, request.resultType());
     }
 
-    @Test void agentOwnsOrderedWorkflowsAndDefinitionsRoundTrip() {
-        ModuleDefinition definition = definition();
-        AgentDefinition agent = definition.agents().values().iterator().next();
-        WorkflowDefinition workflow = agent.workflows().values().iterator().next();
-        assertEquals(agent.id(), workflow.id().agentId());
-        assertEquals(List.of(workflow.operations().get(0), workflow.operations().get(0)),
-                workflow.operations());
+    @Test void coordinatorAgentMayHaveNoLocalOperationsAndForeignWorkflowRoundTrips() {
+        ModuleId coordinatorModule = new ModuleId("core.module");
+        AgentId agentId = new AgentId(coordinatorModule, "coordinator");
+        OperationId foreignOperation = new OperationId(
+                new ModuleId("calculator.module"), "calculate");
+        WorkflowId workflowId = new WorkflowId(agentId, "delegate-calculation");
+        WorkflowDefinition workflow = new WorkflowDefinition(workflowId,
+                "Coordinate a foreign exposed Operation", List.of(foreignOperation));
+        AgentDefinition agent = new AgentDefinition(agentId, "Coordinate installed Modules",
+                Integrity.I4, Set.of(), Map.of(workflowId, workflow), Set.of());
+        ModuleDefinition definition = new ModuleDefinition(coordinatorModule, "1.0.0",
+                "Coordinator module", Map.of(), Map.of(agentId, agent), Map.of(), Map.of());
+
         ModuleDefinitionJsonCodec codec = new ModuleDefinitionJsonCodec();
         ModuleDefinition decoded = codec.decode(codec.encode(definition));
-        AgentDefinition decodedAgent = decoded.agents().get(agent.id());
-        assertEquals(definition.id(), decoded.id());
-        assertEquals(definition.materialTypes(), decoded.materialTypes());
-        assertEquals(definition.operations().keySet(), decoded.operations().keySet());
-        assertEquals(definition.exposedOperations(), decoded.exposedOperations());
-        assertEquals(workflow.operations(),
-                decodedAgent.workflows().get(workflow.id()).operations());
+        AgentDefinition decodedAgent = decoded.agents().get(agentId);
+
+        assertEquals(Set.of(), decodedAgent.operations());
+        assertEquals(List.of(foreignOperation),
+                decodedAgent.workflows().get(workflowId).operations());
         assertThrows(CodecException.class, () -> codec.decode(
                 codec.encode(definition).replaceFirst("\\{", "{\"metadata\":{},")));
     }

@@ -38,7 +38,13 @@ public interface Agent {
     default Collection<? extends SkillDefinition> skills() { return Set.of(); }
     default Collection<? extends WorkflowDefinition> workflows() { return Set.of(); }
 
-    /** Operation repertoire implemented or coordinated by this Agent. */
+    /**
+     * Module-local Operations this Agent claims for local resolution.
+     *
+     * <p>This set may be empty. Cross-Module coordination is represented by Agent-owned
+     * Workflows and runtime invocation of exposed Operations, not by claiming foreign
+     * Operations as local repertoire.</p>
+     */
     Set<OperationId> operations();
 
     /**
