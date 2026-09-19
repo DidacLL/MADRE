@@ -6,26 +6,25 @@ import io.github.didacll.madre.algebra.Sensitivity;
 import io.github.didacll.madre.sdk.identity.AgentId;
 import io.github.didacll.madre.sdk.material.Material;
 import io.github.didacll.madre.sdk.module.Agent;
-import io.github.didacll.madre.sdk.operation.OperationCall;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Collection;
-import java.util.List;
+import java.util.Iterator;
 import java.util.Objects;
 import java.util.Optional;
 
 /**
  * Semantic reasoning intent owned by an acting Agent before physical Work exists.
  *
- * <p>The request carries the Security Algebra values accumulated from the actual current
- * construction. The bounded call contributes its real input Material and accepted Privacy
- * boundary, while the acting Agent contributes its Integrity. Additional current Materials,
- * Privacy boundaries and causal participants may be supplied when the computation really includes
- * them. Composition remains dimension-specific; this object performs no authorization or
- * cross-dimensional evaluation.</p>
+ * <p>The request carries Security Algebra values composed only from the actual current semantic
+ * constituents supplied by the Agent. Materials contribute Sensitivity, receiver boundaries
+ * contribute Privacy, and the acting Agent plus other current causal participants contribute
+ * Integrity. No Operation repertoire, possible output, installed engine or hypothetical future
+ * constituent participates in these values.</p>
  *
- * <p>Operation Risk and Autonomy are not propagated merely because an Operation declares an
- * {@code EffectProfile}: an inference mechanism does not itself realize that external effect.</p>
+ * <p>Composition remains dimension-specific. This value performs no authorization, provider
+ * policy or cross-dimensional permission evaluation. Risk and Autonomy remain properties of real
+ * consequential EffectProfiles and are not copied into inference merely for symmetry.</p>
  */
 public final class ReasoningRequest<R, C extends ReasoningComputation<R>> {
     private final AgentId actor;
@@ -43,10 +42,9 @@ public final class ReasoningRequest<R, C extends ReasoningComputation<R>> {
 
     private ReasoningRequest(
             Agent actor,
-            OperationCall<?, ?> call,
-            Collection<? extends Material<?>> additionalMaterials,
-            Collection<Privacy> additionalPrivacyBoundaries,
-            Collection<Integrity> additionalCausalParticipants,
+            Collection<? extends Material<?>> materials,
+            Collection<Privacy> receiverBoundaries,
+            Collection<Integrity> causalParticipants,
             C computation,
             ExecutionMode mode,
             int priority,
@@ -57,55 +55,12 @@ public final class ReasoningRequest<R, C extends ReasoningComputation<R>> {
             ReasoningPreferences preferences) {
         Agent actingAgent = Objects.requireNonNull(actor, "actor");
         this.actor = Objects.requireNonNull(actingAgent.id(), "actor.id()");
-        OperationCall<?, ?> boundedCall = Objects.requireNonNull(call, "call");
-        Objects.requireNonNull(additionalMaterials, "additionalMaterials");
-        Objects.requireNonNull(additionalPrivacyBoundaries, "additionalPrivacyBoundaries");
-        Objects.requireNonNull(additionalCausalParticipants, "additionalCausalParticipants");
-
-        Sensitivity accumulatedSensitivity = boundedCall.input().sensitivity();
-        for (Material<?> material : additionalMaterials) {
-            accumulatedSensitivity = accumulatedSensitivity.combine(
-                    Objects.requireNonNull(material, "additional material").sensitivity());
-        }
-
-        Privacy acceptedBoundary = boundedCall.operation().acceptedMaterial()
-                .get(boundedCall.input().type().id());
-        if (acceptedBoundary == null) {
-            throw new IllegalArgumentException(
-                    "bounded Operation call has no Privacy boundary for its actual input");
-        }
-        Privacy accumulatedPrivacy = acceptedBoundary;
-        for (Privacy boundary : additionalPrivacyBoundaries) {
-            Privacy value = Objects.requireNonNull(boundary, "additional Privacy boundary");
-            if (value == Privacy.SYSTEM_RESERVED) {
-                throw new IllegalArgumentException(
-                        "SYSTEM_RESERVED Privacy is not an ordinary reasoning constituent");
-            }
-            accumulatedPrivacy = accumulatedPrivacy.combine(value);
-        }
-
-        Integrity actorIntegrity = Objects.requireNonNull(
-                actingAgent.integrity(), "actor.integrity()");
-        if (actorIntegrity == Integrity.SYSTEM_RESERVED) {
-            throw new IllegalArgumentException(
-                    "SYSTEM_RESERVED Integrity is not an ordinary reasoning constituent");
-        }
-        Integrity accumulatedIntegrity = actorIntegrity;
-        for (Integrity participant : additionalCausalParticipants) {
-            Integrity value = Objects.requireNonNull(
-                    participant, "additional causal participant");
-            if (value == Integrity.SYSTEM_RESERVED) {
-                throw new IllegalArgumentException(
-                        "SYSTEM_RESERVED Integrity is not an ordinary reasoning constituent");
-            }
-            accumulatedIntegrity = accumulatedIntegrity.combine(value);
-        }
+        sensitivity = composeSensitivity(materials);
+        privacy = composePrivacy(receiverBoundaries);
+        integrity = composeIntegrity(actingAgent, causalParticipants);
 
         this.computation = Objects.requireNonNull(computation, "computation");
         Objects.requireNonNull(computation.resultType(), "computation.resultType()");
-        sensitivity = accumulatedSensitivity;
-        privacy = accumulatedPrivacy;
-        integrity = accumulatedIntegrity;
         this.mode = Objects.requireNonNull(mode, "mode");
         if (priority < 0) {
             throw new IllegalArgumentException("priority must not be negative");
@@ -123,38 +78,26 @@ public final class ReasoningRequest<R, C extends ReasoningComputation<R>> {
 
     public static <R, C extends ReasoningComputation<R>> ReasoningRequest<R, C> immediate(
             Agent actor,
-            OperationCall<?, ?> call,
+            Collection<? extends Material<?>> materials,
+            Collection<Privacy> receiverBoundaries,
+            Collection<Integrity> causalParticipants,
             C computation,
             int priority,
             Duration timeout,
             ReasoningRetryPolicy retryPolicy,
             Optional<CancellationKey> cancellationKey,
             ReasoningPreferences preferences) {
-        return immediate(actor, call, List.of(), List.of(), List.of(), computation, priority,
-                timeout, retryPolicy, cancellationKey, preferences);
-    }
-
-    public static <R, C extends ReasoningComputation<R>> ReasoningRequest<R, C> immediate(
-            Agent actor,
-            OperationCall<?, ?> call,
-            Collection<? extends Material<?>> additionalMaterials,
-            Collection<Privacy> additionalPrivacyBoundaries,
-            Collection<Integrity> additionalCausalParticipants,
-            C computation,
-            int priority,
-            Duration timeout,
-            ReasoningRetryPolicy retryPolicy,
-            Optional<CancellationKey> cancellationKey,
-            ReasoningPreferences preferences) {
-        return new ReasoningRequest<>(actor, call, additionalMaterials,
-                additionalPrivacyBoundaries, additionalCausalParticipants, computation,
+        return new ReasoningRequest<>(
+                actor, materials, receiverBoundaries, causalParticipants, computation,
                 ExecutionMode.IMMEDIATE, priority, Instant.now(), timeout, retryPolicy,
                 cancellationKey, preferences);
     }
 
     public static <R, C extends ReasoningComputation<R>> ReasoningRequest<R, C> durable(
             Agent actor,
-            OperationCall<?, ?> call,
+            Collection<? extends Material<?>> materials,
+            Collection<Privacy> receiverBoundaries,
+            Collection<Integrity> causalParticipants,
             C computation,
             int priority,
             Instant eligibleAt,
@@ -162,27 +105,72 @@ public final class ReasoningRequest<R, C extends ReasoningComputation<R>> {
             ReasoningRetryPolicy retryPolicy,
             Optional<CancellationKey> cancellationKey,
             ReasoningPreferences preferences) {
-        return durable(actor, call, List.of(), List.of(), List.of(), computation, priority,
-                eligibleAt, timeout, retryPolicy, cancellationKey, preferences);
-    }
-
-    public static <R, C extends ReasoningComputation<R>> ReasoningRequest<R, C> durable(
-            Agent actor,
-            OperationCall<?, ?> call,
-            Collection<? extends Material<?>> additionalMaterials,
-            Collection<Privacy> additionalPrivacyBoundaries,
-            Collection<Integrity> additionalCausalParticipants,
-            C computation,
-            int priority,
-            Instant eligibleAt,
-            Duration timeout,
-            ReasoningRetryPolicy retryPolicy,
-            Optional<CancellationKey> cancellationKey,
-            ReasoningPreferences preferences) {
-        return new ReasoningRequest<>(actor, call, additionalMaterials,
-                additionalPrivacyBoundaries, additionalCausalParticipants, computation,
+        return new ReasoningRequest<>(
+                actor, materials, receiverBoundaries, causalParticipants, computation,
                 ExecutionMode.DURABLE, priority, eligibleAt, timeout, retryPolicy,
                 cancellationKey, preferences);
+    }
+
+    private static Sensitivity composeSensitivity(
+            Collection<? extends Material<?>> materials) {
+        Objects.requireNonNull(materials, "materials");
+        Iterator<? extends Material<?>> iterator = materials.iterator();
+        if (!iterator.hasNext()) {
+            throw new IllegalArgumentException(
+                    "reasoning requires at least one actual Material constituent");
+        }
+        Material<?> first = Objects.requireNonNull(
+                iterator.next(), "material");
+        Sensitivity value = first.sensitivity();
+        while (iterator.hasNext()) {
+            value = value.combine(
+                    Objects.requireNonNull(iterator.next(), "material").sensitivity());
+        }
+        return value;
+    }
+
+    private static Privacy composePrivacy(Collection<Privacy> receiverBoundaries) {
+        Objects.requireNonNull(receiverBoundaries, "receiverBoundaries");
+        Iterator<Privacy> iterator = receiverBoundaries.iterator();
+        if (!iterator.hasNext()) {
+            throw new IllegalArgumentException(
+                    "reasoning requires at least one actual Privacy boundary");
+        }
+        Privacy value = ordinaryPrivacy(
+                Objects.requireNonNull(iterator.next(), "Privacy boundary"));
+        while (iterator.hasNext()) {
+            value = value.combine(ordinaryPrivacy(
+                    Objects.requireNonNull(iterator.next(), "Privacy boundary")));
+        }
+        return value;
+    }
+
+    private static Integrity composeIntegrity(
+            Agent actor, Collection<Integrity> causalParticipants) {
+        Objects.requireNonNull(causalParticipants, "causalParticipants");
+        Integrity value = ordinaryIntegrity(
+                Objects.requireNonNull(actor.integrity(), "actor.integrity()"));
+        for (Integrity participant : causalParticipants) {
+            value = value.combine(ordinaryIntegrity(
+                    Objects.requireNonNull(participant, "causal participant")));
+        }
+        return value;
+    }
+
+    private static Privacy ordinaryPrivacy(Privacy value) {
+        if (value == Privacy.SYSTEM_RESERVED) {
+            throw new IllegalArgumentException(
+                    "SYSTEM_RESERVED Privacy is not an ordinary reasoning constituent");
+        }
+        return value;
+    }
+
+    private static Integrity ordinaryIntegrity(Integrity value) {
+        if (value == Integrity.SYSTEM_RESERVED) {
+            throw new IllegalArgumentException(
+                    "SYSTEM_RESERVED Integrity is not an ordinary reasoning constituent");
+        }
+        return value;
     }
 
     public AgentId actor() { return actor; }

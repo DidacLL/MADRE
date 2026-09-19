@@ -54,10 +54,20 @@ public final class OwnerInteractionModule implements Module {
             respondDefinition, Operation.of((context, call) -> {
                 TextGenerationCommand command = TextGenerationCommand.prompt(
                         call.input().payload(), 512);
+                Privacy receiverBoundary = respondDefinition.acceptedMaterial()
+                        .get(call.input().type().id());
                 ReasoningRequest<TextGenerationResult, TextGenerationCommand> request =
-                        ReasoningRequest.immediate(context.actor(), call, command, 100,
-                                Duration.ofSeconds(90), ReasoningRetryPolicy.none(),
-                                Optional.empty(), ReasoningPreferences.requirements());
+                        ReasoningRequest.immediate(
+                                context.actor(),
+                                List.of(call.input()),
+                                List.of(receiverBoundary),
+                                List.of(),
+                                command,
+                                100,
+                                Duration.ofSeconds(90),
+                                ReasoningRetryPolicy.none(),
+                                Optional.empty(),
+                                ReasoningPreferences.requirements());
                 return context.reasoning().execute(request).thenApply(result ->
                         text(RESPONSE_TEXT, result.text(), request.sensitivity()));
             }));

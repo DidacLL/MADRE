@@ -106,9 +106,17 @@ final class MadreRuntimeAgencyTest {
                     source.material("request", "hard question"));
             ReasoningPreferences preferences = new ReasoningPreferences(Optional.empty(),
                     Optional.of(InferenceSelection.engine("missing")));
-            ReasoningRequest<?, ?> request = ReasoningRequest.immediate(source.agent, call,
-                    TextGenerationCommand.prompt("hard question", 64), 100,
-                    Duration.ofSeconds(1), ReasoningRetryPolicy.none(), Optional.empty(),
+            ReasoningRequest<?, ?> request = ReasoningRequest.immediate(
+                    source.agent,
+                    java.util.List.of(call.input()),
+                    java.util.List.of(call.operation().acceptedMaterial()
+                            .get(call.input().type().id())),
+                    java.util.List.of(),
+                    TextGenerationCommand.prompt("hard question", 64),
+                    100,
+                    Duration.ofSeconds(1),
+                    ReasoningRetryPolicy.none(),
+                    Optional.empty(),
                     preferences);
 
             assertThrows(IllegalStateException.class,

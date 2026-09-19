@@ -88,7 +88,8 @@ final class RuntimeInferenceServiceTest {
                     2048);
             ReasoningRequest<TextGenerationResult, TextGenerationCommand> request =
                     ReasoningRequest.immediate(
-                            fixture.actor(), fixture.call(), command, 10,
+                            fixture.actor(), materials(fixture), boundaries(fixture),
+                            List.of(), command, 10,
                             Duration.ofSeconds(2), ReasoningRetryPolicy.none(),
                             Optional.empty(),
                             new ReasoningPreferences(
@@ -128,8 +129,8 @@ final class RuntimeInferenceServiceTest {
             Fixture fixture = fixture();
             ReasoningRequest<TextGenerationResult, TextGenerationCommand> request =
                     ReasoningRequest.immediate(
-                            fixture.actor(), fixture.call(),
-                            TextGenerationCommand.prompt("question", 32), 10,
+                            fixture.actor(), materials(fixture), boundaries(fixture),
+                            List.of(), TextGenerationCommand.prompt("question", 32), 10,
                             Duration.ofSeconds(2), ReasoningRetryPolicy.none(),
                             Optional.empty(), ReasoningPreferences.requirements());
 
@@ -153,8 +154,8 @@ final class RuntimeInferenceServiceTest {
             Fixture fixture = fixture();
             ReasoningRequest<TextGenerationResult, TextGenerationCommand> request =
                     ReasoningRequest.immediate(
-                            fixture.actor(), fixture.call(),
-                            TextGenerationCommand.prompt("question", 32), 10,
+                            fixture.actor(), materials(fixture), boundaries(fixture),
+                            List.of(), TextGenerationCommand.prompt("question", 32), 10,
                             Duration.ofSeconds(1), ReasoningRetryPolicy.none(),
                             Optional.empty(), ReasoningPreferences.requirements());
 
@@ -179,7 +180,8 @@ final class RuntimeInferenceServiceTest {
                 Optional.of(InferenceSelection.engine("restart-engine")));
         ReasoningRequest<TextGenerationResult, TextGenerationCommand> request =
                 ReasoningRequest.durable(
-                        fixture.actor(), fixture.call(), command, 10,
+                        fixture.actor(), materials(fixture), boundaries(fixture),
+                        List.of(), command, 10,
                         Instant.now().plusMillis(400), Duration.ofSeconds(2),
                         ReasoningRetryPolicy.none(), Optional.empty(), exact);
 
@@ -231,8 +233,8 @@ final class RuntimeInferenceServiceTest {
             Fixture fixture = fixture();
             ReasoningRequest<String, FixtureComputation> request =
                     ReasoningRequest.immediate(
-                            fixture.actor(), fixture.call(),
-                            new FixtureComputation(), 10, Duration.ofSeconds(1),
+                            fixture.actor(), materials(fixture), boundaries(fixture),
+                            List.of(), new FixtureComputation(), 10, Duration.ofSeconds(1),
                             ReasoningRetryPolicy.none(), Optional.empty(),
                             ReasoningPreferences.requirements());
 
@@ -244,6 +246,15 @@ final class RuntimeInferenceServiceTest {
     private InferenceKernel kernel(String name) {
         return new InferenceKernel(
                 temporary.resolve(name + ".db"), 1, Map.of());
+    }
+
+    private static List<Material<?>> materials(Fixture fixture) {
+        return List.of(fixture.call().input());
+    }
+
+    private static List<Privacy> boundaries(Fixture fixture) {
+        return List.of(fixture.call().operation().acceptedMaterial()
+                .get(fixture.call().input().type().id()));
     }
 
     private static Fixture fixture() {
