@@ -250,7 +250,7 @@ public final class RuntimeInferenceService {
         InferenceRequirements requirements = new InferenceRequirements(
                 capability,
                 urgency,
-                request.eligibleAt(),
+                Instant.ofEpochMilli(request.eligibleAt().toEpochMilli()),
                 Optional.empty(),
                 request.timeout(),
                 new RetryPolicy(
