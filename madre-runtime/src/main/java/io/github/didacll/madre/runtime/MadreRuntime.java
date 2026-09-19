@@ -1,7 +1,6 @@
 package io.github.didacll.madre.runtime;
 
 import io.github.didacll.madre.sdk.identity.AgentId;
-import io.github.didacll.madre.sdk.identity.ModuleId;
 import io.github.didacll.madre.sdk.directory.ModuleDirectory;
 import io.github.didacll.madre.sdk.directory.ReachabilityQuery;
 import io.github.didacll.madre.sdk.directory.ReachableModule;
@@ -64,7 +63,7 @@ public final class MadreRuntime {
         OperationCall<I, O> request = Objects.requireNonNull(call, "call");
         Agent actor = modules.resolveAgent(request.operation().id(),
                 Objects.requireNonNull(explicitAgent, "explicitAgent"));
-        return invokeAs(actor, modules.typedBinding(request), request);
+        return invokeFrom(actor, request);
     }
 
     /** Enters the configured CORE conversational Agent without exposing Module-private protocol. */
@@ -76,15 +75,15 @@ public final class MadreRuntime {
             throw new AgentResolutionException(
                     "The default CORE Agent is not conversational: " + id);
         }
-        return conversational.respond(contextFor(actor, actor.id().moduleId()),
+        return conversational.respond(contextFor(actor),
                 Objects.requireNonNull(message, "message"));
     }
 
-    private <I, O> CompletionStage<Material<O>> invokeFrom(Agent actor, ModuleId caller,
+    private <I, O> CompletionStage<Material<O>> invokeFrom(Agent actor,
             OperationCall<I, O> call) {
         OperationCall<I, O> request = Objects.requireNonNull(call, "call");
-        ModuleId target = request.operation().id().moduleId();
-        if (!target.equals(Objects.requireNonNull(caller, "caller"))
+        var target = request.operation().id().moduleId();
+        if (!target.equals(actor.id().moduleId())
                 && !modules.requireModule(target).definition().exposedOperations()
                         .contains(request.operation().id())) {
             throw new IllegalArgumentException(
@@ -95,15 +94,14 @@ public final class MadreRuntime {
 
     private <I, O> CompletionStage<Material<O>> invokeAs(Agent actor,
             OperationBinding<I, O> operation, OperationCall<I, O> call) {
-        return actor.execute(contextFor(actor, operation.definition().id().moduleId()),
-                operation, call);
+        return actor.execute(contextFor(actor), operation, call);
     }
 
-    private AgentContext contextFor(Agent actor, ModuleId executingModule) {
+    private AgentContext contextFor(Agent actor) {
         ModuleInvoker actorBoundInvoker = new ModuleInvoker() {
             @Override
             public <A, B> CompletionStage<Material<B>> invoke(OperationCall<A, B> nested) {
-                return invokeFrom(actor, executingModule, nested);
+                return invokeFrom(actor, nested);
             }
         };
         return new AgentContext(actor, inference.forAgent(actor.id()),

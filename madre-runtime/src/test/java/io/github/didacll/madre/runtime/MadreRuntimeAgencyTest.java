@@ -162,6 +162,7 @@ final class MadreRuntimeAgencyTest {
             return Set.of(agent, new TestAgent(new AgentId(id, "other"), operation.id(),
                     new AtomicReference<>()));
         }
+        @Override public Set<OperationId> exposedOperations() { return Set.of(operation.id()); }
         @Override public Collection<? extends OperationBinding<?, ?>> operations() { return Set.of(binding); }
     }
 
