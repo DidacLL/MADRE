@@ -133,6 +133,7 @@ final class SdkInvariantTest {
                 Duration.ofSeconds(1), ReasoningRetryPolicy.none(), Optional.empty(),
                 ReasoningPreferences.requirements());
 
+        assertEquals(actor.id(), request.actor());
         assertEquals(Sensitivity.S5, request.sensitivity());
         assertEquals(Privacy.PUBLIC, request.privacy());
         assertEquals(Integrity.I2, request.integrity());

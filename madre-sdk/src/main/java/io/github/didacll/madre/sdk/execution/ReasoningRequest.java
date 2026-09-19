@@ -3,6 +3,7 @@ package io.github.didacll.madre.sdk.execution;
 import io.github.didacll.madre.algebra.Integrity;
 import io.github.didacll.madre.algebra.Privacy;
 import io.github.didacll.madre.algebra.Sensitivity;
+import io.github.didacll.madre.sdk.identity.AgentId;
 import io.github.didacll.madre.sdk.material.Material;
 import io.github.didacll.madre.sdk.module.Agent;
 import io.github.didacll.madre.sdk.operation.OperationCall;
@@ -27,6 +28,7 @@ import java.util.Optional;
  * {@code EffectProfile}: an inference mechanism does not itself realize that external effect.</p>
  */
 public final class ReasoningRequest<R, C extends ReasoningComputation<R>> {
+    private final AgentId actor;
     private final C computation;
     private final Sensitivity sensitivity;
     private final Privacy privacy;
@@ -54,6 +56,7 @@ public final class ReasoningRequest<R, C extends ReasoningComputation<R>> {
             Optional<CancellationKey> cancellationKey,
             ReasoningPreferences preferences) {
         Agent actingAgent = Objects.requireNonNull(actor, "actor");
+        this.actor = Objects.requireNonNull(actingAgent.id(), "actor.id()");
         OperationCall<?, ?> boundedCall = Objects.requireNonNull(call, "call");
         Objects.requireNonNull(additionalMaterials, "additionalMaterials");
         Objects.requireNonNull(additionalPrivacyBoundaries, "additionalPrivacyBoundaries");
@@ -182,6 +185,7 @@ public final class ReasoningRequest<R, C extends ReasoningComputation<R>> {
                 cancellationKey, preferences);
     }
 
+    public AgentId actor() { return actor; }
     public C computation() { return computation; }
     public Class<R> resultType() { return computation.resultType(); }
     public Sensitivity sensitivity() { return sensitivity; }

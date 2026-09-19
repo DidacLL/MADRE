@@ -142,6 +142,30 @@ final class RuntimeInferenceServiceTest {
     }
 
     @Test
+    void boundReasoningServiceRejectsRequestOwnedByAnotherAgent() {
+        try (InferenceKernel kernel = kernel("actor-mismatch")) {
+            kernel.register(new CapturingEngine(
+                    "chat", "provider", "model",
+                    URI.create("https://chat.example/api"), new AtomicInteger(),
+                    new AtomicReference<>()));
+            RuntimeInferenceService service = new RuntimeInferenceService(
+                    kernel, temporary.resolve("semantic-actor-mismatch"));
+            Fixture fixture = fixture();
+            ReasoningRequest<TextGenerationResult, TextGenerationCommand> request =
+                    ReasoningRequest.immediate(
+                            fixture.actor(), fixture.call(),
+                            TextGenerationCommand.prompt("question", 32), 10,
+                            Duration.ofSeconds(1), ReasoningRetryPolicy.none(),
+                            Optional.empty(), ReasoningPreferences.requirements());
+
+            AgentId different = new AgentId(
+                    fixture.actor().id().moduleId(), "different-agent");
+            assertThrows(IllegalArgumentException.class,
+                    () -> service.forAgent(different).execute(request));
+        }
+    }
+
+    @Test
     void durableSemanticRequestRecoversWithCurrentChatContract() throws Exception {
         Path database = temporary.resolve("durable.db");
         Path semantic = temporary.resolve("semantic-durable");

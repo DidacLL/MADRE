@@ -219,6 +219,11 @@ public final class RuntimeInferenceService {
     private <R, C extends ReasoningComputation<R>> PreparedChat prepare(
             AgentId actor, ReasoningRequest<R, C> request) {
         Objects.requireNonNull(request, "request");
+        if (!actor.equals(request.actor())) {
+            throw new IllegalArgumentException(
+                    "ReasoningRequest belongs to a different acting Agent: "
+                            + request.actor());
+        }
         if (!(request.computation() instanceof TextGenerationCommand command)) {
             throw new IllegalArgumentException(
                     "No runtime inference translation for "
