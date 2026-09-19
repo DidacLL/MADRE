@@ -98,8 +98,9 @@ final class MadreRuntimeAgencyTest {
         try (InferenceKernel kernel = new InferenceKernel(temporary.resolve("selection.db"), 1,
                 Map.of())) {
             kernel.register(new TestChatEngine("installed", executions));
-            RuntimeInferenceService inference = new RuntimeInferenceService(kernel,
-                    temporary.resolve("selection-semantic"));
+            RuntimeInferenceService inference = new RuntimeInferenceService(
+                    kernel, temporary.resolve("selection-semantic"),
+                    Optional.of(InferenceSelection.engine("installed")));
             TestModule source = new TestModule("source", true, new AtomicReference<>());
             OperationCall<String, String> call = OperationCall.withoutEffect(source.operation,
                     source.material("request", "hard question"));
