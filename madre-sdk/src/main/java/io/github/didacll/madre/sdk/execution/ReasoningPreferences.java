@@ -17,7 +17,13 @@ public record ReasoningPreferences(Optional<Duration> maximumLatency,
         });
     }
 
-    /** Uses the concrete computation requirements without silently widening exact selection. */
+    /**
+     * Adds no Owner-forced physical identity beyond the concrete computation requirements.
+     *
+     * <p>This is not permission to use an arbitrary installed engine. Semantic runtime resolution
+     * must still have meaningful inference intent and may apply an Owner-configured default before
+     * physical Work is created.</p>
+     */
     public static ReasoningPreferences requirements() {
         return new ReasoningPreferences(Optional.empty(), Optional.empty());
     }

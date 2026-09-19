@@ -12,12 +12,11 @@ import io.github.didacll.madre.kernel.EngineAvailability;
 import io.github.didacll.madre.kernel.EngineCharacteristics;
 import io.github.didacll.madre.kernel.EngineExecution;
 import io.github.didacll.madre.kernel.EngineId;
-import io.github.didacll.madre.kernel.EngineLocation;
 import io.github.didacll.madre.kernel.InferenceEngine;
+import io.github.didacll.madre.kernel.ChatCompletionInput;
+import io.github.didacll.madre.kernel.ChatCompletionOutput;
 import io.github.didacll.madre.kernel.InferenceType;
 import io.github.didacll.madre.kernel.InferenceTypes;
-import io.github.didacll.madre.kernel.TextInferenceInput;
-import io.github.didacll.madre.kernel.TextInferenceOutput;
 import io.github.didacll.madre.generation.TextGenerationCommand;
 import io.github.didacll.madre.sdk.execution.InferenceSelection;
 import io.github.didacll.madre.sdk.execution.ReasoningPreferences;
@@ -37,6 +36,7 @@ import io.github.didacll.madre.sdk.module.OperationBinding;
 import io.github.didacll.madre.sdk.module.OperationDefinition;
 import io.github.didacll.madre.sdk.operation.Operation;
 import io.github.didacll.madre.sdk.operation.OperationCall;
+import java.net.URI;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Collection;
@@ -93,26 +93,25 @@ final class MadreRuntimeAgencyTest {
     }
 
     @Test
-    void ownerExactEngineSelectionCrossesAsTechnicalRequirementAndFailsHonestly() {
+    void ownerExactEngineSelectionStaysExactAndNeverBroadens() {
         AtomicInteger executions = new AtomicInteger();
         try (InferenceKernel kernel = new InferenceKernel(temporary.resolve("selection.db"), 1,
                 Map.of())) {
-            kernel.register(new TestTextEngine("installed", executions));
+            kernel.register(new TestChatEngine("installed", executions));
             RuntimeInferenceService inference = new RuntimeInferenceService(kernel,
                     temporary.resolve("selection-semantic"));
             TestModule source = new TestModule("source", true, new AtomicReference<>());
             OperationCall<String, String> call = OperationCall.withoutEffect(source.operation,
                     source.material("request", "hard question"));
             ReasoningPreferences preferences = new ReasoningPreferences(Optional.empty(),
-                    Optional.empty(), Optional.of(InferenceSelection.engine("missing")));
-            ReasoningRequest<?, ?> request = ReasoningRequest.immediate(call,
-                    TextGenerationCommand.demandingPrompt("hard question", 64, 2048), 100,
+                    Optional.of(InferenceSelection.engine("missing")));
+            ReasoningRequest<?, ?> request = ReasoningRequest.immediate(source.agent, call,
+                    TextGenerationCommand.prompt("hard question", 64), 100,
                     Duration.ofSeconds(1), ReasoningRetryPolicy.none(), Optional.empty(),
                     preferences);
 
-            assertThrows(java.util.concurrent.CompletionException.class,
-                    () -> inference.forAgent(source.agent.id()).execute(request)
-                            .toCompletableFuture().join());
+            assertThrows(IllegalStateException.class,
+                    () -> inference.forAgent(source.agent.id()).execute(request));
             assertEquals(0, executions.get());
         }
     }
@@ -179,31 +178,32 @@ final class MadreRuntimeAgencyTest {
         }
     }
 
-    private static final class TestTextEngine
-            implements InferenceEngine<TextInferenceInput, TextInferenceOutput> {
+    private static final class TestChatEngine
+            implements InferenceEngine<ChatCompletionInput, ChatCompletionOutput> {
         private final EngineId id;
         private final AtomicInteger executions;
 
-        private TestTextEngine(String id, AtomicInteger executions) {
+        private TestChatEngine(String id, AtomicInteger executions) {
             this.id = new EngineId(id);
             this.executions = executions;
         }
         @Override public EngineId id() { return id; }
-        @Override public InferenceType<TextInferenceInput, TextInferenceOutput> type() {
-            return InferenceTypes.TEXT_GENERATION;
+        @Override public InferenceType<ChatCompletionInput, ChatCompletionOutput> type() {
+            return InferenceTypes.CHAT_COMPLETION;
         }
         @Override public EngineCharacteristics characteristics() {
-            return new EngineCharacteristics(EngineLocation.LOCAL, "test", id.value(),
-                    Duration.ofMillis(10), 0,
-                    Optional.of(new EngineCharacteristics.TextCapability(true, 4096)),
-                    Optional.empty(), Optional.empty());
+            return new EngineCharacteristics("test-provider", "test-model",
+                    URI.create("https://example.invalid/" + id.value()),
+                    Duration.ofMillis(10),
+                    Optional.of(new EngineCharacteristics.ChatCompletionCapability(4096)));
         }
         @Override public EngineAvailability availability() { return EngineAvailability.AVAILABLE; }
-        @Override public TextInferenceOutput execute(TextInferenceInput input,
+        @Override public ChatCompletionOutput execute(ChatCompletionInput input,
                 EngineExecution execution) {
             executions.incrementAndGet();
-            return new TextInferenceOutput("unexpected", TextInferenceOutput.FinishReason.COMPLETE,
-                    TextInferenceOutput.TokenUsage.unavailable());
+            return new ChatCompletionOutput("unexpected",
+                    ChatCompletionOutput.FinishReason.COMPLETE,
+                    ChatCompletionOutput.TokenUsage.unavailable());
         }
     }
 }
