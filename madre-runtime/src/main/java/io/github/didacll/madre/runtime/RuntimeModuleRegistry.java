@@ -1,7 +1,5 @@
 package io.github.didacll.madre.runtime;
 
-import io.github.didacll.madre.algebra.Privacy;
-import io.github.didacll.madre.algebra.Sensitivity;
 import io.github.didacll.madre.sdk.directory.ModuleDirectory;
 import io.github.didacll.madre.sdk.directory.ReachabilityQuery;
 import io.github.didacll.madre.sdk.directory.ReachableAgent;
@@ -194,9 +192,8 @@ public final class RuntimeModuleRegistry {
                                     new LinkedHashMap<>();
                             module.definition().exposedOperations().stream()
                                     .map(module.definition().operations()::get)
-                                    .filter(operation -> operation.acceptedMaterial().entrySet().stream()
-                                            .anyMatch(entry -> entry.getKey().equals(query.materialType())
-                                                    && query.sensitivity().canReach(entry.getValue())))
+                                    .filter(operation -> operation.acceptedMaterial()
+                                            .containsKey(query.materialType()))
                                     .forEach(operation -> operations.put(operation.id(), operation));
                             if (!operations.isEmpty()) {
                                 Map<AgentId, ReachableAgent> agents = new LinkedHashMap<>();
@@ -206,7 +203,7 @@ public final class RuntimeModuleRegistry {
                                             .collect(java.util.stream.Collectors.toUnmodifiableSet());
                                     if (!visible.isEmpty()) {
                                         agents.put(agent.id(), new ReachableAgent(agent.id(), agent.purpose(),
-                                                visible, Privacy.PUBLIC));
+                                                visible));
                                     }
                                 });
                                 result.add(new ReachableModule(module.definition().id(),
@@ -221,8 +218,7 @@ public final class RuntimeModuleRegistry {
         }
 
         @Override
-        public List<ReachableOperation> reachableOperations(Sensitivity sensitivity) {
-            Objects.requireNonNull(sensitivity, "sensitivity");
+        public List<ReachableOperation> reachableOperations() {
             lock.readLock().lock();
             try {
                 List<ReachableOperation> result = new ArrayList<>();
@@ -230,8 +226,6 @@ public final class RuntimeModuleRegistry {
                         .filter(module -> !module.definition().id().equals(caller))
                         .forEach(module -> module.definition().exposedOperations().stream()
                                 .map(module.definition().operations()::get)
-                                .filter(operation -> operation.acceptedMaterial().values().stream()
-                                        .anyMatch(sensitivity::canReach))
                                 .forEach(operation -> result.add(new ReachableOperation(
                                         module.definition().id(), module.definition().purpose(), operation,
                                         module.definition().materialTypes().entrySet().stream()

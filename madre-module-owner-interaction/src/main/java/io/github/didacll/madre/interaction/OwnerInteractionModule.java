@@ -57,7 +57,7 @@ public final class OwnerInteractionModule implements Module {
                 ReasoningRequest<TextGenerationResult, TextGenerationCommand> request =
                         ReasoningRequest.immediate(call, command, 100, Duration.ofSeconds(90),
                                 ReasoningRetryPolicy.none(), Optional.empty(),
-                                ReasoningPreferences.unconstrained());
+                                ReasoningPreferences.requirements());
                 return context.reasoning().execute(request).thenApply(result ->
                         text(RESPONSE_TEXT, result.text(), call.input().sensitivity()));
             }));

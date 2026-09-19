@@ -10,9 +10,8 @@ import java.util.Objects;
 /**
  * One exact exposed Operation structurally reachable from a caller-bound Module directory.
  *
- * <p>The portable Material definitions are limited to nominal contracts owned by the target
- * Module and referenced by this Operation. They describe the target contract; they grant no
- * additional invocation authority and do not imply public disclosure.</p>
+ * <p>Any included Material definitions describe contracts currently published with the target
+ * Module. They grant no additional invocation authority and express no ownership invariant.</p>
  */
 public record ReachableOperation(ModuleId moduleId, String modulePurpose,
         OperationDefinition operation,
@@ -29,9 +28,9 @@ public record ReachableOperation(ModuleId moduleId, String modulePurpose,
         materialTypes.forEach((id, definition) -> {
             Objects.requireNonNull(id, "material type id");
             Objects.requireNonNull(definition, "material type definition");
-            if (!id.equals(definition.id()) || !id.moduleId().equals(moduleId)) {
+            if (!id.equals(definition.id())) {
                 throw new IllegalArgumentException(
-                        "reachable Material definition is not owned by the target Module: " + id);
+                        "reachable Material definition key differs from its value: " + id);
             }
             if (!operation.acceptedMaterial().containsKey(id)
                     && !operation.producedMaterial().containsKey(id)) {

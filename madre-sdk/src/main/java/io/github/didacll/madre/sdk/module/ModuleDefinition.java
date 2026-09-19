@@ -1,17 +1,13 @@
 package io.github.didacll.madre.sdk.module;
 
-import io.github.didacll.madre.algebra.Sensitivity;
 import io.github.didacll.madre.sdk.identity.AgentId;
 import io.github.didacll.madre.sdk.identity.MaterialTypeId;
 import io.github.didacll.madre.sdk.identity.ModuleId;
 import io.github.didacll.madre.sdk.identity.OperationId;
 import io.github.didacll.madre.sdk.identity.SkillId;
-import io.github.didacll.madre.sdk.material.Material;
 import io.github.didacll.madre.sdk.material.MaterialTypeDefinition;
-import java.util.Collection;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 
 /** Canonical immutable language-neutral declaration of one owner-installed Module. */
@@ -20,7 +16,6 @@ public final class ModuleDefinition {
     private final String version;
     private final String purpose;
     private final Map<MaterialTypeId, MaterialTypeDefinition> materialTypes;
-    private final Set<MaterialTypeId> foreignMaterialReferences;
     private final Map<AgentId, AgentDefinition> agents;
     private final Map<SkillId, SkillDefinition> skills;
     private final Map<OperationId, OperationDefinition> operations;
@@ -28,17 +23,15 @@ public final class ModuleDefinition {
 
     public ModuleDefinition(ModuleId id, String version, String purpose,
             Map<MaterialTypeId, MaterialTypeDefinition> materialTypes,
-            Set<MaterialTypeId> foreignMaterialReferences,
             Map<AgentId, AgentDefinition> agents,
             Map<SkillId, SkillDefinition> skills,
             Map<OperationId, OperationDefinition> operations) {
-        this(id, version, purpose, materialTypes, foreignMaterialReferences, agents, skills,
+        this(id, version, purpose, materialTypes, agents, skills,
                 operations, Set.of());
     }
 
     public ModuleDefinition(ModuleId id, String version, String purpose,
             Map<MaterialTypeId, MaterialTypeDefinition> materialTypes,
-            Set<MaterialTypeId> foreignMaterialReferences,
             Map<AgentId, AgentDefinition> agents,
             Map<SkillId, SkillDefinition> skills,
             Map<OperationId, OperationDefinition> operations,
@@ -47,7 +40,6 @@ public final class ModuleDefinition {
         this.version = requireText(version, "version");
         this.purpose = requireText(purpose, "purpose");
         this.materialTypes = Map.copyOf(materialTypes);
-        this.foreignMaterialReferences = Set.copyOf(foreignMaterialReferences);
         this.agents = Map.copyOf(agents);
         this.skills = Map.copyOf(skills);
         this.operations = Map.copyOf(operations);
@@ -74,16 +66,11 @@ public final class ModuleDefinition {
     }
 
     private void validateOwnership() {
-        boolean owned = materialTypes.keySet().stream().allMatch(key -> key.moduleId().equals(id))
-                && agents.keySet().stream().allMatch(key -> key.moduleId().equals(id))
+        boolean owned = agents.keySet().stream().allMatch(key -> key.moduleId().equals(id))
                 && skills.keySet().stream().allMatch(key -> key.moduleId().equals(id))
                 && operations.keySet().stream().allMatch(key -> key.moduleId().equals(id));
         if (!owned) {
             throw new IllegalArgumentException("all canonical declarations must be owned by the Module");
-        }
-        if (foreignMaterialReferences.stream().anyMatch(reference -> reference.moduleId().equals(id))) {
-            throw new IllegalArgumentException(
-                    "a foreign Material reference cannot duplicate an owned declaration");
         }
         if (!operations.keySet().containsAll(exposedOperations)) {
             throw new IllegalArgumentException(
@@ -93,13 +80,6 @@ public final class ModuleDefinition {
 
     private void validateReferences() {
         for (OperationDefinition operation : operations.values()) {
-            if (!operation.acceptedMaterial().keySet().stream()
-                    .allMatch(this::resolvesMaterialType)
-                    || !operation.producedMaterial().keySet().stream()
-                            .allMatch(this::resolvesMaterialType)) {
-                throw new IllegalArgumentException(
-                        "Operation contains an unresolved Material type reference: " + operation.id());
-            }
             if (!operation.effectProfiles().keySet().stream()
                     .allMatch(key -> key.operationId().equals(operation.id()))) {
                 throw new IllegalArgumentException(
@@ -115,44 +95,12 @@ public final class ModuleDefinition {
         }
     }
 
-    private boolean resolvesMaterialType(MaterialTypeId type) {
-        return materialTypes.containsKey(type) || foreignMaterialReferences.contains(type);
-    }
-
     public ModuleId id() { return id; }
     public String version() { return version; }
     public String purpose() { return purpose; }
     public Map<MaterialTypeId, MaterialTypeDefinition> materialTypes() { return materialTypes; }
-    public Set<MaterialTypeId> foreignMaterialReferences() { return foreignMaterialReferences; }
     public Map<AgentId, AgentDefinition> agents() { return agents; }
     public Map<SkillId, SkillDefinition> skills() { return skills; }
     public Map<OperationId, OperationDefinition> operations() { return operations; }
     public Set<OperationId> exposedOperations() { return exposedOperations; }
-
-    /** Derives exact current sensitivity from owned reachable Material and exposed output promises. */
-    public Optional<Sensitivity> effectiveSensitivity(
-            Collection<? extends Material<?>> reachableMaterial) {
-        Optional<Sensitivity> value = exposedOperations.stream()
-                .map(operations::get)
-                .flatMap(operation -> operation.producedMaterial().values().stream())
-                .reduce(Sensitivity::combine);
-        for (Material<?> material : reachableMaterial) {
-            if (!material.id().moduleId().equals(id)) {
-                throw new IllegalArgumentException("reachable Material value must belong to this Module");
-            }
-            MaterialTypeDefinition declared = materialTypes.get(material.type().id());
-            if (declared != null) {
-                if (!declared.equals(material.type().definition())) {
-                    throw new IllegalArgumentException(
-                            "reachable Material does not match its owned nominal contract");
-                }
-            } else if (!foreignMaterialReferences.contains(material.type().id())) {
-                throw new IllegalArgumentException(
-                        "reachable Material uses an undeclared foreign nominal contract");
-            }
-            value = Optional.of(value.map(current -> current.combine(material.sensitivity()))
-                    .orElse(material.sensitivity()));
-        }
-        return value;
-    }
 }

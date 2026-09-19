@@ -6,8 +6,7 @@ import java.util.Objects;
 
 /** Typed semantic request for text generation. */
 public record TextGenerationCommand(List<TextGenerationMessage> messages,
-        int maximumGeneratedTokens, List<String> stopSequences,
-        boolean demandingReasoning, int minimumContextTokens)
+        int maximumGeneratedTokens, List<String> stopSequences, int minimumContextTokens)
         implements ReasoningComputation<TextGenerationResult> {
     public TextGenerationCommand {
         messages = List.copyOf(Objects.requireNonNull(messages, "messages"));
@@ -25,14 +24,7 @@ public record TextGenerationCommand(List<TextGenerationMessage> messages,
     }
     public static TextGenerationCommand prompt(String prompt, int maximumGeneratedTokens) {
         return new TextGenerationCommand(List.of(new TextGenerationMessage(
-                TextGenerationMessage.Role.USER, prompt)), maximumGeneratedTokens, List.of(),
-                false, 0);
-    }
-    public static TextGenerationCommand demandingPrompt(String prompt,
-            int maximumGeneratedTokens, int minimumContextTokens) {
-        return new TextGenerationCommand(List.of(new TextGenerationMessage(
-                TextGenerationMessage.Role.USER, prompt)), maximumGeneratedTokens, List.of(),
-                true, minimumContextTokens);
+                TextGenerationMessage.Role.USER, prompt)), maximumGeneratedTokens, List.of(), 0);
     }
     @Override public Class<TextGenerationResult> resultType() { return TextGenerationResult.class; }
 }

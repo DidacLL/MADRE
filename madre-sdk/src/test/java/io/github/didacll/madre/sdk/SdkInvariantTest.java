@@ -114,7 +114,7 @@ final class SdkInvariantTest {
         ReasoningRequest<String, FixtureReasoning> request = ReasoningRequest.immediate(
                 call, new FixtureReasoning("reason"), 1, Duration.ofSeconds(1),
                 ReasoningRetryPolicy.none(), Optional.empty(),
-                ReasoningPreferences.unconstrained());
+                ReasoningPreferences.requirements());
 
         assertEquals(owner, request.originatingModule());
         assertEquals(Sensitivity.S3, request.carriedSensitivity());

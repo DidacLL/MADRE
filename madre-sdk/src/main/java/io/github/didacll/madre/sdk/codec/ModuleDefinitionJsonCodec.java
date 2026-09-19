@@ -33,9 +33,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-/** Explicit version-three JSON mapping for language-neutral Module declarations. */
+/** Explicit version-four JSON mapping for language-neutral Module descriptions. */
 public final class ModuleDefinitionJsonCodec {
-    private static final int FORMAT_VERSION = 3;
+    private static final int FORMAT_VERSION = 4;
     private final ObjectMapper mapper = new ObjectMapper();
 
     public String encode(ModuleDefinition definition) {
@@ -53,10 +53,6 @@ public final class ModuleDefinitionJsonCodec {
                     node.put("name", type.id().name());
                     node.put("contentType", type.contentType());
                 });
-        ArrayNode references = root.putArray("foreignMaterialReferences");
-        definition.foreignMaterialReferences().stream()
-                .sorted(java.util.Comparator.comparing(ModuleDefinitionJsonCodec::qualified))
-                .forEach(id -> references.add(qualified(id)));
         ArrayNode exposed = root.putArray("exposedOperations");
         definition.exposedOperations().stream().map(OperationId::name).sorted()
                 .forEach(exposed::add);
@@ -139,17 +135,13 @@ public final class ModuleDefinitionJsonCodec {
             JsonNode parsed = mapper.readTree(json);
             ObjectNode root = object(parsed, "root");
             exactFields(root, Set.of("formatVersion", "module", "version", "purpose",
-                    "materialTypes", "foreignMaterialReferences", "exposedOperations", "skills",
+                    "materialTypes", "exposedOperations", "skills",
                     "effectProfiles", "operations", "agents"));
             if (requiredInt(root, "formatVersion") != FORMAT_VERSION) {
                 throw new CodecException("unsupported formatVersion");
             }
             ModuleId module = new ModuleId(requiredText(root, "module"));
             Map<MaterialTypeId, MaterialTypeDefinition> typeDefinitions = decodeTypes(root, module);
-            Set<MaterialTypeId> references = new HashSet<>();
-            for (JsonNode node : requiredArray(root, "foreignMaterialReferences")) {
-                references.add(parseMaterialTypeId(requiredTextNode(node), module));
-            }
             Set<OperationId> exposedOperations = new HashSet<>();
             for (JsonNode node : requiredArray(root, "exposedOperations")) {
                 exposedOperations.add(new OperationId(module, requiredTextNode(node)));
@@ -159,7 +151,7 @@ public final class ModuleDefinitionJsonCodec {
             Map<OperationId, OperationDefinition> operations = decodeOperations(root, module, profiles);
             Map<AgentId, AgentDefinition> agents = decodeAgents(root, module);
             return new ModuleDefinition(module, requiredText(root, "version"),
-                    requiredText(root, "purpose"), typeDefinitions, references, agents, skills,
+                    requiredText(root, "purpose"), typeDefinitions, agents, skills,
                     operations, exposedOperations);
         } catch (JsonProcessingException | IllegalArgumentException exception) {
             throw new CodecException("invalid Module definition JSON", exception);

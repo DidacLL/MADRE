@@ -29,8 +29,6 @@ public interface Module {
     /** Java payload bindings owned by this executable Module. */
     Collection<? extends MaterialType<?>> materialTypes();
 
-    /** Foreign nominal Material contracts structurally referenced by this Module. */
-    default Set<MaterialTypeId> foreignMaterialReferences() { return Set.of(); }
     default Collection<? extends Agent> agents() { return Set.of(); }
 
     /**
@@ -99,8 +97,7 @@ public interface Module {
         }
 
         return new ModuleDefinition(id(), version(), purpose(), materialDefinitions,
-                Set.copyOf(new LinkedHashSet<>(foreignMaterialReferences())), agentDefinitions,
-                skillDefinitions, operationDefinitions,
+                agentDefinitions, skillDefinitions, operationDefinitions,
                 Set.copyOf(new LinkedHashSet<>(exposedOperations())));
     }
 

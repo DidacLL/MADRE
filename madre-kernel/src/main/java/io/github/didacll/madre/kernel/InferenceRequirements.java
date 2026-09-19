@@ -9,7 +9,6 @@ import java.util.TreeMap;
 
 /** Engine-independent technical requirements translated by MADRE runtime. */
 public record InferenceRequirements(
-        Placement placement,
         TechnicalCapabilityRequirement capability,
         Urgency urgency,
         Instant eligibleAt,
@@ -20,10 +19,10 @@ public record InferenceRequirements(
         Optional<EngineId> exactEngine,
         Optional<String> exactProvider,
         Optional<String> exactModel,
+        Optional<URI> exactEndpoint,
         List<ResourceClaim> resources) {
 
     public InferenceRequirements {
-        Objects.requireNonNull(placement, "placement");
         Objects.requireNonNull(capability, "capability");
         Objects.requireNonNull(urgency, "urgency");
         Objects.requireNonNull(eligibleAt, "eligibleAt");
@@ -38,6 +37,7 @@ public record InferenceRequirements(
         exactEngine = Objects.requireNonNull(exactEngine, "exactEngine");
         exactProvider = normalized(exactProvider, "exactProvider");
         exactModel = normalized(exactModel, "exactModel");
+        exactEndpoint = Objects.requireNonNull(exactEndpoint, "exactEndpoint");
         Objects.requireNonNull(resources, "resources");
         TreeMap<ResourceId, Long> combined = new TreeMap<>();
         for (ResourceClaim claim : resources) {
@@ -51,12 +51,6 @@ public record InferenceRequirements(
         });
     }
 
-    public static InferenceRequirements defaults() {
-        return new InferenceRequirements(Placement.LOCAL_OR_REMOTE, new TechnicalCapabilityRequirement.None(),
-                Urgency.NORMAL, Instant.now(), Optional.empty(), Duration.ofMinutes(2), RetryPolicy.noRetry(),
-                Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), List.of());
-    }
-
     private static Optional<String> normalized(Optional<String> value, String name) {
         Objects.requireNonNull(value, name);
         return value.map(item -> {
@@ -65,3 +59,4 @@ public record InferenceRequirements(
         });
     }
 }
+import java.net.URI;

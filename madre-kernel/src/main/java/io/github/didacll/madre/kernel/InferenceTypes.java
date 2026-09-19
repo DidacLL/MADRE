@@ -1,9 +1,9 @@
 package io.github.didacll.madre.kernel;
 
-/** Standard provider-neutral physical inference type identities. */
+/** Concrete physical inference contracts implemented by installed engines. */
 public final class InferenceTypes {
-    public static final InferenceType<TextInferenceInput, TextInferenceOutput> TEXT_GENERATION =
-            new InferenceType<>("text-generation/v1", TextInferenceInput.class, TextInferenceOutput.class);
+    public static final InferenceType<ChatCompletionInput, ChatCompletionOutput> CHAT_COMPLETION =
+            new InferenceType<>("chat-completion/v1", ChatCompletionInput.class, ChatCompletionOutput.class);
 
     private InferenceTypes() { }
 }

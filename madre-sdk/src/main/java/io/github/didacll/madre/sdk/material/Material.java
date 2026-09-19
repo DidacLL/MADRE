@@ -5,12 +5,10 @@ import io.github.didacll.madre.sdk.identity.MaterialId;
 import java.util.Objects;
 
 /**
- * An immutable, typed semantic value owned by exactly one Module.
+ * An immutable, typed semantic representation carrying its applicable Sensitivity.
  *
- * <p>The value owner is carried by {@link MaterialId}; the {@link MaterialType} is a nominal
- * contract and may be defined by another Module. This distinction allows an independent caller to
- * create caller-owned input conforming to a receiver-published Material type without pretending
- * that the receiver owns the caller's value.</p>
+ * <p>The current identifier and nominal type support the working authoring and persistence paths.
+ * Their shape does not establish universal Module ownership or a final Material lifecycle.</p>
  */
 public record Material<T>(MaterialId id, MaterialType<T> type, T payload, Sensitivity sensitivity) {
     public Material {

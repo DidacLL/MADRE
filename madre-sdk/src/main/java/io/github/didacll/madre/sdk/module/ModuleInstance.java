@@ -81,10 +81,6 @@ public final class ModuleInstance {
                 throw new IllegalArgumentException(
                         "MaterialType binding differs from the Module declaration: " + id);
             }
-            if (!id.moduleId().equals(definition.id())) {
-                throw new IllegalArgumentException(
-                        "MaterialType binding is not owned by the Module: " + id);
-            }
         });
         if (!operations.keySet().equals(definition.operations().keySet())) {
             throw new IllegalArgumentException(

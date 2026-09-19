@@ -47,9 +47,8 @@ public final class MadreRuntime {
             @Override public List<ReachableModule> reachable(ReachabilityQuery query) {
                 return live().reachable(query);
             }
-            @Override public List<ReachableOperation> reachableOperations(
-                    io.github.didacll.madre.algebra.Sensitivity sensitivity) {
-                return live().reachableOperations(sensitivity);
+            @Override public List<ReachableOperation> reachableOperations() {
+                return live().reachableOperations();
             }
         };
         Path moduleState = stateDirectory.resolve("modules").resolve(source.moduleId().value());

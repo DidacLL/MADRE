@@ -5,18 +5,20 @@ import java.util.Optional;
 
 /** Exact technical selection requested explicitly by the Owner. */
 public record InferenceSelection(Optional<String> engineId, Optional<String> provider,
-        Optional<String> model) {
+        Optional<String> model, Optional<String> endpoint) {
     public InferenceSelection {
         engineId = normalized(engineId, "engineId");
         provider = normalized(provider, "provider");
         model = normalized(model, "model");
-        if (engineId.isEmpty() && provider.isEmpty() && model.isEmpty()) {
+        endpoint = normalized(endpoint, "endpoint");
+        if (engineId.isEmpty() && provider.isEmpty() && model.isEmpty() && endpoint.isEmpty()) {
             throw new IllegalArgumentException("At least one exact selection value is required");
         }
     }
 
     public static InferenceSelection engine(String engineId) {
-        return new InferenceSelection(Optional.of(engineId), Optional.empty(), Optional.empty());
+        return new InferenceSelection(Optional.of(engineId), Optional.empty(), Optional.empty(),
+                Optional.empty());
     }
 
     private static Optional<String> normalized(Optional<String> value, String name) {

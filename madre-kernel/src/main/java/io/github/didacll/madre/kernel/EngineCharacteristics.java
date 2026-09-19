@@ -1,65 +1,40 @@
 package io.github.didacll.madre.kernel;
 
+import java.net.URI;
 import java.time.Duration;
 import java.util.Objects;
 import java.util.Optional;
 
 /** Stable technical facts advertised by an executable engine object. */
 public record EngineCharacteristics(
-        EngineLocation location,
         String provider,
         String model,
+        URI endpoint,
         Duration expectedLatency,
-        int preference,
-        Optional<TextCapability> text,
-        Optional<EmbeddingCapability> embedding,
-        Optional<VisionCapability> vision) {
+        Optional<ChatCompletionCapability> chatCompletion) {
 
     public EngineCharacteristics {
-        Objects.requireNonNull(location, "location");
         provider = requireText(provider, "provider");
         model = requireText(model, "model");
+        Objects.requireNonNull(endpoint, "endpoint");
         Objects.requireNonNull(expectedLatency, "expectedLatency");
         if (expectedLatency.isNegative()) throw new IllegalArgumentException("expectedLatency must not be negative");
-        text = Objects.requireNonNull(text, "text");
-        embedding = Objects.requireNonNull(embedding, "embedding");
-        vision = Objects.requireNonNull(vision, "vision");
+        chatCompletion = Objects.requireNonNull(chatCompletion, "chatCompletion");
     }
 
     public boolean satisfies(TechnicalCapabilityRequirement requirement) {
         Objects.requireNonNull(requirement, "requirement");
         return switch (requirement) {
             case TechnicalCapabilityRequirement.None ignored -> true;
-            case TechnicalCapabilityRequirement.Text requested -> text
-                    .filter(actual -> !requested.demandingReasoning() || actual.demandingReasoning())
+            case TechnicalCapabilityRequirement.ChatCompletion requested -> chatCompletion
                     .filter(actual -> actual.maximumContextTokens() >= requested.minimumContextTokens())
-                    .isPresent();
-            case TechnicalCapabilityRequirement.Embedding requested -> embedding
-                    .filter(actual -> requested.dimensions() == 0 || actual.supports(requested.dimensions()))
-                    .isPresent();
-            case TechnicalCapabilityRequirement.Vision requested -> vision
-                    .filter(actual -> !requested.imageInput() || actual.imageInput())
-                    .filter(actual -> !requested.videoInput() || actual.videoInput())
                     .isPresent();
         };
     }
 
-    public record TextCapability(boolean demandingReasoning, int maximumContextTokens) {
-        public TextCapability {
+    public record ChatCompletionCapability(int maximumContextTokens) {
+        public ChatCompletionCapability {
             if (maximumContextTokens <= 0) throw new IllegalArgumentException("maximumContextTokens must be positive");
-        }
-    }
-
-    public record EmbeddingCapability(int fixedDimensions) {
-        public EmbeddingCapability {
-            if (fixedDimensions < 0) throw new IllegalArgumentException("fixedDimensions must not be negative");
-        }
-        public boolean supports(int dimensions) { return fixedDimensions == 0 || fixedDimensions == dimensions; }
-    }
-
-    public record VisionCapability(boolean imageInput, boolean videoInput) {
-        public VisionCapability {
-            if (!imageInput && !videoInput) throw new IllegalArgumentException("At least one vision input must be supported");
         }
     }
 

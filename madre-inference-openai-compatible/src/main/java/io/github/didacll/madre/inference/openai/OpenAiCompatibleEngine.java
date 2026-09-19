@@ -3,16 +3,15 @@ package io.github.didacll.madre.inference.openai;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.github.didacll.madre.kernel.ChatCompletionInput;
+import io.github.didacll.madre.kernel.ChatCompletionOutput;
 import io.github.didacll.madre.kernel.EngineAvailability;
 import io.github.didacll.madre.kernel.EngineCharacteristics;
 import io.github.didacll.madre.kernel.EngineExecution;
 import io.github.didacll.madre.kernel.EngineId;
-import io.github.didacll.madre.kernel.EngineLocation;
 import io.github.didacll.madre.kernel.InferenceEngine;
 import io.github.didacll.madre.kernel.InferenceType;
 import io.github.didacll.madre.kernel.InferenceTypes;
-import io.github.didacll.madre.kernel.TextInferenceInput;
-import io.github.didacll.madre.kernel.TextInferenceOutput;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -25,7 +24,7 @@ import java.util.Optional;
 
 /** Concrete text engine for an explicitly configured OpenAI-compatible endpoint. */
 public final class OpenAiCompatibleEngine
-        implements InferenceEngine<TextInferenceInput, TextInferenceOutput> {
+        implements InferenceEngine<ChatCompletionInput, ChatCompletionOutput> {
     private static final ObjectMapper JSON = new ObjectMapper();
     private final EngineId id;
     private final URI endpoint;
@@ -34,29 +33,26 @@ public final class OpenAiCompatibleEngine
     private final EngineCharacteristics characteristics;
 
     public OpenAiCompatibleEngine(EngineId id, URI endpoint, String apiKey, String provider,
-            String model, EngineLocation location, Duration expectedLatency,
-            boolean demandingReasoning, int maximumContextTokens, int preference) {
-        this(id, endpoint, apiKey, provider, model, location, expectedLatency,
-                demandingReasoning, maximumContextTokens, preference, HttpClient.newHttpClient());
+            String model, Duration expectedLatency, int maximumContextTokens) {
+        this(id, endpoint, apiKey, provider, model, expectedLatency,
+                maximumContextTokens, HttpClient.newHttpClient());
     }
 
     OpenAiCompatibleEngine(EngineId id, URI endpoint, String apiKey, String provider,
-            String model, EngineLocation location, Duration expectedLatency,
-            boolean demandingReasoning, int maximumContextTokens, int preference,
+            String model, Duration expectedLatency, int maximumContextTokens,
             HttpClient client) {
         this.id = Objects.requireNonNull(id, "id");
         this.endpoint = Objects.requireNonNull(endpoint, "endpoint");
         this.apiKey = Objects.requireNonNull(apiKey, "apiKey");
         this.client = Objects.requireNonNull(client, "client");
-        this.characteristics = new EngineCharacteristics(location, provider, model,
-                expectedLatency, preference,
-                Optional.of(new EngineCharacteristics.TextCapability(
-                        demandingReasoning, maximumContextTokens)), Optional.empty(), Optional.empty());
+        this.characteristics = new EngineCharacteristics(provider, model, endpoint,
+                expectedLatency, Optional.of(new EngineCharacteristics.ChatCompletionCapability(
+                        maximumContextTokens)));
     }
 
     @Override public EngineId id() { return id; }
-    @Override public InferenceType<TextInferenceInput, TextInferenceOutput> type() {
-        return InferenceTypes.TEXT_GENERATION;
+    @Override public InferenceType<ChatCompletionInput, ChatCompletionOutput> type() {
+        return InferenceTypes.CHAT_COMPLETION;
     }
     @Override public EngineCharacteristics characteristics() { return characteristics; }
 
@@ -74,7 +70,7 @@ public final class OpenAiCompatibleEngine
         }
     }
 
-    @Override public TextInferenceOutput execute(TextInferenceInput input,
+    @Override public ChatCompletionOutput execute(ChatCompletionInput input,
             EngineExecution execution) throws Exception {
         ObjectNode body = JSON.createObjectNode();
         body.put("model", characteristics.model());
@@ -84,8 +80,11 @@ public final class OpenAiCompatibleEngine
             message.put("role", item.role().name().toLowerCase(Locale.ROOT));
             message.put("content", item.text());
         });
-        input.temperature().ifPresent(value -> body.put("temperature", value));
         input.maximumOutputTokens().ifPresent(value -> body.put("max_tokens", value));
+        if (!input.stopSequences().isEmpty()) {
+            var stops = body.putArray("stop");
+            input.stopSequences().forEach(stops::add);
+        }
         Duration remaining = Duration.between(Instant.now(), execution.deadline());
         if (remaining.isNegative() || remaining.isZero()) {
             throw new java.net.http.HttpTimeoutException("Inference deadline elapsed");
@@ -101,13 +100,13 @@ public final class OpenAiCompatibleEngine
         JsonNode choice = root.path("choices").path(0);
         JsonNode content = choice.path("message").path("content");
         if (!content.isTextual()) throw new java.io.IOException("Response has no textual choice");
-        TextInferenceOutput.FinishReason finish = switch (choice.path("finish_reason").asText("")) {
-            case "stop" -> TextInferenceOutput.FinishReason.ENGINE_STOP;
-            case "length" -> TextInferenceOutput.FinishReason.LENGTH_LIMIT;
-            default -> TextInferenceOutput.FinishReason.UNKNOWN;
+        ChatCompletionOutput.FinishReason finish = switch (choice.path("finish_reason").asText("")) {
+            case "stop" -> ChatCompletionOutput.FinishReason.ENGINE_STOP;
+            case "length" -> ChatCompletionOutput.FinishReason.LENGTH_LIMIT;
+            default -> ChatCompletionOutput.FinishReason.UNKNOWN;
         };
-        return new TextInferenceOutput(content.textValue(), finish,
-                new TextInferenceOutput.TokenUsage(root.path("usage").path("prompt_tokens").asLong(0),
+        return new ChatCompletionOutput(content.textValue(), finish,
+                new ChatCompletionOutput.TokenUsage(root.path("usage").path("prompt_tokens").asLong(0),
                         root.path("usage").path("completion_tokens").asLong(0)));
     }
 

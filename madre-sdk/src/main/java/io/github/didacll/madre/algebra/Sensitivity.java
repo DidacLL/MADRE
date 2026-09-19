@@ -11,7 +11,4 @@ public enum Sensitivity {
     public Sensitivity combine(Sensitivity other) {
         return rank >= Objects.requireNonNull(other, "other").rank ? this : other;
     }
-    public boolean canReach(Privacy receiver) {
-        return rank <= Objects.requireNonNull(receiver, "receiver").rank();
-    }
 }

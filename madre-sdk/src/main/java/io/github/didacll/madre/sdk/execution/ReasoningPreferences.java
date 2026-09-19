@@ -4,11 +4,10 @@ import java.time.Duration;
 import java.util.Objects;
 import java.util.Optional;
 
-/** Optional technical constraints translated by runtime for Kernel matching. */
-public record ReasoningPreferences(Optional<ReasoningLocation> location,
-        Optional<Duration> maximumLatency, Optional<InferenceSelection> exactSelection) {
+/** Explicit technical constraints accompanying a typed semantic inference computation. */
+public record ReasoningPreferences(Optional<Duration> maximumLatency,
+        Optional<InferenceSelection> exactSelection) {
     public ReasoningPreferences {
-        location = Objects.requireNonNull(location, "location");
         maximumLatency = Objects.requireNonNull(maximumLatency, "maximumLatency");
         exactSelection = Objects.requireNonNull(exactSelection, "exactSelection");
         maximumLatency.ifPresent(value -> {
@@ -18,7 +17,8 @@ public record ReasoningPreferences(Optional<ReasoningLocation> location,
         });
     }
 
-    public static ReasoningPreferences unconstrained() {
-        return new ReasoningPreferences(Optional.empty(), Optional.empty(), Optional.empty());
+    /** Uses the concrete computation requirements without silently widening exact selection. */
+    public static ReasoningPreferences requirements() {
+        return new ReasoningPreferences(Optional.empty(), Optional.empty());
     }
 }
