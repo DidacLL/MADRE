@@ -1,5 +1,6 @@
 package io.github.didacll.madre.kernel;
 
+import java.net.URI;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -28,11 +29,17 @@ public record InferenceRequirements(
         Objects.requireNonNull(eligibleAt, "eligibleAt");
         deadline = Objects.requireNonNull(deadline, "deadline");
         Objects.requireNonNull(timeout, "timeout");
-        if (timeout.isZero() || timeout.isNegative()) throw new IllegalArgumentException("timeout must be positive");
+        if (timeout.isZero() || timeout.isNegative()) {
+            throw new IllegalArgumentException("timeout must be positive");
+        }
         Objects.requireNonNull(retryPolicy, "retryPolicy");
-        maximumExpectedLatency = Objects.requireNonNull(maximumExpectedLatency, "maximumExpectedLatency");
+        maximumExpectedLatency = Objects.requireNonNull(
+                maximumExpectedLatency, "maximumExpectedLatency");
         maximumExpectedLatency.ifPresent(value -> {
-            if (value.isNegative() || value.isZero()) throw new IllegalArgumentException("maximumExpectedLatency must be positive");
+            if (value.isNegative() || value.isZero()) {
+                throw new IllegalArgumentException(
+                        "maximumExpectedLatency must be positive");
+            }
         });
         exactEngine = Objects.requireNonNull(exactEngine, "exactEngine");
         exactProvider = normalized(exactProvider, "exactProvider");
@@ -47,16 +54,19 @@ public record InferenceRequirements(
                 .map(entry -> new ResourceClaim(entry.getKey(), entry.getValue()))
                 .toList();
         deadline.ifPresent(value -> {
-            if (value.isBefore(eligibleAt)) throw new IllegalArgumentException("deadline precedes eligibleAt");
+            if (value.isBefore(eligibleAt)) {
+                throw new IllegalArgumentException("deadline precedes eligibleAt");
+            }
         });
     }
 
     private static Optional<String> normalized(Optional<String> value, String name) {
         Objects.requireNonNull(value, name);
         return value.map(item -> {
-            if (item.isBlank()) throw new IllegalArgumentException(name + " must not contain blank text");
+            if (item.isBlank()) {
+                throw new IllegalArgumentException(name + " must not contain blank text");
+            }
             return item;
         });
     }
 }
-import java.net.URI;

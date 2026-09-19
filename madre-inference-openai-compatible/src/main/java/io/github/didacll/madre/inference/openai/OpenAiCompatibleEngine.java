@@ -1,5 +1,6 @@
 package io.github.didacll.madre.inference.openai;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -22,7 +23,7 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 
-/** Concrete text engine for an explicitly configured OpenAI-compatible endpoint. */
+/** Chat-completion engine for an explicitly configured OpenAI-compatible endpoint. */
 public final class OpenAiCompatibleEngine
         implements InferenceEngine<ChatCompletionInput, ChatCompletionOutput> {
     private static final ObjectMapper JSON = new ObjectMapper();
@@ -32,35 +33,66 @@ public final class OpenAiCompatibleEngine
     private final HttpClient client;
     private final EngineCharacteristics characteristics;
 
-    public OpenAiCompatibleEngine(EngineId id, URI endpoint, String apiKey, String provider,
-            String model, Duration expectedLatency, int maximumContextTokens) {
+    public OpenAiCompatibleEngine(
+            EngineId id,
+            URI endpoint,
+            String apiKey,
+            String provider,
+            String model,
+            Duration expectedLatency,
+            int maximumContextTokens) {
         this(id, endpoint, apiKey, provider, model, expectedLatency,
                 maximumContextTokens, HttpClient.newHttpClient());
     }
 
-    OpenAiCompatibleEngine(EngineId id, URI endpoint, String apiKey, String provider,
-            String model, Duration expectedLatency, int maximumContextTokens,
+    OpenAiCompatibleEngine(
+            EngineId id,
+            URI endpoint,
+            String apiKey,
+            String provider,
+            String model,
+            Duration expectedLatency,
+            int maximumContextTokens,
             HttpClient client) {
         this.id = Objects.requireNonNull(id, "id");
         this.endpoint = Objects.requireNonNull(endpoint, "endpoint");
         this.apiKey = Objects.requireNonNull(apiKey, "apiKey");
         this.client = Objects.requireNonNull(client, "client");
-        this.characteristics = new EngineCharacteristics(provider, model, endpoint,
-                expectedLatency, Optional.of(new EngineCharacteristics.ChatCompletionCapability(
+        this.characteristics = new EngineCharacteristics(
+                provider,
+                model,
+                endpoint,
+                expectedLatency,
+                Optional.of(new EngineCharacteristics.ChatCompletionCapability(
                         maximumContextTokens)));
     }
 
-    @Override public EngineId id() { return id; }
-    @Override public InferenceType<ChatCompletionInput, ChatCompletionOutput> type() {
+    @Override
+    public EngineId id() {
+        return id;
+    }
+
+    @Override
+    public InferenceType<ChatCompletionInput, ChatCompletionOutput> type() {
         return InferenceTypes.CHAT_COMPLETION;
     }
-    @Override public EngineCharacteristics characteristics() { return characteristics; }
 
-    @Override public EngineAvailability availability() {
+    @Override
+    public EngineCharacteristics characteristics() {
+        return characteristics;
+    }
+
+    @Override
+    public EngineAvailability availability() {
         try {
-            HttpRequest request = request(resolve("models")).timeout(Duration.ofSeconds(3)).GET().build();
-            int status = client.send(request, HttpResponse.BodyHandlers.discarding()).statusCode();
-            return status >= 200 && status < 300 ? EngineAvailability.AVAILABLE
+            HttpRequest request = request(resolve("models"))
+                    .timeout(Duration.ofSeconds(3))
+                    .GET()
+                    .build();
+            int status = client.send(
+                    request, HttpResponse.BodyHandlers.discarding()).statusCode();
+            return status >= 200 && status < 300
+                    ? EngineAvailability.AVAILABLE
                     : EngineAvailability.OFFLINE;
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
@@ -70,8 +102,46 @@ public final class OpenAiCompatibleEngine
         }
     }
 
-    @Override public ChatCompletionOutput execute(ChatCompletionInput input,
-            EngineExecution execution) throws Exception {
+    @Override
+    public ChatCompletionOutput execute(
+            ChatCompletionInput input, EngineExecution execution) throws Exception {
+        Duration remaining = Duration.between(Instant.now(), execution.deadline());
+        if (remaining.isNegative() || remaining.isZero()) {
+            throw new java.net.http.HttpTimeoutException(
+                    "Inference deadline elapsed");
+        }
+        HttpRequest request = request(resolve("chat/completions"))
+                .timeout(remaining)
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofByteArray(requestBody(input)))
+                .build();
+        HttpResponse<String> response =
+                client.send(request, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            throw new java.io.IOException(
+                    "OpenAI-compatible HTTP " + response.statusCode());
+        }
+        JsonNode root = JSON.readTree(response.body());
+        JsonNode choice = root.path("choices").path(0);
+        JsonNode content = choice.path("message").path("content");
+        if (!content.isTextual()) {
+            throw new java.io.IOException("Response has no textual choice");
+        }
+        ChatCompletionOutput.FinishReason finish =
+                switch (choice.path("finish_reason").asText("")) {
+                    case "stop" -> ChatCompletionOutput.FinishReason.ENGINE_STOP;
+                    case "length" -> ChatCompletionOutput.FinishReason.LENGTH_LIMIT;
+                    default -> ChatCompletionOutput.FinishReason.UNKNOWN;
+                };
+        return new ChatCompletionOutput(
+                content.textValue(),
+                finish,
+                new ChatCompletionOutput.TokenUsage(
+                        root.path("usage").path("prompt_tokens").asLong(0),
+                        root.path("usage").path("completion_tokens").asLong(0)));
+    }
+
+    byte[] requestBody(ChatCompletionInput input) throws JsonProcessingException {
         ObjectNode body = JSON.createObjectNode();
         body.put("model", characteristics.model());
         var messages = body.putArray("messages");
@@ -80,39 +150,20 @@ public final class OpenAiCompatibleEngine
             message.put("role", item.role().name().toLowerCase(Locale.ROOT));
             message.put("content", item.text());
         });
-        input.maximumOutputTokens().ifPresent(value -> body.put("max_tokens", value));
+        input.maximumOutputTokens().ifPresent(
+                value -> body.put("max_tokens", value));
         if (!input.stopSequences().isEmpty()) {
             var stops = body.putArray("stop");
             input.stopSequences().forEach(stops::add);
         }
-        Duration remaining = Duration.between(Instant.now(), execution.deadline());
-        if (remaining.isNegative() || remaining.isZero()) {
-            throw new java.net.http.HttpTimeoutException("Inference deadline elapsed");
-        }
-        HttpRequest request = request(resolve("chat/completions")).timeout(remaining)
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofByteArray(JSON.writeValueAsBytes(body))).build();
-        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-        if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            throw new java.io.IOException("OpenAI-compatible HTTP " + response.statusCode());
-        }
-        JsonNode root = JSON.readTree(response.body());
-        JsonNode choice = root.path("choices").path(0);
-        JsonNode content = choice.path("message").path("content");
-        if (!content.isTextual()) throw new java.io.IOException("Response has no textual choice");
-        ChatCompletionOutput.FinishReason finish = switch (choice.path("finish_reason").asText("")) {
-            case "stop" -> ChatCompletionOutput.FinishReason.ENGINE_STOP;
-            case "length" -> ChatCompletionOutput.FinishReason.LENGTH_LIMIT;
-            default -> ChatCompletionOutput.FinishReason.UNKNOWN;
-        };
-        return new ChatCompletionOutput(content.textValue(), finish,
-                new ChatCompletionOutput.TokenUsage(root.path("usage").path("prompt_tokens").asLong(0),
-                        root.path("usage").path("completion_tokens").asLong(0)));
+        return JSON.writeValueAsBytes(body);
     }
 
     private HttpRequest.Builder request(URI target) {
         HttpRequest.Builder value = HttpRequest.newBuilder(target);
-        return apiKey.isBlank() ? value : value.header("Authorization", "Bearer " + apiKey);
+        return apiKey.isBlank()
+                ? value
+                : value.header("Authorization", "Bearer " + apiKey);
     }
 
     private URI resolve(String path) {
