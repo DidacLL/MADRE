@@ -57,7 +57,7 @@ public final class MadreMain {
 
             inference.recoverPending();
             printInstalledState(registry, kernel, inference);
-            runConsole(runtime);
+            present(runtime, args);
         }
     }
 
@@ -154,14 +154,38 @@ public final class MadreMain {
         }
     }
 
+    private static void present(MadreRuntime runtime, String[] args) {
+        if (args.length == 0) {
+            return;
+        }
+        if (args.length == 1 && "--console".equals(args[0])) {
+            runConsole(runtime);
+            return;
+        }
+
+        Sensitivity sensitivity = ownerInputSensitivity();
+        ConversationMessage response = runtime.respond(
+                new ConversationMessage(
+                        ConversationMessage.Role.HUMAN,
+                        String.join(" ", args),
+                        sensitivity))
+                .toCompletableFuture()
+                .join();
+        System.out.println(response.text());
+    }
+
+    private static Sensitivity ownerInputSensitivity() {
+        return Sensitivity.valueOf(
+                System.getProperty(
+                        "madre.owner.input-sensitivity", "S5"));
+    }
+
     private static void runConsole(MadreRuntime runtime) {
         Console console = System.console();
         if (console == null) {
             return;
         }
-        Sensitivity sensitivity = Sensitivity.valueOf(
-                System.getProperty(
-                        "madre.owner.input-sensitivity", "S5"));
+        Sensitivity sensitivity = ownerInputSensitivity();
         console.writer().println(
                 "MADRE owner console. Type 'exit' or 'quit' to stop.");
         while (true) {

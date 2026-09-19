@@ -298,10 +298,11 @@ public final class RuntimeInferenceService {
     }
 
     private static boolean matches(EngineSnapshot snapshot, InferenceSelection selection) {
-        return selection.engineId().isEmpty()
-                || snapshot.id().value().equals(selection.engineId().orElseThrow())
-                ? matchesProviderModelEndpoint(snapshot, selection)
-                : false;
+        if (selection.engineId().isPresent()
+                && !snapshot.id().value().equals(selection.engineId().orElseThrow())) {
+            return false;
+        }
+        return matchesProviderModelEndpoint(snapshot, selection);
     }
 
     private static boolean matchesProviderModelEndpoint(
