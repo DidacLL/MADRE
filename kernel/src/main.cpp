@@ -128,7 +128,7 @@ public:
         if (!lock_path_.parent_path().empty()) {
             fs::create_directories(lock_path_.parent_path());
         }
-        fd_ = ::open(lock_path_.c_str(), O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
+        fd_ = ::open(lock_path_.c_str(), O_CREAT | O_RDWR | O_CLOEXEC, S_IRUSR | S_IWUSR);
         if (fd_ < 0) {
             throw std::runtime_error("open Kernel endpoint lock failed: " +
                                      std::string(std::strerror(errno)));
@@ -421,7 +421,7 @@ public:
             if (poll_result == 0) {
                 continue;
             }
-            const int fd = ::accept(server_fd_, nullptr, nullptr);
+            const int fd = ::accept4(server_fd_, nullptr, nullptr, SOCK_CLOEXEC);
             if (fd < 0) {
                 if (errno == EINTR) {
                     continue;
@@ -442,7 +442,7 @@ private:
         std::error_code error;
         fs::remove(endpoint_, error);
 
-        server_fd_ = ::socket(AF_UNIX, SOCK_STREAM, 0);
+        server_fd_ = ::socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
         if (server_fd_ < 0) {
             throw std::runtime_error("create Unix-domain socket failed");
         }
@@ -490,6 +490,12 @@ private:
                 continue;
             }
             const auto& selected = *selection.selection;
+            if (!resources_.can_ever_reserve(selected.engine->resources)) {
+                store_.fail_queued(
+                    work->id,
+                    "INSUFFICIENT_CAPACITY: selected engine requirements exceed configured Kernel capacity");
+                continue;
+            }
             auto reservation = resources_.try_reserve(selected.engine->resources);
             if (!reservation) {
                 std::unique_lock lock(wake_mutex_);

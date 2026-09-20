@@ -255,6 +255,76 @@ def test_release_every_path(state_dir):
     print("C3 CPU/RAM reservations released after success, failure, cancellation, timeout and crash")
 
 
+def test_supervision_beyond_fake_delay_and_partial_frame(state_dir):
+    proc, sock = start_kernel(state_dir, delay_ms=100, idle_ms=500, cpu=1, ram_mib=64)
+    try:
+        hung = submit(
+            sock,
+            "__C3_HANG_AFTER_DELAY__",
+            exact_engine="fake-standard",
+            timeout=350,
+        )
+        wait_state(state_dir, hung, "FAILED", 4)
+        rows = assert_attempt_states(state_dir, hung, ["TIMED_OUT"])
+        if not rows[0]["technical_failure"].startswith("ATTEMPT_TIMEOUT"):
+            raise AssertionError(f"hang timeout was not recorded factually: {dict(rows[0])}")
+        assert_followup_succeeds(state_dir, sock, "hang-timeout")
+
+        partial = submit(
+            sock,
+            "__C3_PARTIAL_FRAME_STALL__",
+            exact_engine="fake-standard",
+            timeout=350,
+        )
+        wait_state(state_dir, partial, "FAILED", 4)
+        rows = assert_attempt_states(state_dir, partial, ["TIMED_OUT"])
+        if not rows[0]["technical_failure"].startswith("ATTEMPT_TIMEOUT"):
+            raise AssertionError(f"partial-frame timeout was not recorded factually: {dict(rows[0])}")
+        assert_followup_succeeds(state_dir, sock, "partial-frame")
+    finally:
+        stop_kernel(proc, state_dir)
+    print("C3 supervision remains active beyond fake delay and through partial-frame stalls")
+
+
+def test_permanent_capacity_and_spawn_descriptors(state_dir):
+    proc, sock = start_kernel(
+        state_dir,
+        delay_ms=120,
+        idle_ms=500,
+        cpu=2,
+        ram_mib=512,
+        gpu_vram_mib=32,
+    )
+    try:
+        impossible = submit(
+            sock,
+            "cannot-fit",
+            effort="HIGH",
+            exact_engine="fake-capable",
+        )
+        wait_state(state_dir, impossible, "FAILED", 3)
+        row = work_row(state_dir, impossible)
+        if row["attempt_count"] != 0:
+            raise AssertionError(f"permanently impossible Work created an attempt: {dict(row)}")
+        if not row["technical_failure"].startswith("INSUFFICIENT_CAPACITY"):
+            raise AssertionError(f"permanent capacity failure was not explicit: {dict(row)}")
+        if attempts(state_dir, impossible):
+            raise AssertionError("permanently impossible Work persisted attempt history")
+
+        fitting = submit(
+            sock,
+            "__C3_CHECK_NO_EXTRA_FDS__",
+            exact_engine="fake-standard",
+        )
+        wait_state(state_dir, fitting, "SUCCEEDED", 4)
+        assert_attempt_states(state_dir, fitting, ["SUCCEEDED"])
+        if proc.poll() is not None:
+            raise AssertionError("Kernel died during posix_spawn/descriptor regression")
+    finally:
+        stop_kernel(proc, state_dir)
+    print("C3 permanent capacity failure does not block fitting Work and spawned worker inherits no extra low descriptors")
+
+
 def test_worker_crash_retry(state_dir):
     proc, sock = start_kernel(state_dir, delay_ms=120, idle_ms=500, cpu=1, ram_mib=64)
     try:
@@ -346,6 +416,8 @@ def main():
     tests = [
         test_on_demand_reuse_idle,
         test_release_every_path,
+        test_supervision_beyond_fake_delay_and_partial_frame,
+        test_permanent_capacity_and_spawn_descriptors,
         test_worker_crash_retry,
         test_resource_capacity_serialization,
     ]

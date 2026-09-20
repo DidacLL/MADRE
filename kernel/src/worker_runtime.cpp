@@ -6,7 +6,9 @@
 #include <csignal>
 #include <cstring>
 #include <cstdlib>
-#include <poll.h>
+#include <fcntl.h>
+#include <future>
+#include <spawn.h>
 #include <stdexcept>
 #include <string>
 #include <sys/types.h>
@@ -14,9 +16,7 @@
 #include <thread>
 #include <unistd.h>
 
-#ifdef __linux__
-#include <sys/prctl.h>
-#endif
+extern char** environ;
 
 namespace madre::kernel {
 namespace {
@@ -32,6 +32,39 @@ void close_fd(int& fd) noexcept {
     if (fd >= 0) {
         ::close(fd);
         fd = -1;
+    }
+}
+
+void set_cloexec(int fd) {
+    const int flags = ::fcntl(fd, F_GETFD);
+    if (flags < 0 || ::fcntl(fd, F_SETFD, flags | FD_CLOEXEC) < 0) {
+        throw std::runtime_error("set worker pipe close-on-exec failed: " +
+                                 std::string(std::strerror(errno)));
+    }
+}
+
+void make_cloexec_pipe(int (&fds)[2]) {
+    if (::pipe(fds) != 0) {
+        throw std::runtime_error("create worker pipe failed: " + std::string(std::strerror(errno)));
+    }
+    try {
+        set_cloexec(fds[0]);
+        set_cloexec(fds[1]);
+    } catch (...) {
+        ::close(fds[0]);
+        ::close(fds[1]);
+        fds[0] = -1;
+        fds[1] = -1;
+        throw;
+    }
+}
+
+void validate_requirement(const ResourceRequirement& requirement) {
+    if (requirement.cpu_slots < 1 || requirement.ram_bytes == 0) {
+        throw std::invalid_argument("engine resource requirement must provide positive CPU and RAM");
+    }
+    if (requirement.gpu_id.empty() != (requirement.gpu_vram_bytes == 0)) {
+        throw std::invalid_argument("GPU identity and VRAM requirement must be declared together");
     }
 }
 
@@ -82,14 +115,24 @@ ResourceManager::ResourceManager(ResourceCapacity capacity) : capacity_(std::mov
     }
 }
 
+bool ResourceManager::can_ever_reserve(const ResourceRequirement& requirement) {
+    validate_requirement(requirement);
+    std::lock_guard lock(mutex_);
+    if (requirement.cpu_slots > capacity_.cpu_slots ||
+        requirement.ram_bytes > capacity_.ram_bytes) {
+        return false;
+    }
+    if (requirement.gpu_id.empty()) {
+        return true;
+    }
+    const auto capacity = capacity_.gpu_vram_bytes.find(requirement.gpu_id);
+    return capacity != capacity_.gpu_vram_bytes.end() &&
+           requirement.gpu_vram_bytes <= capacity->second;
+}
+
 std::optional<ResourceManager::Lease> ResourceManager::try_reserve(
     const ResourceRequirement& requirement) {
-    if (requirement.cpu_slots < 1 || requirement.ram_bytes == 0) {
-        throw std::invalid_argument("engine resource requirement must provide positive CPU and RAM");
-    }
-    if (requirement.gpu_id.empty() != (requirement.gpu_vram_bytes == 0)) {
-        throw std::invalid_argument("GPU identity and VRAM requirement must be declared together");
-    }
+    validate_requirement(requirement);
 
     std::lock_guard lock(mutex_);
     if (requirement.cpu_slots > capacity_.cpu_slots - cpu_used_ ||
@@ -133,51 +176,79 @@ void ResourceManager::release(const ResourceRequirement& requirement) noexcept {
 
 struct WorkerPool::WorkerProcess {
     WorkerProcess(std::filesystem::path executable, std::string engine_id, int fake_delay_ms)
-        : engine_id(std::move(engine_id)), fake_delay_ms(fake_delay_ms) {
+        : engine_id(std::move(engine_id)) {
         int parent_to_child[2]{-1, -1};
         int child_to_parent[2]{-1, -1};
-        if (::pipe(parent_to_child) != 0 || ::pipe(child_to_parent) != 0) {
+        try {
+            make_cloexec_pipe(parent_to_child);
+            make_cloexec_pipe(child_to_parent);
+        } catch (...) {
             if (parent_to_child[0] >= 0) {
                 ::close(parent_to_child[0]);
                 ::close(parent_to_child[1]);
             }
-            if (child_to_parent[0] >= 0) {
-                ::close(child_to_parent[0]);
-                ::close(child_to_parent[1]);
-            }
-            throw std::runtime_error("create worker pipes failed: " + std::string(std::strerror(errno)));
+            throw;
         }
 
-        const auto child = ::fork();
-        if (child < 0) {
-            const auto message = std::string("fork worker failed: ") + std::strerror(errno);
+        posix_spawn_file_actions_t actions{};
+        int rc = ::posix_spawn_file_actions_init(&actions);
+        if (rc != 0) {
             ::close(parent_to_child[0]);
             ::close(parent_to_child[1]);
             ::close(child_to_parent[0]);
             ::close(child_to_parent[1]);
-            throw std::runtime_error(message);
+            throw std::runtime_error("initialize worker spawn actions failed: " +
+                                     std::string(std::strerror(rc)));
         }
-        if (child == 0) {
-#ifdef __linux__
-            if (::prctl(PR_SET_PDEATHSIG, SIGKILL) != 0) {
-                std::_Exit(126);
+
+        const auto add_action = [&](int action_rc, const char* description) {
+            if (action_rc != 0) {
+                ::posix_spawn_file_actions_destroy(&actions);
+                ::close(parent_to_child[0]);
+                ::close(parent_to_child[1]);
+                ::close(child_to_parent[0]);
+                ::close(child_to_parent[1]);
+                throw std::runtime_error(std::string(description) + ": " +
+                                         std::strerror(action_rc));
             }
-            if (::getppid() == 1) {
-                std::_Exit(126);
-            }
-#endif
-            if (::dup2(parent_to_child[0], STDIN_FILENO) < 0 ||
-                ::dup2(child_to_parent[1], STDOUT_FILENO) < 0) {
-                std::_Exit(126);
-            }
+        };
+
+        add_action(::posix_spawn_file_actions_adddup2(
+                       &actions, parent_to_child[0], STDIN_FILENO),
+                   "configure worker stdin");
+        add_action(::posix_spawn_file_actions_adddup2(
+                       &actions, child_to_parent[1], STDOUT_FILENO),
+                   "configure worker stdout");
+        add_action(::posix_spawn_file_actions_addclose(&actions, parent_to_child[0]),
+                   "close worker inherited stdin pipe");
+        add_action(::posix_spawn_file_actions_addclose(&actions, parent_to_child[1]),
+                   "close worker inherited parent input pipe");
+        add_action(::posix_spawn_file_actions_addclose(&actions, child_to_parent[0]),
+                   "close worker inherited parent output pipe");
+        add_action(::posix_spawn_file_actions_addclose(&actions, child_to_parent[1]),
+                   "close worker inherited stdout pipe");
+
+        const auto executable_string = executable.string();
+        const auto delay = std::to_string(fake_delay_ms);
+        char* argv[] = {
+            const_cast<char*>(executable_string.c_str()),
+            const_cast<char*>("--engine-id"),
+            this->engine_id.data(),
+            const_cast<char*>("--delay-ms"),
+            const_cast<char*>(delay.c_str()),
+            nullptr,
+        };
+
+        pid_t child = -1;
+        rc = ::posix_spawn(
+            &child, executable_string.c_str(), &actions, nullptr, argv, environ);
+        ::posix_spawn_file_actions_destroy(&actions);
+        if (rc != 0) {
             ::close(parent_to_child[0]);
             ::close(parent_to_child[1]);
             ::close(child_to_parent[0]);
             ::close(child_to_parent[1]);
-            const auto delay = std::to_string(fake_delay_ms);
-            ::execl(executable.c_str(), executable.c_str(), "--engine-id", this->engine_id.c_str(),
-                    "--delay-ms", delay.c_str(), static_cast<char*>(nullptr));
-            std::_Exit(127);
+            throw std::runtime_error("spawn worker failed: " + std::string(std::strerror(rc)));
         }
 
         pid = child;
@@ -263,99 +334,74 @@ struct WorkerPool::WorkerProcess {
             return {WorkerOutcomeKind::Crashed, {}, std::string("WORKER_IPC_FAILURE: ") + ex.what()};
         }
 
-        bool interrupt_observation_complete = false;
-        while (true) {
-            pollfd ready{output_fd, POLLIN | POLLHUP | POLLERR, 0};
-            const int ready_now = ::poll(&ready, 1, 0);
-            if (ready_now < 0) {
-                if (errno == EINTR) {
-                    continue;
-                }
-                terminate();
-                return {WorkerOutcomeKind::Crashed, {},
-                        "WORKER_IPC_FAILURE: poll failed: " + std::string(std::strerror(errno))};
-            }
-            if (ready_now > 0 && (ready.revents & POLLIN) != 0) {
-                try {
-                    const auto response = read_frame(output_fd);
-                    if (response.correlation_id != correlation_id) {
-                        terminate();
-                        return {WorkerOutcomeKind::TechnicalFailure, {},
-                                "WORKER_PROTOCOL_FAILURE: correlation id mismatch"};
-                    }
-                    if (response.type == MessageType::WorkerResult) {
-                        return {WorkerOutcomeKind::Succeeded, response.payload, {}};
-                    }
-                    if (response.type == MessageType::WorkerFailure) {
-                        const auto it = response.metadata.find("technical_failure");
-                        return {WorkerOutcomeKind::TechnicalFailure, {},
-                                it == response.metadata.end()
-                                    ? "WORKER_PROTOCOL_FAILURE: missing technical failure"
-                                    : it->second};
-                    }
-                    terminate();
-                    return {WorkerOutcomeKind::TechnicalFailure, {},
-                            "WORKER_PROTOCOL_FAILURE: unexpected worker response"};
-                } catch (const std::exception& ex) {
-                    if (!alive()) {
-                        return {WorkerOutcomeKind::Crashed, {}, "WORKER_CRASH: " + exit_description()};
-                    }
-                    terminate();
-                    return {WorkerOutcomeKind::Crashed, {},
-                            std::string("WORKER_IPC_FAILURE: ") + ex.what()};
-                }
-            }
-            if (ready_now > 0 && (ready.revents & (POLLHUP | POLLERR | POLLNVAL)) != 0) {
-                (void)alive();
-                return {WorkerOutcomeKind::Crashed, {}, "WORKER_CRASH: " + exit_description()};
-            }
+        auto response_future = std::async(std::launch::async, [fd = output_fd] {
+            return read_frame(fd);
+        });
 
+        const auto terminate_and_drain = [&] {
+            terminate();
+            try {
+                (void)response_future.get();
+            } catch (...) {
+            }
+        };
+
+        while (response_future.wait_for(10ms) != std::future_status::ready) {
             if (kernel_stopping()) {
-                terminate();
+                terminate_and_drain();
                 return {WorkerOutcomeKind::Stopped, {}, {}};
             }
-            const auto current = now_ms();
-            if (!interrupt_observation_complete) {
-                const auto interrupt_cutoff_ms = attempt_started_at_ms + fake_delay_ms;
-                if (current >= interrupt_cutoff_ms) {
-                    if (stop_at_ms && *stop_at_ms < interrupt_cutoff_ms && current >= *stop_at_ms) {
-                        terminate();
-                        const std::string failure = timeout_wins
-                            ? "ATTEMPT_TIMEOUT: per-attempt timeout expired"
-                            : "DEADLINE_EXPIRED: Work deadline expired during attempt";
-                        return {WorkerOutcomeKind::TimedOut, {}, failure};
-                    }
-                    interrupt_observation_complete = true;
-                } else {
-                    if (cancellation_requested()) {
-                        if (now_ms() < interrupt_cutoff_ms) {
-                            terminate();
-                            return {WorkerOutcomeKind::Cancelled, {}, "cancelled"};
-                        }
-                        interrupt_observation_complete = true;
-                    }
-                    if (!interrupt_observation_complete && stop_at_ms && current >= *stop_at_ms) {
-                        terminate();
-                        const std::string failure = timeout_wins
-                            ? "ATTEMPT_TIMEOUT: per-attempt timeout expired"
-                            : "DEADLINE_EXPIRED: Work deadline expired during attempt";
-                        return {WorkerOutcomeKind::TimedOut, {}, failure};
-                    }
+            if (cancellation_requested()) {
+                terminate_and_drain();
+                return {WorkerOutcomeKind::Cancelled, {}, "cancelled"};
+            }
+            if (stop_at_ms && now_ms() >= *stop_at_ms) {
+                terminate_and_drain();
+                const std::string failure = timeout_wins
+                    ? "ATTEMPT_TIMEOUT: per-attempt timeout expired"
+                    : "DEADLINE_EXPIRED: Work deadline expired during attempt";
+                return {WorkerOutcomeKind::TimedOut, {}, failure};
+            }
+            if (!alive()) {
+                try {
+                    (void)response_future.get();
+                } catch (...) {
                 }
+                return {WorkerOutcomeKind::Crashed, {}, "WORKER_CRASH: " + exit_description()};
             }
+        }
 
-            ready.revents = 0;
-            const int poll_result = ::poll(&ready, 1, 10);
-            if (poll_result < 0 && errno != EINTR) {
+        try {
+            const auto response = response_future.get();
+            if (response.correlation_id != correlation_id) {
                 terminate();
-                return {WorkerOutcomeKind::Crashed, {},
-                        "WORKER_IPC_FAILURE: poll failed: " + std::string(std::strerror(errno))};
+                return {WorkerOutcomeKind::TechnicalFailure, {},
+                        "WORKER_PROTOCOL_FAILURE: correlation id mismatch"};
             }
+            if (response.type == MessageType::WorkerResult) {
+                return {WorkerOutcomeKind::Succeeded, response.payload, {}};
+            }
+            if (response.type == MessageType::WorkerFailure) {
+                const auto it = response.metadata.find("technical_failure");
+                return {WorkerOutcomeKind::TechnicalFailure, {},
+                        it == response.metadata.end()
+                            ? "WORKER_PROTOCOL_FAILURE: missing technical failure"
+                            : it->second};
+            }
+            terminate();
+            return {WorkerOutcomeKind::TechnicalFailure, {},
+                    "WORKER_PROTOCOL_FAILURE: unexpected worker response"};
+        } catch (const std::exception& ex) {
+            if (!alive()) {
+                return {WorkerOutcomeKind::Crashed, {}, "WORKER_CRASH: " + exit_description()};
+            }
+            terminate();
+            return {WorkerOutcomeKind::TechnicalFailure, {},
+                    std::string("WORKER_PROTOCOL_FAILURE: ") + ex.what()};
         }
     }
 
     std::string engine_id;
-    int fake_delay_ms{};
     pid_t pid{-1};
     int input_fd{-1};
     int output_fd{-1};
@@ -418,6 +464,7 @@ WorkerPool::WorkerPool(
     : executable_(std::move(executable)),
       fake_delay_ms_(fake_delay_ms),
       idle_timeout_ms_(idle_timeout_ms) {
+    std::signal(SIGPIPE, SIG_IGN);
     if (fake_delay_ms_ < 0 || idle_timeout_ms_ < 0) {
         throw std::invalid_argument("worker delay and idle timeout must be nonnegative");
     }

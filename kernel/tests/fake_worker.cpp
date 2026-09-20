@@ -1,8 +1,10 @@
 #include "protocol.hpp"
 
 #include <algorithm>
+#include <cerrno>
 #include <chrono>
 #include <cstdlib>
+#include <fcntl.h>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -69,6 +71,41 @@ void execute(const Options& options, const Frame& request) {
     constexpr std::string_view crash = "__C3_WORKER_CRASH__";
     if (equals_payload(request.payload, crash)) {
         std::_Exit(86);
+    }
+
+    constexpr std::string_view hang = "__C3_HANG_AFTER_DELAY__";
+    if (equals_payload(request.payload, hang)) {
+        while (true) {
+            std::this_thread::sleep_for(std::chrono::hours(1));
+        }
+    }
+
+    constexpr std::string_view partial_stall = "__C3_PARTIAL_FRAME_STALL__";
+    if (equals_payload(request.payload, partial_stall)) {
+        constexpr char partial_frame[] = {'M', 'A', 'D', 'R'};
+        if (::write(STDOUT_FILENO, partial_frame, sizeof(partial_frame)) < 0) {
+            std::_Exit(87);
+        }
+        while (true) {
+            std::this_thread::sleep_for(std::chrono::hours(1));
+        }
+    }
+
+    constexpr std::string_view descriptor_check = "__C3_CHECK_NO_EXTRA_FDS__";
+    if (equals_payload(request.payload, descriptor_check)) {
+        for (int fd = 3; fd < 256; ++fd) {
+            errno = 0;
+            if (::fcntl(fd, F_GETFD) != -1 || errno != EBADF) {
+                Frame failure{
+                    MessageType::WorkerFailure,
+                    request.correlation_id,
+                    {{"technical_failure",
+                      "WORKER_FD_LEAK: inherited descriptor " + std::to_string(fd)}},
+                    {}};
+                write_frame(STDOUT_FILENO, failure);
+                return;
+            }
+        }
     }
 
     constexpr std::string_view forced_failure = "__C2_TECHNICAL_FAILURE__";

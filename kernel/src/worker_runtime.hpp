@@ -49,6 +49,7 @@ public:
     };
 
     explicit ResourceManager(ResourceCapacity capacity);
+    bool can_ever_reserve(const ResourceRequirement& requirement);
     std::optional<Lease> try_reserve(const ResourceRequirement& requirement);
 
 private:
