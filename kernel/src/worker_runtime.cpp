@@ -133,7 +133,7 @@ void ResourceManager::release(const ResourceRequirement& requirement) noexcept {
 
 struct WorkerPool::WorkerProcess {
     WorkerProcess(std::filesystem::path executable, std::string engine_id, int fake_delay_ms)
-        : engine_id(std::move(engine_id)) {
+        : engine_id(std::move(engine_id)), fake_delay_ms(fake_delay_ms) {
         int parent_to_child[2]{-1, -1};
         int child_to_parent[2]{-1, -1};
         if (::pipe(parent_to_child) != 0 || ::pipe(child_to_parent) != 0) {
@@ -263,6 +263,7 @@ struct WorkerPool::WorkerProcess {
             return {WorkerOutcomeKind::Crashed, {}, std::string("WORKER_IPC_FAILURE: ") + ex.what()};
         }
 
+        bool interrupt_observation_complete = false;
         while (true) {
             pollfd ready{output_fd, POLLIN | POLLHUP | POLLERR, 0};
             const int ready_now = ::poll(&ready, 1, 0);
@@ -313,17 +314,22 @@ struct WorkerPool::WorkerProcess {
                 terminate();
                 return {WorkerOutcomeKind::Stopped, {}, {}};
             }
-            if (cancellation_requested()) {
-                terminate();
-                return {WorkerOutcomeKind::Cancelled, {}, "cancelled"};
-            }
             const auto current = now_ms();
-            if (stop_at_ms && current >= *stop_at_ms) {
-                terminate();
-                const std::string failure = timeout_wins
-                    ? "ATTEMPT_TIMEOUT: per-attempt timeout expired"
-                    : "DEADLINE_EXPIRED: Work deadline expired during attempt";
-                return {WorkerOutcomeKind::TimedOut, {}, failure};
+            if (!interrupt_observation_complete) {
+                if (cancellation_requested()) {
+                    terminate();
+                    return {WorkerOutcomeKind::Cancelled, {}, "cancelled"};
+                }
+                if (stop_at_ms && current >= *stop_at_ms) {
+                    terminate();
+                    const std::string failure = timeout_wins
+                        ? "ATTEMPT_TIMEOUT: per-attempt timeout expired"
+                        : "DEADLINE_EXPIRED: Work deadline expired during attempt";
+                    return {WorkerOutcomeKind::TimedOut, {}, failure};
+                }
+                if (current >= attempt_started_at_ms + fake_delay_ms) {
+                    interrupt_observation_complete = true;
+                }
             }
 
             ready.revents = 0;
@@ -337,6 +343,7 @@ struct WorkerPool::WorkerProcess {
     }
 
     std::string engine_id;
+    int fake_delay_ms{};
     pid_t pid{-1};
     int input_fd{-1};
     int output_fd{-1};
