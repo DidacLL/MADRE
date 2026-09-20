@@ -9,8 +9,13 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Arrays;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.OptionalLong;
+import java.util.Set;
 
 public final class KernelClientProcess {
     private KernelClientProcess() {}
@@ -18,14 +23,17 @@ public final class KernelClientProcess {
     public static void main(String[] args) throws Exception {
         if (args.length < 2) {
             throw new IllegalArgumentException(
-                    "usage: <submit|collect|inspect|cancel|framing-mismatch|protocol-version-mismatch|protocol-overlap|payload-limits> <socket> ...");
+                    "usage: <submit|submit-config|status|collect|inspect|cancel|cancel-work|framing-mismatch|protocol-version-mismatch|protocol-overlap|payload-limits> <socket> ...");
         }
         LocalKernelClient client = new LocalKernelClient(Path.of(args[1]));
         switch (args[0]) {
             case "submit" -> submit(client, args);
+            case "submit-config" -> submitConfig(client, args);
+            case "status" -> status(client, args);
             case "collect" -> collect(client, args);
             case "inspect" -> inspect(client);
             case "cancel" -> cancel(client, args);
+            case "cancel-work" -> cancelWork(client, args);
             case "framing-mismatch" -> framingMismatch(Path.of(args[1]));
             case "protocol-version-mismatch" -> protocolVersionMismatch(Path.of(args[1]));
             case "protocol-overlap" -> protocolOverlap(Path.of(args[1]));
@@ -40,6 +48,34 @@ public final class KernelClientProcess {
         }
         WorkId id = client.submit(new WorkRequest("text-generation/v1", args[2].getBytes(StandardCharsets.UTF_8)));
         System.out.println(id.value());
+    }
+
+    private static void submitConfig(LocalKernelClient client, String[] args) {
+        if (args.length != 14) {
+            throw new IllegalArgumentException(
+                    "submit-config requires payload effort urgency capabilities allowlist exactEngine exactModel eligibleAt deadline timeout maxAttempts retryDelay");
+        }
+        WorkRequest request = new WorkRequest(
+                "text-generation/v1",
+                args[2].getBytes(StandardCharsets.UTF_8),
+                Effort.valueOf(args[3]),
+                Urgency.valueOf(args[4]),
+                parseSet(args[5]),
+                parseSet(args[6]),
+                parseOptional(args[7]),
+                parseOptional(args[8]),
+                parseOptionalLong(args[9]),
+                parseOptionalLong(args[10]),
+                parseOptionalLong(args[11]),
+                new RetryPolicy(Integer.parseInt(args[12]), Long.parseLong(args[13])));
+        System.out.println(client.submit(request).value());
+    }
+
+    private static void status(LocalKernelClient client, String[] args) {
+        if (args.length != 3) {
+            throw new IllegalArgumentException("status requires WorkId");
+        }
+        System.out.println(client.status(new WorkId(args[2])));
     }
 
     private static void collect(LocalKernelClient client, String[] args) throws Exception {
@@ -75,19 +111,42 @@ public final class KernelClientProcess {
 
     private static void inspect(LocalKernelClient client) {
         List<EngineDescriptor> engines = client.engines();
-        if (engines.size() != 1 || !engines.getFirst().engineId().equals("fake-local")) {
-            throw new AssertionError("fake engine inventory mismatch: " + engines);
+        if (engines.size() != 3) {
+            throw new AssertionError("fake engine inventory size mismatch: " + engines);
         }
-        EngineDescriptor listed = engines.getFirst();
-        EngineDescriptor status = client.engineStatus("fake-local");
-        if (!status.equals(listed)) {
-            throw new AssertionError("ENGINE_STATUS did not preserve Kernel descriptor facts: listed=" +
-                    listed + " status=" + status);
+        List<String> ids = engines.stream().map(EngineDescriptor::engineId).toList();
+        if (!ids.equals(List.of("fake-standard", "fake-capable", "fake-vision"))) {
+            throw new AssertionError("fake engine inventory order mismatch: " + ids);
         }
-        if (!"KERNEL_PROCESS".equals(status.placement()) || "LOCAL_MACHINE".equals(status.placement())) {
-            throw new AssertionError("non-LOCAL_MACHINE Kernel placement was not preserved: " + status);
+        for (EngineDescriptor listed : engines) {
+            EngineDescriptor status = client.engineStatus(listed.engineId());
+            if (!status.equals(listed)) {
+                throw new AssertionError("ENGINE_STATUS did not preserve Kernel descriptor facts: listed=" +
+                        listed + " status=" + status);
+            }
+            if (!"KERNEL_PROCESS".equals(status.placement())) {
+                throw new AssertionError("Kernel placement fact was not preserved: " + status);
+            }
         }
-        System.out.println("ENGINE fake-local KERNEL_PROCESS AVAILABLE");
+        EngineDescriptor standard = engines.get(0);
+        EngineDescriptor capable = engines.get(1);
+        EngineDescriptor vision = engines.get(2);
+        if (!standard.supportedEfforts().equals(Set.of(Effort.STANDARD)) ||
+                !standard.modelIds().contains("standard-v1") ||
+                standard.supportedCapabilities().contains("structured-output")) {
+            throw new AssertionError("fake-standard descriptor is not factual/distinct: " + standard);
+        }
+        if (!capable.supportedEfforts().containsAll(Set.of(Effort.STANDARD, Effort.HIGH)) ||
+                !capable.supportedCapabilities().contains("structured-output") ||
+                !capable.modelIds().contains("high-v1")) {
+            throw new AssertionError("fake-capable descriptor is not factual/distinct: " + capable);
+        }
+        if (!vision.supportedEfforts().equals(Set.of(Effort.HIGH)) ||
+                !vision.supportedCapabilities().contains("image-input") ||
+                !vision.modelIds().contains("vision-v1")) {
+            throw new AssertionError("fake-vision descriptor is not factual/distinct: " + vision);
+        }
+        System.out.println("ENGINE_INVENTORY 3 factual KERNEL_PROCESS descriptors");
     }
 
     private static void framingMismatch(Path endpoint) throws Exception {
@@ -105,10 +164,8 @@ public final class KernelClientProcess {
                     Protocol.HELLO,
                     998,
                     Map.of(
-                            "min_kernel_protocol_version",
-                            Integer.toString(Protocol.MAX_KERNEL_PROTOCOL_VERSION + 1),
-                            "max_kernel_protocol_version",
-                            Integer.toString(Protocol.MAX_KERNEL_PROTOCOL_VERSION + 1)),
+                            "min_kernel_protocol_version", Integer.toString(Protocol.MAX_KERNEL_PROTOCOL_VERSION + 1),
+                            "max_kernel_protocol_version", Integer.toString(Protocol.MAX_KERNEL_PROTOCOL_VERSION + 1)),
                     new byte[0]));
             Protocol.Frame response = Protocol.read(channel);
             requireError(response, "VERSION_MISMATCH", "incompatible Kernel protocol range");
@@ -122,10 +179,8 @@ public final class KernelClientProcess {
                     Protocol.HELLO,
                     999,
                     Map.of(
-                            "min_kernel_protocol_version",
-                            Integer.toString(Protocol.MIN_KERNEL_PROTOCOL_VERSION),
-                            "max_kernel_protocol_version",
-                            Integer.toString(Protocol.MAX_KERNEL_PROTOCOL_VERSION + 1)),
+                            "min_kernel_protocol_version", Integer.toString(Protocol.MIN_KERNEL_PROTOCOL_VERSION),
+                            "max_kernel_protocol_version", Integer.toString(Protocol.MAX_KERNEL_PROTOCOL_VERSION + 1)),
                     new byte[0]));
             Protocol.Frame hello = Protocol.read(channel);
             if (hello.type() != Protocol.HELLO_RESPONSE) {
@@ -256,5 +311,27 @@ public final class KernelClientProcess {
             throw new AssertionError("cancel did not terminate Work; state=" + status);
         }
         System.out.println("CANCELLED " + id.value());
+    }
+
+    private static void cancelWork(LocalKernelClient client, String[] args) {
+        if (args.length != 3) {
+            throw new IllegalArgumentException("cancel-work requires WorkId");
+        }
+        System.out.println(client.cancel(new WorkId(args[2])));
+    }
+
+    private static Set<String> parseSet(String value) {
+        if ("-".equals(value)) {
+            return Set.of();
+        }
+        return new LinkedHashSet<>(Arrays.asList(value.split(",")));
+    }
+
+    private static Optional<String> parseOptional(String value) {
+        return "-".equals(value) ? Optional.empty() : Optional.of(value);
+    }
+
+    private static OptionalLong parseOptionalLong(String value) {
+        return "-".equals(value) ? OptionalLong.empty() : OptionalLong.of(Long.parseLong(value));
     }
 }
