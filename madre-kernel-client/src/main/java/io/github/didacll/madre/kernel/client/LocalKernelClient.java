@@ -8,6 +8,8 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -15,6 +17,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Collectors;
 
 public final class LocalKernelClient implements KernelClient {
     private static final byte[] EMPTY = new byte[0];
@@ -28,11 +31,28 @@ public final class LocalKernelClient implements KernelClient {
     @Override
     public WorkId submit(WorkRequest request) {
         Objects.requireNonNull(request, "request");
+        Map<String, String> metadata = new LinkedHashMap<>();
+        metadata.put("work_type", request.workType());
+        metadata.put("effort", request.effort().name());
+        metadata.put("urgency", request.urgency().name());
+        metadata.put("required_capabilities", csv(request.requiredCapabilities()));
+        metadata.put("eligible_engine_ids", csv(request.eligibleEngineIds()));
+        request.exactEngineId().ifPresent(value -> metadata.put("exact_engine_id", value));
+        request.exactModelId().ifPresent(value -> metadata.put("exact_model_id", value));
+        if (request.eligibleAtMs().isPresent()) {
+            metadata.put("eligible_at_ms", Long.toString(request.eligibleAtMs().getAsLong()));
+        }
+        if (request.deadlineMs().isPresent()) {
+            metadata.put("deadline_ms", Long.toString(request.deadlineMs().getAsLong()));
+        }
+        if (request.timeoutMs().isPresent()) {
+            metadata.put("timeout_ms", Long.toString(request.timeoutMs().getAsLong()));
+        }
+        metadata.put("max_attempts", Integer.toString(request.retry().maxAttempts()));
+        metadata.put("retry_delay_ms", Long.toString(request.retry().retryDelayMs()));
+
         Protocol.Frame response = exchange(new Protocol.Frame(
-                Protocol.SUBMIT,
-                nextCorrelation(),
-                Map.of("work_type", request.workType()),
-                request.input()));
+                Protocol.SUBMIT, nextCorrelation(), metadata, request.input()));
         expectType(response, Protocol.SUBMIT_RESPONSE);
         return new WorkId(required(response, "work_id"));
     }
@@ -78,8 +98,7 @@ public final class LocalKernelClient implements KernelClient {
         int count = Integer.parseInt(required(response, "count"));
         List<EngineDescriptor> engines = new ArrayList<>(count);
         for (int i = 0; i < count; ++i) {
-            String prefix = "engine." + i + ".";
-            engines.add(parseEngineDescriptor(response, prefix));
+            engines.add(parseEngineDescriptor(response, "engine." + i + "."));
         }
         return List.copyOf(engines);
     }
@@ -88,10 +107,7 @@ public final class LocalKernelClient implements KernelClient {
     public EngineDescriptor engineStatus(String engineId) {
         Objects.requireNonNull(engineId, "engineId");
         Protocol.Frame response = exchange(new Protocol.Frame(
-                Protocol.ENGINE_STATUS,
-                nextCorrelation(),
-                Map.of("engine_id", engineId),
-                EMPTY));
+                Protocol.ENGINE_STATUS, nextCorrelation(), Map.of("engine_id", engineId), EMPTY));
         expectType(response, Protocol.ENGINE_STATUS_RESPONSE);
         return parseEngineDescriptor(response, "");
     }
@@ -109,10 +125,8 @@ public final class LocalKernelClient implements KernelClient {
                     Protocol.HELLO,
                     helloCorrelation,
                     Map.of(
-                            "min_kernel_protocol_version",
-                            Integer.toString(Protocol.MIN_KERNEL_PROTOCOL_VERSION),
-                            "max_kernel_protocol_version",
-                            Integer.toString(Protocol.MAX_KERNEL_PROTOCOL_VERSION)),
+                            "min_kernel_protocol_version", Integer.toString(Protocol.MIN_KERNEL_PROTOCOL_VERSION),
+                            "max_kernel_protocol_version", Integer.toString(Protocol.MAX_KERNEL_PROTOCOL_VERSION)),
                     EMPTY));
             Protocol.Frame hello = Protocol.read(channel);
             checkError(hello);
@@ -163,6 +177,8 @@ public final class LocalKernelClient implements KernelClient {
                 required(frame, prefix + "id"),
                 splitSet(required(frame, prefix + "work_types")),
                 splitSet(required(frame, prefix + "capabilities")),
+                splitSet(required(frame, prefix + "model_ids")),
+                splitEfforts(required(frame, prefix + "supported_efforts")),
                 required(frame, prefix + "placement"),
                 required(frame, prefix + "availability"),
                 Boolean.parseBoolean(required(frame, prefix + "warm")));
@@ -173,6 +189,14 @@ public final class LocalKernelClient implements KernelClient {
             return Collections.emptySet();
         }
         return Collections.unmodifiableSet(new LinkedHashSet<>(Arrays.asList(value.split(","))));
+    }
+
+    private static Set<Effort> splitEfforts(String value) {
+        return splitSet(value).stream().map(Effort::valueOf).collect(Collectors.toUnmodifiableSet());
+    }
+
+    private static String csv(Set<String> values) {
+        return values.stream().sorted(Comparator.naturalOrder()).collect(Collectors.joining(","));
     }
 
     private long nextCorrelation() {
