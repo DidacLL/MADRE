@@ -7,6 +7,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdio>
+#include <csignal>
 #include <cstring>
 #include <filesystem>
 #include <fcntl.h>
@@ -14,6 +15,7 @@
 #include <iomanip>
 #include <iostream>
 #include <mutex>
+#include <optional>
 #include <poll.h>
 #include <random>
 #include <sstream>
@@ -27,7 +29,6 @@
 #include <thread>
 #include <unistd.h>
 #include <vector>
-#include <csignal>
 
 namespace fs = std::filesystem;
 using namespace std::chrono_literals;
@@ -155,37 +156,219 @@ private:
     int fd_{-1};
 };
 
+std::vector<std::string> split_csv(std::string_view csv) {
+    std::vector<std::string> values;
+    std::size_t pos = 0;
+    while (pos <= csv.size()) {
+        const auto comma = csv.find(',', pos);
+        const auto end = comma == std::string_view::npos ? csv.size() : comma;
+        if (end > pos) {
+            values.emplace_back(csv.substr(pos, end - pos));
+        }
+        if (comma == std::string_view::npos) {
+            break;
+        }
+        pos = comma + 1;
+    }
+    return values;
+}
+
+std::string join_csv(const std::vector<std::string>& values) {
+    std::string out;
+    for (std::size_t i = 0; i < values.size(); ++i) {
+        if (i != 0) {
+            out += ',';
+        }
+        out += values[i];
+    }
+    return out;
+}
+
+bool contains(const std::vector<std::string>& values, std::string_view value) {
+    return std::find(values.begin(), values.end(), value) != values.end();
+}
+
+bool contains_all(const std::vector<std::string>& available, const std::vector<std::string>& required) {
+    return std::all_of(required.begin(), required.end(), [&](const std::string& item) {
+        return contains(available, item);
+    });
+}
+
 struct EngineDescriptorFacts {
     std::string id;
-    std::string work_types;
-    std::string capabilities;
+    std::vector<std::string> work_types;
+    std::vector<std::string> capabilities;
+    std::vector<std::string> model_ids;
+    std::vector<std::string> supported_efforts;
     std::string placement;
     std::string availability;
     bool warm;
 };
 
-const EngineDescriptorFacts& fake_engine_descriptor() {
-    // C1's deterministic fake engine executes in the Kernel process. This factual
-    // non-LOCAL_MACHINE value also exercises descriptor transport fidelity.
-    static const EngineDescriptorFacts descriptor{
-        "fake-local",
-        "text-generation/v1",
-        "",
-        "KERNEL_PROCESS",
-        "AVAILABLE",
-        true,
+const std::vector<EngineDescriptorFacts>& engine_inventory() {
+    static const std::vector<EngineDescriptorFacts> inventory{
+        {"fake-standard",
+         {"text-generation/v1"},
+         {"basic-text"},
+         {"standard-v1", "shared-v1"},
+         {"STANDARD"},
+         "KERNEL_PROCESS",
+         "AVAILABLE",
+         true},
+        {"fake-capable",
+         {"text-generation/v1"},
+         {"basic-text", "structured-output", "long-context"},
+         {"high-v1", "shared-v1"},
+         {"STANDARD", "HIGH"},
+         "KERNEL_PROCESS",
+         "AVAILABLE",
+         true},
+        {"fake-vision",
+         {"text-generation/v1"},
+         {"basic-text", "image-input"},
+         {"vision-v1"},
+         {"HIGH"},
+         "KERNEL_PROCESS",
+         "AVAILABLE",
+         false},
     };
-    return descriptor;
+    return inventory;
 }
 
 void add_engine_descriptor(Frame& frame, std::string_view prefix, const EngineDescriptorFacts& descriptor) {
     const std::string base(prefix);
     frame.metadata[base + "id"] = descriptor.id;
-    frame.metadata[base + "work_types"] = descriptor.work_types;
-    frame.metadata[base + "capabilities"] = descriptor.capabilities;
+    frame.metadata[base + "work_types"] = join_csv(descriptor.work_types);
+    frame.metadata[base + "capabilities"] = join_csv(descriptor.capabilities);
+    frame.metadata[base + "model_ids"] = join_csv(descriptor.model_ids);
+    frame.metadata[base + "supported_efforts"] = join_csv(descriptor.supported_efforts);
     frame.metadata[base + "placement"] = descriptor.placement;
     frame.metadata[base + "availability"] = descriptor.availability;
     frame.metadata[base + "warm"] = descriptor.warm ? "true" : "false";
+}
+
+struct Selection {
+    const EngineDescriptorFacts* engine{};
+    std::string model_id;
+};
+
+struct SelectionResult {
+    std::optional<Selection> selection;
+    std::string failure;
+};
+
+SelectionResult select_engine(const WorkRecord& work) {
+    std::vector<const EngineDescriptorFacts*> candidates;
+    for (const auto& engine : engine_inventory()) {
+        candidates.push_back(&engine);
+    }
+
+    std::erase_if(candidates, [&](const auto* engine) {
+        return !contains(engine->work_types, work.work_type);
+    });
+    if (candidates.empty()) {
+        return {std::nullopt, "NO_ELIGIBLE_ENGINE: no engine supports Work type " + work.work_type};
+    }
+
+    const auto required_capabilities = split_csv(work.required_capabilities);
+    std::erase_if(candidates, [&](const auto* engine) {
+        return !contains_all(engine->capabilities, required_capabilities);
+    });
+    if (candidates.empty()) {
+        return {std::nullopt, "NO_ELIGIBLE_ENGINE: required capabilities are not satisfied"};
+    }
+
+    const auto allowlist = split_csv(work.eligible_engine_ids);
+    if (!allowlist.empty()) {
+        std::erase_if(candidates, [&](const auto* engine) {
+            return !contains(allowlist, engine->id);
+        });
+    }
+    if (candidates.empty()) {
+        return {std::nullopt, "NO_ELIGIBLE_ENGINE: eligible engine allowlist excluded all compatible engines"};
+    }
+
+    if (!work.exact_engine_id.empty()) {
+        std::erase_if(candidates, [&](const auto* engine) {
+            return engine->id != work.exact_engine_id;
+        });
+    }
+    if (!work.exact_model_id.empty()) {
+        std::erase_if(candidates, [&](const auto* engine) {
+            return !contains(engine->model_ids, work.exact_model_id);
+        });
+    }
+    if (candidates.empty()) {
+        return {std::nullopt, "EXACT_SELECTION_UNSATISFIED: exact engine/model constraint did not match"};
+    }
+
+    std::erase_if(candidates, [&](const auto* engine) {
+        return !contains(engine->supported_efforts, work.effort);
+    });
+    if (candidates.empty()) {
+        return {std::nullopt, "NO_ELIGIBLE_ENGINE: requested effort " + work.effort + " is unsupported"};
+    }
+
+    std::erase_if(candidates, [](const auto* engine) {
+        return engine->availability != "AVAILABLE";
+    });
+    if (candidates.empty()) {
+        return {std::nullopt, "NO_ELIGIBLE_ENGINE: compatible engines are unavailable"};
+    }
+
+    const auto* selected = candidates.front();
+    const auto model = work.exact_model_id.empty() ? selected->model_ids.front() : work.exact_model_id;
+    return {Selection{selected, model}, {}};
+}
+
+std::string optional_metadata(const Frame& frame, const std::string& key) {
+    const auto it = frame.metadata.find(key);
+    return it == frame.metadata.end() ? std::string{} : it->second;
+}
+
+std::int64_t parse_i64(const std::string& value, const char* field) {
+    try {
+        std::size_t used = 0;
+        const auto parsed = std::stoll(value, &used);
+        if (used != value.size()) {
+            throw std::invalid_argument("trailing characters");
+        }
+        return parsed;
+    } catch (const std::exception&) {
+        throw std::runtime_error(std::string("invalid integer metadata field: ") + field);
+    }
+}
+
+std::optional<std::int64_t> optional_nonnegative_i64(const Frame& frame, const std::string& key) {
+    const auto value = optional_metadata(frame, key);
+    if (value.empty()) {
+        return std::nullopt;
+    }
+    const auto parsed = parse_i64(value, key.c_str());
+    if (parsed < 0) {
+        throw std::runtime_error(key + " must be >= 0");
+    }
+    return parsed;
+}
+
+int parse_positive_int(const Frame& frame, const std::string& key) {
+    const auto parsed = parse_i64(metadata_value(frame, key), key.c_str());
+    if (parsed < 1 || parsed > 1000000) {
+        throw std::runtime_error(key + " must be between 1 and 1000000");
+    }
+    return static_cast<int>(parsed);
+}
+
+void validate_choice(std::string_view value, std::string_view a, std::string_view b, const char* field) {
+    if (value != a && value != b) {
+        throw std::runtime_error(std::string("invalid ") + field);
+    }
+}
+
+void validate_urgency(std::string_view value) {
+    if (value != "INTERACTIVE" && value != "NORMAL" && value != "BACKGROUND") {
+        throw std::runtime_error("invalid urgency");
+    }
 }
 
 class Kernel {
@@ -197,6 +380,7 @@ public:
           store_(data_dir_ / "kernel.db"),
           fake_delay_ms_(fake_delay_ms) {
         fs::create_directories(data_dir_ / "work");
+        store_.recover_interrupted(now_ms());
     }
 
     ~Kernel() {
@@ -272,49 +456,107 @@ private:
 
     void worker_loop() {
         while (!stop_.load()) {
-            auto work = store_.next_queued();
+            const auto scheduler_now = now_ms();
+            store_.expire_queued_deadlines(scheduler_now);
+            auto work = store_.next_eligible(scheduler_now);
             if (!work) {
                 std::unique_lock lock(wake_mutex_);
-                wake_.wait_for(lock, 100ms, [this] { return stop_.load(); });
+                wake_.wait_for(lock, 20ms, [this] { return stop_.load(); });
                 continue;
             }
-            if (!store_.mark_running(work->id)) {
+            if (work->deadline_ms && scheduler_now >= *work->deadline_ms) {
+                store_.fail_queued(work->id, "DEADLINE_EXPIRED: Work deadline expired before dispatch");
                 continue;
             }
+
+            const auto selection = select_engine(*work);
+            if (!selection.selection) {
+                store_.fail_queued(work->id, selection.failure);
+                continue;
+            }
+
+            const auto started_at = now_ms();
+            if (work->deadline_ms && started_at >= *work->deadline_ms) {
+                store_.fail_queued(work->id, "DEADLINE_EXPIRED: Work deadline expired before dispatch");
+                continue;
+            }
+            const auto& selected = *selection.selection;
+            const int attempt_number = store_.begin_attempt(
+                work->id, selected.engine->id, selected.model_id, started_at);
+            if (attempt_number == 0) {
+                continue;
+            }
+
             try {
-                const int steps = std::max(1, fake_delay_ms_ / 10);
-                for (int i = 0; i < steps; ++i) {
-                    if (stop_.load()) {
-                        return;
-                    }
-                    if (store_.cancel_requested(work->id)) {
-                        store_.mark_cancelled(work->id);
-                        goto next_work;
-                    }
-                    std::this_thread::sleep_for(10ms);
-                }
-                if (store_.cancel_requested(work->id)) {
-                    store_.mark_cancelled(work->id);
-                    goto next_work;
-                }
-                {
-                    const auto input = read_binary_bounded(work->input_path);
-                    constexpr std::string_view prefix = "fake:";
-                    if (input.size() > kMaxC1TextGenerationOpaquePayloadBytes - prefix.size()) {
-                        throw std::runtime_error(
-                            "fake engine result exceeds the C1 1 MiB bounded text-generation/v1 payload limit");
-                    }
-                    std::vector<std::uint8_t> result(prefix.begin(), prefix.end());
-                    result.insert(result.end(), input.begin(), input.end());
-                    write_binary_atomic(work->result_path, result);
-                    store_.mark_succeeded(work->id);
-                }
+                execute_fake(*work, attempt_number, started_at);
             } catch (const std::exception& ex) {
-                store_.mark_failed(work->id, ex.what());
+                store_.finish_retryable_failure(
+                    work->id, attempt_number, "FAILED", ex.what(), now_ms());
             }
-        next_work:
-            continue;
         }
+    }
+
+    void execute_fake(const WorkRecord& work, int attempt_number, std::int64_t started_at_ms) {
+        std::optional<std::int64_t> stop_at;
+        bool timeout_wins = false;
+        if (work.timeout_ms) {
+            stop_at = started_at_ms + *work.timeout_ms;
+            timeout_wins = true;
+        }
+        if (work.deadline_ms && (!stop_at || *work.deadline_ms < *stop_at)) {
+            stop_at = *work.deadline_ms;
+            timeout_wins = false;
+        }
+
+        const auto complete_at = started_at_ms + fake_delay_ms_;
+        while (now_ms() < complete_at) {
+            if (stop_.load()) {
+                return;
+            }
+            if (store_.cancel_requested(work.id)) {
+                store_.finish_cancelled(work.id, attempt_number, now_ms());
+                return;
+            }
+            const auto current = now_ms();
+            if (stop_at && current >= *stop_at) {
+                const std::string failure = timeout_wins
+                    ? "ATTEMPT_TIMEOUT: per-attempt timeout expired"
+                    : "DEADLINE_EXPIRED: Work deadline expired during attempt";
+                store_.finish_retryable_failure(work.id, attempt_number, "TIMED_OUT", failure, current);
+                return;
+            }
+            std::this_thread::sleep_for(5ms);
+        }
+
+        if (store_.cancel_requested(work.id)) {
+            store_.finish_cancelled(work.id, attempt_number, now_ms());
+            return;
+        }
+        const auto finished_at = now_ms();
+        if (stop_at && finished_at >= *stop_at) {
+            const std::string failure = timeout_wins
+                ? "ATTEMPT_TIMEOUT: per-attempt timeout expired"
+                : "DEADLINE_EXPIRED: Work deadline expired during attempt";
+            store_.finish_retryable_failure(work.id, attempt_number, "TIMED_OUT", failure, finished_at);
+            return;
+        }
+
+        const auto input = read_binary_bounded(work.input_path);
+        constexpr std::string_view forced_failure = "__C2_TECHNICAL_FAILURE__";
+        if (input.size() == forced_failure.size() &&
+            std::equal(input.begin(), input.end(), forced_failure.begin())) {
+            throw std::runtime_error("FAKE_TECHNICAL_FAILURE: deterministic C2 test engine failure");
+        }
+
+        constexpr std::string_view prefix = "fake:";
+        if (input.size() > kMaxC1TextGenerationOpaquePayloadBytes - prefix.size()) {
+            throw std::runtime_error(
+                "fake engine result exceeds the C1 1 MiB bounded text-generation/v1 payload limit");
+        }
+        std::vector<std::uint8_t> result(prefix.begin(), prefix.end());
+        result.insert(result.end(), input.begin(), input.end());
+        write_binary_atomic(work.result_path, result);
+        store_.finish_success(work.id, attempt_number, now_ms());
     }
 
     void serve_connection(int fd) {
@@ -373,22 +615,63 @@ private:
     }
 
     Frame submit(const Frame& request) {
-        const auto work_type = metadata_value(request, "work_type");
-        if (work_type != "text-generation/v1") {
-            return error_response(request, "UNSUPPORTED_WORK_TYPE", "fake engine supports only text-generation/v1");
-        }
         if (request.payload.size() > kMaxC1TextGenerationOpaquePayloadBytes) {
             return error_response(
                 request,
                 "PAYLOAD_TOO_LARGE",
                 "C1 text-generation/v1 input exceeds the 1 MiB bounded payload limit; streaming/spooling is deferred");
         }
+
+        const auto work_type = metadata_value(request, "work_type");
+        const auto effort = metadata_value(request, "effort");
+        const auto urgency = metadata_value(request, "urgency");
+        validate_choice(effort, "STANDARD", "HIGH", "effort");
+        validate_urgency(urgency);
+        const auto max_attempts = parse_positive_int(request, "max_attempts");
+        const auto retry_delay_ms = parse_i64(metadata_value(request, "retry_delay_ms"), "retry_delay_ms");
+        if (retry_delay_ms < 0) {
+            throw std::runtime_error("retry_delay_ms must be >= 0");
+        }
+
+        const auto submitted_at = now_ms();
+        const auto eligible_at = optional_nonnegative_i64(request, "eligible_at_ms").value_or(submitted_at);
+        const auto deadline = optional_nonnegative_i64(request, "deadline_ms");
+        const auto timeout = optional_nonnegative_i64(request, "timeout_ms");
+        if (timeout && *timeout == 0) {
+            throw std::runtime_error("timeout_ms must be > 0 when supplied");
+        }
+
         const auto id = make_work_id();
         const auto work_dir = data_dir_ / "work" / id;
         const auto input = work_dir / "input.bin";
         const auto result_path = work_dir / "result.bin";
         write_binary_atomic(input, request.payload);
-        store_.submit(WorkRecord{id, work_type, "QUEUED", input, result_path, false, false}, now_ms());
+        store_.submit(WorkRecord{
+            id,
+            work_type,
+            "QUEUED",
+            effort,
+            urgency,
+            optional_metadata(request, "required_capabilities"),
+            optional_metadata(request, "eligible_engine_ids"),
+            optional_metadata(request, "exact_engine_id"),
+            optional_metadata(request, "exact_model_id"),
+            submitted_at,
+            eligible_at,
+            eligible_at,
+            deadline,
+            timeout,
+            max_attempts,
+            retry_delay_ms,
+            0,
+            input,
+            result_path,
+            false,
+            false,
+            {},
+            {},
+            {},
+        });
         wake_.notify_one();
         auto out = response(MessageType::SubmitResponse, request);
         out.metadata["work_id"] = id;
@@ -403,6 +686,9 @@ private:
         }
         auto out = response(MessageType::StatusResponse, request);
         out.metadata["state"] = work->state;
+        if (!work->technical_failure.empty()) {
+            out.metadata["technical_failure"] = work->technical_failure;
+        }
         return out;
     }
 
@@ -460,19 +746,25 @@ private:
 
     Frame list_engines(const Frame& request) {
         auto out = response(MessageType::ListEnginesResponse, request);
-        out.metadata["count"] = "1";
-        add_engine_descriptor(out, "engine.0.", fake_engine_descriptor());
+        const auto& inventory = engine_inventory();
+        out.metadata["count"] = std::to_string(inventory.size());
+        for (std::size_t i = 0; i < inventory.size(); ++i) {
+            add_engine_descriptor(out, "engine." + std::to_string(i) + ".", inventory[i]);
+        }
         return out;
     }
 
     Frame engine_status(const Frame& request) {
         const auto id = metadata_value(request, "engine_id");
-        const auto& descriptor = fake_engine_descriptor();
-        if (id != descriptor.id) {
+        const auto& inventory = engine_inventory();
+        const auto it = std::find_if(inventory.begin(), inventory.end(), [&](const auto& descriptor) {
+            return descriptor.id == id;
+        });
+        if (it == inventory.end()) {
             return error_response(request, "ENGINE_NOT_FOUND", "unknown physical engine");
         }
         auto out = response(MessageType::EngineStatusResponse, request);
-        add_engine_descriptor(out, "", descriptor);
+        add_engine_descriptor(out, "", *it);
         return out;
     }
 
