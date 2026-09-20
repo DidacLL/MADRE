@@ -168,18 +168,32 @@ public final class KernelClientProcess {
     }
 
     private static void protocolVersionMismatch(Path endpoint) throws Exception {
+        requireProtocolVersionMismatch(
+                endpoint,
+                Protocol.MIN_KERNEL_PROTOCOL_VERSION - 1,
+                996,
+                "legacy Kernel protocol range");
+        requireProtocolVersionMismatch(
+                endpoint,
+                Protocol.MAX_KERNEL_PROTOCOL_VERSION + 1,
+                998,
+                "future Kernel protocol range");
+        System.out.println("VERSION_MISMATCH rejected incompatible Kernel protocol ranges");
+    }
+
+    private static void requireProtocolVersionMismatch(
+            Path endpoint, int version, long correlation, String description) throws Exception {
         try (SocketChannel channel = connect(endpoint)) {
             Protocol.write(channel, new Protocol.Frame(
                     Protocol.HELLO,
-                    998,
+                    correlation,
                     Map.of(
-                            "min_kernel_protocol_version", Integer.toString(Protocol.MAX_KERNEL_PROTOCOL_VERSION + 1),
-                            "max_kernel_protocol_version", Integer.toString(Protocol.MAX_KERNEL_PROTOCOL_VERSION + 1)),
+                            "min_kernel_protocol_version", Integer.toString(version),
+                            "max_kernel_protocol_version", Integer.toString(version)),
                     new byte[0]));
             Protocol.Frame response = Protocol.read(channel);
-            requireError(response, "VERSION_MISMATCH", "incompatible Kernel protocol range");
+            requireError(response, "VERSION_MISMATCH", description);
         }
-        System.out.println("VERSION_MISMATCH rejected incompatible Kernel protocol range");
     }
 
     private static void protocolOverlap(Path endpoint) throws Exception {
