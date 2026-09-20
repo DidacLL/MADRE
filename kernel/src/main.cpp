@@ -527,11 +527,6 @@ private:
             if (stop_.load()) {
                 return;
             }
-            if (store_.cancel_requested(work.id)) {
-                store_.finish_cancelled(work.id, attempt_number, now_ms());
-                return;
-            }
-
             std::optional<std::int64_t> stop_at;
             bool timeout_wins = false;
             if (work.timeout_ms) {

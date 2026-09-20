@@ -316,19 +316,28 @@ struct WorkerPool::WorkerProcess {
             }
             const auto current = now_ms();
             if (!interrupt_observation_complete) {
-                if (cancellation_requested()) {
-                    terminate();
-                    return {WorkerOutcomeKind::Cancelled, {}, "cancelled"};
-                }
-                if (stop_at_ms && current >= *stop_at_ms) {
-                    terminate();
-                    const std::string failure = timeout_wins
-                        ? "ATTEMPT_TIMEOUT: per-attempt timeout expired"
-                        : "DEADLINE_EXPIRED: Work deadline expired during attempt";
-                    return {WorkerOutcomeKind::TimedOut, {}, failure};
-                }
-                if (current >= attempt_started_at_ms + fake_delay_ms) {
+                const auto interrupt_cutoff_ms = attempt_started_at_ms + fake_delay_ms;
+                if (current >= interrupt_cutoff_ms) {
+                    if (stop_at_ms && *stop_at_ms < interrupt_cutoff_ms && current >= *stop_at_ms) {
+                        terminate();
+                        const std::string failure = timeout_wins
+                            ? "ATTEMPT_TIMEOUT: per-attempt timeout expired"
+                            : "DEADLINE_EXPIRED: Work deadline expired during attempt";
+                        return {WorkerOutcomeKind::TimedOut, {}, failure};
+                    }
                     interrupt_observation_complete = true;
+                } else {
+                    if (cancellation_requested()) {
+                        terminate();
+                        return {WorkerOutcomeKind::Cancelled, {}, "cancelled"};
+                    }
+                    if (stop_at_ms && current >= *stop_at_ms) {
+                        terminate();
+                        const std::string failure = timeout_wins
+                            ? "ATTEMPT_TIMEOUT: per-attempt timeout expired"
+                            : "DEADLINE_EXPIRED: Work deadline expired during attempt";
+                        return {WorkerOutcomeKind::TimedOut, {}, failure};
+                    }
                 }
             }
 
