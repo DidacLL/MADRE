@@ -1,4 +1,4 @@
-name: MADRE foundation validation
+name: MADRE Lane C validation
 
 on:
   pull_request:
@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  foundation:
+  linux-build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,4 +23,15 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: gradle/actions/setup-gradle@v4
-      - run: ./gradlew --no-daemon clean build
+      - name: Install native build dependency
+        run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
+      - name: Build native Kernel
+        run: |
+          cmake -S kernel -B kernel/build -DCMAKE_BUILD_TYPE=Release
+          cmake --build kernel/build --parallel 2
+      - name: Run native unit tests
+        run: ctest --test-dir kernel/build --output-on-failure
+      - name: Build Java physical client
+        run: ./gradlew --no-daemon clean build
+      - name: Prove caller-disappearance durability
+        run: ./kernel/tests/caller_disappearance.sh ./kernel/build/madre-kernel 'madre-kernel-client/build/classes/java/main:madre-kernel-client/build/classes/java/test'
