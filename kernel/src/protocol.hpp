@@ -10,8 +10,8 @@
 namespace madre::kernel {
 
 constexpr std::uint16_t kFramingVersion = 1;
-constexpr int kMinKernelProtocolVersion = 1;
-constexpr int kMaxKernelProtocolVersion = 1;
+constexpr int kMinKernelProtocolVersion = 2;
+constexpr int kMaxKernelProtocolVersion = 2;
 
 // C1 intentionally buffers bounded opaque text-generation/v1 payloads only.
 // Large-payload streaming/spooling is deferred beyond C1.
