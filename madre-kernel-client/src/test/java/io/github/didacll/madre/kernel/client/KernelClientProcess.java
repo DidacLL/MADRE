@@ -133,7 +133,7 @@ public final class KernelClientProcess {
                 throw new AssertionError("ENGINE_STATUS did not preserve Kernel descriptor facts: listed=" +
                         listed + " status=" + status);
             }
-            if (!"KERNEL_PROCESS".equals(status.placement())) {
+            if (!"LOCAL_WORKER_PROCESS".equals(status.placement())) {
                 throw new AssertionError("Kernel placement fact was not preserved: " + status);
             }
         }
@@ -155,7 +155,7 @@ public final class KernelClientProcess {
                 !vision.modelIds().contains("vision-v1")) {
             throw new AssertionError("fake-vision descriptor is not factual/distinct: " + vision);
         }
-        System.out.println("ENGINE_INVENTORY 3 factual KERNEL_PROCESS descriptors");
+        System.out.println("ENGINE_INVENTORY 3 factual LOCAL_WORKER_PROCESS descriptors");
     }
 
     private static void framingMismatch(Path endpoint) throws Exception {

@@ -3,7 +3,7 @@ name: MADRE Lane C validation
 on:
   pull_request:
   push:
-    branches: [main, 'agentic/c2-scheduling-recovery']
+    branches: [main, 'agentic/c2-scheduling-recovery', 'agentic/c3-worker-resources']
   workflow_dispatch:
 
 permissions:
@@ -37,3 +37,5 @@ jobs:
         run: ./kernel/tests/caller_disappearance.sh ./kernel/build/madre-kernel 'madre-kernel-client/build/classes/java/main:madre-kernel-client/build/classes/java/test'
       - name: Prove C2 scheduling and restart recovery
         run: python3 ./kernel/tests/c2_acceptance.py ./kernel/build/madre-kernel 'madre-kernel-client/build/classes/java/main:madre-kernel-client/build/classes/java/test'
+      - name: Prove C3 worker lifecycle and resource accounting
+        run: python3 ./kernel/tests/c3_acceptance.py ./kernel/build/madre-kernel ./kernel/build/madre-fake-worker 'madre-kernel-client/build/classes/java/main:madre-kernel-client/build/classes/java/test'

@@ -1,5 +1,6 @@
 #include "protocol.hpp"
 #include "store.hpp"
+#include "worker_runtime.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -10,6 +11,7 @@
 #include <csignal>
 #include <cstring>
 #include <filesystem>
+#include <future>
 #include <fcntl.h>
 #include <fstream>
 #include <iomanip>
@@ -195,6 +197,8 @@ bool contains_all(const std::vector<std::string>& available, const std::vector<s
     });
 }
 
+constexpr std::uint64_t kMiB = 1024ULL * 1024ULL;
+
 struct EngineDescriptorFacts {
     std::string id;
     std::vector<std::string> work_types;
@@ -203,7 +207,7 @@ struct EngineDescriptorFacts {
     std::vector<std::string> supported_efforts;
     std::string placement;
     std::string availability;
-    bool warm;
+    ResourceRequirement resources;
 };
 
 const std::vector<EngineDescriptorFacts>& engine_inventory() {
@@ -213,30 +217,31 @@ const std::vector<EngineDescriptorFacts>& engine_inventory() {
          {"basic-text"},
          {"standard-v1", "shared-v1"},
          {"STANDARD"},
-         "KERNEL_PROCESS",
+         "LOCAL_WORKER_PROCESS",
          "AVAILABLE",
-         true},
+         {1, 64 * kMiB, "", 0}},
         {"fake-capable",
          {"text-generation/v1"},
          {"basic-text", "structured-output", "long-context"},
          {"high-v1", "shared-v1"},
          {"STANDARD", "HIGH"},
-         "KERNEL_PROCESS",
+         "LOCAL_WORKER_PROCESS",
          "AVAILABLE",
-         true},
+         {1, 96 * kMiB, "fake-gpu-0", 64 * kMiB}},
         {"fake-vision",
          {"text-generation/v1"},
          {"basic-text", "image-input"},
          {"vision-v1"},
          {"HIGH"},
-         "KERNEL_PROCESS",
+         "LOCAL_WORKER_PROCESS",
          "AVAILABLE",
-         true},
+         {1, 96 * kMiB, "fake-gpu-0", 96 * kMiB}},
     };
     return inventory;
 }
 
-void add_engine_descriptor(Frame& frame, std::string_view prefix, const EngineDescriptorFacts& descriptor) {
+void add_engine_descriptor(Frame& frame, std::string_view prefix,
+                           const EngineDescriptorFacts& descriptor, bool warm) {
     const std::string base(prefix);
     frame.metadata[base + "id"] = descriptor.id;
     frame.metadata[base + "work_types"] = join_csv(descriptor.work_types);
@@ -245,7 +250,7 @@ void add_engine_descriptor(Frame& frame, std::string_view prefix, const EngineDe
     frame.metadata[base + "supported_efforts"] = join_csv(descriptor.supported_efforts);
     frame.metadata[base + "placement"] = descriptor.placement;
     frame.metadata[base + "availability"] = descriptor.availability;
-    frame.metadata[base + "warm"] = descriptor.warm ? "true" : "false";
+    frame.metadata[base + "warm"] = warm ? "true" : "false";
 }
 
 struct Selection {
@@ -374,12 +379,14 @@ void validate_urgency(std::string_view value) {
 
 class Kernel {
 public:
-    Kernel(fs::path data_dir, fs::path endpoint, int fake_delay_ms)
+    Kernel(fs::path data_dir, fs::path endpoint, fs::path fake_worker,
+           int fake_delay_ms, std::int64_t worker_idle_ms, ResourceCapacity capacity)
         : data_dir_(std::move(data_dir)),
           endpoint_(std::move(endpoint)),
           endpoint_lock_(endpoint_),
           store_(data_dir_ / "kernel.db"),
-          fake_delay_ms_(fake_delay_ms) {
+          resources_(std::move(capacity)),
+          worker_pool_(std::move(fake_worker), fake_delay_ms, worker_idle_ms) {
         fs::create_directories(data_dir_ / "work");
         store_.recover_interrupted(now_ms());
     }
@@ -387,9 +394,11 @@ public:
     ~Kernel() {
         stop_.store(true);
         wake_.notify_all();
-        if (worker_.joinable()) {
-            worker_.join();
+        worker_pool_.shutdown();
+        if (scheduler_.joinable()) {
+            scheduler_.join();
         }
+        attempt_tasks_.clear();
         if (server_fd_ >= 0) {
             ::close(server_fd_);
         }
@@ -399,7 +408,7 @@ public:
 
     void run() {
         open_server();
-        start_worker();
+        start_scheduler();
         while (!g_stop.load() && !stop_.load()) {
             pollfd ready{server_fd_, POLLIN, 0};
             const int poll_result = ::poll(&ready, 1, 100);
@@ -451,13 +460,18 @@ private:
         }
     }
 
-    void start_worker() {
-        worker_ = std::thread([this] { worker_loop(); });
+    void start_scheduler() {
+        scheduler_ = std::thread([this] { scheduler_loop(); });
     }
 
-    void worker_loop() {
+    void scheduler_loop() {
         while (!stop_.load()) {
+            std::erase_if(attempt_tasks_, [](std::future<void>& task) {
+                return task.wait_for(0ms) == std::future_status::ready;
+            });
+
             const auto scheduler_now = now_ms();
+            worker_pool_.reap_idle(scheduler_now);
             store_.expire_queued_deadlines(scheduler_now);
             auto work = store_.next_eligible(scheduler_now);
             if (!work) {
@@ -475,42 +489,41 @@ private:
                 store_.fail_queued(work->id, selection.failure);
                 continue;
             }
+            const auto& selected = *selection.selection;
+            auto reservation = resources_.try_reserve(selected.engine->resources);
+            if (!reservation) {
+                std::unique_lock lock(wake_mutex_);
+                wake_.wait_for(lock, 10ms, [this] { return stop_.load(); });
+                continue;
+            }
 
             const auto started_at = now_ms();
             if (work->deadline_ms && started_at >= *work->deadline_ms) {
                 store_.fail_queued(work->id, "DEADLINE_EXPIRED: Work deadline expired before dispatch");
                 continue;
             }
-            const auto& selected = *selection.selection;
             const int attempt_number = store_.begin_attempt(
                 work->id, selected.engine->id, selected.model_id, started_at);
             if (attempt_number == 0) {
                 continue;
             }
 
-            try {
-                execute_fake(*work, attempt_number, started_at);
-            } catch (const std::exception& ex) {
-                store_.finish_retryable_failure(
-                    work->id, attempt_number, "FAILED", ex.what(), now_ms());
-            }
+            const auto engine_id = selected.engine->id;
+            attempt_tasks_.push_back(std::async(
+                std::launch::async,
+                [this, work = *work, attempt_number, started_at, engine_id,
+                 reservation = std::move(*reservation)]() mutable {
+                    execute_worker(work, attempt_number, started_at, engine_id, std::move(reservation));
+                    wake_.notify_one();
+                }));
         }
     }
 
-    void execute_fake(const WorkRecord& work, int attempt_number, std::int64_t started_at_ms) {
-        std::optional<std::int64_t> stop_at;
-        bool timeout_wins = false;
-        if (work.timeout_ms) {
-            stop_at = started_at_ms + *work.timeout_ms;
-            timeout_wins = true;
-        }
-        if (work.deadline_ms && (!stop_at || *work.deadline_ms < *stop_at)) {
-            stop_at = *work.deadline_ms;
-            timeout_wins = false;
-        }
-
-        const auto complete_at = started_at_ms + fake_delay_ms_;
-        while (now_ms() < complete_at) {
+    void execute_worker(const WorkRecord& work, int attempt_number,
+                        std::int64_t started_at_ms, const std::string& engine_id,
+                        ResourceManager::Lease reservation) {
+        (void)reservation;
+        try {
             if (stop_.load()) {
                 return;
             }
@@ -518,46 +531,65 @@ private:
                 store_.finish_cancelled(work.id, attempt_number, now_ms());
                 return;
             }
-            const auto current = now_ms();
-            if (stop_at && current >= *stop_at) {
-                const std::string failure = timeout_wins
-                    ? "ATTEMPT_TIMEOUT: per-attempt timeout expired"
-                    : "DEADLINE_EXPIRED: Work deadline expired during attempt";
-                store_.finish_retryable_failure(work.id, attempt_number, "TIMED_OUT", failure, current);
+
+            std::optional<std::int64_t> stop_at;
+            bool timeout_wins = false;
+            if (work.timeout_ms) {
+                stop_at = started_at_ms + *work.timeout_ms;
+                timeout_wins = true;
+            }
+            if (work.deadline_ms && (!stop_at || *work.deadline_ms < *stop_at)) {
+                stop_at = *work.deadline_ms;
+                timeout_wins = false;
+            }
+
+            const auto input = read_binary_bounded(work.input_path);
+            auto worker = worker_pool_.acquire(engine_id);
+            const auto correlation = next_worker_correlation_.fetch_add(1);
+            const auto outcome = worker.execute(
+                input,
+                correlation,
+                [this, &work] { return store_.cancel_requested(work.id); },
+                [this] { return stop_.load(); },
+                stop_at,
+                timeout_wins);
+
+            switch (outcome.kind) {
+                case WorkerOutcomeKind::Stopped:
+                    return;
+                case WorkerOutcomeKind::Cancelled:
+                    store_.finish_cancelled(work.id, attempt_number, now_ms());
+                    return;
+                case WorkerOutcomeKind::TimedOut:
+                    store_.finish_retryable_failure(
+                        work.id, attempt_number, "TIMED_OUT", outcome.technical_failure, now_ms());
+                    return;
+                case WorkerOutcomeKind::TechnicalFailure:
+                case WorkerOutcomeKind::Crashed:
+                    store_.finish_retryable_failure(
+                        work.id, attempt_number, "FAILED", outcome.technical_failure, now_ms());
+                    return;
+                case WorkerOutcomeKind::Succeeded:
+                    break;
+            }
+
+            if (store_.cancel_requested(work.id)) {
+                store_.finish_cancelled(work.id, attempt_number, now_ms());
                 return;
             }
-            std::this_thread::sleep_for(5ms);
+            write_binary_atomic(work.result_path, outcome.payload);
+            store_.finish_success(work.id, attempt_number, now_ms());
+        } catch (const std::exception& ex) {
+            if (stop_.load()) {
+                return;
+            }
+            store_.finish_retryable_failure(
+                work.id,
+                attempt_number,
+                "FAILED",
+                std::string("WORKER_EXECUTION_FAILURE: ") + ex.what(),
+                now_ms());
         }
-
-        if (store_.cancel_requested(work.id)) {
-            store_.finish_cancelled(work.id, attempt_number, now_ms());
-            return;
-        }
-        const auto finished_at = now_ms();
-        if (stop_at && finished_at >= *stop_at) {
-            const std::string failure = timeout_wins
-                ? "ATTEMPT_TIMEOUT: per-attempt timeout expired"
-                : "DEADLINE_EXPIRED: Work deadline expired during attempt";
-            store_.finish_retryable_failure(work.id, attempt_number, "TIMED_OUT", failure, finished_at);
-            return;
-        }
-
-        const auto input = read_binary_bounded(work.input_path);
-        constexpr std::string_view forced_failure = "__C2_TECHNICAL_FAILURE__";
-        if (input.size() == forced_failure.size() &&
-            std::equal(input.begin(), input.end(), forced_failure.begin())) {
-            throw std::runtime_error("FAKE_TECHNICAL_FAILURE: deterministic C2 test engine failure");
-        }
-
-        constexpr std::string_view prefix = "fake:";
-        if (input.size() > kMaxC1TextGenerationOpaquePayloadBytes - prefix.size()) {
-            throw std::runtime_error(
-                "fake engine result exceeds the C1 1 MiB bounded text-generation/v1 payload limit");
-        }
-        std::vector<std::uint8_t> result(prefix.begin(), prefix.end());
-        result.insert(result.end(), input.begin(), input.end());
-        write_binary_atomic(work.result_path, result);
-        store_.finish_success(work.id, attempt_number, now_ms());
     }
 
     void serve_connection(int fd) {
@@ -746,7 +778,11 @@ private:
         const auto& inventory = engine_inventory();
         out.metadata["count"] = std::to_string(inventory.size());
         for (std::size_t i = 0; i < inventory.size(); ++i) {
-            add_engine_descriptor(out, "engine." + std::to_string(i) + ".", inventory[i]);
+            add_engine_descriptor(
+                out,
+                "engine." + std::to_string(i) + ".",
+                inventory[i],
+                worker_pool_.is_warm(inventory[i].id));
         }
         return out;
     }
@@ -761,7 +797,7 @@ private:
             return error_response(request, "ENGINE_NOT_FOUND", "unknown physical engine");
         }
         auto out = response(MessageType::EngineStatusResponse, request);
-        add_engine_descriptor(out, "", *it);
+        add_engine_descriptor(out, "", *it, worker_pool_.is_warm(it->id));
         return out;
     }
 
@@ -769,10 +805,13 @@ private:
     fs::path endpoint_;
     EndpointLock endpoint_lock_;
     WorkStore store_;
-    int fake_delay_ms_;
+    ResourceManager resources_;
+    WorkerPool worker_pool_;
     int server_fd_{-1};
     std::atomic_bool stop_{false};
-    std::thread worker_;
+    std::atomic<std::uint64_t> next_worker_correlation_{1};
+    std::thread scheduler_;
+    std::vector<std::future<void>> attempt_tasks_;
     std::mutex wake_mutex_;
     std::condition_variable wake_;
 };
@@ -780,25 +819,49 @@ private:
 struct Options {
     fs::path data_dir;
     fs::path endpoint;
+    fs::path fake_worker;
     int fake_delay_ms{250};
+    std::int64_t worker_idle_ms{1000};
+    ResourceCapacity capacity{2, 512 * kMiB, {{"fake-gpu-0", 256 * kMiB}}};
 };
 
 Options parse_options(int argc, char** argv) {
     Options options;
+    std::error_code absolute_error;
+    const auto kernel_path = fs::absolute(fs::path(argv[0]), absolute_error);
+    options.fake_worker = absolute_error
+        ? fs::path("madre-fake-worker")
+        : kernel_path.parent_path() / "madre-fake-worker";
+
     for (int i = 1; i < argc; ++i) {
         const std::string argument = argv[i];
         if (argument == "--data-dir" && i + 1 < argc) {
             options.data_dir = argv[++i];
         } else if (argument == "--endpoint" && i + 1 < argc) {
             options.endpoint = argv[++i];
+        } else if (argument == "--fake-worker" && i + 1 < argc) {
+            options.fake_worker = argv[++i];
         } else if (argument == "--fake-delay-ms" && i + 1 < argc) {
             options.fake_delay_ms = std::stoi(argv[++i]);
+        } else if (argument == "--worker-idle-ms" && i + 1 < argc) {
+            options.worker_idle_ms = std::stoll(argv[++i]);
+        } else if (argument == "--cpu-capacity" && i + 1 < argc) {
+            options.capacity.cpu_slots = std::stoi(argv[++i]);
+        } else if (argument == "--ram-capacity-mib" && i + 1 < argc) {
+            options.capacity.ram_bytes = std::stoull(argv[++i]) * kMiB;
+        } else if (argument == "--gpu-vram-mib" && i + 1 < argc) {
+            options.capacity.gpu_vram_bytes["fake-gpu-0"] = std::stoull(argv[++i]) * kMiB;
         } else {
-            throw std::runtime_error("usage: madre-kernel --data-dir <path> --endpoint <unix-socket> [--fake-delay-ms N]");
+            throw std::runtime_error(
+                "usage: madre-kernel --data-dir <path> --endpoint <unix-socket> "
+                "[--fake-worker <path>] [--fake-delay-ms N] [--worker-idle-ms N] "
+                "[--cpu-capacity N] [--ram-capacity-mib N] [--gpu-vram-mib N]");
         }
     }
-    if (options.data_dir.empty() || options.endpoint.empty() || options.fake_delay_ms < 0) {
-        throw std::runtime_error("usage: madre-kernel --data-dir <path> --endpoint <unix-socket> [--fake-delay-ms N]");
+    if (options.data_dir.empty() || options.endpoint.empty() || options.fake_worker.empty() ||
+        options.fake_delay_ms < 0 || options.worker_idle_ms < 0 ||
+        options.capacity.cpu_slots < 1 || options.capacity.ram_bytes == 0) {
+        throw std::runtime_error("invalid Kernel C3 process/resource configuration");
     }
     return options;
 }
@@ -812,7 +875,13 @@ int main(int argc, char** argv) {
         std::signal(SIGTERM, madre::kernel::on_signal);
         std::signal(SIGPIPE, SIG_IGN);
         const auto options = madre::kernel::parse_options(argc, argv);
-        madre::kernel::Kernel kernel(options.data_dir, options.endpoint, options.fake_delay_ms);
+        madre::kernel::Kernel kernel(
+            options.data_dir,
+            options.endpoint,
+            options.fake_worker,
+            options.fake_delay_ms,
+            options.worker_idle_ms,
+            std::move(options.capacity));
         kernel.run();
         return 0;
     } catch (const std::exception& ex) {

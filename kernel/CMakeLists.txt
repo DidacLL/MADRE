@@ -12,10 +12,14 @@ add_library(madre_kernel_protocol STATIC src/protocol.cpp)
 target_include_directories(madre_kernel_protocol PUBLIC src)
 target_compile_options(madre_kernel_protocol PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
-add_executable(madre-kernel src/main.cpp src/store.cpp)
+add_executable(madre-kernel src/main.cpp src/store.cpp src/worker_runtime.cpp)
 target_include_directories(madre-kernel PRIVATE src)
 target_link_libraries(madre-kernel PRIVATE madre_kernel_protocol SQLite::SQLite3 Threads::Threads)
 target_compile_options(madre-kernel PRIVATE -Wall -Wextra -Wpedantic -Werror)
+
+add_executable(madre-fake-worker tests/fake_worker.cpp)
+target_link_libraries(madre-fake-worker PRIVATE madre_kernel_protocol Threads::Threads)
+target_compile_options(madre-fake-worker PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 enable_testing()
 add_executable(protocol-test tests/protocol_test.cpp)

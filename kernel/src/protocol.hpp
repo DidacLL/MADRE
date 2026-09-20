@@ -40,6 +40,11 @@ enum class MessageType : std::uint16_t {
     EngineStatus = 70,
     EngineStatusResponse = 71,
     Error = 90,
+
+    // Private Kernel<->worker inherited-pipe protocol. These are not Java client commands.
+    WorkerExecute = 200,
+    WorkerResult = 201,
+    WorkerFailure = 202,
 };
 
 struct Frame {
