@@ -15,6 +15,7 @@
 #include <iomanip>
 #include <iostream>
 #include <mutex>
+#include <limits>
 #include <optional>
 #include <poll.h>
 #include <random>
@@ -230,7 +231,7 @@ const std::vector<EngineDescriptorFacts>& engine_inventory() {
          {"HIGH"},
          "KERNEL_PROCESS",
          "AVAILABLE",
-         false},
+         true},
     };
     return inventory;
 }
@@ -353,8 +354,8 @@ std::optional<std::int64_t> optional_nonnegative_i64(const Frame& frame, const s
 
 int parse_positive_int(const Frame& frame, const std::string& key) {
     const auto parsed = parse_i64(metadata_value(frame, key), key.c_str());
-    if (parsed < 1 || parsed > 1000000) {
-        throw std::runtime_error(key + " must be between 1 and 1000000");
+    if (parsed < 1 || parsed > std::numeric_limits<int>::max()) {
+        throw std::runtime_error(key + " must be >= 1 and fit the physical integer representation");
     }
     return static_cast<int>(parsed);
 }
@@ -637,10 +638,6 @@ private:
         const auto eligible_at = optional_nonnegative_i64(request, "eligible_at_ms").value_or(submitted_at);
         const auto deadline = optional_nonnegative_i64(request, "deadline_ms");
         const auto timeout = optional_nonnegative_i64(request, "timeout_ms");
-        if (timeout && *timeout == 0) {
-            throw std::runtime_error("timeout_ms must be > 0 when supplied");
-        }
-
         const auto id = make_work_id();
         const auto work_dir = data_dir_ / "work" / id;
         const auto input = work_dir / "input.bin";
