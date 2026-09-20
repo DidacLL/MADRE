@@ -31,7 +31,23 @@ done
 [[ -S "$socket_path" ]] || { cat "$state_dir/kernel.log" >&2; echo "Kernel socket did not appear" >&2; exit 1; }
 
 java -cp "$classpath" io.github.didacll.madre.kernel.client.KernelClientProcess inspect "$socket_path"
-java -cp "$classpath" io.github.didacll.madre.kernel.client.KernelClientProcess version-mismatch "$socket_path"
+java -cp "$classpath" io.github.didacll.madre.kernel.client.KernelClientProcess framing-mismatch "$socket_path"
+java -cp "$classpath" io.github.didacll.madre.kernel.client.KernelClientProcess protocol-version-mismatch "$socket_path"
+java -cp "$classpath" io.github.didacll.madre.kernel.client.KernelClientProcess protocol-overlap "$socket_path"
+java -cp "$classpath" io.github.didacll.madre.kernel.client.KernelClientProcess payload-limits "$socket_path"
+
+# A second Kernel must fail before touching the live endpoint, and Kernel A must remain reachable.
+if "$kernel_binary" --data-dir "$state_dir/second-data" --endpoint "$socket_path" --fake-delay-ms 10 >"$state_dir/second-kernel.log" 2>&1; then
+  echo "second Kernel unexpectedly acquired live endpoint" >&2
+  exit 1
+fi
+grep -q "Kernel endpoint lock is already held" "$state_dir/second-kernel.log" || {
+  cat "$state_dir/second-kernel.log" >&2
+  echo "second Kernel did not fail on the endpoint lifetime lock" >&2
+  exit 1
+}
+[[ -S "$socket_path" ]] || { echo "live Kernel socket disappeared after second startup attempt" >&2; exit 1; }
+java -cp "$classpath" io.github.didacll.madre.kernel.client.KernelClientProcess inspect "$socket_path"
 
 work_id=$(java -cp "$classpath" io.github.didacll.madre.kernel.client.KernelClientProcess submit "$socket_path" "caller-gone")
 [[ "$work_id" =~ ^[0-9a-f]{32}$ ]] || { echo "invalid WorkId: $work_id" >&2; exit 1; }
@@ -62,8 +78,33 @@ java -cp "$classpath" io.github.didacll.madre.kernel.client.KernelClientProcess 
 # Cancellation is part of the C1 command surface and must work for queued/running fake Work.
 java -cp "$classpath" io.github.didacll.madre.kernel.client.KernelClientProcess cancel "$socket_path" "cancel-me"
 
+# Unclean death must release the OS lock while leaving a stale socket pathname.
+kill -KILL "$kernel_pid"
+wait "$kernel_pid" 2>/dev/null || true
+kernel_pid=""
+[[ -S "$socket_path" ]] || { echo "unclean Kernel death did not leave stale socket for recovery test" >&2; exit 1; }
+
+"$kernel_binary" --data-dir "$state_dir/data" --endpoint "$socket_path" --fake-delay-ms 50 >"$state_dir/restarted-kernel.log" 2>&1 &
+kernel_pid=$!
+recovered=0
+for _ in $(seq 1 100); do
+  if kill -0 "$kernel_pid" 2>/dev/null &&
+      java -cp "$classpath" io.github.didacll.madre.kernel.client.KernelClientProcess inspect "$socket_path" >"$state_dir/recovery-inspect.log" 2>&1; then
+    recovered=1
+    break
+  fi
+  sleep 0.02
+done
+if [[ "$recovered" -ne 1 ]]; then
+  cat "$state_dir/restarted-kernel.log" >&2
+  cat "$state_dir/recovery-inspect.log" >&2 || true
+  echo "replacement Kernel did not recover stale socket after unclean termination" >&2
+  exit 1
+fi
+cat "$state_dir/recovery-inspect.log"
+
 kill "$kernel_pid"
 wait "$kernel_pid"
 kernel_pid=""
 
-echo "caller-disappearance acceptance passed: $work_id"
+echo "caller-disappearance and C1 corrective quality-gate acceptance passed: $work_id"

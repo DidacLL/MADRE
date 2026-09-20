@@ -9,10 +9,18 @@ import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.TreeMap;
 
 final class Protocol {
-    static final int VERSION = 1;
+    static final int FRAMING_VERSION = 1;
+    static final int MIN_KERNEL_PROTOCOL_VERSION = 1;
+    static final int MAX_KERNEL_PROTOCOL_VERSION = 1;
+
+    // C1 intentionally buffers bounded opaque text-generation/v1 payloads only.
+    // Large-payload streaming/spooling is deferred beyond C1.
+    static final int MAX_C1_TEXT_GENERATION_OPAQUE_PAYLOAD_BYTES = 1024 * 1024;
+
     static final int HELLO = 1;
     static final int HELLO_RESPONSE = 2;
     static final int SUBMIT = 10;
@@ -34,12 +42,17 @@ final class Protocol {
     private static final byte[] MAGIC = {'M', 'A', 'D', 'R'};
     private static final int HEADER_SIZE = 28;
     private static final int MAX_METADATA = 1024 * 1024;
-    private static final long MAX_PAYLOAD = 1024L * 1024L * 1024L;
 
     private Protocol() {}
 
     record Frame(int type, long correlationId, Map<String, String> metadata, byte[] payload) {
         Frame {
+            Objects.requireNonNull(metadata, "metadata");
+            Objects.requireNonNull(payload, "payload");
+            if (payload.length > MAX_C1_TEXT_GENERATION_OPAQUE_PAYLOAD_BYTES) {
+                throw new IllegalArgumentException(
+                        "frame exceeds C1 bounded text-generation/v1 payload limit");
+            }
             metadata = Collections.unmodifiableMap(new LinkedHashMap<>(metadata));
             payload = payload.clone();
         }
@@ -53,12 +66,13 @@ final class Protocol {
     static void write(SocketChannel channel, Frame frame) throws IOException {
         byte[] metadata = encodeMetadata(frame.metadata());
         byte[] payload = frame.payload();
-        if (metadata.length > MAX_METADATA || payload.length > MAX_PAYLOAD) {
-            throw new IOException("frame exceeds configured protocol limits");
+        if (metadata.length > MAX_METADATA ||
+                payload.length > MAX_C1_TEXT_GENERATION_OPAQUE_PAYLOAD_BYTES) {
+            throw new IOException("frame exceeds C1 bounded text-generation/v1 framing limits");
         }
         ByteBuffer header = ByteBuffer.allocate(HEADER_SIZE).order(ByteOrder.BIG_ENDIAN);
         header.put(MAGIC);
-        header.putShort((short) VERSION);
+        header.putShort((short) FRAMING_VERSION);
         header.putShort((short) frame.type());
         header.putLong(frame.correlationId());
         header.putInt(metadata.length);
@@ -75,27 +89,26 @@ final class Protocol {
         header.flip();
         for (byte expected : MAGIC) {
             if (header.get() != expected) {
-                throw new IOException("invalid protocol magic");
+                throw new IOException("invalid framing magic");
             }
         }
-        int version = Short.toUnsignedInt(header.getShort());
-        if (version != VERSION) {
-            throw new IOException("unsupported protocol version: " + version);
+        int framingVersion = Short.toUnsignedInt(header.getShort());
+        if (framingVersion != FRAMING_VERSION) {
+            throw new IOException("unsupported framing version: " + framingVersion);
         }
         int type = Short.toUnsignedInt(header.getShort());
         long correlation = header.getLong();
         int metadataLength = header.getInt();
         long payloadLength = header.getLong();
         if (metadataLength < 0 || metadataLength > MAX_METADATA || payloadLength < 0 ||
-                payloadLength > MAX_PAYLOAD || payloadLength > Integer.MAX_VALUE) {
-            throw new IOException("frame exceeds configured protocol limits");
+                payloadLength > MAX_C1_TEXT_GENERATION_OPAQUE_PAYLOAD_BYTES) {
+            throw new IOException("frame exceeds C1 bounded text-generation/v1 framing limits");
         }
         ByteBuffer metadata = ByteBuffer.allocate(metadataLength);
         readFully(channel, metadata);
         ByteBuffer payload = ByteBuffer.allocate((int) payloadLength);
         readFully(channel, payload);
-        return new Frame(type, correlation,
-                decodeMetadata(metadata.array()), payload.array());
+        return new Frame(type, correlation, decodeMetadata(metadata.array()), payload.array());
     }
 
     private static byte[] encodeMetadata(Map<String, String> metadata) throws IOException {

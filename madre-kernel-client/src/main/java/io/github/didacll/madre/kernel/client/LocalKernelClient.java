@@ -79,13 +79,7 @@ public final class LocalKernelClient implements KernelClient {
         List<EngineDescriptor> engines = new ArrayList<>(count);
         for (int i = 0; i < count; ++i) {
             String prefix = "engine." + i + ".";
-            engines.add(new EngineDescriptor(
-                    required(response, prefix + "id"),
-                    splitSet(required(response, prefix + "work_types")),
-                    splitSet(required(response, prefix + "capabilities")),
-                    required(response, prefix + "placement"),
-                    required(response, prefix + "availability"),
-                    Boolean.parseBoolean(required(response, prefix + "warm"))));
+            engines.add(parseEngineDescriptor(response, prefix));
         }
         return List.copyOf(engines);
     }
@@ -99,13 +93,7 @@ public final class LocalKernelClient implements KernelClient {
                 Map.of("engine_id", engineId),
                 EMPTY));
         expectType(response, Protocol.ENGINE_STATUS_RESPONSE);
-        return new EngineDescriptor(
-                required(response, "engine_id"),
-                Set.of(),
-                Set.of(),
-                "LOCAL_MACHINE",
-                required(response, "availability"),
-                Boolean.parseBoolean(required(response, "warm")));
+        return parseEngineDescriptor(response, "");
     }
 
     private Protocol.Frame command(int type, WorkId id) {
@@ -120,15 +108,22 @@ public final class LocalKernelClient implements KernelClient {
             Protocol.write(channel, new Protocol.Frame(
                     Protocol.HELLO,
                     helloCorrelation,
-                    Map.of("min_version", Integer.toString(Protocol.VERSION),
-                           "max_version", Integer.toString(Protocol.VERSION)),
+                    Map.of(
+                            "min_kernel_protocol_version",
+                            Integer.toString(Protocol.MIN_KERNEL_PROTOCOL_VERSION),
+                            "max_kernel_protocol_version",
+                            Integer.toString(Protocol.MAX_KERNEL_PROTOCOL_VERSION)),
                     EMPTY));
             Protocol.Frame hello = Protocol.read(channel);
             checkError(hello);
             expectType(hello, Protocol.HELLO_RESPONSE);
+            int negotiatedKernelProtocol = Integer.parseInt(required(hello, "kernel_protocol_version"));
             if (hello.correlationId() != helloCorrelation ||
-                    Integer.parseInt(required(hello, "version")) != Protocol.VERSION) {
-                throw new KernelProtocolException("VERSION_NEGOTIATION_FAILED", "Kernel returned an incompatible protocol version");
+                    negotiatedKernelProtocol < Protocol.MIN_KERNEL_PROTOCOL_VERSION ||
+                    negotiatedKernelProtocol > Protocol.MAX_KERNEL_PROTOCOL_VERSION) {
+                throw new KernelProtocolException(
+                        "VERSION_NEGOTIATION_FAILED",
+                        "Kernel returned an incompatible negotiated protocol/API version");
             }
 
             Protocol.write(channel, command);
@@ -161,6 +156,16 @@ public final class LocalKernelClient implements KernelClient {
             throw new KernelProtocolException("MALFORMED_RESPONSE", "missing Kernel metadata field: " + key);
         }
         return value;
+    }
+
+    private static EngineDescriptor parseEngineDescriptor(Protocol.Frame frame, String prefix) {
+        return new EngineDescriptor(
+                required(frame, prefix + "id"),
+                splitSet(required(frame, prefix + "work_types")),
+                splitSet(required(frame, prefix + "capabilities")),
+                required(frame, prefix + "placement"),
+                required(frame, prefix + "availability"),
+                Boolean.parseBoolean(required(frame, prefix + "warm")));
     }
 
     private static Set<String> splitSet(String value) {

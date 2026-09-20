@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <fcntl.h>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -18,6 +19,8 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
+#include <sys/file.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/un.h>
@@ -53,7 +56,15 @@ std::string make_work_id() {
     return out.str();
 }
 
+void require_c1_payload_size(std::uintmax_t size, std::string_view description) {
+    if (size > kMaxC1TextGenerationOpaquePayloadBytes) {
+        throw std::runtime_error(std::string(description) +
+                                 " exceeds the C1 1 MiB bounded text-generation/v1 payload limit");
+    }
+}
+
 void write_binary_atomic(const fs::path& path, const std::vector<std::uint8_t>& data) {
+    require_c1_payload_size(data.size(), "C1 file-backed payload");
     fs::create_directories(path.parent_path());
     const auto temporary = path.string() + ".tmp";
     {
@@ -72,12 +83,26 @@ void write_binary_atomic(const fs::path& path, const std::vector<std::uint8_t>& 
     fs::rename(temporary, path);
 }
 
-std::vector<std::uint8_t> read_binary(const fs::path& path) {
+std::vector<std::uint8_t> read_binary_bounded(const fs::path& path) {
+    std::error_code size_error;
+    const auto size = fs::file_size(path, size_error);
+    if (size_error) {
+        throw std::runtime_error("inspect payload file size: " + path.string());
+    }
+    require_c1_payload_size(size, "C1 file-backed payload");
+
     std::ifstream stream(path, std::ios::binary);
     if (!stream) {
         throw std::runtime_error("open payload file for read: " + path.string());
     }
-    return std::vector<std::uint8_t>(std::istreambuf_iterator<char>(stream), {});
+    std::vector<std::uint8_t> data(static_cast<std::size_t>(size));
+    if (!data.empty()) {
+        stream.read(reinterpret_cast<char*>(data.data()), static_cast<std::streamsize>(data.size()));
+        if (!stream) {
+            throw std::runtime_error("read payload file: " + path.string());
+        }
+    }
+    return data;
 }
 
 Frame response(MessageType type, const Frame& request) {
@@ -91,11 +116,84 @@ Frame error_response(const Frame& request, std::string code, std::string message
     return out;
 }
 
+class EndpointLock {
+public:
+    explicit EndpointLock(const fs::path& endpoint) {
+        lock_path_ = endpoint;
+        lock_path_ += ".lock";
+        if (!lock_path_.parent_path().empty()) {
+            fs::create_directories(lock_path_.parent_path());
+        }
+        fd_ = ::open(lock_path_.c_str(), O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
+        if (fd_ < 0) {
+            throw std::runtime_error("open Kernel endpoint lock failed: " +
+                                     std::string(std::strerror(errno)));
+        }
+        if (::flock(fd_, LOCK_EX | LOCK_NB) != 0) {
+            const int lock_error = errno;
+            ::close(fd_);
+            fd_ = -1;
+            if (lock_error == EWOULDBLOCK || lock_error == EAGAIN) {
+                throw std::runtime_error("Kernel endpoint lock is already held");
+            }
+            throw std::runtime_error("acquire Kernel endpoint lock failed: " +
+                                     std::string(std::strerror(lock_error)));
+        }
+    }
+
+    EndpointLock(const EndpointLock&) = delete;
+    EndpointLock& operator=(const EndpointLock&) = delete;
+
+    ~EndpointLock() {
+        if (fd_ >= 0) {
+            ::close(fd_);
+        }
+    }
+
+private:
+    fs::path lock_path_;
+    int fd_{-1};
+};
+
+struct EngineDescriptorFacts {
+    std::string id;
+    std::string work_types;
+    std::string capabilities;
+    std::string placement;
+    std::string availability;
+    bool warm;
+};
+
+const EngineDescriptorFacts& fake_engine_descriptor() {
+    // C1's deterministic fake engine executes in the Kernel process. This factual
+    // non-LOCAL_MACHINE value also exercises descriptor transport fidelity.
+    static const EngineDescriptorFacts descriptor{
+        "fake-local",
+        "text-generation/v1",
+        "",
+        "KERNEL_PROCESS",
+        "AVAILABLE",
+        true,
+    };
+    return descriptor;
+}
+
+void add_engine_descriptor(Frame& frame, std::string_view prefix, const EngineDescriptorFacts& descriptor) {
+    const std::string base(prefix);
+    frame.metadata[base + "id"] = descriptor.id;
+    frame.metadata[base + "work_types"] = descriptor.work_types;
+    frame.metadata[base + "capabilities"] = descriptor.capabilities;
+    frame.metadata[base + "placement"] = descriptor.placement;
+    frame.metadata[base + "availability"] = descriptor.availability;
+    frame.metadata[base + "warm"] = descriptor.warm ? "true" : "false";
+}
+
 class Kernel {
 public:
     Kernel(fs::path data_dir, fs::path endpoint, int fake_delay_ms)
         : data_dir_(std::move(data_dir)),
           endpoint_(std::move(endpoint)),
+          endpoint_lock_(endpoint_),
           store_(data_dir_ / "kernel.db"),
           fake_delay_ms_(fake_delay_ms) {
         fs::create_directories(data_dir_ / "work");
@@ -115,8 +213,8 @@ public:
     }
 
     void run() {
-        start_worker();
         open_server();
+        start_worker();
         while (!g_stop.load() && !stop_.load()) {
             pollfd ready{server_fd_, POLLIN, 0};
             const int poll_result = ::poll(&ready, 1, 100);
@@ -200,8 +298,12 @@ private:
                     goto next_work;
                 }
                 {
-                    const auto input = read_binary(work->input_path);
+                    const auto input = read_binary_bounded(work->input_path);
                     constexpr std::string_view prefix = "fake:";
+                    if (input.size() > kMaxC1TextGenerationOpaquePayloadBytes - prefix.size()) {
+                        throw std::runtime_error(
+                            "fake engine result exceeds the C1 1 MiB bounded text-generation/v1 payload limit");
+                    }
                     std::vector<std::uint8_t> result(prefix.begin(), prefix.end());
                     result.insert(result.end(), input.begin(), input.end());
                     write_binary_atomic(work->result_path, result);
@@ -230,6 +332,11 @@ private:
             }
             const auto request = read_frame(fd);
             write_frame(fd, handle(request));
+        } catch (const FramingError& ex) {
+            try {
+                write_frame(fd, error_response(hello_request, "FRAMING_ERROR", ex.what()));
+            } catch (...) {
+            }
         } catch (const std::exception& ex) {
             try {
                 write_frame(fd, error_response(hello_request, "PROTOCOL_OR_REQUEST_ERROR", ex.what()));
@@ -252,13 +359,16 @@ private:
     }
 
     Frame hello(const Frame& request) {
-        const auto min_version = std::stoi(metadata_value(request, "min_version"));
-        const auto max_version = std::stoi(metadata_value(request, "max_version"));
-        if (min_version > kProtocolVersion || max_version < kProtocolVersion) {
-            return error_response(request, "VERSION_MISMATCH", "no compatible Kernel protocol version");
+        const auto client_min = std::stoi(metadata_value(request, "min_kernel_protocol_version"));
+        const auto client_max = std::stoi(metadata_value(request, "max_kernel_protocol_version"));
+        const auto overlap_min = std::max(client_min, kMinKernelProtocolVersion);
+        const auto overlap_max = std::min(client_max, kMaxKernelProtocolVersion);
+        if (client_min > client_max || overlap_min > overlap_max) {
+            return error_response(request, "VERSION_MISMATCH", "no compatible Kernel protocol/API version");
         }
+        const auto negotiated = overlap_max;
         auto out = response(MessageType::HelloResponse, request);
-        out.metadata["version"] = std::to_string(kProtocolVersion);
+        out.metadata["kernel_protocol_version"] = std::to_string(negotiated);
         return out;
     }
 
@@ -266,6 +376,12 @@ private:
         const auto work_type = metadata_value(request, "work_type");
         if (work_type != "text-generation/v1") {
             return error_response(request, "UNSUPPORTED_WORK_TYPE", "fake engine supports only text-generation/v1");
+        }
+        if (request.payload.size() > kMaxC1TextGenerationOpaquePayloadBytes) {
+            return error_response(
+                request,
+                "PAYLOAD_TOO_LARGE",
+                "C1 text-generation/v1 input exceeds the 1 MiB bounded payload limit; streaming/spooling is deferred");
         }
         const auto id = make_work_id();
         const auto work_dir = data_dir_ / "work" / id;
@@ -301,7 +417,14 @@ private:
         const bool available = work->state == "SUCCEEDED" && !work->acknowledged && fs::exists(work->result_path);
         out.metadata["available"] = available ? "true" : "false";
         if (available) {
-            out.payload = read_binary(work->result_path);
+            const auto result_size = fs::file_size(work->result_path);
+            if (result_size > kMaxC1TextGenerationOpaquePayloadBytes) {
+                return error_response(
+                    request,
+                    "PAYLOAD_TOO_LARGE",
+                    "C1 text-generation/v1 result exceeds the 1 MiB bounded payload limit; streaming/spooling is deferred");
+            }
+            out.payload = read_binary_bounded(work->result_path);
         }
         return out;
     }
@@ -338,29 +461,24 @@ private:
     Frame list_engines(const Frame& request) {
         auto out = response(MessageType::ListEnginesResponse, request);
         out.metadata["count"] = "1";
-        out.metadata["engine.0.id"] = "fake-local";
-        out.metadata["engine.0.work_types"] = "text-generation/v1";
-        out.metadata["engine.0.capabilities"] = "";
-        out.metadata["engine.0.placement"] = "LOCAL_MACHINE";
-        out.metadata["engine.0.availability"] = "AVAILABLE";
-        out.metadata["engine.0.warm"] = "true";
+        add_engine_descriptor(out, "engine.0.", fake_engine_descriptor());
         return out;
     }
 
     Frame engine_status(const Frame& request) {
         const auto id = metadata_value(request, "engine_id");
-        if (id != "fake-local") {
+        const auto& descriptor = fake_engine_descriptor();
+        if (id != descriptor.id) {
             return error_response(request, "ENGINE_NOT_FOUND", "unknown physical engine");
         }
         auto out = response(MessageType::EngineStatusResponse, request);
-        out.metadata["engine_id"] = id;
-        out.metadata["availability"] = "AVAILABLE";
-        out.metadata["warm"] = "true";
+        add_engine_descriptor(out, "", descriptor);
         return out;
     }
 
     fs::path data_dir_;
     fs::path endpoint_;
+    EndpointLock endpoint_lock_;
     WorkStore store_;
     int fake_delay_ms_;
     int server_fd_{-1};

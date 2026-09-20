@@ -1,13 +1,26 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <map>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
 namespace madre::kernel {
 
-constexpr std::uint16_t kProtocolVersion = 1;
+constexpr std::uint16_t kFramingVersion = 1;
+constexpr int kMinKernelProtocolVersion = 1;
+constexpr int kMaxKernelProtocolVersion = 1;
+
+// C1 intentionally buffers bounded opaque text-generation/v1 payloads only.
+// Large-payload streaming/spooling is deferred beyond C1.
+constexpr std::size_t kMaxC1TextGenerationOpaquePayloadBytes = 1024U * 1024U;
+
+class FramingError final : public std::runtime_error {
+public:
+    using std::runtime_error::runtime_error;
+};
 
 enum class MessageType : std::uint16_t {
     Hello = 1,

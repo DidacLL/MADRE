@@ -4,7 +4,6 @@
 #include <array>
 #include <cerrno>
 #include <cstring>
-#include <limits>
 #include <stdexcept>
 #include <string_view>
 #include <unistd.h>
@@ -14,7 +13,6 @@ namespace {
 constexpr std::array<std::uint8_t, 4> kMagic{'M', 'A', 'D', 'R'};
 constexpr std::size_t kHeaderSize = 28;
 constexpr std::uint32_t kMaxMetadata = 1024 * 1024;
-constexpr std::uint64_t kMaxPayload = 1024ULL * 1024ULL * 1024ULL;
 
 void read_exact(int fd, void* data, std::size_t size) {
     auto* out = static_cast<std::uint8_t*>(data);
@@ -111,7 +109,7 @@ std::map<std::string, std::string> decode_metadata(std::string_view encoded) {
         if (!line.empty()) {
             const auto eq = line.find('=');
             if (eq == std::string_view::npos || eq == 0) {
-                throw std::runtime_error("malformed framed metadata");
+                throw FramingError("malformed framed metadata");
             }
             out.emplace(std::string(line.substr(0, eq)), std::string(line.substr(eq + 1)));
         }
@@ -125,19 +123,19 @@ Frame read_frame(int fd) {
     std::array<std::uint8_t, kHeaderSize> header{};
     read_exact(fd, header.data(), header.size());
     if (!std::equal(kMagic.begin(), kMagic.end(), header.begin())) {
-        throw std::runtime_error("invalid protocol magic");
+        throw FramingError("invalid framing magic");
     }
-    const auto version = get_u16(header.data() + 4);
-    if (version != kProtocolVersion) {
-        throw std::runtime_error("unsupported protocol version");
+    const auto framing_version = get_u16(header.data() + 4);
+    if (framing_version != kFramingVersion) {
+        throw FramingError("unsupported framing version");
     }
     const auto type = get_u16(header.data() + 6);
     const auto correlation = get_u64(header.data() + 8);
     const auto metadata_length = get_u32(header.data() + 16);
     const auto payload_length = get_u64(header.data() + 20);
-    if (metadata_length > kMaxMetadata || payload_length > kMaxPayload ||
-        payload_length > std::numeric_limits<std::size_t>::max()) {
-        throw std::runtime_error("frame exceeds configured protocol limits");
+    if (metadata_length > kMaxMetadata ||
+        payload_length > kMaxC1TextGenerationOpaquePayloadBytes) {
+        throw FramingError("frame exceeds C1 bounded text-generation/v1 framing limits");
     }
 
     std::string metadata(metadata_length, '\0');
@@ -153,12 +151,13 @@ Frame read_frame(int fd) {
 
 void write_frame(int fd, const Frame& frame) {
     const auto metadata = encode_metadata(frame.metadata);
-    if (metadata.size() > kMaxMetadata || frame.payload.size() > kMaxPayload) {
-        throw std::runtime_error("frame exceeds configured protocol limits");
+    if (metadata.size() > kMaxMetadata ||
+        frame.payload.size() > kMaxC1TextGenerationOpaquePayloadBytes) {
+        throw FramingError("frame exceeds C1 bounded text-generation/v1 framing limits");
     }
     std::array<std::uint8_t, kHeaderSize> header{};
     std::copy(kMagic.begin(), kMagic.end(), header.begin());
-    put_u16(header.data() + 4, kProtocolVersion);
+    put_u16(header.data() + 4, kFramingVersion);
     put_u16(header.data() + 6, static_cast<std::uint16_t>(frame.type));
     put_u64(header.data() + 8, frame.correlation_id);
     put_u32(header.data() + 16, static_cast<std::uint32_t>(metadata.size()));
