@@ -373,7 +373,14 @@ WHERE work_id=? AND attempt_number=? AND state='RUNNING'
         check(sqlite3_bind_int(attempt.get(), 5, attempt_number), db_, "bind attempt number");
         check(sqlite3_step(attempt.get()), db_, "finish failed attempt");
 
-        if (retry_permitted(work, ended_at_ms)) {
+        if (work.cancel_requested) {
+            Statement cancel(db_, R"SQL(
+UPDATE work SET state='CANCELLED',technical_failure='cancelled'
+WHERE id=? AND state='RUNNING'
+)SQL");
+            bind_text(db_, cancel.get(), 1, id);
+            check(sqlite3_step(cancel.get()), db_, "cancel Work during failure finalization");
+        } else if (retry_permitted(work, ended_at_ms)) {
             Statement queue(db_, R"SQL(
 UPDATE work SET state='QUEUED',next_attempt_at_ms=?,technical_failure=?,selected_engine_id='',selected_model_id=''
 WHERE id=? AND state='RUNNING'
