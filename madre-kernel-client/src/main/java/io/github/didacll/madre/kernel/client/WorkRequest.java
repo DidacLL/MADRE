@@ -45,9 +45,7 @@ public record WorkRequest(
         exactModelId = validateOptionalIdentifier(exactModelId, "exactModelId");
         validateNonnegative(eligibleAtMs, "eligibleAtMs");
         validateNonnegative(deadlineMs, "deadlineMs");
-        if (timeoutMs.isPresent() && timeoutMs.getAsLong() <= 0) {
-            throw new IllegalArgumentException("timeoutMs must be > 0 when supplied");
-        }
+        validateNonnegative(timeoutMs, "timeoutMs");
         input = input.clone();
     }
 
