@@ -219,6 +219,18 @@ def test_capability_and_effort_selection(state_dir):
         if row["selected_engine_id"] != "fake-vision":
             raise AssertionError(f"image capability filtering selected incompatible engine: {dict(row)}")
 
+        allowlisted = submit(sock, "allowlisted", allowlist="fake-capable")
+        wait_state(state_dir, allowlisted, "SUCCEEDED")
+        if work_row(state_dir, allowlisted)["selected_engine_id"] != "fake-capable":
+            raise AssertionError("eligible-engine allowlist was not enforced")
+
+        unsupported = java(sock, "submit-type", "embedding/v1", "unsupported")
+        failed = wait_state(state_dir, unsupported, "FAILED")
+        if not failed["technical_failure"].startswith("NO_ELIGIBLE_ENGINE: no engine supports Work type"):
+            raise AssertionError(f"unsupported Work type did not fail at Work-type filter: {dict(failed)}")
+        if attempts(state_dir, unsupported):
+            raise AssertionError("unsupported Work type created an execution attempt")
+
         standard = submit(sock, "standard")
         high = submit(sock, "high", effort="HIGH")
         wait_state(state_dir, standard, "SUCCEEDED")
@@ -229,7 +241,7 @@ def test_capability_and_effort_selection(state_dir):
             raise AssertionError("HIGH dispatched to engine without HIGH support")
     finally:
         stop_kernel(proc)
-    print("C2 capability filtering and STANDARD/HIGH effort eligibility passed")
+    print("C2 Work-type/capability/allowlist filtering and STANDARD/HIGH effort eligibility passed")
 
 
 def test_exact_selection(state_dir):
