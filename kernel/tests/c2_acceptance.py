@@ -162,12 +162,14 @@ def with_state(test):
 def test_restart_retry(state_dir):
     proc, sock = start_kernel(state_dir, 1500)
     try:
-        work_id = submit(sock, "restart-two", max_attempts=2)
+        work_id = submit(sock, "restart-two", max_attempts=2, retry_delay=100)
         wait_running(state_dir, work_id)
         stop_kernel(proc, hard=True)
         proc, sock = start_kernel(state_dir, 40)
         wait_state(state_dir, work_id, "SUCCEEDED")
-        assert_attempt_states(state_dir, work_id, ["INTERRUPTED", "SUCCEEDED"])
+        rows = assert_attempt_states(state_dir, work_id, ["INTERRUPTED", "SUCCEEDED"])
+        if rows[1]["started_at_ms"] < rows[0]["ended_at_ms"] + 100:
+            raise AssertionError("restart retry began before retryDelayMs elapsed")
     finally:
         stop_kernel(proc)
     print("C2 restart maxAttempts=2: INTERRUPTED then SUCCEEDED")
@@ -281,6 +283,8 @@ def test_timeout_and_technical_retry(state_dir):
         rows = assert_attempt_states(state_dir, timed, ["TIMED_OUT", "TIMED_OUT"])
         if not all(row["technical_failure"].startswith("ATTEMPT_TIMEOUT") for row in rows):
             raise AssertionError("timeout attempt history lacks technical failure")
+        if rows[1]["started_at_ms"] < rows[0]["ended_at_ms"] + 20:
+            raise AssertionError("timeout retry began before retryDelayMs elapsed")
     finally:
         stop_kernel(proc)
 
