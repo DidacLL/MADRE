@@ -57,7 +57,14 @@ void execute(const Options& options, const Frame& request) {
         return;
     }
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(options.delay_ms));
+    const auto started_at_ms = std::stoll(metadata_value(request, "attempt_started_at_ms"));
+    const auto complete_at_ms = started_at_ms + options.delay_ms;
+    const auto current_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                std::chrono::system_clock::now().time_since_epoch())
+                                .count();
+    if (complete_at_ms > current_ms) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(complete_at_ms - current_ms));
+    }
 
     constexpr std::string_view crash = "__C3_WORKER_CRASH__";
     if (equals_payload(request.payload, crash)) {

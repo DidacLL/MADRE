@@ -549,6 +549,7 @@ private:
             const auto outcome = worker.execute(
                 input,
                 correlation,
+                started_at_ms,
                 [this, &work] { return store_.cancel_requested(work.id); },
                 [this] { return stop_.load(); },
                 stop_at,

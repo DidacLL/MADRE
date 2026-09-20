@@ -240,6 +240,7 @@ struct WorkerPool::WorkerProcess {
     WorkerOutcome execute(
         const std::vector<std::uint8_t>& payload,
         std::uint64_t correlation_id,
+        std::int64_t attempt_started_at_ms,
         const std::function<bool()>& cancellation_requested,
         const std::function<bool()>& kernel_stopping,
         std::optional<std::int64_t> stop_at_ms,
@@ -249,7 +250,10 @@ struct WorkerPool::WorkerProcess {
         }
 
         try {
-            Frame request{MessageType::WorkerExecute, correlation_id, {{"engine_id", engine_id}}, payload};
+            Frame request{MessageType::WorkerExecute, correlation_id,
+                          {{"engine_id", engine_id},
+                           {"attempt_started_at_ms", std::to_string(attempt_started_at_ms)}},
+                          payload};
             write_frame(input_fd, request);
         } catch (const std::exception& ex) {
             if (!alive()) {
@@ -368,6 +372,7 @@ void WorkerPool::Lease::reset() noexcept {
 WorkerOutcome WorkerPool::Lease::execute(
     const std::vector<std::uint8_t>& payload,
     std::uint64_t correlation_id,
+    std::int64_t attempt_started_at_ms,
     const std::function<bool()>& cancellation_requested,
     const std::function<bool()>& kernel_stopping,
     std::optional<std::int64_t> stop_at_ms,
@@ -375,8 +380,8 @@ WorkerOutcome WorkerPool::Lease::execute(
     if (!worker_) {
         throw std::runtime_error("worker lease is empty");
     }
-    return worker_->execute(payload, correlation_id, cancellation_requested, kernel_stopping,
-                            stop_at_ms, timeout_wins);
+    return worker_->execute(payload, correlation_id, attempt_started_at_ms, cancellation_requested,
+                            kernel_stopping, stop_at_ms, timeout_wins);
 }
 
 int WorkerPool::Lease::pid() const {

@@ -94,6 +94,7 @@ public:
         WorkerOutcome execute(
             const std::vector<std::uint8_t>& payload,
             std::uint64_t correlation_id,
+            std::int64_t attempt_started_at_ms,
             const std::function<bool()>& cancellation_requested,
             const std::function<bool()>& kernel_stopping,
             std::optional<std::int64_t> stop_at_ms,
