@@ -328,10 +328,13 @@ struct WorkerPool::WorkerProcess {
                     interrupt_observation_complete = true;
                 } else {
                     if (cancellation_requested()) {
-                        terminate();
-                        return {WorkerOutcomeKind::Cancelled, {}, "cancelled"};
+                        if (now_ms() < interrupt_cutoff_ms) {
+                            terminate();
+                            return {WorkerOutcomeKind::Cancelled, {}, "cancelled"};
+                        }
+                        interrupt_observation_complete = true;
                     }
-                    if (stop_at_ms && current >= *stop_at_ms) {
+                    if (!interrupt_observation_complete && stop_at_ms && current >= *stop_at_ms) {
                         terminate();
                         const std::string failure = timeout_wins
                             ? "ATTEMPT_TIMEOUT: per-attempt timeout expired"
