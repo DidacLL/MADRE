@@ -23,11 +23,12 @@ public final class KernelClientProcess {
     public static void main(String[] args) throws Exception {
         if (args.length < 2) {
             throw new IllegalArgumentException(
-                    "usage: <submit|submit-config|status|collect|inspect|cancel|cancel-work|framing-mismatch|protocol-version-mismatch|protocol-overlap|payload-limits> <socket> ...");
+                    "usage: <submit|submit-type|submit-config|status|collect|inspect|cancel|cancel-work|framing-mismatch|protocol-version-mismatch|protocol-overlap|payload-limits> <socket> ...");
         }
         LocalKernelClient client = new LocalKernelClient(Path.of(args[1]));
         switch (args[0]) {
             case "submit" -> submit(client, args);
+            case "submit-type" -> submitType(client, args);
             case "submit-config" -> submitConfig(client, args);
             case "status" -> status(client, args);
             case "collect" -> collect(client, args);
@@ -47,6 +48,14 @@ public final class KernelClientProcess {
             throw new IllegalArgumentException("submit requires payload text");
         }
         WorkId id = client.submit(new WorkRequest("text-generation/v1", args[2].getBytes(StandardCharsets.UTF_8)));
+        System.out.println(id.value());
+    }
+
+    private static void submitType(LocalKernelClient client, String[] args) {
+        if (args.length != 4) {
+            throw new IllegalArgumentException("submit-type requires Work type and payload text");
+        }
+        WorkId id = client.submit(new WorkRequest(args[2], args[3].getBytes(StandardCharsets.UTF_8)));
         System.out.println(id.value());
     }
 
