@@ -14,8 +14,8 @@ import java.util.TreeMap;
 
 final class Protocol {
     static final int FRAMING_VERSION = 1;
-    static final int MIN_KERNEL_PROTOCOL_VERSION = 1;
-    static final int MAX_KERNEL_PROTOCOL_VERSION = 1;
+    static final int MIN_KERNEL_PROTOCOL_VERSION = 2;
+    static final int MAX_KERNEL_PROTOCOL_VERSION = 2;
 
     // C1 intentionally buffers bounded opaque text-generation/v1 payloads only.
     // Large-payload streaming/spooling is deferred beyond C1.
