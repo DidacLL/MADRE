@@ -264,26 +264,9 @@ struct WorkerPool::WorkerProcess {
         }
 
         while (true) {
-            if (kernel_stopping()) {
-                terminate();
-                return {WorkerOutcomeKind::Stopped, {}, {}};
-            }
-            if (cancellation_requested()) {
-                terminate();
-                return {WorkerOutcomeKind::Cancelled, {}, "cancelled"};
-            }
-            const auto current = now_ms();
-            if (stop_at_ms && current >= *stop_at_ms) {
-                terminate();
-                const std::string failure = timeout_wins
-                    ? "ATTEMPT_TIMEOUT: per-attempt timeout expired"
-                    : "DEADLINE_EXPIRED: Work deadline expired during attempt";
-                return {WorkerOutcomeKind::TimedOut, {}, failure};
-            }
-
             pollfd ready{output_fd, POLLIN | POLLHUP | POLLERR, 0};
-            const int poll_result = ::poll(&ready, 1, 10);
-            if (poll_result < 0) {
+            const int ready_now = ::poll(&ready, 1, 0);
+            if (ready_now < 0) {
                 if (errno == EINTR) {
                     continue;
                 }
@@ -291,10 +274,7 @@ struct WorkerPool::WorkerProcess {
                 return {WorkerOutcomeKind::Crashed, {},
                         "WORKER_IPC_FAILURE: poll failed: " + std::string(std::strerror(errno))};
             }
-            if (poll_result == 0) {
-                continue;
-            }
-            if ((ready.revents & POLLIN) != 0) {
+            if (ready_now > 0 && (ready.revents & POLLIN) != 0) {
                 try {
                     const auto response = read_frame(output_fd);
                     if (response.correlation_id != correlation_id) {
@@ -320,12 +300,38 @@ struct WorkerPool::WorkerProcess {
                         return {WorkerOutcomeKind::Crashed, {}, "WORKER_CRASH: " + exit_description()};
                     }
                     terminate();
-                    return {WorkerOutcomeKind::Crashed, {}, std::string("WORKER_IPC_FAILURE: ") + ex.what()};
+                    return {WorkerOutcomeKind::Crashed, {},
+                            std::string("WORKER_IPC_FAILURE: ") + ex.what()};
                 }
             }
-            if ((ready.revents & (POLLHUP | POLLERR | POLLNVAL)) != 0) {
+            if (ready_now > 0 && (ready.revents & (POLLHUP | POLLERR | POLLNVAL)) != 0) {
                 (void)alive();
                 return {WorkerOutcomeKind::Crashed, {}, "WORKER_CRASH: " + exit_description()};
+            }
+
+            if (kernel_stopping()) {
+                terminate();
+                return {WorkerOutcomeKind::Stopped, {}, {}};
+            }
+            if (cancellation_requested()) {
+                terminate();
+                return {WorkerOutcomeKind::Cancelled, {}, "cancelled"};
+            }
+            const auto current = now_ms();
+            if (stop_at_ms && current >= *stop_at_ms) {
+                terminate();
+                const std::string failure = timeout_wins
+                    ? "ATTEMPT_TIMEOUT: per-attempt timeout expired"
+                    : "DEADLINE_EXPIRED: Work deadline expired during attempt";
+                return {WorkerOutcomeKind::TimedOut, {}, failure};
+            }
+
+            ready.revents = 0;
+            const int poll_result = ::poll(&ready, 1, 10);
+            if (poll_result < 0 && errno != EINTR) {
+                terminate();
+                return {WorkerOutcomeKind::Crashed, {},
+                        "WORKER_IPC_FAILURE: poll failed: " + std::string(std::strerror(errno))};
             }
         }
     }
