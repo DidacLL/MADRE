@@ -216,7 +216,7 @@ std::optional<WorkRecord> WorkStore::next_eligible(std::int64_t now_ms) {
  FROM work
  WHERE state='QUEUED' AND cancel_requested=0 AND eligible_at_ms<=? AND next_attempt_at_ms<=?
  ORDER BY CASE urgency WHEN 'INTERACTIVE' THEN 0 WHEN 'NORMAL' THEN 1 ELSE 2 END,
-          created_at_ms,id
+          created_at_ms,rowid
  LIMIT 1
 )SQL";
     Statement statement(db_, sql.c_str());
