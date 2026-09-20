@@ -349,6 +349,72 @@ def test_urgency_ordering(state_dir):
     print("C2 urgency ordering INTERACTIVE > NORMAL > BACKGROUND with FIFO within urgency passed")
 
 
+def test_cancellation_wins_failure_finalization(state_dir):
+    fake_delay_ms = 1000
+    proc, sock = start_kernel(state_dir, fake_delay_ms)
+    try:
+        for max_attempts in (2, 1):
+            work_id = submit(
+                sock,
+                "__C2_TECHNICAL_FAILURE__",
+                max_attempts=max_attempts,
+                retry_delay=10,
+            )
+            wait_running(state_dir, work_id)
+            running_attempts = attempts(state_dir, work_id)
+            if len(running_attempts) != 1 or running_attempts[0]["state"] != "RUNNING":
+                raise AssertionError(
+                    f"expected one running attempt before cancellation race: {running_attempts}"
+                )
+
+            # Hold SQLite's writer lock until the fake engine has passed its final
+            # cancellation observation, thrown its technical failure, and is waiting
+            # to enter finish_retryable_failure(). Then persist the cancellation flag
+            # before releasing the lock. This deterministically presents the exact
+            # race state to the Store transaction without adding a production test hook.
+            started_at_ms = running_attempts[0]["started_at_ms"]
+            with db_connect(state_dir) as con:
+                con.execute("BEGIN IMMEDIATE")
+                release_at_ms = started_at_ms + fake_delay_ms + 250
+                remaining_ms = release_at_ms - now_ms()
+                if remaining_ms > 0:
+                    time.sleep(remaining_ms / 1000)
+                row = con.execute(
+                    "SELECT state,cancel_requested FROM work WHERE id=?",
+                    (work_id,),
+                ).fetchone()
+                if row["state"] != "RUNNING" or row["cancel_requested"] != 0:
+                    raise AssertionError(
+                        f"unexpected Work state before injected cancellation race: {dict(row)}"
+                    )
+                changed = con.execute(
+                    "UPDATE work SET cancel_requested=1 WHERE id=? AND state='RUNNING'",
+                    (work_id,),
+                ).rowcount
+                if changed != 1:
+                    raise AssertionError("failed to persist cancellation request for race regression")
+                con.commit()
+
+            wait_state(state_dir, work_id, "CANCELLED")
+            rows = assert_attempt_states(state_dir, work_id, ["FAILED"])
+            if not rows[0]["technical_failure"].startswith("FAKE_TECHNICAL_FAILURE"):
+                raise AssertionError("failure attempt lost its truthful technical outcome")
+
+            time.sleep(0.2)
+            row = work_row(state_dir, work_id)
+            if row["state"] != "CANCELLED":
+                raise AssertionError(
+                    f"retryable failure overrode cancellation for maxAttempts={max_attempts}: {dict(row)}"
+                )
+            if len(attempts(state_dir, work_id)) != 1:
+                raise AssertionError(
+                    f"cancelled race Work retried for maxAttempts={max_attempts}"
+                )
+    finally:
+        stop_kernel(proc)
+    print("C2 cancellation wins retryable-failure finalization with and without attempts remaining")
+
+
 def test_cancellation_no_retry(state_dir):
     proc, sock = start_kernel(state_dir, 1500)
     try:
@@ -375,6 +441,7 @@ def main():
         test_timeout_and_technical_retry,
         test_deadlines,
         test_urgency_ordering,
+        test_cancellation_wins_failure_finalization,
         test_cancellation_no_retry,
     ]
     for test in tests:
