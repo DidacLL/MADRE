@@ -97,17 +97,24 @@ def wait_state(state_dir, work_id, expected, timeout=8):
 def child_pids(proc):
     if proc.poll() is not None:
         return []
-    children_path = Path(f"/proc/{proc.pid}/task/{proc.pid}/children")
-    try:
-        raw = children_path.read_text().strip()
-    except FileNotFoundError:
-        return []
     result = []
-    for token in raw.split():
-        pid = int(token)
+    for status_path in Path("/proc").glob("[0-9]*/status"):
         try:
-            cmdline = Path(f"/proc/{pid}/cmdline").read_bytes().replace(b"\0", b" ").decode(errors="replace")
-        except FileNotFoundError:
+            status = status_path.read_text(errors="replace")
+            ppid_line = next(
+                (line for line in status.splitlines() if line.startswith("PPid:")),
+                None,
+            )
+            if ppid_line is None or int(ppid_line.split()[1]) != proc.pid:
+                continue
+            pid = int(status_path.parent.name)
+            cmdline = (
+                (status_path.parent / "cmdline")
+                .read_bytes()
+                .replace(b"\0", b" ")
+                .decode(errors="replace")
+            )
+        except (FileNotFoundError, ProcessLookupError, ValueError):
             continue
         if "madre-fake-worker" in cmdline:
             result.append(pid)
