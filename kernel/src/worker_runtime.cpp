@@ -7,7 +7,7 @@
 #include <cstring>
 #include <cstdlib>
 #include <fcntl.h>
-#include <future>
+#include <poll.h>
 #include <spawn.h>
 #include <stdexcept>
 #include <string>
@@ -39,6 +39,14 @@ void set_cloexec(int fd) {
     const int flags = ::fcntl(fd, F_GETFD);
     if (flags < 0 || ::fcntl(fd, F_SETFD, flags | FD_CLOEXEC) < 0) {
         throw std::runtime_error("set worker pipe close-on-exec failed: " +
+                                 std::string(std::strerror(errno)));
+    }
+}
+
+void set_nonblocking(int fd) {
+    const int flags = ::fcntl(fd, F_GETFL);
+    if (flags < 0 || ::fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) {
+        throw std::runtime_error("set worker response pipe nonblocking failed: " +
                                  std::string(std::strerror(errno)));
     }
 }
@@ -256,6 +264,12 @@ struct WorkerPool::WorkerProcess {
         ::close(child_to_parent[1]);
         input_fd = parent_to_child[1];
         output_fd = child_to_parent[0];
+        try {
+            set_nonblocking(output_fd);
+        } catch (...) {
+            terminate();
+            throw;
+        }
         last_used_ms = now_ms();
     }
 
@@ -334,52 +348,14 @@ struct WorkerPool::WorkerProcess {
             return {WorkerOutcomeKind::Crashed, {}, std::string("WORKER_IPC_FAILURE: ") + ex.what()};
         }
 
-        auto response_future = std::async(std::launch::async, [fd = output_fd] {
-            return read_frame(fd);
-        });
-
-        const auto terminate_and_drain = [&] {
-            terminate();
-            try {
-                (void)response_future.get();
-            } catch (...) {
-            }
-        };
-
-        while (response_future.wait_for(10ms) != std::future_status::ready) {
-            if (kernel_stopping()) {
-                terminate_and_drain();
-                return {WorkerOutcomeKind::Stopped, {}, {}};
-            }
-            if (cancellation_requested()) {
-                terminate_and_drain();
-                return {WorkerOutcomeKind::Cancelled, {}, "cancelled"};
-            }
-            if (stop_at_ms && now_ms() >= *stop_at_ms) {
-                terminate_and_drain();
-                const std::string failure = timeout_wins
-                    ? "ATTEMPT_TIMEOUT: per-attempt timeout expired"
-                    : "DEADLINE_EXPIRED: Work deadline expired during attempt";
-                return {WorkerOutcomeKind::TimedOut, {}, failure};
-            }
-            if (!alive()) {
-                try {
-                    (void)response_future.get();
-                } catch (...) {
-                }
-                return {WorkerOutcomeKind::Crashed, {}, "WORKER_CRASH: " + exit_description()};
-            }
-        }
-
-        try {
-            const auto response = response_future.get();
+        const auto finish_response = [&](Frame response) -> WorkerOutcome {
             if (response.correlation_id != correlation_id) {
                 terminate();
                 return {WorkerOutcomeKind::TechnicalFailure, {},
                         "WORKER_PROTOCOL_FAILURE: correlation id mismatch"};
             }
             if (response.type == MessageType::WorkerResult) {
-                return {WorkerOutcomeKind::Succeeded, response.payload, {}};
+                return {WorkerOutcomeKind::Succeeded, std::move(response.payload), {}};
             }
             if (response.type == MessageType::WorkerFailure) {
                 const auto it = response.metadata.find("technical_failure");
@@ -391,17 +367,84 @@ struct WorkerPool::WorkerProcess {
             terminate();
             return {WorkerOutcomeKind::TechnicalFailure, {},
                     "WORKER_PROTOCOL_FAILURE: unexpected worker response"};
-        } catch (const std::exception& ex) {
+        };
+
+        while (true) {
+            try {
+                if (auto response = response_reader.read_available(output_fd)) {
+                    return finish_response(std::move(*response));
+                }
+            } catch (const std::exception& ex) {
+                if (!alive()) {
+                    return {WorkerOutcomeKind::Crashed, {},
+                            "WORKER_CRASH: " + exit_description()};
+                }
+                terminate();
+                return {WorkerOutcomeKind::TechnicalFailure, {},
+                        std::string("WORKER_PROTOCOL_FAILURE: ") + ex.what()};
+            }
+
+            if (kernel_stopping()) {
+                terminate();
+                return {WorkerOutcomeKind::Stopped, {}, {}};
+            }
+
+            if (cancellation_requested()) {
+                try {
+                    if (auto response = response_reader.read_available(output_fd)) {
+                        return finish_response(std::move(*response));
+                    }
+                } catch (const std::exception& ex) {
+                    if (!alive()) {
+                        return {WorkerOutcomeKind::Crashed, {},
+                                "WORKER_CRASH: " + exit_description()};
+                    }
+                    terminate();
+                    return {WorkerOutcomeKind::TechnicalFailure, {},
+                            std::string("WORKER_PROTOCOL_FAILURE: ") + ex.what()};
+                }
+                terminate();
+                return {WorkerOutcomeKind::Cancelled, {}, "cancelled"};
+            }
+
+            if (stop_at_ms && now_ms() >= *stop_at_ms) {
+                try {
+                    if (auto response = response_reader.read_available(output_fd)) {
+                        return finish_response(std::move(*response));
+                    }
+                } catch (const std::exception& ex) {
+                    if (!alive()) {
+                        return {WorkerOutcomeKind::Crashed, {},
+                                "WORKER_CRASH: " + exit_description()};
+                    }
+                    terminate();
+                    return {WorkerOutcomeKind::TechnicalFailure, {},
+                            std::string("WORKER_PROTOCOL_FAILURE: ") + ex.what()};
+                }
+                terminate();
+                const std::string failure = timeout_wins
+                    ? "ATTEMPT_TIMEOUT: per-attempt timeout expired"
+                    : "DEADLINE_EXPIRED: Work deadline expired during attempt";
+                return {WorkerOutcomeKind::TimedOut, {}, failure};
+            }
+
             if (!alive()) {
                 return {WorkerOutcomeKind::Crashed, {}, "WORKER_CRASH: " + exit_description()};
             }
-            terminate();
-            return {WorkerOutcomeKind::TechnicalFailure, {},
-                    std::string("WORKER_PROTOCOL_FAILURE: ") + ex.what()};
+
+            pollfd ready{output_fd, POLLIN | POLLHUP | POLLERR, 0};
+            const int poll_result = ::poll(&ready, 1, 10);
+            if (poll_result < 0 && errno != EINTR) {
+                terminate();
+                return {WorkerOutcomeKind::Crashed, {},
+                        "WORKER_IPC_FAILURE: poll failed: " +
+                            std::string(std::strerror(errno))};
+            }
         }
     }
 
     std::string engine_id;
+    IncrementalFrameReader response_reader;
     pid_t pid{-1};
     int input_fd{-1};
     int output_fd{-1};

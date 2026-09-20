@@ -4,6 +4,7 @@
 #include <array>
 #include <cerrno>
 #include <cstring>
+#include <fcntl.h>
 #include <stdexcept>
 #include <string_view>
 #include <unistd.h>
@@ -118,6 +119,75 @@ std::map<std::string, std::string> decode_metadata(std::string_view encoded) {
     return out;
 }
 }  // namespace
+
+std::optional<Frame> IncrementalFrameReader::read_available(int fd) {
+    std::array<std::uint8_t, 8192> chunk{};
+    while (true) {
+        const auto n = ::read(fd, chunk.data(), chunk.size());
+        if (n > 0) {
+            buffer_.insert(buffer_.end(), chunk.begin(), chunk.begin() + n);
+            continue;
+        }
+        if (n == 0) {
+            if (buffer_.empty()) {
+                throw std::runtime_error("peer closed framed IPC");
+            }
+            throw FramingError("peer closed during partial framed IPC");
+        }
+        if (errno == EINTR) {
+            continue;
+        }
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            break;
+        }
+        throw std::runtime_error(std::string("IPC read failed: ") + std::strerror(errno));
+    }
+
+    if (buffer_.size() < kHeaderSize) {
+        return std::nullopt;
+    }
+    const auto* header = buffer_.data();
+    if (!std::equal(kMagic.begin(), kMagic.end(), buffer_.begin())) {
+        throw FramingError("invalid framing magic");
+    }
+    const auto framing_version = get_u16(header + 4);
+    if (framing_version != kFramingVersion) {
+        throw FramingError("unsupported framing version");
+    }
+    const auto type = get_u16(header + 6);
+    const auto correlation = get_u64(header + 8);
+    const auto metadata_length = get_u32(header + 16);
+    const auto payload_length = get_u64(header + 20);
+    if (metadata_length > kMaxMetadata ||
+        payload_length > kMaxC1TextGenerationOpaquePayloadBytes) {
+        throw FramingError("frame exceeds C1 bounded text-generation/v1 framing limits");
+    }
+
+    const auto total_size =
+        kHeaderSize + static_cast<std::size_t>(metadata_length) +
+        static_cast<std::size_t>(payload_length);
+    if (buffer_.size() < total_size) {
+        return std::nullopt;
+    }
+
+    const auto metadata_begin = buffer_.begin() + static_cast<std::ptrdiff_t>(kHeaderSize);
+    const std::string metadata(
+        metadata_begin,
+        metadata_begin + static_cast<std::ptrdiff_t>(metadata_length));
+    const auto payload_begin =
+        metadata_begin + static_cast<std::ptrdiff_t>(metadata_length);
+    std::vector<std::uint8_t> payload(
+        payload_begin,
+        payload_begin + static_cast<std::ptrdiff_t>(payload_length));
+
+    buffer_.erase(buffer_.begin(), buffer_.begin() + static_cast<std::ptrdiff_t>(total_size));
+    return Frame{
+        static_cast<MessageType>(type),
+        correlation,
+        decode_metadata(metadata),
+        std::move(payload),
+    };
+}
 
 Frame read_frame(int fd) {
     std::array<std::uint8_t, kHeaderSize> header{};

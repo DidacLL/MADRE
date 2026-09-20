@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <map>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -52,6 +53,14 @@ struct Frame {
     std::uint64_t correlation_id{};
     std::map<std::string, std::string> metadata;
     std::vector<std::uint8_t> payload;
+};
+
+class IncrementalFrameReader {
+public:
+    std::optional<Frame> read_available(int fd);
+
+private:
+    std::vector<std::uint8_t> buffer_;
 };
 
 Frame read_frame(int fd);
