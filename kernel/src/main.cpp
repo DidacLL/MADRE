@@ -508,19 +508,37 @@ private:
                 continue;
             }
 
-            const auto engine_id = selected.engine->id;
+            WorkerPool::Lease worker;
+            try {
+                worker = worker_pool_.acquire(selected.engine->id);
+            } catch (const std::exception& ex) {
+                store_.finish_retryable_failure(
+                    work->id,
+                    attempt_number,
+                    "FAILED",
+                    std::string("WORKER_LAUNCH_FAILURE: ") + ex.what(),
+                    now_ms());
+                continue;
+            }
+
             attempt_tasks_.push_back(std::async(
                 std::launch::async,
-                [this, work = *work, attempt_number, started_at, engine_id,
+                [this, work = *work, attempt_number, started_at,
+                 worker = std::move(worker),
                  reservation = std::move(*reservation)]() mutable {
-                    execute_worker(work, attempt_number, started_at, engine_id, std::move(reservation));
+                    execute_worker(
+                        work,
+                        attempt_number,
+                        started_at,
+                        std::move(worker),
+                        std::move(reservation));
                     wake_.notify_one();
                 }));
         }
     }
 
     void execute_worker(const WorkRecord& work, int attempt_number,
-                        std::int64_t started_at_ms, const std::string& engine_id,
+                        std::int64_t started_at_ms, WorkerPool::Lease worker,
                         ResourceManager::Lease reservation) {
         (void)reservation;
         try {
@@ -539,7 +557,6 @@ private:
             }
 
             const auto input = read_binary_bounded(work.input_path);
-            auto worker = worker_pool_.acquire(engine_id);
             const auto correlation = next_worker_correlation_.fetch_add(1);
             const auto outcome = worker.execute(
                 input,
