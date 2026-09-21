@@ -10,12 +10,25 @@
 #include <string>
 #include <string_view>
 #include <thread>
-#include <unistd.h>
 #include <vector>
+
+#ifdef _WIN32
+#include <io.h>
+#else
+#include <unistd.h>
+#endif
 
 namespace madre::kernel {
 namespace {
 using namespace std::chrono_literals;
+
+#ifdef _WIN32
+constexpr int kStdinFd = 0;
+constexpr int kStdoutFd = 1;
+#else
+constexpr int kStdinFd = STDIN_FILENO;
+constexpr int kStdoutFd = STDOUT_FILENO;
+#endif
 
 struct Options {
     std::string engine_id;
@@ -48,14 +61,14 @@ void execute(const Options& options, const Frame& request) {
     if (request.type != MessageType::WorkerExecute) {
         Frame failure{MessageType::WorkerFailure, request.correlation_id,
                       {{"technical_failure", "WORKER_PROTOCOL_FAILURE: unsupported request"}}, {}};
-        write_frame(STDOUT_FILENO, failure);
+        write_frame(kStdoutFd, failure);
         return;
     }
     const auto engine = metadata_value(request, "engine_id");
     if (engine != options.engine_id) {
         Frame failure{MessageType::WorkerFailure, request.correlation_id,
                       {{"technical_failure", "WORKER_PROTOCOL_FAILURE: engine identity mismatch"}}, {}};
-        write_frame(STDOUT_FILENO, failure);
+        write_frame(kStdoutFd, failure);
         return;
     }
 
@@ -83,15 +96,26 @@ void execute(const Options& options, const Frame& request) {
     constexpr std::string_view partial_stall = "__C3_PARTIAL_FRAME_STALL__";
     if (equals_payload(request.payload, partial_stall)) {
         constexpr char partial_frame[] = {'M', 'A', 'D', 'R'};
-        if (::write(STDOUT_FILENO, partial_frame, sizeof(partial_frame)) < 0) {
+#ifdef _WIN32
+        if (::_write(
+                kStdoutFd, partial_frame,
+                static_cast<unsigned int>(sizeof(partial_frame))) < 0) {
             std::_Exit(87);
         }
+#else
+        if (::write(
+                kStdoutFd, partial_frame, sizeof(partial_frame)) < 0) {
+            std::_Exit(87);
+        }
+#endif
         while (true) {
             std::this_thread::sleep_for(std::chrono::hours(1));
         }
     }
 
-    constexpr std::string_view descriptor_check = "__C3_CHECK_NO_EXTRA_FDS__";
+#ifndef _WIN32
+    constexpr std::string_view descriptor_check =
+        "__C3_CHECK_NO_EXTRA_FDS__";
     if (equals_payload(request.payload, descriptor_check)) {
         for (int fd = 3; fd < 256; ++fd) {
             errno = 0;
@@ -100,19 +124,21 @@ void execute(const Options& options, const Frame& request) {
                     MessageType::WorkerFailure,
                     request.correlation_id,
                     {{"technical_failure",
-                      "WORKER_FD_LEAK: inherited descriptor " + std::to_string(fd)}},
+                      "WORKER_FD_LEAK: inherited descriptor " +
+                          std::to_string(fd)}},
                     {}};
-                write_frame(STDOUT_FILENO, failure);
+                write_frame(kStdoutFd, failure);
                 return;
             }
         }
     }
+#endif
 
     constexpr std::string_view forced_failure = "__C2_TECHNICAL_FAILURE__";
     if (equals_payload(request.payload, forced_failure)) {
         Frame failure{MessageType::WorkerFailure, request.correlation_id,
                       {{"technical_failure", "FAKE_TECHNICAL_FAILURE: deterministic C2 test engine failure"}}, {}};
-        write_frame(STDOUT_FILENO, failure);
+        write_frame(kStdoutFd, failure);
         return;
     }
 
@@ -120,12 +146,12 @@ void execute(const Options& options, const Frame& request) {
     if (request.payload.size() > kMaxC1TextGenerationOpaquePayloadBytes - prefix.size()) {
         Frame failure{MessageType::WorkerFailure, request.correlation_id,
                       {{"technical_failure", "FAKE_RESULT_TOO_LARGE: bounded result limit exceeded"}}, {}};
-        write_frame(STDOUT_FILENO, failure);
+        write_frame(kStdoutFd, failure);
         return;
     }
     std::vector<std::uint8_t> result(prefix.begin(), prefix.end());
     result.insert(result.end(), request.payload.begin(), request.payload.end());
-    write_frame(STDOUT_FILENO, Frame{MessageType::WorkerResult, request.correlation_id, {}, std::move(result)});
+    write_frame(kStdoutFd, Frame{MessageType::WorkerResult, request.correlation_id, {}, std::move(result)});
 }
 
 }  // namespace
@@ -133,11 +159,15 @@ void execute(const Options& options, const Frame& request) {
 
 int main(int argc, char** argv) {
     try {
+#ifdef _WIN32
+        ::_setmode(0, _O_BINARY);
+        ::_setmode(1, _O_BINARY);
+#endif
         const auto options = madre::kernel::parse_options(argc, argv);
         while (true) {
             madre::kernel::Frame request;
             try {
-                request = madre::kernel::read_frame(STDIN_FILENO);
+                request = madre::kernel::read_frame(kStdinFd);
             } catch (const std::runtime_error& ex) {
                 if (std::string_view(ex.what()) == "peer closed framed IPC") {
                     return 0;

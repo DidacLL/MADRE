@@ -4,7 +4,7 @@ import java.io.EOFException;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.nio.channels.SocketChannel;
+import java.nio.channels.ByteChannel;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -63,7 +63,7 @@ final class Protocol {
         }
     }
 
-    static void write(SocketChannel channel, Frame frame) throws IOException {
+    static void write(ByteChannel channel, Frame frame) throws IOException {
         byte[] metadata = encodeMetadata(frame.metadata());
         byte[] payload = frame.payload();
         if (metadata.length > MAX_METADATA ||
@@ -83,7 +83,7 @@ final class Protocol {
         writeFully(channel, ByteBuffer.wrap(payload));
     }
 
-    static Frame read(SocketChannel channel) throws IOException {
+    static Frame read(ByteChannel channel) throws IOException {
         ByteBuffer header = ByteBuffer.allocate(HEADER_SIZE).order(ByteOrder.BIG_ENDIAN);
         readFully(channel, header);
         header.flip();
@@ -141,13 +141,13 @@ final class Protocol {
         return result;
     }
 
-    private static void writeFully(SocketChannel channel, ByteBuffer buffer) throws IOException {
+    private static void writeFully(ByteChannel channel, ByteBuffer buffer) throws IOException {
         while (buffer.hasRemaining()) {
             channel.write(buffer);
         }
     }
 
-    private static void readFully(SocketChannel channel, ByteBuffer buffer) throws IOException {
+    private static void readFully(ByteChannel channel, ByteBuffer buffer) throws IOException {
         while (buffer.hasRemaining()) {
             if (channel.read(buffer) < 0) {
                 throw new EOFException("peer closed framed IPC");

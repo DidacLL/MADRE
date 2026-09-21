@@ -1,8 +1,11 @@
 package io.github.didacll.madre.kernel.client;
 
+import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.net.StandardProtocolFamily;
 import java.net.UnixDomainSocketAddress;
+import java.nio.channels.ByteChannel;
 import java.nio.channels.SocketChannel;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -21,11 +24,16 @@ import java.util.stream.Collectors;
 
 public final class LocalKernelClient implements KernelClient {
     private static final byte[] EMPTY = new byte[0];
+    private static final boolean WINDOWS =
+            System.getProperty("os.name")
+                    .toLowerCase()
+                    .startsWith("windows");
     private final Path endpoint;
     private final AtomicLong correlation = new AtomicLong(1);
 
     public LocalKernelClient(Path endpoint) {
-        this.endpoint = Objects.requireNonNull(endpoint, "endpoint").toAbsolutePath();
+        Path value = Objects.requireNonNull(endpoint, "endpoint");
+        this.endpoint = WINDOWS ? value : value.toAbsolutePath();
     }
 
     @Override
@@ -118,8 +126,7 @@ public final class LocalKernelClient implements KernelClient {
     }
 
     private Protocol.Frame exchange(Protocol.Frame command) {
-        try (SocketChannel channel = SocketChannel.open(StandardProtocolFamily.UNIX)) {
-            channel.connect(UnixDomainSocketAddress.of(endpoint));
+        try (ByteChannel channel = openChannel()) {
             long helloCorrelation = nextCorrelation();
             Protocol.write(channel, new Protocol.Frame(
                     Protocol.HELLO,
@@ -150,6 +157,37 @@ public final class LocalKernelClient implements KernelClient {
         } catch (IOException ex) {
             throw new KernelProtocolException("IPC_FAILURE", ex.getMessage());
         }
+    }
+
+    private ByteChannel openChannel() throws IOException {
+        if (!WINDOWS) {
+            SocketChannel channel =
+                    SocketChannel.open(StandardProtocolFamily.UNIX);
+            channel.connect(UnixDomainSocketAddress.of(endpoint));
+            return channel;
+        }
+
+        IOException lastFailure = null;
+        long deadline = System.nanoTime() + 2_000_000_000L;
+        do {
+            try {
+                return new RandomAccessFile(
+                        endpoint.toString(), "rw").getChannel();
+            } catch (FileNotFoundException ex) {
+                lastFailure = ex;
+                try {
+                    Thread.sleep(20);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new IOException(
+                            "interrupted while connecting to Kernel named pipe",
+                            interrupted);
+                }
+            }
+        } while (System.nanoTime() < deadline);
+        throw lastFailure == null
+                ? new IOException("failed to connect to Kernel named pipe")
+                : lastFailure;
     }
 
     private static void checkError(Protocol.Frame frame) {
