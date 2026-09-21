@@ -110,7 +110,8 @@ def start_kernel(state_dir, delay_ms):
     log = open(Path(state_dir) / f"kernel-{time.time_ns()}.log", "w", encoding="utf-8")
     proc = subprocess.Popen(
         [KERNEL, "--data-dir", str(Path(state_dir) / "data"), "--endpoint", str(socket_path),
-         "--fake-worker", FAKE_WORKER, "--fake-delay-ms", str(delay_ms)],
+         "--fake-worker", FAKE_WORKER, "--fake-delay-ms", str(delay_ms),
+         "--gpu-capacity", "fake-gpu-0=256"],
         stdout=log,
         stderr=subprocess.STDOUT,
         text=True,

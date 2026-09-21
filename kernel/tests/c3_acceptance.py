@@ -136,7 +136,7 @@ def start_kernel(state_dir, delay_ms=200, idle_ms=600, cpu=2, ram_mib=512, gpu_v
             "--worker-idle-ms", str(idle_ms),
             "--cpu-capacity", str(cpu),
             "--ram-capacity-mib", str(ram_mib),
-            "--gpu-vram-mib", str(gpu_vram_mib),
+            "--gpu-capacity", f"fake-gpu-0={gpu_vram_mib}",
         ],
         stdout=log,
         stderr=subprocess.STDOUT,

@@ -136,6 +136,38 @@ def rss_kib(pid):
     return int(line.split()[1])
 
 
+def process_socket_inodes(pid):
+    inodes = set()
+    for fd in Path(f"/proc/{pid}/fd").glob("*"):
+        try:
+            target = str(fd.readlink())
+        except (FileNotFoundError, ProcessLookupError, OSError):
+            continue
+        if target.startswith("socket:[") and target.endswith("]"):
+            inodes.add(target[8:-1])
+    return inodes
+
+
+def tcp_socket_inodes():
+    result = set()
+    for table in (Path("/proc/net/tcp"), Path("/proc/net/tcp6")):
+        if not table.exists():
+            continue
+        for line in table.read_text(errors="replace").splitlines()[1:]:
+            columns = line.split()
+            if len(columns) > 9:
+                result.add(columns[9])
+    return result
+
+
+def assert_no_tcp(pid, description):
+    overlap = process_socket_inodes(pid) & tcp_socket_inodes()
+    if overlap:
+        raise AssertionError(
+            f"{description} unexpectedly owns TCP socket inode(s): {sorted(overlap)}"
+        )
+
+
 def start_kernel(state_dir, idle_ms=800):
     socket_path = Path(state_dir) / "kernel.sock"
     log_path = Path(state_dir) / "kernel.log"
@@ -147,7 +179,6 @@ def start_kernel(state_dir, idle_ms=800):
         "--worker-idle-ms", str(idle_ms),
         "--cpu-capacity", "2",
         "--ram-capacity-mib", "1024",
-        "--gpu-vram-mib", "256",
         "--worker-engine-id", ENGINE_ID,
         "--worker-executable", LLAMA_WORKER,
         "--worker-model-id", MODEL_ID,
@@ -222,6 +253,33 @@ def main():
                 raise AssertionError(
                     "llama.cpp worker exists before physical Work requires it"
                 )
+            assert_no_tcp(proc.pid, "Kernel")
+
+            future_at = int(time.time() * 1000) + 600_000
+            queued = java(
+                sock,
+                "submit-config",
+                "queued-memory-measurement",
+                "STANDARD",
+                "BACKGROUND",
+                "-",
+                "-",
+                ENGINE_ID,
+                MODEL_ID,
+                str(future_at),
+                "-",
+                "-",
+                "1",
+                "0",
+            )
+            wait_state(state_dir, queued, "QUEUED", 5)
+            kernel_queued_rss = rss_kib(proc.pid)
+            if direct_children(proc, "madre-llamacpp-worker"):
+                raise AssertionError(
+                    "future queued Work launched a worker before eligibility"
+                )
+            java(sock, "cancel-work", queued)
+            wait_state(state_dir, queued, "CANCELLED", 5)
 
             timed = submit(
                 sock,
@@ -284,6 +342,8 @@ def main():
                 10,
             )
             worker_loaded_rss = rss_kib(worker_pid)
+            assert_no_tcp(proc.pid, "Kernel during native inference")
+            assert_no_tcp(worker_pid, "llama.cpp worker")
             row = work_row(state_dir, succeeded)
             result_path = Path(row["result_path"])
             result_bytes = result_path.read_bytes()
@@ -344,10 +404,28 @@ def main():
             print("C4_UNPINNED_DISPATCH=real configured worker selected without exact engine/model")
             print(f"C4_REAL_RESULT={result_text!r}")
             print(f"C4_KERNEL_IDLE_RSS_KIB={kernel_idle_rss}")
+            print(f"C5_KERNEL_IDLE_RSS_KIB={kernel_idle_rss}")
+            print(
+                "C5_KERNEL_QUEUED_NO_WORKER_RSS_KIB="
+                f"{kernel_queued_rss}"
+            )
+            print(
+                "C5_WORKER_PRE_MODEL_LOAD_RSS=not-measurable "
+                "(worker loads the configured model before serving Work; "
+                "C5 adds no readiness protocol)"
+            )
             print(f"C4_WORKER_LOADED_RSS_KIB={worker_loaded_rss}")
+            print(
+                "C5_WORKER_RAM_AFTER_MODEL_LOAD_RSS_KIB="
+                f"{worker_loaded_rss}"
+            )
             print(
                 "C4_WORKER_GPU_VRAM_MIB=0 "
                 "(CPU-only acceptance configuration)"
+            )
+            print(
+                "C5_WORKER_VRAM_AFTER_MODEL_LOAD_MIB=0 "
+                "(CPU-only CI runner; VRAM unavailable)"
             )
             print(
                 "C4_KERNEL_RSS_AFTER_WORKER_RELEASE_KIB="
@@ -357,6 +435,12 @@ def main():
                 "C4_IDLE_RELEASE=worker process absent; "
                 "model/context process resources released"
             )
+            print(
+                "C5_RELEASE_AFTER_WORKER_TERMINATION="
+                f"process=absent kernel_rss_kib={kernel_after_release_rss} "
+                "worker_vram_mib=0"
+            )
+            print("C5_LOCAL_HTTP_TCP_DEPENDENCY=none-observed")
             print(
                 "C4_TIMEOUT=TIMED_OUT native worker killed and "
                 "reservation released"
