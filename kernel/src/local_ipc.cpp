@@ -37,6 +37,9 @@ struct LocalIpcServer::Impl {
 
     Impl(fs::path endpoint_value, fs::path data_dir)
         : endpoint(std::move(endpoint_value)) {
+#ifndef _WIN32
+        (void)data_dir;
+#endif
 #ifdef _WIN32
         if (endpoint.wstring().rfind(L"\\\\.\\pipe\\", 0) != 0) {
             throw std::runtime_error(

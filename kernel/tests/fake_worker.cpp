@@ -167,7 +167,7 @@ int main(int argc, char** argv) {
         while (true) {
             madre::kernel::Frame request;
             try {
-                request = madre::kernel::read_frame(kStdinFd);
+                request = madre::kernel::read_frame(0);
             } catch (const std::runtime_error& ex) {
                 if (std::string_view(ex.what()) == "peer closed framed IPC") {
                     return 0;
