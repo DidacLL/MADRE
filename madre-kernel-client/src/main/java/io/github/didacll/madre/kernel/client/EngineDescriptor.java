@@ -1,6 +1,7 @@
 package io.github.didacll.madre.kernel.client;
 
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 
 public record EngineDescriptor(
@@ -11,6 +12,10 @@ public record EngineDescriptor(
         Set<Effort> supportedEfforts,
         String placement,
         String availability,
+        int requiredCpuSlots,
+        long requiredRamBytes,
+        Optional<String> requiredGpuId,
+        long requiredGpuVramBytes,
         boolean warm) {
     public EngineDescriptor {
         Objects.requireNonNull(engineId, "engineId");
@@ -20,5 +25,6 @@ public record EngineDescriptor(
         supportedEfforts = Set.copyOf(supportedEfforts);
         Objects.requireNonNull(placement, "placement");
         Objects.requireNonNull(availability, "availability");
+        requiredGpuId = Objects.requireNonNull(requiredGpuId, "requiredGpuId");
     }
 }

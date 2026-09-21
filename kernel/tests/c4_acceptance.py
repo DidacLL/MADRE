@@ -249,6 +249,16 @@ def main():
                 )
             if "fake-" in engine_ids:
                 raise AssertionError(f"fake engine leaked into C4 inventory: {engine_ids!r}")
+            java(
+                sock,
+                "assert-engine-descriptor",
+                ENGINE_ID,
+                MODEL_ID,
+                "1",
+                str(512 * 1024 * 1024),
+                "-",
+                "0",
+            )
             if direct_children(proc, "madre-llamacpp-worker"):
                 raise AssertionError(
                     "llama.cpp worker exists before physical Work requires it"

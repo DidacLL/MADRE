@@ -220,6 +220,13 @@ void add_engine_descriptor(Frame& frame, std::string_view prefix,
     frame.metadata[base + "supported_efforts"] = join_csv(descriptor.supported_efforts);
     frame.metadata[base + "placement"] = descriptor.placement;
     frame.metadata[base + "availability"] = descriptor.availability;
+    frame.metadata[base + "required_cpu_slots"] =
+        std::to_string(descriptor.resources.cpu_slots);
+    frame.metadata[base + "required_ram_bytes"] =
+        std::to_string(descriptor.resources.ram_bytes);
+    frame.metadata[base + "required_gpu_id"] = descriptor.resources.gpu_id;
+    frame.metadata[base + "required_gpu_vram_bytes"] =
+        std::to_string(descriptor.resources.gpu_vram_bytes);
     frame.metadata[base + "warm"] = warm ? "true" : "false";
 }
 
@@ -293,7 +300,9 @@ SelectionResult select_engine(const WorkRecord& work, const std::vector<EngineDe
     }
 
     const auto* selected = candidates.front();
-    const auto model = work.exact_model_id.empty() ? selected->model_ids.front() : work.exact_model_id;
+    const auto model = !work.exact_model_id.empty()
+        ? work.exact_model_id
+        : (selected->model_ids.empty() ? std::string{} : selected->model_ids.front());
     return {Selection{selected, model}, {}};
 }
 
@@ -824,7 +833,9 @@ std::vector<EngineDescriptorFacts> build_engine_inventory(const Options& options
         options.worker_engine_id,
         options.worker_work_types,
         options.worker_capabilities,
-        {options.worker_model_id},
+        options.worker_model_id.empty()
+            ? std::vector<std::string>{}
+            : std::vector<std::string>{options.worker_model_id},
         options.worker_efforts,
         "LOCAL_WORKER_PROCESS",
         "AVAILABLE",
@@ -906,7 +917,7 @@ Options parse_options(int argc, char** argv) {
                 "[--fake-worker <path>] [--fake-delay-ms N] [--worker-idle-ms N] "
                 "[--cpu-capacity N] [--ram-capacity-mib N] "
                 "[--gpu-capacity ID=MiB]... "
-                "[--worker-engine-id ID --worker-executable PATH --worker-model-id ID "
+                "[--worker-engine-id ID --worker-executable PATH [--worker-model-id ID] "
                 "[--worker-arg ARG]... [--worker-work-types CSV] "
                 "[--worker-capabilities CSV] [--worker-efforts CSV] "
                 "[--worker-cpu-slots N] [--worker-ram-mib N] "
@@ -923,11 +934,10 @@ Options parse_options(int argc, char** argv) {
     }
     if (configured &&
         (options.worker_engine_id.empty() || options.worker_executable.empty() ||
-         options.worker_model_id.empty() || options.worker_work_types.empty() ||
-         options.worker_efforts.empty() || options.worker_cpu_slots < 1 ||
-         options.worker_ram_bytes == 0)) {
+         options.worker_work_types.empty() || options.worker_efforts.empty() ||
+         options.worker_cpu_slots < 1 || options.worker_ram_bytes == 0)) {
         throw std::runtime_error(
-            "configured worker requires engine, executable, model and positive physical resources");
+            "configured worker requires engine, executable and positive physical resources");
     }
     if (configured &&
         (options.worker_gpu_id.empty() != (options.worker_gpu_vram_bytes == 0))) {

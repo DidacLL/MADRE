@@ -623,6 +623,135 @@ def test_crash_cancel_resource_and_generic_capacity():
             stop_kernel(proc)
 
 
+def test_configured_worker_without_model_identity():
+    with tempfile.TemporaryDirectory(
+        prefix="madre-c5-model-less-"
+    ) as state_dir:
+        endpoint = endpoint_for(state_dir)
+        log_path = Path(state_dir) / "kernel.log"
+        log = open(log_path, "w", encoding="utf-8")
+        engine_id = "configured-model-less"
+        command = [
+            KERNEL,
+            "--data-dir", str(Path(state_dir) / "data"),
+            "--endpoint", endpoint,
+            "--worker-idle-ms", "250",
+            "--cpu-capacity", "2",
+            "--ram-capacity-mib", "512",
+            "--worker-engine-id", engine_id,
+            "--worker-executable", FAKE_WORKER,
+            "--worker-work-types", "text-generation/v1",
+            "--worker-capabilities", "basic-text",
+            "--worker-efforts", "STANDARD",
+            "--worker-cpu-slots", "1",
+            "--worker-ram-mib", "64",
+            "--worker-arg", "--engine-id",
+            "--worker-arg", engine_id,
+            "--worker-arg", "--delay-ms",
+            "--worker-arg", "40",
+        ]
+        kwargs = {}
+        if WINDOWS:
+            kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+        proc = subprocess.Popen(
+            command,
+            stdin=subprocess.DEVNULL,
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            text=True,
+            **kwargs,
+        )
+        log.close()
+        try:
+            wait_until(
+                lambda: (
+                    proc.poll() is None
+                    and java(
+                        endpoint,
+                        "engine-ids",
+                        timeout=3,
+                        check=False,
+                    ).returncode == 0
+                ),
+                "model-less configured Kernel",
+                10,
+            )
+            ids = java(endpoint, "engine-ids")
+            if ids != engine_id:
+                raise AssertionError(
+                    "configured model-less worker leaked fake inventory or "
+                    f"unexpected engines: {ids!r}"
+                )
+            java(
+                endpoint,
+                "assert-engine-descriptor",
+                engine_id,
+                "-",
+                "1",
+                str(64 * 1024 * 1024),
+                "-",
+                "0",
+            )
+
+            work_id = submit(
+                endpoint,
+                "model-less-unconstrained",
+                exact_engine="-",
+                exact_model="-",
+            )
+            collect(
+                endpoint,
+                work_id,
+                "fake:model-less-unconstrained",
+            )
+            rows = attempts(state_dir, work_id)
+            row = work_row(state_dir, work_id)
+            if (
+                len(rows) != 1
+                or rows[0]["engine_id"] != engine_id
+                or rows[0]["model_id"] != ""
+                or rows[0]["state"] != "SUCCEEDED"
+                or row["selected_model_id"] != ""
+            ):
+                raise AssertionError(
+                    "model-less configured worker did not persist empty "
+                    "model identity: " +
+                    repr([dict(item) for item in rows]) +
+                    " work=" + repr(dict(row))
+                )
+
+            rejected = submit(
+                endpoint,
+                "model-less-exact-model",
+                exact_engine="-",
+                exact_model="requested-model",
+            )
+            rejected_row = wait_state(
+                state_dir, rejected, "FAILED"
+            )
+            if (
+                not rejected_row["technical_failure"].startswith(
+                    "EXACT_SELECTION_UNSATISFIED"
+                )
+                or attempts(state_dir, rejected)
+            ):
+                raise AssertionError(
+                    "exact-model Work was not rejected before dispatch: "
+                    + repr(dict(rejected_row))
+                )
+            print(
+                "C5_CONFIGURED_WORKER_OPTIONAL_MODEL_ID=passed"
+            )
+        except Exception:
+            print(
+                log_path.read_text(errors="replace"),
+                file=sys.stderr,
+            )
+            raise
+        finally:
+            stop_kernel(proc)
+
+
 def test_posix_closed_standard_descriptor_launch():
     if WINDOWS:
         return
@@ -658,6 +787,7 @@ def main():
     test_background_reconnect_selection_and_ipc()
     test_clean_shutdown_and_restart_recovery()
     test_crash_cancel_resource_and_generic_capacity()
+    test_configured_worker_without_model_identity()
     test_posix_closed_standard_descriptor_launch()
     print("C5 cross-platform hardening acceptance passed")
 

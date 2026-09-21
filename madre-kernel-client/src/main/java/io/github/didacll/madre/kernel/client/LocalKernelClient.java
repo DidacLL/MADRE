@@ -219,7 +219,17 @@ public final class LocalKernelClient implements KernelClient {
                 splitEfforts(required(frame, prefix + "supported_efforts")),
                 required(frame, prefix + "placement"),
                 required(frame, prefix + "availability"),
+                Integer.parseInt(required(frame, prefix + "required_cpu_slots")),
+                Long.parseLong(required(frame, prefix + "required_ram_bytes")),
+                optionalIdentity(frame, prefix + "required_gpu_id"),
+                Long.parseLong(required(frame, prefix + "required_gpu_vram_bytes")),
                 Boolean.parseBoolean(required(frame, prefix + "warm")));
+    }
+
+    private static Optional<String> optionalIdentity(
+            Protocol.Frame frame, String key) {
+        String value = required(frame, key);
+        return value.isEmpty() ? Optional.empty() : Optional.of(value);
     }
 
     private static Set<String> splitSet(String value) {

@@ -18,12 +18,14 @@ import java.util.OptionalLong;
 import java.util.Set;
 
 public final class KernelClientProcess {
+    private static final long MIB = 1024L * 1024L;
+
     private KernelClientProcess() {}
 
     public static void main(String[] args) throws Exception {
         if (args.length < 2) {
             throw new IllegalArgumentException(
-                    "usage: <submit|submit-type|submit-config|status|collect|inspect|engine-ids|cancel|cancel-work|framing-mismatch|protocol-version-mismatch|protocol-overlap|payload-limits> <socket> ...");
+                    "usage: <submit|submit-type|submit-config|status|collect|inspect|engine-ids|assert-engine-descriptor|cancel|cancel-work|framing-mismatch|protocol-version-mismatch|protocol-overlap|payload-limits> <socket> ...");
         }
         LocalKernelClient client = new LocalKernelClient(Path.of(args[1]));
         switch (args[0]) {
@@ -34,6 +36,7 @@ public final class KernelClientProcess {
             case "collect" -> collect(client, args);
             case "inspect" -> inspect(client);
             case "engine-ids" -> engineIds(client);
+            case "assert-engine-descriptor" -> assertEngineDescriptor(client, args);
             case "cancel" -> cancel(client, args);
             case "cancel-work" -> cancelWork(client, args);
             case "framing-mismatch" -> framingMismatch(Path.of(args[1]));
@@ -143,17 +146,29 @@ public final class KernelClientProcess {
         EngineDescriptor vision = engines.get(2);
         if (!standard.supportedEfforts().equals(Set.of(Effort.STANDARD)) ||
                 !standard.modelIds().contains("standard-v1") ||
-                standard.supportedCapabilities().contains("structured-output")) {
+                standard.supportedCapabilities().contains("structured-output") ||
+                standard.requiredCpuSlots() != 1 ||
+                standard.requiredRamBytes() != 64L * MIB ||
+                standard.requiredGpuId().isPresent() ||
+                standard.requiredGpuVramBytes() != 0L) {
             throw new AssertionError("fake-standard descriptor is not factual/distinct: " + standard);
         }
         if (!capable.supportedEfforts().containsAll(Set.of(Effort.STANDARD, Effort.HIGH)) ||
                 !capable.supportedCapabilities().contains("structured-output") ||
-                !capable.modelIds().contains("high-v1")) {
+                !capable.modelIds().contains("high-v1") ||
+                capable.requiredCpuSlots() != 1 ||
+                capable.requiredRamBytes() != 96L * MIB ||
+                !capable.requiredGpuId().equals(Optional.of("fake-gpu-0")) ||
+                capable.requiredGpuVramBytes() != 64L * MIB) {
             throw new AssertionError("fake-capable descriptor is not factual/distinct: " + capable);
         }
         if (!vision.supportedEfforts().equals(Set.of(Effort.HIGH)) ||
                 !vision.supportedCapabilities().contains("image-input") ||
-                !vision.modelIds().contains("vision-v1")) {
+                !vision.modelIds().contains("vision-v1") ||
+                vision.requiredCpuSlots() != 1 ||
+                vision.requiredRamBytes() != 96L * MIB ||
+                !vision.requiredGpuId().equals(Optional.of("fake-gpu-0")) ||
+                vision.requiredGpuVramBytes() != 96L * MIB) {
             throw new AssertionError("fake-vision descriptor is not factual/distinct: " + vision);
         }
         System.out.println("ENGINE_INVENTORY 3 factual LOCAL_WORKER_PROCESS descriptors");
@@ -163,6 +178,37 @@ public final class KernelClientProcess {
         System.out.println(String.join(",", client.engines().stream()
                 .map(EngineDescriptor::engineId)
                 .toList()));
+    }
+
+    private static void assertEngineDescriptor(LocalKernelClient client, String[] args) {
+        if (args.length != 8) {
+            throw new IllegalArgumentException(
+                    "assert-engine-descriptor requires engineId modelCsvOrDash cpuSlots ramBytes gpuIdOrDash gpuVramBytes");
+        }
+        String engineId = args[2];
+        EngineDescriptor listed = client.engines().stream()
+                .filter(engine -> engine.engineId().equals(engineId))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("engine missing from LIST_ENGINES: " + engineId));
+        EngineDescriptor status = client.engineStatus(engineId);
+        if (!status.equals(listed)) {
+            throw new AssertionError(
+                    "ENGINE_STATUS did not preserve LIST_ENGINES facts: listed=" +
+                            listed + " status=" + status);
+        }
+        Set<String> expectedModels = parseSet(args[3]);
+        int expectedCpu = Integer.parseInt(args[4]);
+        long expectedRam = Long.parseLong(args[5]);
+        Optional<String> expectedGpu = parseOptional(args[6]);
+        long expectedVram = Long.parseLong(args[7]);
+        if (!listed.modelIds().equals(expectedModels) ||
+                listed.requiredCpuSlots() != expectedCpu ||
+                listed.requiredRamBytes() != expectedRam ||
+                !listed.requiredGpuId().equals(expectedGpu) ||
+                listed.requiredGpuVramBytes() != expectedVram) {
+            throw new AssertionError("engine descriptor facts mismatch: " + listed);
+        }
+        System.out.println("ENGINE_DESCRIPTOR_FACTS " + engineId + " passed");
     }
 
     private static void framingMismatch(Path endpoint) throws Exception {
