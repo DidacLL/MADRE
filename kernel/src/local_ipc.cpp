@@ -33,6 +33,7 @@ struct LocalIpcServer::Impl {
 #else
     int lock_fd{-1};
     int server_fd{-1};
+    bool endpoint_owned{};
 #endif
 
     Impl(fs::path endpoint_value, fs::path data_dir)
@@ -106,6 +107,7 @@ struct LocalIpcServer::Impl {
                     "bind Unix-domain socket failed: " +
                     std::string(std::strerror(errno)));
             }
+            endpoint_owned = true;
             if (::chmod(endpoint.c_str(), S_IRUSR | S_IWUSR) != 0) {
                 throw std::runtime_error(
                     "set owner-only Unix-domain socket permissions failed: " +
@@ -140,9 +142,10 @@ struct LocalIpcServer::Impl {
             ::close(server_fd);
             server_fd = -1;
         }
-        if (!endpoint.empty()) {
+        if (endpoint_owned && !endpoint.empty()) {
             std::error_code error;
             fs::remove(endpoint, error);
+            endpoint_owned = false;
         }
         if (lock_fd >= 0) {
             ::close(lock_fd);

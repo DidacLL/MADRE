@@ -10,6 +10,7 @@ find_package(Threads REQUIRED)
 
 function(madre_target_warnings target)
     if(MSVC)
+        target_compile_definitions(${target} PRIVATE NOMINMAX _CRT_SECURE_NO_WARNINGS)
         target_compile_options(${target} PRIVATE /W4 /WX /permissive-)
     else()
         target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic -Werror)
