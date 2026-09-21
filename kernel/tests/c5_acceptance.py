@@ -51,19 +51,25 @@ def db_connect(state_dir):
 
 
 def work_row(state_dir, work_id):
-    with db_connect(state_dir) as con:
+    con = db_connect(state_dir)
+    try:
         return con.execute(
             "SELECT * FROM work WHERE id=?", (work_id,)
         ).fetchone()
+    finally:
+        con.close()
 
 
 def attempts(state_dir, work_id):
-    with db_connect(state_dir) as con:
+    con = db_connect(state_dir)
+    try:
         return con.execute(
             "SELECT attempt_number,engine_id,model_id,state,technical_failure "
             "FROM attempts WHERE work_id=? ORDER BY attempt_number",
             (work_id,),
         ).fetchall()
+    finally:
+        con.close()
 
 
 def wait_until(predicate, description, timeout=10):
@@ -354,7 +360,7 @@ def test_background_reconnect_selection_and_ipc():
                 )
             assert_no_tcp(proc.pid, "Kernel")
 
-            eligible_at = int(time.time() * 1000) + 900
+            eligible_at = int(time.time() * 1000) + 6000
             work_id = submit(
                 endpoint,
                 "future-background",
