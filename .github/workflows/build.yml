@@ -52,7 +52,7 @@ jobs:
       - name: Build optional native llama.cpp worker
         run: |
           cmake -S kernel -B kernel/build-c4 -DCMAKE_BUILD_TYPE=Release -DMADRE_BUILD_LLAMACPP_WORKER=ON -DMADRE_LLAMA_CPP_DIR=/tmp/llama.cpp
-          cmake --build kernel/build-c4 --parallel 2 --target madre-kernel madre-fake-worker madre-llamacpp-worker
+          cmake --build kernel/build-c4 --parallel 2 --target madre-kernel madre-llamacpp-worker
       - name: Prove C4 real native llama.cpp inference and supervision
         run: |
-          python3 ./kernel/tests/c4_acceptance.py ./kernel/build-c4/madre-kernel ./kernel/build-c4/madre-fake-worker ./kernel/build-c4/madre-llamacpp-worker ./kernel/test-models/SmolLM2-135M-Instruct-Q8_0.gguf 'madre-kernel-client/build/classes/java/main:madre-kernel-client/build/classes/java/test'
+          python3 ./kernel/tests/c4_acceptance.py ./kernel/build-c4/madre-kernel ./kernel/build-c4/madre-llamacpp-worker ./kernel/test-models/SmolLM2-135M-Instruct-Q8_0.gguf 'madre-kernel-client/build/classes/java/main:madre-kernel-client/build/classes/java/test'

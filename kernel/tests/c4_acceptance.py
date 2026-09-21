@@ -7,17 +7,16 @@ import tempfile
 import time
 from pathlib import Path
 
-if len(sys.argv) != 6:
+if len(sys.argv) != 5:
     raise SystemExit(
-        "usage: c4_acceptance.py <kernel> <fake-worker> <llamacpp-worker> "
+        "usage: c4_acceptance.py <kernel> <llamacpp-worker> "
         "<model.gguf> <java-classpath>"
     )
 
 KERNEL = str(Path(sys.argv[1]).resolve())
-FAKE_WORKER = str(Path(sys.argv[2]).resolve())
-LLAMA_WORKER = str(Path(sys.argv[3]).resolve())
-MODEL = str(Path(sys.argv[4]).resolve())
-CLASSPATH = sys.argv[5]
+LLAMA_WORKER = str(Path(sys.argv[2]).resolve())
+MODEL = str(Path(sys.argv[3]).resolve())
+CLASSPATH = sys.argv[4]
 JAVA_MAIN = "io.github.didacll.madre.kernel.client.KernelClientProcess"
 ENGINE_ID = "c4-local-smollm2"
 MODEL_ID = "smollm2-135m-instruct-q8_0"
@@ -40,7 +39,9 @@ def java(socket_path, *args, timeout=90):
     return result.stdout.strip()
 
 
-def submit(socket_path, payload, timeout="-"):
+def submit(socket_path, payload, timeout="-", exact_selection=True):
+    exact_engine = ENGINE_ID if exact_selection else "-"
+    exact_model = MODEL_ID if exact_selection else "-"
     return java(
         socket_path,
         "submit-config",
@@ -49,8 +50,8 @@ def submit(socket_path, payload, timeout="-"):
         "NORMAL",
         "-",
         "-",
-        ENGINE_ID,
-        MODEL_ID,
+        exact_engine,
+        exact_model,
         "-",
         "-",
         str(timeout),
@@ -143,8 +144,6 @@ def start_kernel(state_dir, idle_ms=800):
         KERNEL,
         "--data-dir", str(Path(state_dir) / "data"),
         "--endpoint", str(socket_path),
-        "--fake-worker", FAKE_WORKER,
-        "--fake-delay-ms", "50",
         "--worker-idle-ms", str(idle_ms),
         "--cpu-capacity", "2",
         "--ram-capacity-mib", "1024",
@@ -211,6 +210,14 @@ def main():
         proc, sock, log_path = start_kernel(state_dir)
         try:
             kernel_idle_rss = rss_kib(proc.pid)
+            engine_ids = java(sock, "engine-ids")
+            if engine_ids != ENGINE_ID:
+                raise AssertionError(
+                    "C4 Kernel inventory must contain only the configured real worker; "
+                    f"got {engine_ids!r}"
+                )
+            if "fake-" in engine_ids:
+                raise AssertionError(f"fake engine leaked into C4 inventory: {engine_ids!r}")
             if direct_children(proc, "madre-llamacpp-worker"):
                 raise AssertionError(
                     "llama.cpp worker exists before physical Work requires it"
@@ -246,7 +253,7 @@ def main():
                 "The capital of France is"
                 "<|im_end|>\n<|im_start|>assistant\n"
             )
-            succeeded = submit(sock, prompt)
+            succeeded = submit(sock, prompt, exact_selection=False)
             wait_state(state_dir, succeeded, "SUCCEEDED", 90)
             success_attempts = attempts(state_dir, succeeded)
             if (
@@ -333,6 +340,8 @@ def main():
                 10,
             )
 
+            print(f"C4_ENGINE_INVENTORY={engine_ids}")
+            print("C4_UNPINNED_DISPATCH=real configured worker selected without exact engine/model")
             print(f"C4_REAL_RESULT={result_text!r}")
             print(f"C4_KERNEL_IDLE_RSS_KIB={kernel_idle_rss}")
             print(f"C4_WORKER_LOADED_RSS_KIB={worker_loaded_rss}")

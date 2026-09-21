@@ -8,6 +8,8 @@ fi
 
 kernel_binary=$1
 classpath=$2
+fake_worker="$(dirname "$kernel_binary")/madre-fake-worker"
+[[ -x "$fake_worker" ]] || { echo "sibling madre-fake-worker is missing: $fake_worker" >&2; exit 1; }
 state_dir=$(mktemp -d)
 socket_path="$state_dir/kernel.sock"
 kernel_pid=""
@@ -21,7 +23,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-"$kernel_binary" --data-dir "$state_dir/data" --endpoint "$socket_path" --fake-delay-ms 500 >"$state_dir/kernel.log" 2>&1 &
+"$kernel_binary" --data-dir "$state_dir/data" --endpoint "$socket_path" --fake-worker "$fake_worker" --fake-delay-ms 500 >"$state_dir/kernel.log" 2>&1 &
 kernel_pid=$!
 
 for _ in $(seq 1 100); do
@@ -37,7 +39,7 @@ java -cp "$classpath" io.github.didacll.madre.kernel.client.KernelClientProcess 
 java -cp "$classpath" io.github.didacll.madre.kernel.client.KernelClientProcess payload-limits "$socket_path"
 
 # A second Kernel must fail before touching the live endpoint, and Kernel A must remain reachable.
-if "$kernel_binary" --data-dir "$state_dir/second-data" --endpoint "$socket_path" --fake-delay-ms 10 >"$state_dir/second-kernel.log" 2>&1; then
+if "$kernel_binary" --data-dir "$state_dir/second-data" --endpoint "$socket_path" --fake-worker "$fake_worker" --fake-delay-ms 10 >"$state_dir/second-kernel.log" 2>&1; then
   echo "second Kernel unexpectedly acquired live endpoint" >&2
   exit 1
 fi
@@ -84,7 +86,7 @@ wait "$kernel_pid" 2>/dev/null || true
 kernel_pid=""
 [[ -S "$socket_path" ]] || { echo "unclean Kernel death did not leave stale socket for recovery test" >&2; exit 1; }
 
-"$kernel_binary" --data-dir "$state_dir/data" --endpoint "$socket_path" --fake-delay-ms 50 >"$state_dir/restarted-kernel.log" 2>&1 &
+"$kernel_binary" --data-dir "$state_dir/data" --endpoint "$socket_path" --fake-worker "$fake_worker" --fake-delay-ms 50 >"$state_dir/restarted-kernel.log" 2>&1 &
 kernel_pid=$!
 recovered=0
 for _ in $(seq 1 100); do

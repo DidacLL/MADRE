@@ -11,6 +11,9 @@ if len(sys.argv) != 3:
     raise SystemExit("usage: c2_acceptance.py <kernel-binary> <java-classpath>")
 
 KERNEL = str(Path(sys.argv[1]).resolve())
+FAKE_WORKER = str(Path(KERNEL).with_name("madre-fake-worker"))
+if not Path(FAKE_WORKER).is_file():
+    raise SystemExit(f"sibling madre-fake-worker is missing: {FAKE_WORKER}")
 CLASSPATH = sys.argv[2]
 JAVA_MAIN = "io.github.didacll.madre.kernel.client.KernelClientProcess"
 
@@ -107,7 +110,7 @@ def start_kernel(state_dir, delay_ms):
     log = open(Path(state_dir) / f"kernel-{time.time_ns()}.log", "w", encoding="utf-8")
     proc = subprocess.Popen(
         [KERNEL, "--data-dir", str(Path(state_dir) / "data"), "--endpoint", str(socket_path),
-         "--fake-delay-ms", str(delay_ms)],
+         "--fake-worker", FAKE_WORKER, "--fake-delay-ms", str(delay_ms)],
         stdout=log,
         stderr=subprocess.STDOUT,
         text=True,

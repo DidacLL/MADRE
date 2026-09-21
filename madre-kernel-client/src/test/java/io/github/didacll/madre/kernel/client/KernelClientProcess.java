@@ -23,7 +23,7 @@ public final class KernelClientProcess {
     public static void main(String[] args) throws Exception {
         if (args.length < 2) {
             throw new IllegalArgumentException(
-                    "usage: <submit|submit-type|submit-config|status|collect|inspect|cancel|cancel-work|framing-mismatch|protocol-version-mismatch|protocol-overlap|payload-limits> <socket> ...");
+                    "usage: <submit|submit-type|submit-config|status|collect|inspect|engine-ids|cancel|cancel-work|framing-mismatch|protocol-version-mismatch|protocol-overlap|payload-limits> <socket> ...");
         }
         LocalKernelClient client = new LocalKernelClient(Path.of(args[1]));
         switch (args[0]) {
@@ -33,6 +33,7 @@ public final class KernelClientProcess {
             case "status" -> status(client, args);
             case "collect" -> collect(client, args);
             case "inspect" -> inspect(client);
+            case "engine-ids" -> engineIds(client);
             case "cancel" -> cancel(client, args);
             case "cancel-work" -> cancelWork(client, args);
             case "framing-mismatch" -> framingMismatch(Path.of(args[1]));
@@ -156,6 +157,12 @@ public final class KernelClientProcess {
             throw new AssertionError("fake-vision descriptor is not factual/distinct: " + vision);
         }
         System.out.println("ENGINE_INVENTORY 3 factual LOCAL_WORKER_PROCESS descriptors");
+    }
+
+    private static void engineIds(LocalKernelClient client) {
+        System.out.println(String.join(",", client.engines().stream()
+                .map(EngineDescriptor::engineId)
+                .toList()));
     }
 
     private static void framingMismatch(Path endpoint) throws Exception {

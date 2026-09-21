@@ -210,7 +210,7 @@ struct EngineDescriptorFacts {
     ResourceRequirement resources;
 };
 
-const std::vector<EngineDescriptorFacts>& default_engine_inventory() {
+const std::vector<EngineDescriptorFacts>& fake_engine_inventory() {
     static const std::vector<EngineDescriptorFacts> inventory{
         {"fake-standard",
          {"text-generation/v1"},
@@ -865,7 +865,10 @@ bool has_configured_worker(const Options& options) {
 }
 
 std::vector<EngineDescriptorFacts> build_engine_inventory(const Options& options) {
-    auto inventory = default_engine_inventory();
+    std::vector<EngineDescriptorFacts> inventory;
+    if (!options.fake_worker.empty()) {
+        inventory = fake_engine_inventory();
+    }
     if (!has_configured_worker(options)) {
         return inventory;
     }
@@ -893,14 +896,16 @@ std::vector<EngineDescriptorFacts> build_engine_inventory(const Options& options
 
 WorkerLaunchTable build_worker_launches(const Options& options) {
     WorkerLaunchTable launches;
-    const auto delay = std::to_string(options.fake_delay_ms);
-    for (const auto& engine : default_engine_inventory()) {
-        launches.emplace(
-            engine.id,
-            WorkerLaunchSpec{
-                options.fake_worker,
-                {"--engine-id", engine.id, "--delay-ms", delay},
-            });
+    if (!options.fake_worker.empty()) {
+        const auto delay = std::to_string(options.fake_delay_ms);
+        for (const auto& engine : fake_engine_inventory()) {
+            launches.emplace(
+                engine.id,
+                WorkerLaunchSpec{
+                    options.fake_worker,
+                    {"--engine-id", engine.id, "--delay-ms", delay},
+                });
+        }
     }
     if (has_configured_worker(options)) {
         launches.emplace(
@@ -912,11 +917,6 @@ WorkerLaunchTable build_worker_launches(const Options& options) {
 
 Options parse_options(int argc, char** argv) {
     Options options;
-    std::error_code absolute_error;
-    const auto kernel_path = fs::absolute(fs::path(argv[0]), absolute_error);
-    options.fake_worker = absolute_error
-        ? fs::path("madre-fake-worker")
-        : kernel_path.parent_path() / "madre-fake-worker";
 
     for (int i = 1; i < argc; ++i) {
         const std::string argument = argv[i];
@@ -974,8 +974,8 @@ Options parse_options(int argc, char** argv) {
 
     const bool configured = has_configured_worker(options);
     if (options.data_dir.empty() || options.endpoint.empty() ||
-        options.fake_worker.empty() || options.fake_delay_ms < 0 ||
-        options.worker_idle_ms < 0 || options.capacity.cpu_slots < 1 ||
+        options.fake_delay_ms < 0 || options.worker_idle_ms < 0 ||
+        options.capacity.cpu_slots < 1 ||
         options.capacity.ram_bytes == 0) {
         throw std::runtime_error("invalid Kernel C4 process/resource configuration");
     }
