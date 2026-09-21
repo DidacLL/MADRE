@@ -1,3 +1,4 @@
+#include "local_ipc.hpp"
 #include "protocol.hpp"
 #include "store.hpp"
 #include "worker_runtime.hpp"
@@ -12,26 +13,23 @@
 #include <cstring>
 #include <filesystem>
 #include <future>
-#include <fcntl.h>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <mutex>
 #include <limits>
 #include <optional>
-#include <poll.h>
 #include <random>
 #include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
-#include <sys/file.h>
-#include <sys/socket.h>
-#include <sys/stat.h>
-#include <sys/un.h>
 #include <thread>
-#include <unistd.h>
 #include <vector>
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 namespace fs = std::filesystem;
 using namespace std::chrono_literals;
@@ -43,6 +41,17 @@ std::atomic_bool g_stop{false};
 void on_signal(int) {
     g_stop.store(true);
 }
+
+#ifdef _WIN32
+BOOL WINAPI on_console_control(DWORD event) {
+    if (event == CTRL_C_EVENT || event == CTRL_BREAK_EVENT ||
+        event == CTRL_CLOSE_EVENT || event == CTRL_SHUTDOWN_EVENT) {
+        g_stop.store(true);
+        return TRUE;
+    }
+    return FALSE;
+}
+#endif
 
 std::int64_t now_ms() {
     return std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -119,45 +128,6 @@ Frame error_response(const Frame& request, std::string code, std::string message
     out.metadata.emplace("message", std::move(message));
     return out;
 }
-
-class EndpointLock {
-public:
-    explicit EndpointLock(const fs::path& endpoint) {
-        lock_path_ = endpoint;
-        lock_path_ += ".lock";
-        if (!lock_path_.parent_path().empty()) {
-            fs::create_directories(lock_path_.parent_path());
-        }
-        fd_ = ::open(lock_path_.c_str(), O_CREAT | O_RDWR | O_CLOEXEC, S_IRUSR | S_IWUSR);
-        if (fd_ < 0) {
-            throw std::runtime_error("open Kernel endpoint lock failed: " +
-                                     std::string(std::strerror(errno)));
-        }
-        if (::flock(fd_, LOCK_EX | LOCK_NB) != 0) {
-            const int lock_error = errno;
-            ::close(fd_);
-            fd_ = -1;
-            if (lock_error == EWOULDBLOCK || lock_error == EAGAIN) {
-                throw std::runtime_error("Kernel endpoint lock is already held");
-            }
-            throw std::runtime_error("acquire Kernel endpoint lock failed: " +
-                                     std::string(std::strerror(lock_error)));
-        }
-    }
-
-    EndpointLock(const EndpointLock&) = delete;
-    EndpointLock& operator=(const EndpointLock&) = delete;
-
-    ~EndpointLock() {
-        if (fd_ >= 0) {
-            ::close(fd_);
-        }
-    }
-
-private:
-    fs::path lock_path_;
-    int fd_{-1};
-};
 
 std::vector<std::string> split_csv(std::string_view csv) {
     std::vector<std::string> values;
@@ -385,7 +355,7 @@ public:
            std::int64_t worker_idle_ms, ResourceCapacity capacity)
         : data_dir_(std::move(data_dir)),
           endpoint_(std::move(endpoint)),
-          endpoint_lock_(endpoint_),
+          local_ipc_(endpoint_, data_dir_),
           store_(data_dir_ / "kernel.db"),
           engine_inventory_(std::move(engine_inventory)),
           resources_(std::move(capacity)),
@@ -397,72 +367,31 @@ public:
     ~Kernel() {
         stop_.store(true);
         wake_.notify_all();
-        worker_pool_.shutdown();
         if (scheduler_.joinable()) {
             scheduler_.join();
         }
-        attempt_tasks_.clear();
-        if (server_fd_ >= 0) {
-            ::close(server_fd_);
+        for (auto& task : attempt_tasks_) {
+            if (task.valid()) {
+                task.wait();
+            }
         }
-        std::error_code error;
-        fs::remove(endpoint_, error);
+        attempt_tasks_.clear();
+        worker_pool_.shutdown();
     }
 
     void run() {
-        open_server();
         start_scheduler();
         while (!g_stop.load() && !stop_.load()) {
-            pollfd ready{server_fd_, POLLIN, 0};
-            const int poll_result = ::poll(&ready, 1, 100);
-            if (poll_result < 0) {
-                if (errno == EINTR) {
-                    continue;
-                }
-                throw std::runtime_error("poll local IPC socket failed: " + std::string(std::strerror(errno)));
-            }
-            if (poll_result == 0) {
+            const int fd = local_ipc_.accept_for(100ms);
+            if (fd < 0) {
                 continue;
             }
-            const int fd = ::accept4(server_fd_, nullptr, nullptr, SOCK_CLOEXEC);
-            if (fd < 0) {
-                if (errno == EINTR) {
-                    continue;
-                }
-                throw std::runtime_error("accept local IPC client failed: " + std::string(std::strerror(errno)));
-            }
             serve_connection(fd);
-            ::close(fd);
+            close_local_ipc(fd);
         }
     }
 
 private:
-    void open_server() {
-        if (endpoint_.string().size() >= sizeof(sockaddr_un::sun_path)) {
-            throw std::runtime_error("Unix-domain socket path is too long");
-        }
-        fs::create_directories(endpoint_.parent_path());
-        std::error_code error;
-        fs::remove(endpoint_, error);
-
-        server_fd_ = ::socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
-        if (server_fd_ < 0) {
-            throw std::runtime_error("create Unix-domain socket failed");
-        }
-        sockaddr_un address{};
-        address.sun_family = AF_UNIX;
-        std::snprintf(address.sun_path, sizeof(address.sun_path), "%s", endpoint_.c_str());
-        if (::bind(server_fd_, reinterpret_cast<sockaddr*>(&address), sizeof(address)) != 0) {
-            throw std::runtime_error("bind Unix-domain socket failed: " + std::string(std::strerror(errno)));
-        }
-        if (::chmod(endpoint_.c_str(), S_IRUSR | S_IWUSR) != 0) {
-            throw std::runtime_error("set owner-only Unix-domain socket permissions failed");
-        }
-        if (::listen(server_fd_, 16) != 0) {
-            throw std::runtime_error("listen on Unix-domain socket failed");
-        }
-    }
-
     void start_scheduler() {
         scheduler_ = std::thread([this] { scheduler_loop(); });
     }
@@ -824,12 +753,11 @@ private:
 
     fs::path data_dir_;
     fs::path endpoint_;
-    EndpointLock endpoint_lock_;
+    LocalIpcServer local_ipc_;
     WorkStore store_;
     std::vector<EngineDescriptorFacts> engine_inventory_;
     ResourceManager resources_;
     WorkerPool worker_pool_;
-    int server_fd_{-1};
     std::atomic_bool stop_{false};
     std::atomic<std::uint64_t> next_worker_correlation_{1};
     std::thread scheduler_;
@@ -844,7 +772,7 @@ struct Options {
     fs::path fake_worker;
     int fake_delay_ms{250};
     std::int64_t worker_idle_ms{1000};
-    ResourceCapacity capacity{2, 512 * kMiB, {{"fake-gpu-0", 256 * kMiB}}};
+    ResourceCapacity capacity{2, 512 * kMiB, {}};
 
     std::string worker_engine_id;
     fs::path worker_executable;
@@ -858,6 +786,20 @@ struct Options {
     std::string worker_gpu_id;
     std::uint64_t worker_gpu_vram_bytes{};
 };
+
+void add_gpu_capacity(ResourceCapacity& capacity, const std::string& specification) {
+    const auto equals = specification.find('=');
+    if (equals == std::string::npos || equals == 0 ||
+        equals + 1 >= specification.size()) {
+        throw std::runtime_error("GPU capacity must use ID=MiB");
+    }
+    const auto id = specification.substr(0, equals);
+    const auto mib = std::stoull(specification.substr(equals + 1));
+    if (mib == 0 || !capacity.gpu_vram_bytes.emplace(id, mib * kMiB).second) {
+        throw std::runtime_error(
+            "GPU capacity identity must be unique and positive");
+    }
+}
 
 bool has_configured_worker(const Options& options) {
     return !options.worker_engine_id.empty() || !options.worker_executable.empty() ||
@@ -934,9 +876,8 @@ Options parse_options(int argc, char** argv) {
             options.capacity.cpu_slots = std::stoi(argv[++i]);
         } else if (argument == "--ram-capacity-mib" && i + 1 < argc) {
             options.capacity.ram_bytes = std::stoull(argv[++i]) * kMiB;
-        } else if (argument == "--gpu-vram-mib" && i + 1 < argc) {
-            options.capacity.gpu_vram_bytes["fake-gpu-0"] =
-                std::stoull(argv[++i]) * kMiB;
+        } else if (argument == "--gpu-capacity" && i + 1 < argc) {
+            add_gpu_capacity(options.capacity, argv[++i]);
         } else if (argument == "--worker-engine-id" && i + 1 < argc) {
             options.worker_engine_id = argv[++i];
         } else if (argument == "--worker-executable" && i + 1 < argc) {
@@ -961,9 +902,10 @@ Options parse_options(int argc, char** argv) {
             options.worker_gpu_vram_bytes = std::stoull(argv[++i]) * kMiB;
         } else {
             throw std::runtime_error(
-                "usage: madre-kernel --data-dir <path> --endpoint <unix-socket> "
+                "usage: madre-kernel --data-dir <path> --endpoint <local-endpoint> "
                 "[--fake-worker <path>] [--fake-delay-ms N] [--worker-idle-ms N] "
-                "[--cpu-capacity N] [--ram-capacity-mib N] [--gpu-vram-mib N] "
+                "[--cpu-capacity N] [--ram-capacity-mib N] "
+                "[--gpu-capacity ID=MiB]... "
                 "[--worker-engine-id ID --worker-executable PATH --worker-model-id ID "
                 "[--worker-arg ARG]... [--worker-work-types CSV] "
                 "[--worker-capabilities CSV] [--worker-efforts CSV] "
@@ -977,7 +919,7 @@ Options parse_options(int argc, char** argv) {
         options.fake_delay_ms < 0 || options.worker_idle_ms < 0 ||
         options.capacity.cpu_slots < 1 ||
         options.capacity.ram_bytes == 0) {
-        throw std::runtime_error("invalid Kernel C4 process/resource configuration");
+        throw std::runtime_error("invalid Kernel physical process/resource configuration");
     }
     if (configured &&
         (options.worker_engine_id.empty() || options.worker_executable.empty() ||
@@ -1002,7 +944,11 @@ int main(int argc, char** argv) {
     try {
         std::signal(SIGINT, madre::kernel::on_signal);
         std::signal(SIGTERM, madre::kernel::on_signal);
+#ifdef _WIN32
+        ::SetConsoleCtrlHandler(madre::kernel::on_console_control, TRUE);
+#else
         std::signal(SIGPIPE, SIG_IGN);
+#endif
         const auto options = madre::kernel::parse_options(argc, argv);
         madre::kernel::Kernel kernel(
             options.data_dir,

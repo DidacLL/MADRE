@@ -3,11 +3,17 @@
 #include <algorithm>
 #include <array>
 #include <cerrno>
+#include <climits>
 #include <cstring>
-#include <fcntl.h>
 #include <stdexcept>
 #include <string_view>
+
+#ifdef _WIN32
+#include <io.h>
+#include <windows.h>
+#else
 #include <unistd.h>
+#endif
 
 namespace madre::kernel {
 namespace {
@@ -19,15 +25,25 @@ void read_exact(int fd, void* data, std::size_t size) {
     auto* out = static_cast<std::uint8_t*>(data);
     std::size_t done = 0;
     while (done < size) {
+#ifdef _WIN32
+        const auto amount = static_cast<unsigned int>(
+            std::min<std::size_t>(
+                size - done, static_cast<std::size_t>(INT_MAX)));
+        const int n = ::_read(fd, out + done, amount);
+#else
         const auto n = ::read(fd, out + done, size - done);
+#endif
         if (n == 0) {
             throw std::runtime_error("peer closed framed IPC");
         }
         if (n < 0) {
+#ifndef _WIN32
             if (errno == EINTR) {
                 continue;
             }
-            throw std::runtime_error(std::string("IPC read failed: ") + std::strerror(errno));
+#endif
+            throw std::runtime_error(
+                std::string("IPC read failed: ") + std::strerror(errno));
         }
         done += static_cast<std::size_t>(n);
     }
@@ -37,12 +53,25 @@ void write_exact(int fd, const void* data, std::size_t size) {
     const auto* in = static_cast<const std::uint8_t*>(data);
     std::size_t done = 0;
     while (done < size) {
+#ifdef _WIN32
+        const auto amount = static_cast<unsigned int>(
+            std::min<std::size_t>(
+                size - done, static_cast<std::size_t>(INT_MAX)));
+        const int n = ::_write(fd, in + done, amount);
+#else
         const auto n = ::write(fd, in + done, size - done);
+#endif
         if (n < 0) {
+#ifndef _WIN32
             if (errno == EINTR) {
                 continue;
             }
-            throw std::runtime_error(std::string("IPC write failed: ") + std::strerror(errno));
+#endif
+            throw std::runtime_error(
+                std::string("IPC write failed: ") + std::strerror(errno));
+        }
+        if (n == 0) {
+            throw std::runtime_error("IPC write made no progress");
         }
         done += static_cast<std::size_t>(n);
     }
@@ -130,13 +159,50 @@ std::optional<Frame> IncrementalFrameReader::read_available(int fd) {
     while (read_this_turn < kReadBudget) {
         const auto remaining_budget = kReadBudget - read_this_turn;
         const auto requested = std::min(chunk.size(), remaining_budget);
+#ifdef _WIN32
+        const auto native_handle = reinterpret_cast<HANDLE>(::_get_osfhandle(fd));
+        if (native_handle == INVALID_HANDLE_VALUE) {
+            throw std::runtime_error("worker IPC descriptor is invalid");
+        }
+        DWORD available = 0;
+        if (!::PeekNamedPipe(
+                native_handle, nullptr, 0, nullptr, &available, nullptr)) {
+            const auto error = ::GetLastError();
+            if (error == ERROR_BROKEN_PIPE) {
+                if (buffer_.empty()) {
+                    throw std::runtime_error("peer closed framed IPC");
+                }
+                throw FramingError(
+                    "peer closed during partial framed IPC");
+            }
+            throw std::runtime_error(
+                "worker IPC peek failed: Windows error " +
+                std::to_string(error));
+        }
+        if (available == 0) {
+            break;
+        }
+        const auto amount = static_cast<unsigned int>(
+            std::min<std::size_t>(
+                requested,
+                std::min<std::size_t>(
+                    static_cast<std::size_t>(available),
+                    static_cast<std::size_t>(INT_MAX))));
+        const int n = ::_read(fd, chunk.data(), amount);
+#else
         const auto n = ::read(fd, chunk.data(), requested);
+#endif
         if (n > 0) {
             const auto received = static_cast<std::size_t>(n);
-            if (received > kMaxBufferedFrame - std::min(buffer_.size(), kMaxBufferedFrame)) {
-                throw FramingError("worker frame exceeds bounded incremental buffer");
+            if (received >
+                kMaxBufferedFrame -
+                    std::min(buffer_.size(), kMaxBufferedFrame)) {
+                throw FramingError(
+                    "worker frame exceeds bounded incremental buffer");
             }
-            buffer_.insert(buffer_.end(), chunk.begin(), chunk.begin() + n);
+            buffer_.insert(
+                buffer_.end(), chunk.begin(),
+                chunk.begin() + static_cast<std::ptrdiff_t>(n));
             read_this_turn += received;
             continue;
         }
@@ -146,13 +212,16 @@ std::optional<Frame> IncrementalFrameReader::read_available(int fd) {
             }
             throw FramingError("peer closed during partial framed IPC");
         }
+#ifndef _WIN32
         if (errno == EINTR) {
             continue;
         }
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
             break;
         }
-        throw std::runtime_error(std::string("IPC read failed: ") + std::strerror(errno));
+#endif
+        throw std::runtime_error(
+            std::string("IPC read failed: ") + std::strerror(errno));
     }
 
     if (buffer_.size() < kHeaderSize) {
