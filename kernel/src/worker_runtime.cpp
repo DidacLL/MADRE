@@ -183,7 +183,7 @@ void ResourceManager::release(const ResourceRequirement& requirement) noexcept {
 }
 
 struct WorkerPool::WorkerProcess {
-    WorkerProcess(std::filesystem::path executable, std::string engine_id, int fake_delay_ms)
+    WorkerProcess(const WorkerLaunchSpec& launch, std::string engine_id)
         : engine_id(std::move(engine_id)) {
         int parent_to_child[2]{-1, -1};
         int child_to_parent[2]{-1, -1};
@@ -236,20 +236,22 @@ struct WorkerPool::WorkerProcess {
         add_action(::posix_spawn_file_actions_addclose(&actions, child_to_parent[1]),
                    "close worker inherited stdout pipe");
 
-        const auto executable_string = executable.string();
-        const auto delay = std::to_string(fake_delay_ms);
-        char* argv[] = {
-            const_cast<char*>(executable_string.c_str()),
-            const_cast<char*>("--engine-id"),
-            this->engine_id.data(),
-            const_cast<char*>("--delay-ms"),
-            const_cast<char*>(delay.c_str()),
-            nullptr,
-        };
+        const auto executable_string = launch.executable.string();
+        std::vector<std::string> argument_storage;
+        argument_storage.reserve(launch.arguments.size() + 1);
+        argument_storage.push_back(executable_string);
+        argument_storage.insert(
+            argument_storage.end(), launch.arguments.begin(), launch.arguments.end());
+        std::vector<char*> argv;
+        argv.reserve(argument_storage.size() + 1);
+        for (auto& argument : argument_storage) {
+            argv.push_back(argument.data());
+        }
+        argv.push_back(nullptr);
 
         pid_t child = -1;
         rc = ::posix_spawn(
-            &child, executable_string.c_str(), &actions, nullptr, argv, environ);
+            &child, executable_string.c_str(), &actions, nullptr, argv.data(), environ);
         ::posix_spawn_file_actions_destroy(&actions);
         if (rc != 0) {
             ::close(parent_to_child[0]);
@@ -554,14 +556,18 @@ int WorkerPool::Lease::pid() const {
     return worker_ ? static_cast<int>(worker_->pid) : -1;
 }
 
-WorkerPool::WorkerPool(
-    std::filesystem::path executable, int fake_delay_ms, std::int64_t idle_timeout_ms)
-    : executable_(std::move(executable)),
-      fake_delay_ms_(fake_delay_ms),
+WorkerPool::WorkerPool(WorkerLaunchTable launch_specs, std::int64_t idle_timeout_ms)
+    : launch_specs_(std::move(launch_specs)),
       idle_timeout_ms_(idle_timeout_ms) {
     std::signal(SIGPIPE, SIG_IGN);
-    if (fake_delay_ms_ < 0 || idle_timeout_ms_ < 0) {
-        throw std::invalid_argument("worker delay and idle timeout must be nonnegative");
+    if (idle_timeout_ms_ < 0) {
+        throw std::invalid_argument("worker idle timeout must be nonnegative");
+    }
+    for (const auto& [engine_id, launch] : launch_specs_) {
+        if (engine_id.empty() || launch.executable.empty()) {
+            throw std::invalid_argument(
+                "worker launch configuration requires engine identity and executable");
+        }
     }
 }
 
@@ -584,7 +590,11 @@ WorkerPool::Lease WorkerPool::acquire(const std::string& engine_id) {
         ++it;
     }
 
-    auto worker = std::make_shared<WorkerProcess>(executable_, engine_id, fake_delay_ms_);
+    const auto launch = launch_specs_.find(engine_id);
+    if (launch == launch_specs_.end()) {
+        throw std::runtime_error("no worker launch configuration for engine " + engine_id);
+    }
+    auto worker = std::make_shared<WorkerProcess>(launch->second, engine_id);
     worker->busy = true;
     workers_.push_back(worker);
     return Lease(this, std::move(worker));

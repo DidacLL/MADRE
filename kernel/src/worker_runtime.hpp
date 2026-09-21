@@ -28,6 +28,13 @@ struct ResourceCapacity {
     std::map<std::string, std::uint64_t> gpu_vram_bytes;
 };
 
+struct WorkerLaunchSpec {
+    std::filesystem::path executable;
+    std::vector<std::string> arguments;
+};
+
+using WorkerLaunchTable = std::map<std::string, WorkerLaunchSpec>;
+
 class ResourceManager {
 public:
     class Lease {
@@ -112,7 +119,7 @@ public:
         std::shared_ptr<WorkerProcess> worker_;
     };
 
-    WorkerPool(std::filesystem::path executable, int fake_delay_ms, std::int64_t idle_timeout_ms);
+    WorkerPool(WorkerLaunchTable launch_specs, std::int64_t idle_timeout_ms);
     ~WorkerPool();
 
     WorkerPool(const WorkerPool&) = delete;
@@ -126,8 +133,7 @@ public:
 private:
     void release(const std::shared_ptr<WorkerProcess>& worker) noexcept;
 
-    std::filesystem::path executable_;
-    int fake_delay_ms_{};
+    WorkerLaunchTable launch_specs_;
     std::int64_t idle_timeout_ms_{};
     std::vector<std::shared_ptr<WorkerProcess>> workers_;
     std::mutex mutex_;

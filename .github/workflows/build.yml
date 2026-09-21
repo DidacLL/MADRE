@@ -3,7 +3,7 @@ name: MADRE Lane C validation
 on:
   pull_request:
   push:
-    branches: [main, 'agentic/c2-scheduling-recovery', 'agentic/c3-worker-resources']
+    branches: [main, 'agentic/c2-scheduling-recovery', 'agentic/c3-worker-resources', 'agentic/c4-llamacpp-worker']
   workflow_dispatch:
 
 permissions:
@@ -39,3 +39,20 @@ jobs:
         run: python3 ./kernel/tests/c2_acceptance.py ./kernel/build/madre-kernel 'madre-kernel-client/build/classes/java/main:madre-kernel-client/build/classes/java/test'
       - name: Prove C3 worker lifecycle and resource accounting
         run: python3 ./kernel/tests/c3_acceptance.py ./kernel/build/madre-kernel ./kernel/build/madre-fake-worker 'madre-kernel-client/build/classes/java/main:madre-kernel-client/build/classes/java/test'
+
+      - name: Checkout pinned llama.cpp for C4
+        run: |
+          git clone --filter=blob:none https://github.com/ggml-org/llama.cpp.git /tmp/llama.cpp
+          git -C /tmp/llama.cpp checkout 26394b4e6749a41c3633db040e0987500a5f7013
+      - name: Download pinned small C4 model
+        run: |
+          mkdir -p kernel/test-models
+          curl -L --fail --retry 3 -o kernel/test-models/SmolLM2-135M-Instruct-Q8_0.gguf 'https://huggingface.co/unsloth/SmolLM2-135M-Instruct-GGUF/resolve/main/SmolLM2-135M-Instruct-Q8_0.gguf?download=true'
+          echo 'c4a3dd037301b6ecea31d6da37f5cd793ead920dd5ddfe6d589294628d6ce66a  kernel/test-models/SmolLM2-135M-Instruct-Q8_0.gguf' | sha256sum -c -
+      - name: Build optional native llama.cpp worker
+        run: |
+          cmake -S kernel -B kernel/build-c4 -DCMAKE_BUILD_TYPE=Release -DMADRE_BUILD_LLAMACPP_WORKER=ON -DMADRE_LLAMA_CPP_DIR=/tmp/llama.cpp
+          cmake --build kernel/build-c4 --parallel 2 --target madre-kernel madre-fake-worker madre-llamacpp-worker
+      - name: Prove C4 real native llama.cpp inference and supervision
+        run: |
+          python3 ./kernel/tests/c4_acceptance.py ./kernel/build-c4/madre-kernel ./kernel/build-c4/madre-fake-worker ./kernel/build-c4/madre-llamacpp-worker ./kernel/test-models/SmolLM2-135M-Instruct-Q8_0.gguf 'madre-kernel-client/build/classes/java/main:madre-kernel-client/build/classes/java/test'

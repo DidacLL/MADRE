@@ -210,7 +210,7 @@ struct EngineDescriptorFacts {
     ResourceRequirement resources;
 };
 
-const std::vector<EngineDescriptorFacts>& engine_inventory() {
+const std::vector<EngineDescriptorFacts>& default_engine_inventory() {
     static const std::vector<EngineDescriptorFacts> inventory{
         {"fake-standard",
          {"text-generation/v1"},
@@ -263,9 +263,9 @@ struct SelectionResult {
     std::string failure;
 };
 
-SelectionResult select_engine(const WorkRecord& work) {
+SelectionResult select_engine(const WorkRecord& work, const std::vector<EngineDescriptorFacts>& inventory) {
     std::vector<const EngineDescriptorFacts*> candidates;
-    for (const auto& engine : engine_inventory()) {
+    for (const auto& engine : inventory) {
         candidates.push_back(&engine);
     }
 
@@ -379,14 +379,17 @@ void validate_urgency(std::string_view value) {
 
 class Kernel {
 public:
-    Kernel(fs::path data_dir, fs::path endpoint, fs::path fake_worker,
-           int fake_delay_ms, std::int64_t worker_idle_ms, ResourceCapacity capacity)
+    Kernel(fs::path data_dir, fs::path endpoint,
+           std::vector<EngineDescriptorFacts> engine_inventory,
+           WorkerLaunchTable worker_launches,
+           std::int64_t worker_idle_ms, ResourceCapacity capacity)
         : data_dir_(std::move(data_dir)),
           endpoint_(std::move(endpoint)),
           endpoint_lock_(endpoint_),
           store_(data_dir_ / "kernel.db"),
+          engine_inventory_(std::move(engine_inventory)),
           resources_(std::move(capacity)),
-          worker_pool_(std::move(fake_worker), fake_delay_ms, worker_idle_ms) {
+          worker_pool_(std::move(worker_launches), worker_idle_ms) {
         fs::create_directories(data_dir_ / "work");
         store_.recover_interrupted(now_ms());
     }
@@ -484,7 +487,7 @@ private:
                 continue;
             }
 
-            const auto selection = select_engine(*work);
+            const auto selection = select_engine(*work, engine_inventory_);
             if (!selection.selection) {
                 store_.fail_queued(work->id, selection.failure);
                 continue;
@@ -794,25 +797,24 @@ private:
 
     Frame list_engines(const Frame& request) {
         auto out = response(MessageType::ListEnginesResponse, request);
-        const auto& inventory = engine_inventory();
-        out.metadata["count"] = std::to_string(inventory.size());
-        for (std::size_t i = 0; i < inventory.size(); ++i) {
+        out.metadata["count"] = std::to_string(engine_inventory_.size());
+        for (std::size_t i = 0; i < engine_inventory_.size(); ++i) {
             add_engine_descriptor(
                 out,
                 "engine." + std::to_string(i) + ".",
-                inventory[i],
-                worker_pool_.is_warm(inventory[i].id));
+                engine_inventory_[i],
+                worker_pool_.is_warm(engine_inventory_[i].id));
         }
         return out;
     }
 
     Frame engine_status(const Frame& request) {
         const auto id = metadata_value(request, "engine_id");
-        const auto& inventory = engine_inventory();
-        const auto it = std::find_if(inventory.begin(), inventory.end(), [&](const auto& descriptor) {
-            return descriptor.id == id;
-        });
-        if (it == inventory.end()) {
+        const auto it = std::find_if(
+            engine_inventory_.begin(), engine_inventory_.end(), [&](const auto& descriptor) {
+                return descriptor.id == id;
+            });
+        if (it == engine_inventory_.end()) {
             return error_response(request, "ENGINE_NOT_FOUND", "unknown physical engine");
         }
         auto out = response(MessageType::EngineStatusResponse, request);
@@ -824,6 +826,7 @@ private:
     fs::path endpoint_;
     EndpointLock endpoint_lock_;
     WorkStore store_;
+    std::vector<EngineDescriptorFacts> engine_inventory_;
     ResourceManager resources_;
     WorkerPool worker_pool_;
     int server_fd_{-1};
@@ -842,7 +845,70 @@ struct Options {
     int fake_delay_ms{250};
     std::int64_t worker_idle_ms{1000};
     ResourceCapacity capacity{2, 512 * kMiB, {{"fake-gpu-0", 256 * kMiB}}};
+
+    std::string worker_engine_id;
+    fs::path worker_executable;
+    std::string worker_model_id;
+    std::vector<std::string> worker_arguments;
+    std::vector<std::string> worker_work_types{"text-generation/v1"};
+    std::vector<std::string> worker_capabilities{"basic-text"};
+    std::vector<std::string> worker_efforts{"STANDARD"};
+    int worker_cpu_slots{1};
+    std::uint64_t worker_ram_bytes{256 * kMiB};
+    std::string worker_gpu_id;
+    std::uint64_t worker_gpu_vram_bytes{};
 };
+
+bool has_configured_worker(const Options& options) {
+    return !options.worker_engine_id.empty() || !options.worker_executable.empty() ||
+           !options.worker_model_id.empty() || !options.worker_arguments.empty();
+}
+
+std::vector<EngineDescriptorFacts> build_engine_inventory(const Options& options) {
+    auto inventory = default_engine_inventory();
+    if (!has_configured_worker(options)) {
+        return inventory;
+    }
+    if (std::any_of(inventory.begin(), inventory.end(), [&](const auto& engine) {
+            return engine.id == options.worker_engine_id;
+        })) {
+        throw std::runtime_error(
+            "configured worker engine identity duplicates an existing engine");
+    }
+    inventory.push_back(EngineDescriptorFacts{
+        options.worker_engine_id,
+        options.worker_work_types,
+        options.worker_capabilities,
+        {options.worker_model_id},
+        options.worker_efforts,
+        "LOCAL_WORKER_PROCESS",
+        "AVAILABLE",
+        {options.worker_cpu_slots,
+         options.worker_ram_bytes,
+         options.worker_gpu_id,
+         options.worker_gpu_vram_bytes},
+    });
+    return inventory;
+}
+
+WorkerLaunchTable build_worker_launches(const Options& options) {
+    WorkerLaunchTable launches;
+    const auto delay = std::to_string(options.fake_delay_ms);
+    for (const auto& engine : default_engine_inventory()) {
+        launches.emplace(
+            engine.id,
+            WorkerLaunchSpec{
+                options.fake_worker,
+                {"--engine-id", engine.id, "--delay-ms", delay},
+            });
+    }
+    if (has_configured_worker(options)) {
+        launches.emplace(
+            options.worker_engine_id,
+            WorkerLaunchSpec{options.worker_executable, options.worker_arguments});
+    }
+    return launches;
+}
 
 Options parse_options(int argc, char** argv) {
     Options options;
@@ -869,18 +935,62 @@ Options parse_options(int argc, char** argv) {
         } else if (argument == "--ram-capacity-mib" && i + 1 < argc) {
             options.capacity.ram_bytes = std::stoull(argv[++i]) * kMiB;
         } else if (argument == "--gpu-vram-mib" && i + 1 < argc) {
-            options.capacity.gpu_vram_bytes["fake-gpu-0"] = std::stoull(argv[++i]) * kMiB;
+            options.capacity.gpu_vram_bytes["fake-gpu-0"] =
+                std::stoull(argv[++i]) * kMiB;
+        } else if (argument == "--worker-engine-id" && i + 1 < argc) {
+            options.worker_engine_id = argv[++i];
+        } else if (argument == "--worker-executable" && i + 1 < argc) {
+            options.worker_executable = argv[++i];
+        } else if (argument == "--worker-model-id" && i + 1 < argc) {
+            options.worker_model_id = argv[++i];
+        } else if (argument == "--worker-arg" && i + 1 < argc) {
+            options.worker_arguments.emplace_back(argv[++i]);
+        } else if (argument == "--worker-work-types" && i + 1 < argc) {
+            options.worker_work_types = split_csv(argv[++i]);
+        } else if (argument == "--worker-capabilities" && i + 1 < argc) {
+            options.worker_capabilities = split_csv(argv[++i]);
+        } else if (argument == "--worker-efforts" && i + 1 < argc) {
+            options.worker_efforts = split_csv(argv[++i]);
+        } else if (argument == "--worker-cpu-slots" && i + 1 < argc) {
+            options.worker_cpu_slots = std::stoi(argv[++i]);
+        } else if (argument == "--worker-ram-mib" && i + 1 < argc) {
+            options.worker_ram_bytes = std::stoull(argv[++i]) * kMiB;
+        } else if (argument == "--worker-gpu-id" && i + 1 < argc) {
+            options.worker_gpu_id = argv[++i];
+        } else if (argument == "--worker-gpu-vram-mib" && i + 1 < argc) {
+            options.worker_gpu_vram_bytes = std::stoull(argv[++i]) * kMiB;
         } else {
             throw std::runtime_error(
                 "usage: madre-kernel --data-dir <path> --endpoint <unix-socket> "
                 "[--fake-worker <path>] [--fake-delay-ms N] [--worker-idle-ms N] "
-                "[--cpu-capacity N] [--ram-capacity-mib N] [--gpu-vram-mib N]");
+                "[--cpu-capacity N] [--ram-capacity-mib N] [--gpu-vram-mib N] "
+                "[--worker-engine-id ID --worker-executable PATH --worker-model-id ID "
+                "[--worker-arg ARG]... [--worker-work-types CSV] "
+                "[--worker-capabilities CSV] [--worker-efforts CSV] "
+                "[--worker-cpu-slots N] [--worker-ram-mib N] "
+                "[--worker-gpu-id ID --worker-gpu-vram-mib N]]");
         }
     }
-    if (options.data_dir.empty() || options.endpoint.empty() || options.fake_worker.empty() ||
-        options.fake_delay_ms < 0 || options.worker_idle_ms < 0 ||
-        options.capacity.cpu_slots < 1 || options.capacity.ram_bytes == 0) {
-        throw std::runtime_error("invalid Kernel C3 process/resource configuration");
+
+    const bool configured = has_configured_worker(options);
+    if (options.data_dir.empty() || options.endpoint.empty() ||
+        options.fake_worker.empty() || options.fake_delay_ms < 0 ||
+        options.worker_idle_ms < 0 || options.capacity.cpu_slots < 1 ||
+        options.capacity.ram_bytes == 0) {
+        throw std::runtime_error("invalid Kernel C4 process/resource configuration");
+    }
+    if (configured &&
+        (options.worker_engine_id.empty() || options.worker_executable.empty() ||
+         options.worker_model_id.empty() || options.worker_work_types.empty() ||
+         options.worker_efforts.empty() || options.worker_cpu_slots < 1 ||
+         options.worker_ram_bytes == 0)) {
+        throw std::runtime_error(
+            "configured worker requires engine, executable, model and positive physical resources");
+    }
+    if (configured &&
+        (options.worker_gpu_id.empty() != (options.worker_gpu_vram_bytes == 0))) {
+        throw std::runtime_error(
+            "configured worker GPU identity and VRAM must be declared together");
     }
     return options;
 }
@@ -897,8 +1007,8 @@ int main(int argc, char** argv) {
         madre::kernel::Kernel kernel(
             options.data_dir,
             options.endpoint,
-            options.fake_worker,
-            options.fake_delay_ms,
+            madre::kernel::build_engine_inventory(options),
+            madre::kernel::build_worker_launches(options),
             options.worker_idle_ms,
             std::move(options.capacity));
         kernel.run();
