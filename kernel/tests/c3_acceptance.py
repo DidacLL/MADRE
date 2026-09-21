@@ -121,7 +121,8 @@ def child_pids(proc):
     return sorted(result)
 
 
-def start_kernel(state_dir, delay_ms=200, idle_ms=600, cpu=2, ram_mib=512, gpu_vram_mib=256):
+def start_kernel(state_dir, delay_ms=200, idle_ms=600, cpu=2, ram_mib=512, gpu_vram_mib=256,
+                 fake_worker=FAKE_WORKER):
     socket_path = Path(state_dir) / "kernel.sock"
     log_path = Path(state_dir) / f"kernel-{time.time_ns()}.log"
     log = open(log_path, "w", encoding="utf-8")
@@ -130,7 +131,7 @@ def start_kernel(state_dir, delay_ms=200, idle_ms=600, cpu=2, ram_mib=512, gpu_v
             KERNEL,
             "--data-dir", str(Path(state_dir) / "data"),
             "--endpoint", str(socket_path),
-            "--fake-worker", FAKE_WORKER,
+            "--fake-worker", str(fake_worker),
             "--fake-delay-ms", str(delay_ms),
             "--worker-idle-ms", str(idle_ms),
             "--cpu-capacity", str(cpu),
@@ -325,6 +326,60 @@ def test_permanent_capacity_and_spawn_descriptors(state_dir):
     print("C3 permanent capacity failure does not block fitting Work and spawned worker inherits no extra low descriptors")
 
 
+def make_nonreading_then_real_worker(state_dir, label):
+    wrapper = Path(state_dir) / f"madre-fake-worker-{label}.py"
+    marker = Path(state_dir) / f"{label}.first-worker"
+    wrapper.write_text(
+        "#!/usr/bin/env python3\n"
+        "import os, sys, time\n"
+        f"marker = {str(marker)!r}\n"
+        f"real_worker = {FAKE_WORKER!r}\n"
+        "try:\n"
+        "    fd = os.open(marker, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)\n"
+        "    os.close(fd)\n"
+        "    while True:\n"
+        "        time.sleep(3600)\n"
+        "except FileExistsError:\n"
+        "    os.execv(real_worker, [real_worker, *sys.argv[1:]])\n",
+        encoding="utf-8",
+    )
+    wrapper.chmod(0o700)
+    return wrapper
+
+
+def test_nonreading_worker_request_supervision(state_dir):
+    wrapper = make_nonreading_then_real_worker(state_dir, "timeout")
+    proc, sock = start_kernel(
+        state_dir,
+        delay_ms=80,
+        idle_ms=500,
+        cpu=1,
+        ram_mib=64,
+        fake_worker=wrapper,
+    )
+    try:
+        large_payload = "x" * 100_000
+        blocked = submit(
+            sock,
+            large_payload,
+            exact_engine="fake-standard",
+            timeout=300,
+        )
+        wait_state(state_dir, blocked, "FAILED", 4)
+        rows = assert_attempt_states(state_dir, blocked, ["TIMED_OUT"])
+        if not rows[0]["technical_failure"].startswith("ATTEMPT_TIMEOUT"):
+            raise AssertionError(f"non-reading worker timeout was not recorded factually: {dict(rows[0])}")
+        if proc.poll() is not None:
+            raise AssertionError("Kernel died while interrupting blocked worker request send")
+
+        followup = submit(sock, "after-blocked-send", exact_engine="fake-standard")
+        wait_state(state_dir, followup, "SUCCEEDED", 4)
+        assert_attempt_states(state_dir, followup, ["SUCCEEDED"])
+    finally:
+        stop_kernel(proc, state_dir)
+    print("C3 non-reading worker request send is timeout-supervised, killed and releases reservation")
+
+
 def test_worker_crash_retry(state_dir):
     proc, sock = start_kernel(state_dir, delay_ms=120, idle_ms=500, cpu=1, ram_mib=64)
     try:
@@ -418,6 +473,7 @@ def main():
         test_release_every_path,
         test_supervision_beyond_fake_delay_and_partial_frame,
         test_permanent_capacity_and_spawn_descriptors,
+        test_nonreading_worker_request_supervision,
         test_worker_crash_retry,
         test_resource_capacity_serialization,
     ]

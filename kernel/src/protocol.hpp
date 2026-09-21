@@ -63,6 +63,7 @@ private:
     std::vector<std::uint8_t> buffer_;
 };
 
+std::vector<std::uint8_t> encode_frame(const Frame& frame);
 Frame read_frame(int fd);
 void write_frame(int fd, const Frame& frame);
 std::string metadata_value(const Frame& frame, const std::string& key);

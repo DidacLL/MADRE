@@ -121,11 +121,23 @@ std::map<std::string, std::string> decode_metadata(std::string_view encoded) {
 }  // namespace
 
 std::optional<Frame> IncrementalFrameReader::read_available(int fd) {
+    constexpr std::size_t kReadBudget = 64U * 1024U;
+    constexpr std::size_t kMaxBufferedFrame =
+        kHeaderSize + static_cast<std::size_t>(kMaxMetadata) +
+        kMaxC1TextGenerationOpaquePayloadBytes;
     std::array<std::uint8_t, 8192> chunk{};
-    while (true) {
-        const auto n = ::read(fd, chunk.data(), chunk.size());
+    std::size_t read_this_turn = 0;
+    while (read_this_turn < kReadBudget) {
+        const auto remaining_budget = kReadBudget - read_this_turn;
+        const auto requested = std::min(chunk.size(), remaining_budget);
+        const auto n = ::read(fd, chunk.data(), requested);
         if (n > 0) {
+            const auto received = static_cast<std::size_t>(n);
+            if (received > kMaxBufferedFrame - std::min(buffer_.size(), kMaxBufferedFrame)) {
+                throw FramingError("worker frame exceeds bounded incremental buffer");
+            }
             buffer_.insert(buffer_.end(), chunk.begin(), chunk.begin() + n);
+            read_this_turn += received;
             continue;
         }
         if (n == 0) {
@@ -219,26 +231,33 @@ Frame read_frame(int fd) {
     return Frame{static_cast<MessageType>(type), correlation, decode_metadata(metadata), std::move(payload)};
 }
 
-void write_frame(int fd, const Frame& frame) {
+std::vector<std::uint8_t> encode_frame(const Frame& frame) {
     const auto metadata = encode_metadata(frame.metadata);
     if (metadata.size() > kMaxMetadata ||
         frame.payload.size() > kMaxC1TextGenerationOpaquePayloadBytes) {
         throw FramingError("frame exceeds C1 bounded text-generation/v1 framing limits");
     }
-    std::array<std::uint8_t, kHeaderSize> header{};
-    std::copy(kMagic.begin(), kMagic.end(), header.begin());
-    put_u16(header.data() + 4, kFramingVersion);
-    put_u16(header.data() + 6, static_cast<std::uint16_t>(frame.type));
-    put_u64(header.data() + 8, frame.correlation_id);
-    put_u32(header.data() + 16, static_cast<std::uint32_t>(metadata.size()));
-    put_u64(header.data() + 20, static_cast<std::uint64_t>(frame.payload.size()));
-    write_exact(fd, header.data(), header.size());
-    if (!metadata.empty()) {
-        write_exact(fd, metadata.data(), metadata.size());
-    }
-    if (!frame.payload.empty()) {
-        write_exact(fd, frame.payload.data(), frame.payload.size());
-    }
+
+    std::vector<std::uint8_t> encoded(
+        kHeaderSize + metadata.size() + frame.payload.size());
+    auto* header = encoded.data();
+    std::copy(kMagic.begin(), kMagic.end(), encoded.begin());
+    put_u16(header + 4, kFramingVersion);
+    put_u16(header + 6, static_cast<std::uint16_t>(frame.type));
+    put_u64(header + 8, frame.correlation_id);
+    put_u32(header + 16, static_cast<std::uint32_t>(metadata.size()));
+    put_u64(header + 20, static_cast<std::uint64_t>(frame.payload.size()));
+    std::copy(metadata.begin(), metadata.end(), encoded.begin() + kHeaderSize);
+    std::copy(
+        frame.payload.begin(),
+        frame.payload.end(),
+        encoded.begin() + static_cast<std::ptrdiff_t>(kHeaderSize + metadata.size()));
+    return encoded;
+}
+
+void write_frame(int fd, const Frame& frame) {
+    const auto encoded = encode_frame(frame);
+    write_exact(fd, encoded.data(), encoded.size());
 }
 
 std::string metadata_value(const Frame& frame, const std::string& key) {

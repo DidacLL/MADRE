@@ -265,6 +265,7 @@ struct WorkerPool::WorkerProcess {
         input_fd = parent_to_child[1];
         output_fd = child_to_parent[0];
         try {
+            set_nonblocking(input_fd);
             set_nonblocking(output_fd);
         } catch (...) {
             terminate();
@@ -334,18 +335,73 @@ struct WorkerPool::WorkerProcess {
             return {WorkerOutcomeKind::Crashed, {}, "WORKER_CRASH: " + exit_description()};
         }
 
+        std::vector<std::uint8_t> request_bytes;
         try {
-            Frame request{MessageType::WorkerExecute, correlation_id,
-                          {{"engine_id", engine_id},
-                           {"attempt_started_at_ms", std::to_string(attempt_started_at_ms)}},
-                          payload};
-            write_frame(input_fd, request);
+            request_bytes = encode_frame(Frame{
+                MessageType::WorkerExecute,
+                correlation_id,
+                {{"engine_id", engine_id},
+                 {"attempt_started_at_ms", std::to_string(attempt_started_at_ms)}},
+                payload,
+            });
         } catch (const std::exception& ex) {
+            terminate();
+            return {WorkerOutcomeKind::TechnicalFailure, {},
+                    std::string("WORKER_PROTOCOL_FAILURE: ") + ex.what()};
+        }
+
+        const auto timeout_outcome = [&]() -> WorkerOutcome {
+            terminate();
+            const std::string failure = timeout_wins
+                ? "ATTEMPT_TIMEOUT: per-attempt timeout expired"
+                : "DEADLINE_EXPIRED: Work deadline expired during attempt";
+            return {WorkerOutcomeKind::TimedOut, {}, failure};
+        };
+
+        std::size_t request_offset = 0;
+        while (request_offset < request_bytes.size()) {
+            if (kernel_stopping()) {
+                terminate();
+                return {WorkerOutcomeKind::Stopped, {}, {}};
+            }
+            if (cancellation_requested()) {
+                terminate();
+                return {WorkerOutcomeKind::Cancelled, {}, "cancelled"};
+            }
+            if (stop_at_ms && now_ms() >= *stop_at_ms) {
+                return timeout_outcome();
+            }
             if (!alive()) {
                 return {WorkerOutcomeKind::Crashed, {}, "WORKER_CRASH: " + exit_description()};
             }
-            terminate();
-            return {WorkerOutcomeKind::Crashed, {}, std::string("WORKER_IPC_FAILURE: ") + ex.what()};
+
+            const auto n = ::write(
+                input_fd,
+                request_bytes.data() + request_offset,
+                request_bytes.size() - request_offset);
+            if (n > 0) {
+                request_offset += static_cast<std::size_t>(n);
+                continue;
+            }
+            if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
+                if (!alive()) {
+                    return {WorkerOutcomeKind::Crashed, {},
+                            "WORKER_CRASH: " + exit_description()};
+                }
+                terminate();
+                return {WorkerOutcomeKind::Crashed, {},
+                        "WORKER_IPC_FAILURE: request write failed: " +
+                            std::string(std::strerror(errno))};
+            }
+
+            pollfd writable{input_fd, POLLOUT | POLLHUP | POLLERR, 0};
+            const int poll_result = ::poll(&writable, 1, 10);
+            if (poll_result < 0 && errno != EINTR) {
+                terminate();
+                return {WorkerOutcomeKind::Crashed, {},
+                        "WORKER_IPC_FAILURE: request poll failed: " +
+                            std::string(std::strerror(errno))};
+            }
         }
 
         const auto finish_response = [&](Frame response) -> WorkerOutcome {
@@ -421,11 +477,7 @@ struct WorkerPool::WorkerProcess {
                     return {WorkerOutcomeKind::TechnicalFailure, {},
                             std::string("WORKER_PROTOCOL_FAILURE: ") + ex.what()};
                 }
-                terminate();
-                const std::string failure = timeout_wins
-                    ? "ATTEMPT_TIMEOUT: per-attempt timeout expired"
-                    : "DEADLINE_EXPIRED: Work deadline expired during attempt";
-                return {WorkerOutcomeKind::TimedOut, {}, failure};
+                return timeout_outcome();
             }
 
             if (!alive()) {
