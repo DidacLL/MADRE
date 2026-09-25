@@ -10,13 +10,13 @@ The Owner keeps the application and software environment. Models/providers becom
 
 MADRE applications are independently installable **Modules** built against the public SDK.
 
-Modules own their application/domain semantics and may expose bounded Operations, optional Agents/Skills and meaningful Material/context. Internal implementation remains theirs; an existing software or agentic environment can be bound without being rewritten into one universal MADRE architecture.
+Modules own their application/domain semantics and may expose bounded Operations, optional Agents/Skills and meaningful Material/context. Internal implementation remains theirs; existing software can be bound without being rewritten into one universal MADRE architecture.
 
-The public SDK is intentionally part of the product, not a thin adapter. It is intended to be simple and explicit enough for human developers and, eventually, AI-assisted builders to generate ordinary owner-local Modules without hidden first-party hooks.
+An **Agent** is the semantic actor. An **Operation** is a bounded action. An agentless Module can expose Operations that another Agent invokes; cross-Module Operation use does not itself transfer the semantic continuation to another Agent.
 
-MADRE Runtime coordinates installed Modules and shared semantic reasoning facilities.
+The public SDK is part of the product, not a thin transport adapter. It is intended to be simple and explicit enough for human developers and eventually AI-assisted builders to generate ordinary owner-local Modules without hidden first-party hooks.
 
-The native Kernel is deliberately narrower: it owns durable **physical inference Work only** and remains blind to Module/Agent/Material/SPIRA semantics.
+MADRE Runtime supplies installation mechanics and shared semantic execution facilities. The native Kernel is deliberately narrower: it owns durable **physical inference Work only**.
 
 ## DRE
 
@@ -28,66 +28,77 @@ The goal is not to pretend small local models equal frontier models. The goal is
 
 ## SPIRA
 
-MADRE's Security Algebra is a concrete composition model, not a central authorization/policy service.
+MADRE's Security Algebra is intrinsic semantic composition, not a central authorization/policy service.
 
-Its values live on the contracts where they mean something:
+The direct facets are:
 
 ```text
-Material                          -> Sensitivity
-Operation accepted Material type -> Privacy
-Operation produced Material type -> maximum output Sensitivity
-Agent / actual causal participant -> Integrity
-actual effect realizer           -> Integrity when it participates
-selected Operation EffectProfile -> Risk + Autonomy
+Material/context representation       -> Sensitivity
+actual receiving/exposure boundary    -> Privacy
+actual Agent/provenance participant   -> Integrity
+actual selected Operation/effect      -> Risk
+current acting Agent continuation     -> Autonomy
 ```
 
 Integrity levels are:
 
-`NOT_DECLARED → DECLARED → TRUSTED → ACCEPTED → VALIDATED`
-
-An Operation owns its immutable `EffectProfile`s. A consequential invocation selects one exact profile; that profile supplies the Risk/Autonomy shape of that execution. Non-consequential Operations do not receive dummy effect values.
-
-SPIRA keeps three comparisons distinct:
-
 ```text
-information reach:
-max(S_actual_material) <= min(P_actual_receiving_path)
-
-machine control of a consequential effect:
-min(R_selected_profile, A_selected_profile) <= min(I_actual_non_user_controllers)
-
-effect realization:
-R_selected_profile <= min(I_actual_effect_realizers)
+NOT_DECLARED -> DECLARED -> TRUSTED -> ACCEPTED -> VALIDATED
 ```
 
-A `ReasoningRequest` accumulates only the actual Sensitivity, Privacy and Integrity constituents of its reasoning computation. It does not automatically inherit a surrounding effect's Risk/Autonomy.
+The same-facet reductions are `max(Sensitivity)`, `min(Privacy)` and `min(Integrity)`. Risk comes from the concrete Operation/effect actually being used. Autonomy comes from the current Agent continuation.
 
-There is no Agent-owned `Compound` manager. The algebraic compound exists because actual constituents compose; Agents react to the result.
+There is **no mandatory `EffectProfile`** and no Agent-owned `Compound` manager in the current architecture. The compound exists because actual constituents compose.
 
-See [`docs/architecture/security-algebra.md`](docs/architecture/security-algebra.md) for the complete operational contract.
+Where the current construction makes the relations relevant:
+
+```text
+max(S_actual_information) <= min(P_actual_receiving_boundaries)
+
+min(R_actual_operation, A_current_agent_continuation)
+    <= min(I_actual_non_user_causal_participants)
+
+R_actual_operation
+    <= min(I_actual_effect_realizers)
+```
+
+These are composition relations, not permission decisions. The Agent changes actual constituents when a construction does not compose; it does not rewrite algebra values.
+
+See [`docs/architecture/security-algebra.md`](docs/architecture/security-algebra.md) for the operational model.
+
+## Reasoning and the Kernel boundary
+
+A `ReasoningRequest` is semantic and is created by an Agent. It can involve context, Material, provenance, relevant SPIRA facts and the reasoning objective, but MADRE does not require it to become one generic SPIRA tuple.
+
+The SDK defines a bounded required function:
+
+```text
+ReasoningRequest + execution preferences/declarations
+    -> physical Work requirements
+```
+
+Runtime executes the configured implementation. The implementation belongs to a Module; shipped CORE provides the default; the Owner can wrap or replace it.
+
+Kernel receives only physical Work. It does not receive Module/Agent/Material/SPIRA semantics and does not derive Privacy or Integrity from physical engine/provider/locality facts.
 
 ## Modularity
 
-MADRE is designed to remain replaceable at every real boundary without turning every boundary into a speculative plugin framework.
+MADRE is intended to remain replaceable at every real boundary without turning every boundary into a speculative plugin framework.
 
-Examples:
+- Modules can be replaced or generated against the public SDK.
+- Runtime-required semantic Operations have selectable Module-owned implementations.
+- CORE provides defaults without monopolizing them.
+- the ReasoningRequest-to-Work translation can be wrapped/replaced for Owner experiments.
+- Kernel stays independent of the semantic SDK while physical routing/resource journeys remain adaptable.
+- engine/worker implementations are replaceable behind physical Kernel contracts.
 
-- Modules can be replaced or generated against the public SDK;
-- Runtime-required semantic Operations have selectable Module-owned implementations;
-- the shipped CORE Module provides default implementations but does not monopolize them;
-- the ReasoningRequest→physical Work translation can be wrapped/replaced for Owner experiments;
-- Kernel stays independent of the semantic SDK but its physical routing/resource journey remains adaptable enough for experiments such as learning-assisted routing;
-- engine/worker implementations remain replaceable behind physical Kernel contracts.
-
-The hard semantic/physical boundary remains hard even when implementations on either side are changed.
+The hard semantic/physical boundary remains hard even when implementations on either side change.
 
 ## Current repository state
 
-`main` represents the current MADRE direction rather than the discarded historical implementation.
-
 ### Implemented
 
-The accepted Lane C/native Kernel foundation is present:
+Current `main` contains the accepted Lane C/native Kernel foundation:
 
 - C++ native Kernel;
 - durable physical Work and restart recovery;
@@ -99,29 +110,22 @@ The accepted Lane C/native Kernel foundation is present:
 
 ### Not yet implemented
 
-The semantic SDK/Module layer and MADRE Runtime described by the accepted architecture are still missing from the active tree. Their architecture is documented; their implementation should be built cleanly rather than restored wholesale from discarded historical code.
-
-Historical semantic code remains evidence for recovering settled contracts. In particular, the current SPIRA architecture deliberately retains the previously established `EffectProfile`, Operation-bound Privacy/output Sensitivity and concrete ReasoningRequest composition model without restoring obsolete implementation topology.
+The semantic SDK/Module layer and MADRE Runtime described by the accepted architecture are still missing from the active tree. Their architecture is documented; their implementation must be built cleanly rather than restored wholesale from discarded historical code.
 
 ## Documentation
 
 Start here:
 
-- [`docs/product/owner-intent-corpus.md`](docs/product/owner-intent-corpus.md) — authoritative product reasoning and meanings;
-- [`MADRE.md`](MADRE.md) — concise cross-repository product definition and authority order;
-- [`docs/architecture/security-algebra.md`](docs/architecture/security-algebra.md) — operational SPIRA carriers, `EffectProfile`s and comparison points;
-- [`docs/architecture/mid-level-architecture.md`](docs/architecture/mid-level-architecture.md) — accepted whole-system architecture and interaction diagrams;
-- [`docs/architecture/kernel.md`](docs/architecture/kernel.md) — current physical Kernel architecture;
-- [`docs/architecture/lane-c-native-kernel.md`](docs/architecture/lane-c-native-kernel.md) — pointer to current Kernel architecture and archived original Lane C contract.
+- [`docs/product/owner-intent-corpus.md`](docs/product/owner-intent-corpus.md) — authoritative product reasoning;
+- [`MADRE.md`](MADRE.md) — concise repository definition and authority order;
+- [`docs/architecture/security-algebra.md`](docs/architecture/security-algebra.md) — operational SPIRA semantics;
+- [`docs/architecture/mid-level-architecture.md`](docs/architecture/mid-level-architecture.md) — accepted whole-system architecture and diagrams;
+- [`docs/architecture/kernel.md`](docs/architecture/kernel.md) — current physical Kernel architecture.
 
 ## Development principle
 
 MADRE is a one-Owner research/product project developed heavily with AI assistance.
 
-The target is:
-
 > **powerful SDK, simple implementation, fast experimentation, minimal ceremony**
 
-Do not infer missing MADRE semantics from industry convention, historical generated code or the fact that another AI platform uses a particular abstraction.
-
-Do not simplify established contracts by removing the ownership/application points that make them operational. MADRE aims for small explicit concepts, not vague abstractions.
+Do not infer missing MADRE semantics from industry convention or historical generated code. Do not simplify an established concept by deleting the concrete carrier, causal relation or boundary that gives it meaning.
