@@ -9,6 +9,7 @@ It remains valuable implementation evidence for the accepted native Kernel work,
 Use the current documents instead:
 
 - `docs/product/owner-intent-corpus.md` — product meaning and North Star;
+- `docs/architecture/security-algebra.md` — operational SPIRA carriers, EffectProfiles and comparison points;
 - `docs/architecture/mid-level-architecture.md` — accepted whole-system semantic/runtime/physical boundaries;
 - `docs/architecture/kernel.md` — current public Kernel architecture.
 
