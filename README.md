@@ -116,8 +116,9 @@ The semantic SDK/Module layer and MADRE Runtime described by the accepted archit
 
 Start here:
 
-- [`docs/product/owner-intent-corpus.md`](docs/product/owner-intent-corpus.md) — authoritative product reasoning;
-- [`MADRE.md`](MADRE.md) — concise repository definition and authority order;
+- [`NORTH_STAR.md`](NORTH_STAR.md) — short mandatory anti-drift recovery checkpoint; it does not replace the richer documents below;
+- [`docs/product/owner-intent-corpus.md`](docs/product/owner-intent-corpus.md) — authoritative detailed product reasoning and causal context;
+- [`MADRE.md`](MADRE.md) — detailed repository-level product/semantic overview and authority order;
 - [`docs/architecture/security-algebra.md`](docs/architecture/security-algebra.md) — operational SPIRA semantics;
 - [`docs/architecture/mid-level-architecture.md`](docs/architecture/mid-level-architecture.md) — accepted whole-system architecture and diagrams;
 - [`docs/architecture/kernel.md`](docs/architecture/kernel.md) — current physical Kernel architecture.
