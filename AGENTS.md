@@ -2,25 +2,30 @@
 
 MADRE is a single-Owner research/product project. Keep the active repository small, explicit, understandable and reversible.
 
-## Authority
+## Mandatory reading and authority
 
-Use this order:
+Before substantial MADRE work, read `NORTH_STAR.md` first and answer its eight questions in the context of the task. This is a recovery gate: if the answers do not remain clear, stop deriving architecture from implementation and recover product meaning before continuing.
+
+Then use this authority order:
 
 1. current Owner request;
-2. `docs/product/owner-intent-corpus.md` for product meaning;
-3. `MADRE.md` for concise cross-repository invariants;
-4. `docs/architecture/security-algebra.md` for operational SPIRA semantics;
-5. `docs/architecture/mid-level-architecture.md` for accepted whole-system engineering boundaries;
-6. `docs/architecture/kernel.md` for current Kernel architecture;
-7. active implementation/tests/CI as evidence of what exists.
+2. `docs/product/owner-intent-corpus.md` for the detailed product meaning and causal reasoning;
+3. `NORTH_STAR.md` as the concise anti-drift checkpoint distilled from that product meaning;
+4. `MADRE.md` for the detailed cross-repository product/semantic overview;
+5. `docs/architecture/security-algebra.md` for operational SPIRA semantics;
+6. `docs/architecture/mid-level-architecture.md` for accepted whole-system engineering boundaries;
+7. `docs/architecture/kernel.md` for current Kernel architecture;
+8. active implementation/tests/CI as evidence of what exists.
+
+`NORTH_STAR.md` is deliberately short. It does not replace the Owner Intent Corpus or `MADRE.md`, and its brevity must never be used to discard richer established reasoning. If a short North-Star statement appears ambiguous, recover its meaning from the Owner Intent Corpus before inventing an interpretation.
 
 Historical code, PRs, commits, issues, discarded documents and familiar software/AI-platform patterns are evidence only. Later Owner corrections supersede historical implementation even when the historical code is more detailed.
 
 Do not restore an old abstraction merely because it once compiled.
 
-## North Star before substantial work
+## North Star gate before substantial work
 
-Be able to answer:
+Explicitly answer:
 
 - What is MADRE?
 - What is not MADRE?
@@ -28,10 +33,12 @@ Be able to answer:
 - What does MADRE own and what remains Module/Agent/internal responsibility?
 - What does the final Owner want?
 - What should the Owner be able to inspect and edit?
-- How much mandatory friction is acceptable?
+- How much mandatory friction / learning curve is acceptable?
 - What is the development scope for this one-Owner project?
 
-If an implementation choice cannot be justified from those answers or a concrete current need, do not import it because mature platforms usually have it.
+Do not answer these from memory, historical implementation or industry convention when `NORTH_STAR.md` and the corpus are available.
+
+If an implementation choice cannot be justified from those answers, the corpus, or a concrete current need, do not import it because mature platforms usually have it.
 
 ## Product invariants
 
