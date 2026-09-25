@@ -2,7 +2,11 @@
 
 MADRE — **Model-Agnostic Delayed Reasoning Effort Agentic System** — is an owner-controlled, local-first environment for using and creating AI-native software.
 
-This file is the concise cross-repository definition. Read `docs/product/owner-intent-corpus.md` for the product reasoning, `docs/architecture/security-algebra.md` for the operational SPIRA model, `docs/architecture/mid-level-architecture.md` for the accepted whole-system design, and `docs/architecture/kernel.md` for the current physical Kernel architecture.
+This file is the **detailed repository-level product and semantic overview**. It intentionally preserves the reasoning connections among Modules, Agents, Operations, SPIRA, DRE, Runtime, CORE, Kernel and the SDK generation target.
+
+Read `NORTH_STAR.md` first as the short mandatory recovery checkpoint before substantial MADRE work. Read `docs/product/owner-intent-corpus.md` for the deeper product reasoning, `docs/architecture/security-algebra.md` for the operational SPIRA model, `docs/architecture/mid-level-architecture.md` for the accepted whole-system design, and `docs/architecture/kernel.md` for the current physical Kernel architecture.
+
+`NORTH_STAR.md` does **not** replace the detail in this file or the Owner Intent Corpus. Its purpose is to force recovery of the governing product answers before an agent derives architecture from code or convention.
 
 Current Owner instructions override repository documentation when more specific. Historical code/tests/PRs/commits and familiar AI-platform patterns are evidence only.
 
@@ -18,7 +22,7 @@ The application and reasoning environment stays with the Owner. Models/providers
 
 The Owner owns the complete installation and is never MADRE's adversary.
 
-MADRE may provide minimisation, SPIRA composition, diagnostics, recovery and useful defaults. Those mechanisms serve the Owner; they do not create an authority above the Owner.
+MADRE may provide minimisation, diagnostics, recovery and useful defaults, and its semantic objects participate in the intrinsic SPIRA relations described below. Those mechanisms serve the Owner; they do not create an authority above the Owner.
 
 The Owner may inspect, modify, replace or experiment with Modules, Agent state, Runtime behaviour, CORE assignment, inference configuration, Kernel state/implementation, generated software and source code.
 
@@ -176,11 +180,12 @@ Simplicity does not mean deleting the semantic ownership/application points that
 ## Authority order
 
 1. current Owner instruction;
-2. `docs/product/owner-intent-corpus.md`;
-3. this file;
-4. `docs/architecture/security-algebra.md` for SPIRA;
-5. `docs/architecture/mid-level-architecture.md` for whole-system engineering;
-6. `docs/architecture/kernel.md` for Kernel;
-7. active implementation/tests/CI as evidence.
+2. `docs/product/owner-intent-corpus.md` for detailed product meaning and causal reasoning;
+3. `NORTH_STAR.md` as the short mandatory anti-drift recovery checkpoint;
+4. this file as the detailed repository-level product/semantic overview;
+5. `docs/architecture/security-algebra.md` for SPIRA;
+6. `docs/architecture/mid-level-architecture.md` for whole-system engineering;
+7. `docs/architecture/kernel.md` for Kernel;
+8. active implementation/tests/CI as evidence.
 
 Historical implementation is evidence only and loses whenever later Owner intent supersedes it.
