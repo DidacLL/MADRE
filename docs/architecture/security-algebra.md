@@ -2,13 +2,11 @@
 
 This document is the engineering authority for MADRE's Security Algebra.
 
-It preserves the small operational model already established for SPIRA: **which MADRE contracts carry each value, how same-dimension values compose, when dimensions are compared, and how consequential Operation variants are represented by `EffectProfile`.**
+SPIRA is the intrinsic algebraic structure produced by the **actual semantic constituents participating in the current construction**. It is not an authorization system, permission service, policy engine, central evaluator or mutable security-context object.
 
-The Product and Owner Intent Corpus remains authoritative for why SPIRA exists and how it serves the Owner. This document does not create an authorization subsystem, policy engine, central security manager, generic `SecurityObject`, or semantic Kernel responsibility.
+The Product and Owner Intent Corpus remains authoritative for why SPIRA exists. This document fixes the engineering meaning of the five facets, where their facts come from, how they compound, and where their compatibility relations become relevant.
 
-## 1. Five nominal ordered carriers
-
-SPIRA has five different ordered carriers. They share ranks so composition is deterministic, but their meanings are not interchangeable.
+## 1. Ordered facets
 
 ### Sensitivity
 
@@ -21,6 +19,10 @@ SPIRA has five different ordered carriers. They share ranks so composition is de
 5 SECRET
 ```
 
+Sensitivity describes actual information. Higher values mean greater consequence if that information is exposed.
+
+Its natural carrier is the actual Material/context representation participating in the construction.
+
 ### Privacy
 
 ```text
@@ -32,7 +34,11 @@ SPIRA has five different ordered carriers. They share ranks so composition is de
 5 ISOLATED
 ```
 
-`UNKNOWN` is an ordinary Privacy value, not an absent value. It means the applicable receiving boundary is not declared public but its handling cannot be established more strongly.
+Privacy describes the containment/exposure offered by the actual receiving boundary. It is not a property saying that information itself is private.
+
+`UNKNOWN` is a real ordinary value, not absence.
+
+Where an Operation accepts Material, the accepted Material boundary can declare the Privacy offered to that input. Other real receiving boundaries may contribute their own Privacy when they actually participate.
 
 ### Integrity
 
@@ -45,13 +51,15 @@ SPIRA has five different ordered carriers. They share ranks so composition is de
 5 VALIDATED
 ```
 
-Meaning:
+Integrity describes assurance carried by actual semantic participants/provenance relevant to the current construction.
 
 - `NOT_DECLARED` — the relevant integrity cannot be traced or meaningfully claimed;
-- `DECLARED` — it comes from an explicit manifested declaration, but that declaration is not independently traceable;
-- `TRUSTED` — the origin or behaviour is trusted through established provenance, common use or other evidence even though it is not fully analysable;
+- `DECLARED` — it comes from a manifested declaration, but that declaration is not independently traceable;
+- `TRUSTED` — the origin or behaviour is trusted through established provenance, common use or other evidence despite incomplete analysis;
 - `ACCEPTED` — stronger assurance exists because of effective boundaries, known origin, observable behaviour or direct Owner acceptance;
 - `VALIDATED` — the relevant integrity property can be deterministically verified again when needed.
+
+An actual Agent contributes Integrity to semantic work in which it participates. Other provenance-bearing participants contribute only when they are actually part of the current causal construction.
 
 These are assurance values, not privilege levels.
 
@@ -66,6 +74,10 @@ These are assurance values, not privilege levels.
 5 POTENTIALLY_HARMFUL
 ```
 
+Risk belongs to the **concrete Operation/effect actually being selected**. It expresses increasing consequence.
+
+Risk is not an abstract property of a Module and it is not a running aggregate of every Operation an Agent could use. Only the actual Operation/effect participating now contributes Risk.
+
 ### Autonomy
 
 ```text
@@ -77,36 +89,50 @@ These are assurance values, not privilege levels.
 5 AUTONOMOUS
 ```
 
-`SYSTEM_RESERVED` is not an ordinary authored value in any carrier.
+Autonomy describes the **actual acting Agent continuation state**: how independently that continuation is proceeding relative to Owner interaction.
 
-## 2. Values live on the contracts where they mean something
+Autonomy is not a permission on an Operation and is not a permanent Module property. The same Operation can participate under different actual Agent continuation states.
 
-SPIRA is deliberately not one five-field label attached to every object.
+Owner interaction can therefore change the real Autonomy constituent without changing the Operation's Risk or the information's Sensitivity.
 
-The established direct application points are:
+`SYSTEM_RESERVED` is not an ordinary authored value in any facet.
 
-| MADRE contract/fact | SPIRA value | Meaning |
-| --- | --- | --- |
-| concrete `Material` | Sensitivity | confidentiality consequence of that representation |
-| an Operation's accepted Material boundary, per accepted Material type | Privacy | how private that receiving boundary is for that input |
-| an Operation's promised Material result, per produced Material type | maximum Sensitivity | strongest output Sensitivity that Operation contract promises for that result type |
-| an Agent | Integrity | assurance of that semantic actor as an actual causal participant |
-| another actual non-user causal participant | Integrity | assurance contributed only when it actually participates in the current causal construction |
-| an actual physical/effect realizer whose fidelity matters to the effect | Integrity | assurance of that realizer for the concrete effect path |
-| one selected Operation `EffectProfile` | Risk + Autonomy | consequence and residual machine control of that exact consequential execution variant |
+## 2. Direct facts and derived views
 
-A contract that has no responsibility for one of these meanings does not acquire a field merely to complete a five-value tuple.
+The facets do not form one universal five-field label attached to every MADRE object.
 
-Derived summaries may be calculated for discovery or explanation, but they are not new independent authority. For example, the effective Privacy visible through several actually exposed Operation input boundaries is the minimum of those boundaries. The underlying Operation contracts remain the source facts.
+The direct semantic facts are:
 
-## 3. Same-dimension composition
+| Actual semantic fact | SPIRA facet |
+| --- | --- |
+| participating Material/context representation | Sensitivity |
+| participating receiving/exposure boundary | Privacy |
+| participating Agent / provenance-bearing causal subject | Integrity |
+| concrete Operation/effect selected now | Risk |
+| acting Agent's current continuation state | Autonomy |
 
-Same-dimension accumulation is small and immutable:
+A public Operation contract may expose facts needed before execution, such as:
 
 ```text
-Sensitivity.combine = max
-Privacy.combine     = min
-Integrity.combine   = min
+accepted Material type -> receiving Privacy
+produced Material type -> maximum promised Sensitivity
+Operation behavior/effect -> Risk
+```
+
+The exact Java shape is not frozen by this architecture document. The important contract is semantic ownership: those facts belong to the bounded Operation where they mean something.
+
+Derived summaries can exist where useful but do not become new owners of the facets. For example, an Agent's currently exposed Operations can imply an effective receiving Privacy, and a Module's currently reachable Material/outputs can imply an effective Sensitivity. Such views are recomputed from the real exposed constituents.
+
+There is **no mandatory `EffectProfile`** in the current model. Earlier implementation experiments used one to pair Risk and Autonomy, but the settled semantics keep them separate because they belong to different actual constituents: Operation/effect and Agent continuation.
+
+## 3. Same-facet accumulation
+
+When more than one actual constituent contributes the same facet, the established reductions are:
+
+```text
+Sensitivity -> max
+Privacy     -> min
+Integrity   -> min
 ```
 
 Conceptually:
@@ -117,235 +143,156 @@ P5 + P3 -> P3
 I4 + I2 -> I2
 ```
 
-The plus sign here means structural accumulation, not arithmetic.
+The plus sign means structural accumulation, not arithmetic.
 
-Risk and Autonomy do **not** form general running aggregates. They remain bound together on one exact selected `EffectProfile`.
+Risk and Autonomy are not general running aggregates. The current construction uses the Risk of the actual selected Operation/effect and the Autonomy of the actual acting Agent continuation.
 
-Only actual constituents participate. Installed-but-unused Operations, hypothetical branches, unrelated earlier work and rejected destinations do not contaminate the current composition.
+Only actual constituents participate. Unused Operations, possible model outputs, unselected destinations, every installed capability and unrelated branches do not contaminate the current compound.
 
-## 4. Material and Operation contracts
+## 4. Intrinsic compound
 
-A concrete Material carries its own Sensitivity.
+There is no mandatory `CompoundSecurity`, `EffectProfile`, `Authorization`, `PolicyDecision` or evaluator object.
 
-An Operation contract declares, for each accepted Material type, the Privacy of that input boundary. It also declares, for each produced Material type, the maximum Sensitivity promised for output of that type.
+The compound is a **derived semantic property of the actual current constituents**.
 
-Conceptually:
+Depending on the construction, relevant constituents may include:
 
-```text
-Operation
-    acceptedMaterial[MaterialType] -> Privacy
-    producedMaterial[MaterialType] -> maximum Sensitivity
-    effectProfiles                 -> 0..* EffectProfile
-```
+- actual Material/context;
+- the actual acting Agent;
+- the actual receiving boundary;
+- the concrete Operation/effect being executed;
+- actual provenance-bearing causal participants;
+- the Agent's actual continuation state.
 
-This makes information composition inspectable before invoking arbitrary implementation code.
+The compound has no owner or manager. The Agent does not mutate a Compound object. The semantic pieces simply have the structure they have when composed.
 
-A Module may create a genuinely new representation with a different Sensitivity—for example a minimized or anonymized representation. That new value belongs to the new Material. The source Material is not relabelled in place.
+## 5. Information and receiving boundary
 
-An Operation result must remain inside its declared result contract. If the Operation promises at most `SHARED` for one result type, returning `SECRET` Material under that result contract is structurally invalid.
-
-## 5. EffectProfile belongs to an Operation
-
-`EffectProfile` is the established MADRE representation of one security-relevant consequential execution variant of an Operation.
-
-Conceptually:
+When actual information enters an actual receiving boundary, the relevant relation is:
 
 ```text
-EffectProfile
-    identity bound to one Operation
-    Risk
-    Autonomy
+max(S_actual_information) <= min(P_actual_receiving_boundaries)
 ```
 
-An Operation may declare zero, one or several EffectProfiles.
-
-A concrete consequential invocation selects **one exact profile declared by that Operation**. The caller does not invent Risk or Autonomy values at invocation time.
-
-Example:
-
-```text
-delete-resource / live-owner-action
-    Risk     = DELETE
-    Autonomy = LIVE_INTERACTION
-
-delete-resource / autonomous-cleanup
-    Risk     = DELETE
-    Autonomy = AUTONOMOUS
-```
-
-Those are two execution shapes of the same semantic Operation, not two permission states.
-
-An Operation with no consequential effect does not receive a dummy EffectProfile, dummy Risk or dummy Autonomy merely to satisfy a schema.
-
-## 6. OperationCall binds the concrete invocation
-
-The bounded invocation structure is:
-
-```text
-Operation contract
-+ actual input Material
-+ selected EffectProfile, only when the Operation declares consequential profiles
-= concrete OperationCall
-```
-
-The call establishes that:
-
-- the input Material type is accepted by the Operation;
-- a consequential Operation uses exactly one of its own declared EffectProfiles;
-- a non-consequential Operation does not fabricate one;
-- produced Material stays within the Operation's declared output type and maximum Sensitivity.
-
-`OperationCall` is not itself a central policy evaluator. It binds the concrete facts from which the relevant SPIRA comparisons can be made at the actual boundary.
-
-## 7. Information reach / disclosure comparison
-
-For the exact Material and receiving path being composed:
-
-```text
-S = maximum Sensitivity of the Material actually entering this connection
-P = minimum Privacy of the actual receiving boundaries on this path
-
-reachable iff S <= P
-```
+The comparison is local to the information and path actually being composed.
 
 Examples:
 
 ```text
-SHARED reaches UNKNOWN
-SECRET does not reach UNKNOWN
+SHARED can compose with UNKNOWN
+SECRET cannot compose with UNKNOWN
 ```
 
-The comparison is local to that disclosure. A secret Material that is not sent does not enter the comparison. A weak receiver considered but rejected does not poison another route.
+A secret Material that is not sent does not participate. A destination considered but not used does not poison another route.
 
-If a target Module or Operation derives a new minimized Material, a later disclosure evaluates the new representation actually being sent, not the unchanged source representation.
+A Module may transform, tokenize, anonymize or minimise Material. The result is a **new representation** that may have a different Sensitivity justified by the transformation. The source Material is not relabelled in place.
 
-## 8. Consequential effect: control comparison
+A receiving Module may also possess domain facts that justify re-evaluating the sensitivity of the actual incoming representation through bounded Module strategies. This is local semantic knowledge, not a global classifier.
 
-For the selected `EffectProfile e`:
+## 6. Operation, causal Integrity and Agent Autonomy
+
+When a concrete Operation/effect is being carried by an Agent continuation, Risk and Autonomy meet the Integrity of actual non-user causal participants.
+
+Let:
 
 ```text
-ControlDemand(e) = min(Risk(e), Autonomy(e))
+R = Risk of the actual selected Operation/effect
+A = Autonomy of the current acting Agent continuation
+I = minimum Integrity of actual non-user causal participants relevant to that effect
 ```
 
-Let the controller Integrity be the minimum Integrity of the **actual non-user causal participants** that determine the security-significant effect—trigger, target, parameters, scope, effect content or autonomous continuation.
+The established relation is:
 
 ```text
-ControllerIntegrity = min(I_actual_controllers)
+min(R, A) <= I
 ```
 
-When there is no non-user controller, the algebraic neutral top value is rank 5 (`VALIDATED`). This is a reduction identity, not a claim that an imaginary validated controller exists.
+If there is no non-user causal participant for the relevant reduction, rank 5 is the neutral top element. This is an algebraic identity, not an invented `VALIDATED` actor.
 
-The control construction is compatible when:
+This relation preserves the distinction the facets exist to express:
+
+- high consequence and high autonomy require stronger actual causal assurance;
+- Owner interaction can lower the actual Autonomy constituent;
+- changing Autonomy does not lower the Operation's Risk;
+- a stronger participant cannot wash a weaker participant that remains causally relevant;
+- merely appearing somewhere in earlier history does not make a subject part of the current reduction.
+
+## 7. Effect realization
+
+Where the concrete Operation/effect has actual realizers whose Integrity is semantically relevant to whether that effect is faithfully produced, the established relation is:
 
 ```text
-ControlDemand(e) <= ControllerIntegrity
+R_actual_operation <= min(I_actual_effect_realizers)
 ```
 
-Consequences:
+This remains distinct from the Agent-continuation relation above. Direct Owner interaction can lower Autonomy, but it cannot turn an unreliable realization path into a reliable one for a high-consequence effect.
 
-- a high-Risk autonomous effect requires strong Integrity from the machine causal chain;
-- direct Owner interaction lowers residual machine-control demand because the selected profile has low Autonomy;
-- adding a strong participant cannot wash a weaker participant that still actually controls the effect;
-- merely existing in earlier history does not make a subject a controller.
+This is a semantic relation. The native Kernel does not receive SPIRA values. If physical engine facts affect which physical choices are semantically acceptable, the semantic side resolves that before Work crosses the hard boundary and expresses only physical constraints to Kernel.
 
-Owner participation is represented by the selected EffectProfile's Autonomy shape. It does not modify Material Sensitivity or disclosure Privacy.
+## 8. Compatibility is not authorization
 
-## 9. Consequential effect: execution-fidelity comparison
+The relations above describe whether the **actual semantic construction composes** under its current constituents. They do not create a service that grants or denies the Owner permission.
 
-Control and effect realization are different questions.
+A compatible current composition can continue.
 
-Let actual effect realizers be the nonempty set of participants/mechanisms whose behaviour can change the concrete effect that is realized. Their applicable Integrity values compose by minimum:
+An incompatible current composition cannot continue **as that exact construction**. Semantic software can change reality and derive again, for example by:
 
-```text
-EffectIntegrity = min(I_actual_effect_realizers)
-```
+- using another Operation;
+- using another receiving path;
+- deriving/minimising different Material;
+- changing the actual Agent continuation by involving the Owner;
+- delegating to a different Agent;
+- changing another real participant;
+- abandoning that path.
 
-The effect execution is compatible when:
+It must not silently weaken Sensitivity, pretend greater Privacy, raise Integrity, lower Risk or alter Autonomy merely to make the unchanged construction fit.
 
-```text
-Risk(e) <= EffectIntegrity
-```
+## 9. Agent responsibility without Compound ownership
 
-Direct Owner control can reduce machine-control demand, but it cannot make an unreliable destructive/executable effect realization sound. A high-Risk selected profile still requires correspondingly strong Integrity from the actual realization path.
+The Agent is the semantic actor carrying its current continuation. Operations are bounded actions used by that actor.
 
-This comparison belongs on the semantic side of the MADRE boundary. If physical mechanism facts are needed to establish which realization choices are acceptable, the semantic Runtime/Module-owned reasoning executor must use the available factual descriptions and translate the result into physical Kernel constraints. **SPIRA values do not cross into Kernel Work.**
+An Agent therefore encounters the SPIRA structure produced by what it is actually trying to compose and reacts to it. It does **not** own or manage the algebra.
 
-## 10. The three comparisons remain separate
+When Agent A invokes an Operation exposed by Module B, Agent A remains the actor carrying that semantic continuation unless there is an explicit Agent-to-Agent delegation. Module B can be agentless.
 
-For one concrete semantic construction, the relevant checks are therefore:
+A Module can contribute its own bounded semantic strategies at its boundary because it owns its domain meaning. Runtime routing does not make Runtime the semantic evaluator.
 
-```text
-DISCLOSURE
-    max(S_actual_material) <= min(P_actual_receiving_path)
+## 10. ReasoningRequest
 
-CONTROL
-    min(R_selected_profile, A_selected_profile)
-        <= min(I_actual_non_user_controllers)
+A `ReasoningRequest` is a semantic need for reasoning created by an Agent.
 
-EFFECT EXECUTION
-    R_selected_profile
-        <= min(I_actual_effect_realizers)
-```
+It may involve:
 
-There is no global security score and no weighted aggregate across all five facets.
+- relevant context;
+- Material;
+- provenance;
+- Owner instruction;
+- SPIRA facts relevant to the current reasoning construction;
+- the actual reasoning objective.
 
-A construction with no disclosure does not invent a disclosure comparison. A construction with no consequential EffectProfile does not invent Risk/Autonomy checks.
+This document does **not** define a mandatory `ReasoningRequest.S`, `.P`, `.I`, `.R` or `.A` storage tuple. The actual semantic composition remains the composition of the real participating objects/facts.
 
-## 11. ReasoningRequest carries the actual reasoning composition
+The responsible Agent/Module semantic process resolves what reasoning is needed, what information is relevant, what destinations/inference choices are acceptable, and what current composition is valid.
 
-A `ReasoningRequest` is semantic inference intent, not Kernel Work.
+`ReasoningRequest` remains semantic and does not cross into Kernel as a semantic object.
 
-When reasoning is created from a bounded Operation context, the request accumulates the **actual S/P/I constituents of that reasoning computation**:
+Risk remains with an actual selected Operation/effect. Autonomy remains with the actual Agent continuation. They are not automatically copied into every inference request merely because reasoning occurs while an Operation is being pursued.
 
-- Sensitivity from the actual input Material and any additional Material genuinely included in the reasoning context;
-- Privacy from the actual accepted Operation boundary and any additional receiving boundaries genuinely included in the path;
-- Integrity from the acting Agent and any additional non-user causal participants genuinely participating in the reasoning construction.
+## 11. Runtime
 
-Thus:
+Runtime supplies installation mechanics: Module discovery, activation/lifecycle, addressing, routing, persistence/correlation mechanisms and execution of installation-required functions.
 
-```text
-ReasoningRequest.S = max(actual reasoning Material sensitivities)
-ReasoningRequest.P = min(actual reasoning receiving boundaries)
-ReasoningRequest.I = min(actual reasoning causal participant integrities)
-```
+Runtime does **not** become the owner or semantic evaluator of SPIRA merely because it transports or executes calls.
 
-Risk and Autonomy do **not** automatically propagate into the ReasoningRequest simply because the surrounding Operation declares an EffectProfile. Ordinary inference does not itself realize the external effect.
+The semantic values and their composition belong to the participating Module/Agent/Material/Operation context. Runtime can carry the facts and support the execution path without redefining their meaning.
 
-If later reasoning results actually control a consequential Operation, that later concrete effect construction includes the relevant derived Material/causal participants and selected EffectProfile at that point.
+The special ReasoningRequest-to-physical-Work function follows the same rule: Runtime executes the configured implementation, but that implementation belongs to a Module. The shipped default CORE Module provides the default implementation. The Owner can replace or wrap it.
 
-This prevents a parent Operation's possible effect from being flattened into every inference step while still preserving the real causal chain when inference output actually controls an effect.
+## 12. Kernel boundary
 
-## 12. Agents react to composition; they do not manage it
+Kernel owns physical inference Work only.
 
-There is no Agent-owned mutable `Compound` security object.
-
-The current algebraic values exist because the actual constituents of a concrete interaction are composing. The acting Agent can observe that a proposed route/effect is compatible or incompatible and react semantically:
-
-- use another Operation;
-- choose another destination;
-- derive/minimize different Material;
-- select a different declared EffectProfile when the Operation and situation genuinely offer one;
-- ask the Owner where that changes the actual Autonomy shape;
-- delegate;
-- abandon that path.
-
-Changing the actual constituents creates a different construction and therefore a different composition. The Agent does not mutate algebra values to make an incompatible construction pass.
-
-## 13. Runtime and Module responsibility
-
-The SDK defines these semantic carriers and bounded contracts. Module authors construct their Material, Agent, Operation and EffectProfile facts through that public surface.
-
-Runtime composes and compares those facts at the concrete semantic boundaries it executes or coordinates. Runtime does not become a separate semantic owner merely because it performs the deterministic mechanics.
-
-The Module remains responsible for semantic claims it is uniquely placed to know, such as the Sensitivity of genuinely derived Material and the effect variants its Operation actually offers.
-
-SPIRA itself never invokes inference. If semantic reasoning is required to derive some application fact, an Agent performs that reasoning through an ordinary `ReasoningRequest`; the resulting semantic object is then composed normally.
-
-## 14. Kernel boundary
-
-The current native Kernel remains strictly physical.
-
-Kernel does not receive or persist:
+It does not receive or persist:
 
 ```text
 Sensitivity
@@ -354,38 +301,39 @@ Integrity
 Risk
 Autonomy
 Material
-Operation
-EffectProfile
+Operation semantics
 Agent
 ReasoningRequest
 ```
 
-The Runtime-executed, Module-owned reasoning-to-physical Operation resolves semantic reasoning requirements before producing physical `WorkRequest` constraints.
+The semantic side may inspect factual engine descriptors and choose acceptable physical constraints before creating physical Work. Kernel then performs only physical scheduling/execution within those constraints.
 
-Kernel then schedules and executes only those physical constraints. Kernel may be internally replaceable or experimental, but it does not become the evaluator of SPIRA.
+Kernel may itself remain physically modular and experimentable, but an inference-assisted Kernel routing experiment still reasons over physical facts; it does not import SPIRA into Kernel.
 
-## 15. Owner sovereignty
+## 13. Owner sovereignty
 
-SPIRA helps MADRE software understand information/effect composition for the Owner. It is not an authority above the Owner.
+SPIRA serves the Owner. It is not security *against* the Owner.
 
-The Owner can inspect and modify the declarations, Module code, configured Runtime implementations, state and source that produce these facts. MADRE does not pretend to make equivalent facts inaccessible to the machine owner.
+The Owner can inspect and modify Module declarations, semantic strategies, Agent state, Runtime configuration, Kernel implementation and the source/state they own.
 
-That sovereignty does not require the algebra to lie. At any moment, given the current declared/derived facts and actual constituents, composition remains deterministic. The Owner changes the software/facts/construction rather than receiving a hidden bypass bit.
+Owner sovereignty does not require the algebra to lie. At a given moment the current facts compose deterministically. The Owner changes the software, facts or actual construction rather than receiving a hidden permission bypass.
 
-## 16. Anti-drift invariants
+## 14. Anti-drift invariants
 
-Do not replace this model with any of the following without an explicit Owner architecture change:
+Do not replace this model without an explicit Owner architecture change with:
 
 - one generic five-field security context attached to every entity;
-- an Agent-owned `Compound` manager;
-- a central policy/authorization/IAM service;
+- an Agent-owned mutable Compound manager;
+- mandatory `EffectProfile` objects pairing Risk and Autonomy;
+- a central authorization/policy/IAM/evaluator service;
+- Runtime ownership of SPIRA semantics;
 - one global SPIRA score;
-- Risk or Autonomy accumulated across unrelated Operations;
-- a caller-supplied arbitrary Risk/Autonomy number instead of an Operation-owned `EffectProfile`;
-- dummy EffectProfiles for non-consequential Operations;
-- cross-dimensional checks hidden inside every scalar value class;
-- all historical participants contaminating every later comparison;
-- semantic SPIRA values placed in physical Kernel Work;
-- model/provider/locality names silently deriving Privacy or Integrity without an explicit semantic declaration/valuation.
+- Risk accumulated from unused Operations;
+- Autonomy attached permanently to an Operation or Module;
+- all historical participants contaminating later compositions;
+- relabelling values to force compatibility;
+- a mandatory five-facet field set on `ReasoningRequest`;
+- semantic SPIRA values in physical Kernel Work;
+- model/provider/locality facts silently converted into Privacy or Integrity without semantic valuation above the Kernel boundary.
 
-The model is small because each value has a concrete owner/application point and each comparison has a concrete event at which it matters—not because those details can be omitted.
+The model stays simple by keeping each facet on the actual semantic fact where it means something and deriving composition only from what really participates.
