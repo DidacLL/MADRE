@@ -2,31 +2,33 @@
 
 This document translates the Product and Owner Intent Corpus into engineering boundaries.
 
-It is intentionally **mid-level**: concrete enough to constrain implementation and explain the full system, but it does not invent private classes, protocols, persistence technology, package layouts or every Operation.
+It is intentionally **mid-level**: concrete enough to constrain implementation and explain the complete system, while avoiding speculative private classes, persistence technology, transport details or catalogues of every Operation.
 
-The architecture is organised around a simple rule:
+Detailed SPIRA semantics are normative in `docs/architecture/security-algebra.md`.
 
-> Assign ownership only where MADRE actually needs ownership. Preserve intrinsic composition as composition; do not create managers for relations.
+The architecture follows two rules:
+
+> Assign ownership only where MADRE actually needs ownership. Preserve intrinsic composition as composition rather than creating managers for relations.
+
+> Keep public contracts explicit enough that an independent human or AI builder can implement a Module without private MADRE knowledge.
 
 ## 1. System concerns
 
-MADRE has three major engineering regions:
-
 ```mermaid
 flowchart TB
-    O[Owner<br/>use · inspect · configure · modify · create]
+    O["Owner<br/>use · inspect · configure · modify · create"]
 
-    subgraph S[Semantic MADRE]
-      M[Modules<br/>independently installable domain applications]
-      SDK[Public MADRE SDK<br/>semantic contracts + reusable facilities + extension contracts]
-      RT[MADRE Runtime<br/>installed semantic environment]
+    subgraph S["Semantic MADRE"]
+      M["Modules<br/>independently installable domain applications"]
+      SDK["Public MADRE SDK<br/>semantic contracts · reusable facilities · extension contracts"]
+      RT["MADRE Runtime<br/>installed semantic environment"]
     end
 
-    KC[madre-kernel-client<br/>small physical contract]
+    KC["madre-kernel-client<br/>small physical contract"]
 
-    subgraph P[Physical MADRE]
-      K[Native Kernel<br/>durable physical inference Work]
-      E[Inference engines / workers]
+    subgraph P["Physical MADRE"]
+      K["Native Kernel<br/>durable physical inference Work"]
+      E["Inference engines / workers"]
     end
 
     O --> M
@@ -37,18 +39,18 @@ flowchart TB
     K --> E
 ```
 
-These are not three equivalent services.
+These are not equivalent services.
 
 - **Modules** contain application/domain meaning.
-- **SDK** is the public construction surface shared by shipped, independent and generated software.
-- **Runtime** is the installed semantic environment that coordinates Modules and shared reasoning execution.
+- **SDK** is the public construction vocabulary shared by shipped, independent and generated software.
+- **Runtime** is the installed semantic environment that composes Modules and shared MADRE facilities.
 - **Kernel client** is a small physical boundary artifact.
-- **Kernel** knows only physical inference Work.
-- **engines/workers** perform actual inference.
+- **Kernel** owns already-physical inference Work.
+- **engines/workers** perform physical inference.
 
-A Module may also use its own internal AI/inference system without using the shared Kernel. Kernel is not a universal interceptor.
+A Module may privately use another AI/inference environment without using the shared Kernel. Kernel is not a universal interceptor.
 
-## 2. Public SDK and Module boundary
+## 2. Module and SDK surface
 
 A Module is an independently installable application/domain semantic boundary.
 
@@ -58,10 +60,19 @@ classDiagram
       application/domain boundary
     }
     class Agent {
-      optional semantic reasoning actor
+      Integrity
+      semantic reasoning actor
     }
-    class Operation {
-      bounded executable behavior
+    class OperationDefinition {
+      purpose
+      accepted Material types and Privacy
+      produced Material types and max Sensitivity
+      EffectProfiles
+    }
+    class EffectProfile {
+      EffectProfileId
+      Risk
+      Autonomy
     }
     class Skill {
       reusable know-how
@@ -73,45 +84,147 @@ classDiagram
       objective-specific semantic plan
     }
     class Material {
-      meaningful information/context
+      MaterialType
+      Sensitivity
+      value
     }
     class ReasoningRequest {
-      semantic need for inference
+      semantic inference intent
+      accumulated S P I
     }
 
     Module "1" o-- "0..*" Agent : provides
-    Module "1" o-- "0..*" Operation : exposes
+    Module "1" o-- "0..*" OperationDefinition : exposes
     Module "1" o-- "0..*" Skill : may provide
-    Agent --> Workflow : may own/use
-    Agent ..> Operation : invokes
-    Agent ..> Skill : uses/learns
+    Agent --> Workflow : may use
+    Agent ..> OperationDefinition : may invoke
+    Agent ..> Skill : uses or learns
     Agent ..> ReasoningRequest : creates
     Agent ..> Agent : may delegate
     WorkPlan ..> Agent : may coordinate
     WorkPlan ..> Workflow : may compose
-    Agent ..> Material : reasons with
-    Operation ..> Material : may consume/produce
-    ReasoningRequest ..> Material : uses selected context
+    OperationDefinition "1" o-- "0..*" EffectProfile : owns
+    OperationDefinition ..> Material : accepts and produces
+    ReasoningRequest ..> Material : includes actual context
 ```
 
-The diagram shows semantic relations, not a mandatory one-class-per-box Java design.
+This is a semantic contract model, not a requirement for one Java class per box.
 
-A Module may own internally:
+A Module may internally own domain state, persistence, UI, integrations, private agents or any other implementation its application needs. MADRE standardises only the public surfaces required for composition.
 
-- domain state and persistence;
-- domain types;
-- UI;
-- integrations;
-- internal intelligence;
-- any implementation needed by its application.
+A Module may be agentless, UI-less, very small, or a thin binding around existing software.
 
-Only the public semantic surface matters to MADRE composition.
+## 3. Operation contract, EffectProfile and concrete call
 
-A Module can be agentless, UI-less, very small, or a thin binding around existing software.
+SPIRA is operational because the relevant values are attached to the bounded contracts that actually own their meaning.
 
-## 3. Operation invocation and Agent delegation are different
+An Operation contract exposes:
 
-When Agent A invokes an Operation exposed by Module B, Agent A retains its semantic continuation. Module B does not need an Agent.
+```text
+OperationDefinition
+    identity / purpose
+    acceptedMaterial[MaterialType] -> Privacy
+    producedMaterial[MaterialType] -> maximum Sensitivity
+    effectProfiles[EffectProfileId] -> EffectProfile
+```
+
+One consequential execution variant is:
+
+```text
+EffectProfile
+    identity bound to its Operation
+    Risk
+    Autonomy
+```
+
+A concrete invocation is:
+
+```mermaid
+classDiagram
+    class OperationDefinition {
+      acceptedMaterial -> Privacy
+      producedMaterial -> max Sensitivity
+    }
+    class EffectProfile {
+      Risk
+      Autonomy
+    }
+    class Material {
+      Sensitivity
+    }
+    class OperationCall {
+      exact input Material
+      optional exact EffectProfile
+    }
+
+    OperationDefinition "1" o-- "0..*" EffectProfile : declares
+    OperationCall --> OperationDefinition : invokes
+    OperationCall --> Material : actual input
+    OperationCall --> EffectProfile : selects when consequential
+```
+
+The call must use an accepted Material type. If the Operation declares consequential profiles, the call selects one exact profile belonging to that Operation. If the Operation is not consequential, it does not receive a dummy profile.
+
+Output Material must be a declared produced type and must not exceed the maximum Sensitivity promised for that output type.
+
+`OperationCall` binds the concrete facts. It is not itself a central authorization or policy evaluator.
+
+## 4. SPIRA carriers and composition
+
+The direct carriers are not interchangeable:
+
+| Contract or actual fact | Value carried |
+| --- | --- |
+| concrete Material | Sensitivity |
+| Operation accepted Material boundary | Privacy |
+| Operation produced Material contract | maximum output Sensitivity |
+| Agent | Integrity |
+| other actual non-user causal participant | Integrity when it participates |
+| actual effect realizer | Integrity when its fidelity matters |
+| exact selected EffectProfile | Risk and Autonomy |
+
+Same-dimension accumulation is:
+
+```text
+Sensitivity -> max
+Privacy     -> min
+Integrity   -> min
+```
+
+Risk and Autonomy stay paired on the exact selected EffectProfile; they are not general running aggregates.
+
+The values are:
+
+| Facet | 0 | 1 | 2 | 3 | 4 | 5 |
+| --- | --- | --- | --- | --- | --- | --- |
+| Sensitivity | SYSTEM_RESERVED | TRIVIAL | SHARED | PROFILING | SENSITIVE | SECRET |
+| Privacy | SYSTEM_RESERVED | PUBLIC | UNKNOWN | LOCAL | MODULE | ISOLATED |
+| Integrity | SYSTEM_RESERVED | NOT_DECLARED | DECLARED | TRUSTED | ACCEPTED | VALIDATED |
+| Risk | SYSTEM_RESERVED | READ | WRITE | DELETE | EXECUTE | POTENTIALLY_HARMFUL |
+| Autonomy | SYSTEM_RESERVED | LIVE_INTERACTION | ASK_ALWAYS | ASK_ONCE | ACKNOWLEDGE | AUTONOMOUS |
+
+`SYSTEM_RESERVED` is not an ordinary authored value.
+
+Integrity means increasing assurance, not privilege:
+
+- `NOT_DECLARED`: cannot be traced or meaningfully claimed;
+- `DECLARED`: manifested declaration without independent traceability;
+- `TRUSTED`: established provenance/common use/other evidence despite incomplete analysis;
+- `ACCEPTED`: stronger assurance from effective boundaries, known origin, observable behavior or direct Owner acceptance;
+- `VALIDATED`: deterministically verifiable again when needed.
+
+There is no Agent-owned `Compound` object. The compound is the algebraic structure inherent in the actual constituents of the current construction.
+
+## 5. Information reach is a concrete boundary comparison
+
+For Material actually entering one receiving path:
+
+```text
+S = max(Sensitivity of actual Material disclosed)
+P = min(Privacy of actual receiving boundaries)
+
+reachable iff S <= P
+```
 
 ```mermaid
 sequenceDiagram
@@ -120,17 +233,138 @@ sequenceDiagram
     participant M as Target Module
     participant O as Target Operation
 
-    A->>R: invoke exposed Operation + selected context
-    R->>M: locate/activate and route
-    Note over M: incoming context composes with target-domain facts
-    M->>O: execute bounded behavior
-    O-->>M: result / derived Material
-    M-->>R: result
-    R-->>A: result
-    Note over A: caller continues its semantic work
+    A->>R: invoke Operation with selected Material
+    R->>R: compose actual Material Sensitivity and receiving Privacy
+    alt disclosure compatible
+        R->>M: route invocation
+        M->>O: execute bounded behavior
+        O-->>M: produced Material
+        M-->>R: result
+        R-->>A: result
+    else disclosure incompatible
+        R-->>A: incompatibility evidence
+    end
 ```
 
-Explicit Agent delegation transfers a delegated semantic objective to another reasoning actor:
+A high-Sensitivity Material not actually sent does not participate. A weak destination considered but rejected does not poison another route.
+
+A Module may genuinely derive/minimise new Material with a different Sensitivity. That new representation is evaluated later; the source is not relabelled.
+
+## 6. Consequential Operations have two distinct Integrity comparisons
+
+For selected EffectProfile `e`:
+
+```text
+ControlDemand(e) = min(Risk(e), Autonomy(e))
+
+ControlDemand(e)
+    <= min(Integrity of actual non-user causal controllers)
+```
+
+When no non-user controller exists, rank 5 is the algebraic neutral element. It does not represent an imaginary controller.
+
+The realization path is checked separately:
+
+```text
+Risk(e)
+    <= min(Integrity of actual effect realizers)
+```
+
+This distinction matters. Direct Owner interaction can lower residual machine-control demand through the selected profile's Autonomy, but it cannot make an unreliable destructive/executable realization sound.
+
+```mermaid
+sequenceDiagram
+    participant A as Acting Agent
+    participant R as Runtime composition
+    participant O as Operation
+    participant X as Actual effect realizer
+
+    A->>R: consequential call with exact EffectProfile
+    R->>R: disclosure check for actual Material and receivers
+    R->>R: control check using selected Risk Autonomy and actual controller Integrity
+    R->>R: effect check using Risk and actual realizer Integrity
+    alt all applicable comparisons compatible
+        R->>O: invoke exact call
+        O->>X: realize bounded effect
+        X-->>O: effect outcome
+        O-->>A: result
+    else incompatible construction
+        R-->>A: limiting comparison facts
+    end
+```
+
+Runtime performs deterministic composition mechanics for Runtime-coordinated interactions; it does not become owner of those values. The participating contracts and actual causal topology supply them.
+
+## 7. ReasoningRequest composes only its actual reasoning constituents
+
+A ReasoningRequest is semantic inference intent. It is not the consequential parent Operation and it is not physical Work.
+
+When reasoning is constructed from an Operation context, the request accumulates:
+
+```text
+ReasoningRequest.S
+    = max(Sensitivity of actual reasoning Material)
+
+ReasoningRequest.P
+    = min(Privacy of actual reasoning receiving boundaries)
+
+ReasoningRequest.I
+    = min(Integrity of acting Agent and other actual reasoning causal participants)
+```
+
+```mermaid
+sequenceDiagram
+    participant A as Agent
+    participant C as Current Operation context
+    participant Q as ReasoningRequest
+    participant X as Runtime reasoning executor
+
+    C-->>A: input Material plus accepted-boundary Privacy
+    A->>Q: create semantic reasoning request
+    A->>Q: include only Material actually used
+    A->>Q: include only receiving boundaries actually crossed
+    A->>Q: include actual causal Integrity including acting Agent
+    Note right of Q: S uses max P uses min I uses min
+    A->>X: submit ReasoningRequest plus execution preferences
+```
+
+Risk and Autonomy from a surrounding Operation EffectProfile do **not** automatically become ReasoningRequest values. Ordinary inference does not itself realize the external effect.
+
+If inference output later actually controls a consequential Operation, that later effect construction includes the relevant derived Material or causal participant plus the selected EffectProfile at that point.
+
+This prevents both under-tracing and over-tainting.
+
+## 8. Agent reaction is semantic behavior, not algebra management
+
+An Agent encounters the compatible or incompatible structure produced by the actual construction. It may react by choosing another Operation or destination, deriving/minimizing Material, selecting another genuinely available EffectProfile, asking the Owner when that changes the actual interaction shape, delegating, or abandoning the route.
+
+Changing the real constituents produces a different composition. The Agent does not mutate a security context until the same construction passes.
+
+SPIRA itself never invokes a model. If classification or validation requires domain reasoning, a Module/Agent performs that work explicitly and produces the resulting semantic fact or new Material normally.
+
+## 9. Cross-Module Operation invocation and Agent delegation are different
+
+Operation invocation keeps the caller's semantic continuation:
+
+```mermaid
+sequenceDiagram
+    participant A as Calling Agent
+    participant R as Runtime
+    participant M as Target Module
+    participant O as Target Operation
+
+    A->>R: invoke exposed Operation with actual call facts
+    R->>M: locate and activate target then route
+    M->>O: execute bounded Operation
+    O-->>M: result
+    M-->>R: result
+    R-->>A: result
+    Note right of A: caller continues its semantic objective
+```
+
+The target Module may have no Agent.
+
+Explicit Agent delegation transfers a delegated semantic objective:
 
 ```mermaid
 sequenceDiagram
@@ -139,99 +373,23 @@ sequenceDiagram
     participant M as Target Module
     participant B as Agent B
 
-    A->>R: delegate sub-objective + selected context
-    R->>M: locate/activate and route
-    Note over M: incoming context composes with target-domain facts
-    M->>B: delegated objective + context
-    Note over B: Agent B acts on delegated semantic work
+    A->>R: delegate sub-objective plus selected context
+    R->>M: locate and activate provider then route
+    M->>B: delegated objective plus context
+    B->>B: act using its own behavior and reasoning
     B-->>R: delegated result
     R-->>A: result
 ```
 
 A WorkPlan may coordinate several Agents or Workflows. It is semantic planning, not Runtime scheduling and not Kernel Work.
 
-## 4. SPIRA is intrinsic composition
+## 10. Runtime responsibilities
 
-SPIRA is not owned or managed by an Agent, Runtime service or central policy object.
-
-Its dimensions live on the actual semantic facts where they mean something.
-
-| Facet | Values 0 → 5 | Semantic carrier |
-|---|---|---|
-| Sensitivity | `SYSTEM_RESERVED`, `TRIVIAL`, `SHARED`, `PROFILING`, `SENSITIVE`, `SECRET` | actual Material/context |
-| Privacy | `SYSTEM_RESERVED`, `PUBLIC`, `UNKNOWN`, `LOCAL`, `MODULE`, `ISOLATED` | actual receiver/exposure boundary |
-| Integrity | `SYSTEM_RESERVED`, `NOT_DECLARED`, `DECLARED`, `TRUSTED`, `ACCEPTED`, `VALIDATED` | actual causal participants/provenance |
-| Risk | `SYSTEM_RESERVED`, `READ`, `WRITE`, `DELETE`, `EXECUTE`, `POTENTIALLY_HARMFUL` | selected concrete effect |
-| Autonomy | `SYSTEM_RESERVED`, `LIVE_INTERACTION`, `ASK_ALWAYS`, `ASK_ONCE`, `ACKNOWLEDGE`, `AUTONOMOUS` | actual autonomy context |
-
-Integrity meanings:
-
-- `NOT_DECLARED`: integrity cannot be traced or meaningfully claimed;
-- `DECLARED`: comes from a manifested declaration that is not independently traceable;
-- `TRUSTED`: trusted through established origin, common use or other evidence despite incomplete analysis;
-- `ACCEPTED`: stronger assurance from effective boundaries, known origin, observable behaviour or direct Owner acceptance;
-- `VALIDATED`: deterministically verifiable again when needed.
-
-The compound arises because actual constituents compose:
-
-```mermaid
-flowchart TB
-    M[Actual Material/context<br/>Sensitivity]
-    P[Actual receiver/path<br/>Privacy]
-    I[Actual causal participants/provenance<br/>Integrity]
-    R[Selected effect<br/>Risk]
-    A[Actual autonomy context<br/>Autonomy]
-
-    C((Derived SPIRA compound<br/>no owner / no manager))
-    U[Composition usable or incompatible]
-    G[Agent encounters result and reacts]
-
-    M --> C
-    P --> C
-    I --> C
-    R --> C
-    A --> C
-    C --> U
-    U --> G
-```
-
-Scope-local reductions are:
-
-```text
-S_scope = max(S_i)
-P_path  = min(P_i)
-I_scope = min(I_i)
-```
-
-The distinct compatibility relations are:
-
-```text
-DISCLOSURE:
-max(S_disclosed) <= min(P_actual_path)
-
-CONTROL:
-D_C(e) = min(R(e), A(e))
-D_C(e) <= min(I_controllers)
-
-EFFECT EXECUTION:
-R(e) <= min(I_executors)
-```
-
-Only actual constituents participate. Unused Operations, unrelated branches, hypothetical outputs and unrelated installed software do not contaminate the compound.
-
-If the current composition is incompatible, the Agent does not rewrite the algebra. It reacts: choose another Operation/path, derive or minimise Material, ask the Owner, delegate, or stop that path. Different actual constituents produce a different composition.
-
-A receiving Module can contribute additional domain knowledge and derive new Material or a new local sensitivity assessment. This does not create a global classifier.
-
-## 5. Runtime responsibilities
-
-Runtime is the installed semantic environment around Modules, SDK facilities and the Kernel boundary.
+Runtime is the installed semantic environment around Modules, public SDK facilities and the physical Kernel boundary.
 
 Its responsibilities are grouped by concern rather than represented as one central brain.
 
 ### Module environment
-
-Runtime provides installation-wide mechanics for:
 
 - Module installation/configuration;
 - CORE role assignment;
@@ -240,27 +398,24 @@ Runtime provides installation-wide mechanics for:
 - addressing;
 - cross-Module Operation invocation;
 - Agent delegation;
+- deterministic SPIRA composition at Runtime-coordinated boundaries;
 - Owner/runtime inspection and diagnostics.
 
-Runtime routes semantic interactions without acquiring the Module's domain meaning.
+Runtime routes and composes semantic interactions without acquiring the Module's domain meaning.
 
 ### Shared reasoning execution
 
-Runtime also provides installation-wide mechanics for:
-
-- receiving semantic ReasoningRequests through the SDK;
-- semantic request persistence/correlation needed for delayed reasoning;
-- executing the configured semantic-to-physical translation Operation;
-- correlating physical Kernel Work/results back to the semantic request;
+- receive semantic ReasoningRequests through the SDK;
+- persist/correlate semantic delayed reasoning state where needed;
+- execute the configured semantic-to-physical translation Operation;
+- correlate physical Kernel Work/results back to semantic requests;
 - continuation/recovery support.
 
-Runtime coordinates these responsibilities. Domain meaning remains with Modules/Agents.
+## 11. ReasoningRequest to physical Work is a Module-owned special Operation
 
-## 6. ReasoningRequest → physical Work is a Module-owned special Operation
+Agents create `ReasoningRequest`s. They do **not** construct Kernel `WorkRequest`s directly.
 
-Agents create `ReasoningRequest` objects. They do **not** construct Kernel `WorkRequest` objects directly.
-
-The public SDK defines a bounded function/Operation for the semantic-to-physical conversion:
+The SDK defines a bounded required function:
 
 ```text
 ReasoningRequest
@@ -269,70 +424,68 @@ execution preferences/declarations
         ↓
 configured reasoning executor Operation
         ↓
-physical WorkRequest / Kernel submission
+physical WorkRequest
 ```
 
-The additional preference/declaration object is intentionally not frozen at this level. It expresses semantic caller preferences such as effort or timing without forcing Agent code to know Kernel mechanics.
+The preference/declaration object is intentionally not frozen at this level. It lets semantic code express computation effort, timing and other Kernel-facing preferences without forcing Agents to understand physical scheduling mechanics.
 
-This Operation is special only because basic MADRE functioning needs an implementation of it. It still follows MADRE modularity:
+This function follows the same MADRE modularity as other executable behavior:
 
 - Runtime executes it;
 - its implementation belongs to a Module;
-- the shipped default CORE Module provides the default implementation;
-- Runtime keeps the installation-level selection of which implementation executes this required function;
-- the Owner may replace, wrap or decorate that selection.
+- the shipped CORE Module provides the default implementation;
+- Runtime stores the installation-level selection;
+- the Owner may replace, wrap or decorate the implementation.
 
 ```mermaid
 flowchart TB
-    RR[ReasoningRequest]
-    EP[Execution preferences/declarations]
-    SDK[SDK-bounded reasoning executor Operation]
-    REG[Runtime-selected implementation]
-    EXT[Optional Owner wrapper/replacement<br/>logging · learning · experiment]
-    CORE[Shipped CORE default implementation]
-    W[Physical WorkRequest]
-    KC[KernelClient]
-    K[Kernel]
+    RR["ReasoningRequest"]
+    EP["Execution preferences / declarations"]
+    OP["SDK required reasoning executor Operation"]
+    SEL["Runtime-selected implementation"]
+    EXT["Optional Owner extension<br/>logging · learning · experiment"]
+    CORE["Shipped CORE default implementation"]
+    W["Physical WorkRequest"]
+    KC["KernelClient"]
+    K["Kernel"]
 
-    RR --> SDK
-    EP --> SDK
-    SDK --> REG
-    REG -. configured extension .-> EXT
+    RR --> OP
+    EP --> OP
+    OP --> SEL
+    SEL -. optional extension .-> EXT
     EXT -. may delegate .-> CORE
-    REG -. default .-> CORE
-    EXT -. replacement may translate .-> W
+    SEL -. default .-> CORE
+    EXT -. may translate .-> W
     CORE --> W
     W --> KC
     KC --> K
 ```
 
-An Owner could, for example, place a logger/learning system in this flow and still delegate to the shipped default translator.
+The selected implementation may use semantic SPIRA facts and factual physical engine descriptions to decide the acceptable physical candidate space. It then expresses that decision using physical Work constraints. SPIRA itself does not cross the Kernel boundary.
 
-The seam is bounded: it does not own ReasoningRequest meaning, SPIRA or Kernel semantics.
-
-## 7. Delayed Reasoning Effort
+## 12. Delayed Reasoning Effort
 
 DRE spans semantic and physical persistence without collapsing them.
 
 ```mermaid
 sequenceDiagram
-    participant A as Agent / Module
+    participant A as Agent or Module
     participant R as Runtime semantic side
-    participant X as configured reasoning executor
+    participant X as Configured reasoning executor
     participant C as KernelClient
     participant K as Kernel
-    participant E as Engine/Worker
+    participant E as Engine or Worker
 
-    A->>R: persist/correlate semantic request + continuation as needed
-    A->>X: ReasoningRequest + timing/effort preferences
+    A->>R: persist semantic request and continuation as needed
+    A->>X: ReasoningRequest plus execution preferences
     X->>C: submit physical Work
     C->>K: durable physical Work
-    K-->>C: Work identity/status
+    K-->>C: Work identity
     C-->>R: correlate Work identity
-    Note over A,R: semantic process may stop
+    Note right of R: semantic process may stop
     K->>K: retain physical responsibility until eligible
     K->>E: execute when physically eligible
-    E-->>K: physical result/failure
+    E-->>K: physical result or failure
     K->>K: retain terminal outcome
     R->>C: collect correlated outcome later
     C->>K: fetch outcome
@@ -343,13 +496,13 @@ sequenceDiagram
 
 Semantic persistence may include the semantic request, relevant context, origin/correlation, continuation and interpretation state.
 
-Kernel persistence contains only technical lifecycle: Work identity, technical requirements, eligibility/scheduling, engine attempts, resources, retry/cancel state and terminal physical result/failure.
+Kernel persistence contains only physical lifecycle: Work identity, technical requirements, eligibility/scheduling, attempts, resources, retry/cancel state and terminal result/failure.
 
-Kernel correctness must not require the Module or Runtime process to remain alive while delayed physical Work exists.
+Kernel correctness does not require Module or Runtime processes to remain alive while durable physical Work exists.
 
-## 8. Kernel boundary
+## 13. Kernel boundary
 
-The Kernel is a native physical inference control plane.
+The Kernel is the native physical inference control plane.
 
 It owns:
 
@@ -369,92 +522,72 @@ It must not know or persist:
 ```text
 Module
 Agent
-Operation semantics
+Operation or EffectProfile semantics
 Material
 ReasoningRequest
-SPIRA dimensions or explanations
+Sensitivity Privacy Integrity Risk Autonomy
 CORE
-Workflow / WorkPlan semantics
+Skill Workflow WorkPlan semantics
 semantic continuation
 semantic persistence
 ```
 
-The Kernel may know physical facts such as engine location, model/provider identity, capabilities, resource requirements, health and loaded/warm state. The semantic side converts its meaning into technical requirements before Work crosses the boundary.
+The Kernel may know physical facts such as engine location, provider/model identity where applicable, capabilities, resources, health and warm/loaded state. Semantic software converts the meaning of those facts into technical constraints before physical Work crosses the boundary.
 
-## 9. Kernel modularity without semantic leakage
+## 14. Kernel modularity without semantic leakage
 
-MADRE's replaceability principle continues below the SDK boundary even though the Kernel does not depend on the SDK.
+MADRE's replaceability principle continues below the SDK boundary even though Kernel does not depend on the SDK.
 
-The Kernel should be solid by default but must not make its internal physical journey impossible to adapt. Physical concerns should have bounded enough implementation seams that the Owner can replace or interpose experiments without rewriting the complete subsystem.
+Physical responsibilities should have bounded enough implementation seams that the Owner can replace or interpose experiments without rewriting the whole subsystem. Examples include another engine matcher, alternative resource admission, extra physical observability, or learning-assisted physical routing that itself uses inference.
 
-Examples of legitimate physical experimentation include:
+Such an experiment remains physical Kernel behavior. It reasons over physical facts and does not import Modules, Agents, Material or SPIRA into Kernel.
 
-- a different engine-matching strategy;
-- alternate resource-admission logic;
-- extra physical observability;
-- learning-assisted physical routing;
-- an experiment that itself uses inference to improve routing.
+This does not require a speculative generic plugin framework now. It requires avoiding unnecessary closed implementation journeys.
 
-An inference-assisted Kernel experiment is still Kernel implementation. It must reason only over physical facts and must not import Module, Agent, Material, SPIRA or other semantic MADRE concepts.
-
-The design principle is:
-
-> hard boundary between semantic and physical meaning; replaceable journeys inside each side.
-
-This does not require a plugin framework or speculative extension API now. It requires avoiding architecture that makes replacement impossible without good reason.
-
-## 10. CORE position
+## 15. CORE position
 
 CORE is an ordinary Module assigned the CORE installation role.
 
-The shipped default CORE may provide:
-
-- ordinary Owner interaction;
-- default/meta behaviour;
-- default Agents;
-- reusable general Operations/Skills;
-- the shipped default implementation of Runtime-required Module-owned Operations such as the reasoning executor.
+The shipped default CORE may provide ordinary Owner interaction, default/meta behavior, default Agents, reusable general Operations/Skills, and the shipped default implementation of Runtime-required Module-owned Operations such as the reasoning executor.
 
 CORE is not Runtime, Kernel, owner of other Modules, or a special SPIRA authority.
 
-Replacing the selected implementation of a required Runtime Operation is allowed because the implementation is Module-owned and Runtime selects it at installation level.
-
-## 11. SDK as an automated construction target
+## 16. SDK as automated construction target
 
 The public SDK must be sufficient for independent and eventually AI-generated Modules.
 
 ```mermaid
 sequenceDiagram
     participant O as Owner
-    participant B as AI builder/service
+    participant B as AI builder
     participant S as Public MADRE SDK
-    participant T as Build/Test
+    participant T as Build and Test
     participant R as Runtime
     participant M as Installed Module
 
-    O->>B: describe needed domain application/binding
-    B->>S: use public contracts only
+    O->>B: describe needed domain application or binding
+    B->>S: use documented public contracts
     B->>B: generate ordinary Module code
-    B->>T: compile/test
+    B->>T: compile and test
     T-->>B: installable Module
-    B->>R: install/configure
-    R->>M: discover/activate when used
-    Note over M: ordinary installed software; builder is not runtime mediation
+    B->>R: install and configure
+    R->>M: discover and activate when used
+    Note right of M: Builder absent from normal execution
 ```
 
-A generated Module must not require hidden first-party hooks, Runtime internals or Kernel internals.
+A generated Module must not require hidden first-party hooks, Runtime internals or Kernel internals. SPIRA is part of that public construction surface precisely so generated software can express bounded information/effect semantics explicitly rather than improvising security architecture.
 
-## 12. Logical dependency direction
+## 17. Logical dependency direction
 
 ```mermaid
 flowchart TB
-    SDK[madre-sdk]
-    CORE[CORE Module]
-    MOD[Independent/generated Module]
-    RT[MADRE Runtime]
-    KC[madre-kernel-client]
-    K[madre-kernel]
-    W[engine/worker implementations]
+    SDK["madre-sdk"]
+    CORE["CORE Module"]
+    MOD["Independent or generated Module"]
+    RT["MADRE Runtime"]
+    KC["madre-kernel-client"]
+    K["madre-kernel"]
+    W["engine / worker implementations"]
 
     CORE --> SDK
     MOD --> SDK
@@ -472,15 +605,13 @@ madre-kernel         -X-> madre-sdk
 madre-kernel         -X-> MADRE Runtime
 ```
 
-A Module may privately use external AI or other systems; that does not create a Kernel dependency.
+A Module may privately use external AI or other systems without creating a Kernel dependency.
 
-## 13. Current implementation status
-
-As of the integration of this architecture onto `main`:
+## 18. Current implementation status
 
 ### Implemented and CI-proven
 
-Lane C provides:
+Current `main` contains Lane C:
 
 - native C++ Kernel;
 - durable physical Work;
@@ -491,26 +622,29 @@ Lane C provides:
 - native llama.cpp worker path;
 - Linux and Windows validation/hardening.
 
-The exact accepted Lane C head before this documentation integration was `fc7ce5c75bc84de5b277aaa91e796a97a54242fd`, with successful Lane C validation runs.
-
 ### Accepted architecture, not yet implemented in the active tree
 
-The semantic SDK/Module layer and MADRE Runtime described above are the next missing large regions. Their absence must not be disguised by Kernel code or by resurrecting discarded historical implementations.
+The semantic SDK/Module layer and Runtime described in this document are accepted architecture but are not yet present in the active tree.
 
-The active repository therefore represents the current MADRE direction honestly: **accepted whole-system semantics + implemented physical Kernel foundation + explicit semantic/runtime gaps**.
+Historical semantic implementations are evidence for recovering already-settled contracts—such as `EffectProfile` and the operational SPIRA topology—but are not code to restore wholesale. New implementation must follow the current corpus and current architecture.
 
-## 14. Engineering invariants
+## 19. Engineering invariants
 
 1. A Module owns its application/domain meaning; Runtime coordination does not absorb it.
 2. Not every Module has an Agent.
 3. Operation invocation does not imply Agent delegation.
-4. SPIRA Compound is intrinsic to actual composition; no Agent manages it.
-5. Only actual constituents participate in SPIRA scope.
-6. Agents create semantic ReasoningRequests, not Kernel Work.
-7. The ReasoningRequest→Work conversion is a bounded SDK Operation executed by Runtime and implemented by a selectable Module; shipped CORE provides the default.
-8. Semantic continuation/persistence stays above Kernel.
-9. Kernel owns physical Work and remains semantically blind.
-10. Kernel internals remain replaceable/experimentable without importing semantic SDK concepts.
-11. CORE is an ordinary Module with a role, not a privileged semantic subsystem.
-12. Independent/generated Modules use the same public SDK as shipped software.
-13. Modularity means small replaceable boundaries where a real responsibility exists—not a plugin framework for every possible future idea.
+4. SPIRA values live on the contracts/facts where they have established meaning; do not flatten them into one generic label.
+5. Concrete Material carries Sensitivity; Operation input boundaries carry Privacy; Agents/actual causal participants contribute Integrity; exact EffectProfiles carry Risk and Autonomy.
+6. An Operation owns its EffectProfiles; a consequential call selects one exact profile and a non-consequential call gets no dummy profile.
+7. Information reach, causal control and effect realization are three different comparisons.
+8. Only actual constituents participate; unrelated history or unused Operations do not contaminate the current construction.
+9. No Agent owns or manages a SPIRA Compound; Agents react to intrinsic composition.
+10. ReasoningRequest accumulates actual S/P/I reasoning constituents and does not automatically inherit parent EffectProfile Risk/Autonomy.
+11. Agents create semantic ReasoningRequests, not Kernel Work.
+12. ReasoningRequest-to-Work conversion is a bounded SDK Operation executed by Runtime and implemented by a selectable Module; shipped CORE provides the default.
+13. Semantic continuation/persistence remains above Kernel.
+14. Kernel owns physical Work and remains semantically blind.
+15. Kernel internals remain replaceable/experimentable without importing semantic SDK concepts.
+16. CORE is an ordinary Module with a role, not a privileged semantic subsystem.
+17. Independent/generated Modules use the same public SDK as shipped software.
+18. Modularity means small replaceable boundaries where a real responsibility exists, not a plugin framework for every possible future idea.
