@@ -28,19 +28,43 @@ The goal is not to pretend small local models equal frontier models. The goal is
 
 ## SPIRA
 
-MADRE's Security Algebra is intrinsic semantic composition across five separate facets:
+MADRE's Security Algebra is a concrete composition model, not a central authorization/policy service.
 
-- Sensitivity;
-- Privacy;
-- Integrity;
-- Risk;
-- Autonomy.
+Its values live on the contracts where they mean something:
+
+```text
+Material                          -> Sensitivity
+Operation accepted Material type -> Privacy
+Operation produced Material type -> maximum output Sensitivity
+Agent / actual causal participant -> Integrity
+actual effect realizer           -> Integrity when it participates
+selected Operation EffectProfile -> Risk + Autonomy
+```
 
 Integrity levels are:
 
 `NOT_DECLARED → DECLARED → TRUSTED → ACCEPTED → VALIDATED`
 
-SPIRA is not a central authorization/policy service. A compound arises inherently from the actual semantic constituents that are composing. Agents react to that structure; they do not own or manage it.
+An Operation owns its immutable `EffectProfile`s. A consequential invocation selects one exact profile; that profile supplies the Risk/Autonomy shape of that execution. Non-consequential Operations do not receive dummy effect values.
+
+SPIRA keeps three comparisons distinct:
+
+```text
+information reach:
+max(S_actual_material) <= min(P_actual_receiving_path)
+
+machine control of a consequential effect:
+min(R_selected_profile, A_selected_profile) <= min(I_actual_non_user_controllers)
+
+effect realization:
+R_selected_profile <= min(I_actual_effect_realizers)
+```
+
+A `ReasoningRequest` accumulates only the actual Sensitivity, Privacy and Integrity constituents of its reasoning computation. It does not automatically inherit a surrounding effect's Risk/Autonomy.
+
+There is no Agent-owned `Compound` manager. The algebraic compound exists because actual constituents compose; Agents react to the result.
+
+See [`docs/architecture/security-algebra.md`](docs/architecture/security-algebra.md) for the complete operational contract.
 
 ## Modularity
 
@@ -52,14 +76,14 @@ Examples:
 - Runtime-required semantic Operations have selectable Module-owned implementations;
 - the shipped CORE Module provides default implementations but does not monopolize them;
 - the ReasoningRequest→physical Work translation can be wrapped/replaced for Owner experiments;
-- Kernel stays independent of the semantic SDK but its physical routing/resource journey must remain adaptable enough for experiments such as learning-assisted routing;
+- Kernel stays independent of the semantic SDK but its physical routing/resource journey remains adaptable enough for experiments such as learning-assisted routing;
 - engine/worker implementations remain replaceable behind physical Kernel contracts.
 
 The hard semantic/physical boundary remains hard even when implementations on either side are changed.
 
 ## Current repository state
 
-`main` now represents the current MADRE direction rather than the discarded historical implementation.
+`main` represents the current MADRE direction rather than the discarded historical implementation.
 
 ### Implemented
 
@@ -73,11 +97,11 @@ The accepted Lane C/native Kernel foundation is present:
 - small Java `madre-kernel-client`;
 - real native llama.cpp worker path.
 
-The integrated Kernel baseline descends from accepted head `fc7ce5c75bc84de5b277aaa91e796a97a54242fd`, which passed the full Lane C validation on Linux and Windows.
-
 ### Not yet implemented
 
-The semantic SDK/Module layer and MADRE Runtime described by the accepted architecture are still missing from the active tree. Their architecture is documented; their implementation should be built cleanly rather than restored from discarded historical code.
+The semantic SDK/Module layer and MADRE Runtime described by the accepted architecture are still missing from the active tree. Their architecture is documented; their implementation should be built cleanly rather than restored wholesale from discarded historical code.
+
+Historical semantic code remains evidence for recovering settled contracts. In particular, the current SPIRA architecture deliberately retains the previously established `EffectProfile`, Operation-bound Privacy/output Sensitivity and concrete ReasoningRequest composition model without restoring obsolete implementation topology.
 
 ## Documentation
 
@@ -85,9 +109,10 @@ Start here:
 
 - [`docs/product/owner-intent-corpus.md`](docs/product/owner-intent-corpus.md) — authoritative product reasoning and meanings;
 - [`MADRE.md`](MADRE.md) — concise cross-repository product definition and authority order;
+- [`docs/architecture/security-algebra.md`](docs/architecture/security-algebra.md) — operational SPIRA carriers, `EffectProfile`s and comparison points;
 - [`docs/architecture/mid-level-architecture.md`](docs/architecture/mid-level-architecture.md) — accepted whole-system architecture and interaction diagrams;
 - [`docs/architecture/kernel.md`](docs/architecture/kernel.md) — current physical Kernel architecture;
-- [`docs/architecture/lane-c-native-kernel.md`](docs/architecture/lane-c-native-kernel.md) — detailed historical Lane C implementation contract/evidence.
+- [`docs/architecture/lane-c-native-kernel.md`](docs/architecture/lane-c-native-kernel.md) — pointer to current Kernel architecture and archived original Lane C contract.
 
 ## Development principle
 
@@ -98,3 +123,5 @@ The target is:
 > **powerful SDK, simple implementation, fast experimentation, minimal ceremony**
 
 Do not infer missing MADRE semantics from industry convention, historical generated code or the fact that another AI platform uses a particular abstraction.
+
+Do not simplify established contracts by removing the ownership/application points that make them operational. MADRE aims for small explicit concepts, not vague abstractions.
