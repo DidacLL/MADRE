@@ -2,9 +2,9 @@
 
 This document is the current public Kernel architecture. It describes the physical inference subsystem that is implemented in the active tree.
 
-For whole-system semantics and the semantic/physical boundary, see `docs/architecture/mid-level-architecture.md`.
+For whole-system semantics and the semantic/physical boundary, see `docs/architecture/mid-level-architecture.md`. For the operational semantic Security Algebra that must be resolved above this boundary, see `docs/architecture/security-algebra.md`.
 
-The older `docs/architecture/lane-c-native-kernel.md` is retained as the detailed Lane C implementation contract/evidence. Where its upstream semantic examples conflict with the current mid-level architecture, the current mid-level architecture wins. The physical requirements and evidence remain useful.
+The older `docs/architecture/lane-c-native-kernel.md` points to the current architecture and the archived original Lane C implementation contract. Historical upstream semantic examples do not override the current semantic architecture.
 
 ## Purpose
 
@@ -22,6 +22,8 @@ ReasoningRequest
         ↓
 Runtime executes configured Module-owned reasoning executor Operation
         ↓
+semantic constraints already resolved
+        ↓
 physical Work requirements
         ↓
 madre-kernel-client
@@ -38,7 +40,7 @@ The Kernel must not know:
 ```text
 Module
 Agent
-Operation semantics
+Operation / EffectProfile semantics
 Material
 ReasoningRequest
 SPIRA / Sensitivity / Privacy / Integrity / Risk / Autonomy
@@ -51,6 +53,8 @@ semantic persistence
 ```
 
 If Kernel code needs one of those concepts, the semantic/physical boundary has drifted.
+
+SPIRA's disclosure, control and effect-execution comparisons happen on the semantic side using the actual semantic contracts and causal participants. Where physical engine facts matter to semantic acceptability, the configured reasoning executor uses factual descriptions above the boundary and emits only the resulting physical constraints. Kernel does not repeat or reinterpret the algebra.
 
 ## Physical client
 
@@ -83,7 +87,7 @@ Physical Work can carry technical facts such as:
 
 It does not carry the semantic explanation for those requirements.
 
-For example, a locality requirement may have been produced because of an upstream SPIRA composition. Kernel receives only the resulting technical constraint, not SPIRA values or the semantic reason.
+For example, an upstream semantic comparison may make only local engines acceptable. Kernel receives the resulting local-only or eligible-engine constraint; it does not receive the Material Sensitivity, Operation Privacy boundary, Agent Integrity, EffectProfile or any other SPIRA operand that caused the semantic decision.
 
 ## Kernel responsibilities
 
