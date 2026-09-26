@@ -8,5 +8,5 @@ public interface KernelClient {
     WorkInspection inspect(WorkId id);
     Optional<WorkResult> result(WorkId id);
     WorkStatus cancel(WorkId id);
-    void acknowledge(WorkId id);
+    void release(WorkId id);
 }

@@ -14,8 +14,8 @@ import java.util.TreeMap;
 
 final class Protocol {
     static final int FRAMING_VERSION = 1;
-    static final int MIN_KERNEL_PROTOCOL_VERSION = 3;
-    static final int MAX_KERNEL_PROTOCOL_VERSION = 3;
+    static final int MIN_KERNEL_PROTOCOL_VERSION = 4;
+    static final int MAX_KERNEL_PROTOCOL_VERSION = 4;
     static final int MAX_BOUNDED_PAYLOAD_BYTES = 1024 * 1024;
 
     static final int HELLO = 1;
@@ -26,8 +26,8 @@ final class Protocol {
     static final int STATUS_RESPONSE = 21;
     static final int RESULT = 30;
     static final int RESULT_RESPONSE = 31;
-    static final int ACKNOWLEDGE = 40;
-    static final int ACKNOWLEDGE_RESPONSE = 41;
+    static final int RELEASE = 40;
+    static final int RELEASE_RESPONSE = 41;
     static final int CANCEL = 50;
     static final int CANCEL_RESPONSE = 51;
     static final int ERROR = 90;
@@ -42,25 +42,17 @@ final class Protocol {
         Frame {
             Objects.requireNonNull(metadata, "metadata");
             Objects.requireNonNull(payload, "payload");
-            if (payload.length > MAX_BOUNDED_PAYLOAD_BYTES) {
-                throw new IllegalArgumentException("frame exceeds bounded physical payload limit");
-            }
+            if (payload.length > MAX_BOUNDED_PAYLOAD_BYTES) throw new IllegalArgumentException("frame exceeds bounded physical payload limit");
             metadata = Collections.unmodifiableMap(new LinkedHashMap<>(metadata));
             payload = payload.clone();
         }
-
-        @Override
-        public byte[] payload() {
-            return payload.clone();
-        }
+        @Override public byte[] payload() { return payload.clone(); }
     }
 
     static void write(ByteChannel channel, Frame frame) throws IOException {
         byte[] metadata = encodeMetadata(frame.metadata());
         byte[] payload = frame.payload();
-        if (metadata.length > MAX_METADATA || payload.length > MAX_BOUNDED_PAYLOAD_BYTES) {
-            throw new IOException("frame exceeds bounded physical payload limits");
-        }
+        if (metadata.length > MAX_METADATA || payload.length > MAX_BOUNDED_PAYLOAD_BYTES) throw new IOException("frame exceeds bounded physical payload limits");
         ByteBuffer header = ByteBuffer.allocate(HEADER_SIZE).order(ByteOrder.BIG_ENDIAN);
         header.put(MAGIC);
         header.putShort((short) FRAMING_VERSION);
@@ -78,15 +70,9 @@ final class Protocol {
         ByteBuffer header = ByteBuffer.allocate(HEADER_SIZE).order(ByteOrder.BIG_ENDIAN);
         readFully(channel, header);
         header.flip();
-        for (byte expected : MAGIC) {
-            if (header.get() != expected) {
-                throw new IOException("invalid framing magic");
-            }
-        }
+        for (byte expected : MAGIC) if (header.get() != expected) throw new IOException("invalid framing magic");
         int framingVersion = Short.toUnsignedInt(header.getShort());
-        if (framingVersion != FRAMING_VERSION) {
-            throw new IOException("unsupported framing version: " + framingVersion);
-        }
+        if (framingVersion != FRAMING_VERSION) throw new IOException("unsupported framing version: " + framingVersion);
         int type = Short.toUnsignedInt(header.getShort());
         long correlation = header.getLong();
         int metadataLength = header.getInt();
@@ -106,8 +92,7 @@ final class Protocol {
         for (var entry : new TreeMap<>(metadata).entrySet()) {
             String key = entry.getKey();
             String value = entry.getValue();
-            if (key.isBlank() || key.indexOf('=') >= 0 || key.indexOf('\n') >= 0 || key.indexOf('\r') >= 0 ||
-                    value.indexOf('\n') >= 0 || value.indexOf('\r') >= 0) {
+            if (key.isBlank() || key.indexOf('=') >= 0 || key.indexOf('\n') >= 0 || key.indexOf('\r') >= 0 || value.indexOf('\n') >= 0 || value.indexOf('\r') >= 0) {
                 throw new IOException("invalid framed metadata");
             }
             out.append(key).append('=').append(value).append('\n');
@@ -132,8 +117,6 @@ final class Protocol {
     }
 
     private static void readFully(ByteChannel channel, ByteBuffer buffer) throws IOException {
-        while (buffer.hasRemaining()) {
-            if (channel.read(buffer) < 0) throw new EOFException("peer closed framed IPC");
-        }
+        while (buffer.hasRemaining()) if (channel.read(buffer) < 0) throw new EOFException("peer closed framed IPC");
     }
 }

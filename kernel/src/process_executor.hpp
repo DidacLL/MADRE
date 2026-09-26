@@ -1,5 +1,7 @@
 #pragma once
 
+#include "invocation.hpp"
+
 #include <cstdint>
 #include <filesystem>
 #include <functional>
@@ -9,20 +11,7 @@
 
 namespace madre::kernel {
 
-struct ProcessInvocationSpec {
-    std::string candidate_id;
-    std::filesystem::path executable;
-    std::vector<std::string> arguments;
-    std::string target_identity;
-};
-
-enum class ProcessOutcomeKind {
-    Succeeded,
-    TechnicalFailure,
-    Cancelled,
-    TimedOut,
-    Stopped,
-};
+enum class ProcessOutcomeKind { Succeeded, TechnicalFailure, Cancelled, TimedOut, Stopped };
 
 struct ProcessOutcome {
     ProcessOutcomeKind kind{ProcessOutcomeKind::TechnicalFailure};
@@ -35,7 +24,6 @@ struct ProcessOutcome {
 class ProcessExecutor {
 public:
     bool executable_available(const std::filesystem::path& executable) const;
-
     ProcessOutcome execute(
         const ProcessInvocationSpec& invocation,
         const std::vector<std::uint8_t>& stdin_payload,

@@ -23,8 +23,8 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: gradle/actions/setup-gradle@v4
-      - name: Install native build dependency
-        run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
+      - name: Install native build dependencies
+        run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev libcurl4-openssl-dev
       - name: Build native Kernel and deterministic process fixture
         run: |
           cmake -S kernel -B kernel/build -DCMAKE_BUILD_TYPE=Release
@@ -33,20 +33,24 @@ jobs:
         run: ctest --test-dir kernel/build --output-on-failure
       - name: Build Java physical client and acceptance harness
         run: ./gradlew --no-daemon clean build
-      - name: Prove LCR1 physical invocation, durability, containment and restart semantics
+      - name: Prove LCR2 independent external-inference boundary
         run: |
-          python3 ./kernel/tests/lcr1_acceptance.py \
+          python3 ./kernel/tests/lcr2_acceptance.py \
             ./kernel/build/madre-kernel \
             ./kernel/build/madre-process-fixture \
             'madre-kernel-client/build/classes/java/main:madre-kernel-client/build/classes/java/test'
       - name: Audit production Kernel for provider/runtime contamination
         run: |
-          if grep -RniE 'llama|GGUF|Ollama|OpenAI|Anthropic|Gemini|LM Studio|vLLM' kernel/src kernel/CMakeLists.txt; then
+          if grep -RniE 'llama|GGUF|Ollama|OpenAI|Anthropic|Gemini|LM Studio|vLLM|Hugging Face' kernel/src madre-kernel-client/src/main/java; then
             echo 'Provider/runtime-specific production Kernel contamination found' >&2
             exit 1
           fi
-          if grep -RniE 'EngineDescriptor|engine_inventory|WorkerPool|warm worker|required_capabilities|eligible_engine_ids|exact_model_id|exact_engine_id|Effort' kernel/src madre-kernel-client/src/main/java; then
+          if grep -RniE 'EngineDescriptor|engine_inventory|WorkerPool|warm worker|required_capabilities|eligible_engine_ids|exact_model_id|exact_engine_id|Effort|provider registry|engine registry' kernel/src madre-kernel-client/src/main/java; then
             echo 'Rejected inference-ownership abstraction found in active production sources' >&2
+            exit 1
+          fi
+          if grep -RniE 'input_path|request\.input|acknowledge' kernel/src madre-kernel-client/src/main/java; then
+            echo 'LCR1 global-payload or result-only acknowledgement fossil found' >&2
             exit 1
           fi
 
@@ -59,9 +63,9 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: gradle/actions/setup-gradle@v4
-      - name: Install native SQLite dependency
+      - name: Install native dependencies
         shell: pwsh
-        run: vcpkg install sqlite3:x64-windows-static
+        run: vcpkg install sqlite3:x64-windows-static curl:x64-windows-static
       - name: Build native Kernel and deterministic process fixture
         shell: pwsh
         run: |
@@ -73,10 +77,10 @@ jobs:
       - name: Build Java physical client and acceptance harness
         shell: pwsh
         run: .\gradlew.bat --no-daemon clean build
-      - name: Prove LCR1 Windows named-pipe and one-shot process contract
+      - name: Prove LCR2 Windows public physical contract
         shell: pwsh
         run: |
-          python .\kernel\tests\lcr1_acceptance.py `
+          python .\kernel\tests\lcr2_acceptance.py `
             .\kernel\build\Release\madre-kernel.exe `
             .\kernel\build\Release\madre-process-fixture.exe `
             'madre-kernel-client\build\classes\java\main;madre-kernel-client\build\classes\java\test'

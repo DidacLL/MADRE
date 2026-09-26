@@ -1,6 +1,6 @@
 # MADRE Kernel — current physical architecture
 
-This document is the current public Kernel architecture. It describes the durable physical inference-execution subsystem implemented by Lane C after the LCR1 ownership correction.
+This document describes the durable physical inference-execution subsystem implemented by Lane C after the LCR1 ownership correction and LCR2 external-inference boundary completion.
 
 For whole-system semantics and the semantic/physical boundary, see `docs/architecture/mid-level-architecture.md`. For SPIRA, see `docs/architecture/security-algebra.md`.
 
@@ -8,11 +8,11 @@ For whole-system semantics and the semantic/physical boundary, see `docs/archite
 
 The Kernel exists so semantic MADRE does not have to keep a process alive merely to carry already-decided physical inference Work to completion.
 
-The invariant is:
+The invariant remains:
 
 > **Kernel does not own the intelligence environment. Kernel owns durable physical execution of inference choices already made above it.**
 
-Inference-target configuration, provider/model/service/executable meaning, semantic reasoning intent and the choice of acceptable physical destinations belong above Kernel.
+Inference-target configuration, provider/model/service/executable meaning, semantic reasoning intent and the complete set of acceptable physical destinations belong above Kernel.
 
 ## Hard boundary
 
@@ -36,170 +36,250 @@ native Kernel
 physical executor for the supplied invocation variant
 ```
 
-The Kernel must not know:
-
-```text
-Module
-Agent
-Operation semantics
-Material
-ReasoningRequest
-SPIRA / Sensitivity / Privacy / Integrity / Risk / Autonomy
-CORE
-Skill
-Workflow
-WorkPlan semantics
-semantic continuation
-semantic persistence
-Owner inference-target catalogue
-semantic effort/capability requirements
-```
+The Kernel must not know Module, Agent, Operation semantics, Material, ReasoningRequest, SPIRA, CORE, Skill, Workflow, WorkPlan semantics, semantic continuation, semantic persistence, the Owner inference-target catalogue, or semantic effort/capability requirements.
 
 If Kernel code needs one of those concepts, the semantic/physical boundary has drifted.
 
-## Concrete physical invocation candidates
+## Protocol v4 physical Work
 
-A physical `WorkRequest` contains one or more already-approved concrete physical invocation candidates.
+Protocol v4 makes each concrete candidate complete with respect to its own request bytes.
 
-Each candidate is complete enough for its physical executor to attempt and carries an opaque stable candidate identity. Optional target identity may be retained and reported as descriptive physical information, but Kernel does not interpret it to discover or substitute another provider/model/destination.
+A `WorkRequest` contains:
 
-The supplied candidate list is the complete acceptable set.
+```text
+candidates
+urgency / eligibility
+deadline / attempt timeout
+retry policy
+```
 
-- one candidate means the physical inference choice is exact;
-- multiple candidates allow only physical routing among those supplied candidates;
-- Kernel may never widen the set or synthesize another destination.
+There is no Work-global inference payload.
 
-Routing is deliberately small. LCR1 uses deterministic supplied order and may skip a `ProcessInvocation` whose executable is physically unavailable. That is a physical executability fact, not semantic model selection.
+The Java physical algebra is deliberately small:
 
-## Physical client
+```text
+ConcretePhysicalInvocation
+    ├── ProcessInvocation
+    └── HttpInvocation
+```
 
-`madre-kernel-client` is deliberately small and physical. It does not depend on `madre-sdk`.
+These are physical mechanisms, not provider/model types and not a registry of inference engines.
 
-The current contract supports:
+Each candidate has a stable invocation ID, optional opaque target identity and its own bounded request payload. The v4 submission frame carries candidate payload slices as one bounded transport frame; Kernel immediately materializes each slice into that candidate's own retained payload file. The complete submitted candidate request material is bounded to 1 MiB per Work submission, and each retained result body is also bounded to 1 MiB.
 
-- submit durable Work containing concrete invocation candidates;
-- inspect physical status and the selected supplied candidate;
-- collect a retained result;
-- cancel Work;
-- acknowledge a retained successful result.
+The supplied candidate list is the complete acceptable set. One candidate is exact. Multiple candidates permit only physical routing among those supplied candidates. Kernel does not synthesize a URI, executable, provider, model or replacement target.
 
-The client does **not** expose an inference-engine inventory and does not ask Kernel to interpret `Effort`, required model capabilities, eligible engine IDs or exact engine/model search constraints.
+## ProcessInvocation
 
-## ProcessInvocation — first executor variant
-
-LCR1 implements one concrete invocation variant:
+`ProcessInvocation` represents one fresh operating-system process attempt:
 
 ```text
 ProcessInvocation
-    stable candidate identity
+    invocation ID
     executable
     arguments
-    bounded stdin payload
+    candidate-specific stdin bytes
     optional opaque target identity
 ```
 
-A `ProcessInvocation` represents **one physical attempt**.
+Kernel may skip a supplied process candidate when its executable is physically unavailable. When selected, Kernel starts a fresh process, writes that candidate's exact stdin, captures bounded stdout/stderr, observes exit status, and enforces cancellation, deadline and attempt timeout.
 
-Kernel launches a fresh operating-system process for that attempt, supplies bounded stdin, captures bounded stdout as the result, captures bounded stderr for technical failure evidence, observes exit status and enforces attempt timeout/cancellation.
+There are no warm workers, model residency, model loading, provider hosts or process pools in this executor.
 
-It does not create warm workers, model residency, process reuse, model loading or a long-lived provider host.
+## HttpInvocation
 
-The process executor is a physical mechanism. It is not a Module, provider, model, inference-engine ontology or generic claim that all future inference is a process. LCR2 may add another real invocation variant, such as HTTP(S), behind the same narrow executor seam.
+`HttpInvocation` is a generic concrete HTTP(S) POST attempt:
 
-Having a process executor also does not turn arbitrary Module Operations into Kernel Work. Kernel Work remains the shared physical inference responsibility produced by the semantic reasoning-to-physical bridge.
+```text
+HttpInvocation
+    invocation ID
+    exact http/https URI
+    bounded candidate-specific body bytes
+    explicit request headers
+    optional opaque target identity
+```
 
-## Kernel responsibilities
+Kernel does not understand the body schema. Provider-specific JSON remains opaque bytes supplied by the semantic-to-physical implementation above Kernel.
 
-Kernel owns:
+The native transport is **libcurl**. Production Kernel code:
 
-- durable physical Work identity/lifecycle;
-- eligible execution time and urgency;
-- deadline and per-attempt timeout;
-- bounded local physical concurrency;
-- physical attempts;
-- deterministic routing only among supplied candidates;
-- technical execution and failure evidence;
-- cancellation mechanics;
-- retry mechanics under explicit retry-safety semantics;
-- durable result retention;
-- restart recovery.
+- accepts only `http` and `https` target schemes;
+- performs POST;
+- retains a bounded response body;
+- uses normal TLS certificate and hostname verification;
+- does not follow redirects;
+- enforces deadline / attempt timeout;
+- supports local cancellation;
+- records factual HTTP status when a response was observed.
 
-Kernel does not own:
+Kernel is not a generic browser, REST framework or provider adapter system.
 
-- inference-target discovery/configuration;
-- provider/model catalogue or matching;
-- semantic effort/capability interpretation;
-- model/runtime warmness;
-- generic RAM/VRAM declarations for engines;
-- provider/runtime implementations.
+## HTTP headers and late-bound credentials
 
-## Retry and unknown completion
+The public physical API makes persistence intent explicit.
 
-Retry count alone is not enough to justify repeating a physical invocation.
+`LiteralHttpHeader` contains a header value that is deliberately durable Work data. It is suitable for non-secret facts such as `Content-Type`. Kernel does not infer secrecy from a header name.
 
-LCR1 distinguishes:
+`EnvironmentHttpHeader` contains only durable binding metadata:
+
+```text
+header name
+environment-variable name
+non-secret prefix
+non-secret suffix
+```
+
+The environment-variable value is resolved immediately before the physical HTTP attempt. The resolved value is used only in ephemeral memory to construct the outgoing header. It is not written to SQLite, candidate payload files, result files, ordinary Kernel logs, `WorkInspection` or technical failure strings.
+
+A missing environment binding is a physical dispatchability fact. Kernel may skip that supplied candidate and choose another supplied dispatchable candidate. It may not invent another destination.
+
+LCR2 does not introduce a Kernel secret manager or Runtime/CORE secret configuration. Supplying the Kernel process environment belongs to later host/runtime installation mechanics.
+
+## Candidate containment and physical routing
+
+Candidate routing remains intentionally small and deterministic.
+
+For each queued Work, Kernel checks the supplied candidates in order and may use only physical facts it owns, currently including:
+
+- process executable availability;
+- HTTP late-bound environment bindings being available;
+- supported concrete invocation kind.
+
+The selected attempt records the exact supplied invocation ID, kind and optional opaque target identity.
+
+No provider/model catalogue, capability interpretation, model substitution, URI mutation or target discovery exists below the boundary.
+
+## Honest HTTP completion certainty
+
+HTTP creates cases where local disconnection does not prove the remote outcome. LCR2 therefore treats certainty conservatively.
+
+The physical outcomes are distinguished as follows:
+
+### Definitely failed before meaningful remote submission
+
+Examples include DNS/connect/TLS failure before libcurl reports request bytes as sent, or timeout/cancellation before submission. These are definite physical outcomes.
+
+A definite failure may be retried only if the submitted retry policy permits definite-failure retries and attempt/deadline budget remains.
+
+### Definite HTTP response observed
+
+A received HTTP status is a factual remote observation.
+
+- HTTP 2xx with a complete bounded response body is `SUCCEEDED`.
+- A received non-2xx status is a definite technical `FAILED` outcome with the status exposed for inspection.
+- Kernel does not interpret provider business semantics in the response body.
+
+### Completion unknown
+
+If request bytes may have reached the remote target but Kernel loses the response, completion is unknown.
+
+Examples include:
+
+- transport loss after request transmission;
+- attempt timeout after transmission;
+- deadline expiration after transmission;
+- Owner cancellation after transmission.
+
+These become `UNKNOWN_COMPLETION`. Closing the local connection is not represented as confirmed remote cancellation or failure.
+
+If Kernel disappears while any attempt is active, restart recovery also records `UNKNOWN_COMPLETION`, as in LCR1.
+
+## Retry and cancellation semantics
+
+The retry safety values remain:
 
 ```text
 NEVER
     no automatic retry
 
 DEFINITE_FAILURES
-    retry may occur after a definitely observed technical failure
-    but not after loss of completion certainty
+    retry may occur after a definite technical failure
+    never after UNKNOWN_COMPLETION
 
 INCLUDING_UNKNOWN_COMPLETION
-    retry may also occur after Kernel restart interrupted observation
-    because the submitting semantic side explicitly declared that repetition safe/idempotent
+    retry may also occur after UNKNOWN_COMPLETION
+    because the submitting side explicitly declared repetition acceptable
 ```
 
-If Kernel restarts while an attempt was `RUNNING`, it cannot infer that the physical effect definitely failed. The attempt is recorded as `UNKNOWN_COMPLETION`.
+All retries remain bounded by `maxAttempts`, retry delay and Work deadline.
 
-Unless retry-after-unknown was explicitly declared safe and another attempt remains, Work becomes terminal `UNKNOWN_COMPLETION` rather than being silently translated into `FAILED` or blindly repeated.
+Owner-requested cancellation is stronger than retry permission. If cancellation is requested while an HTTP request may already have reached the target, Work becomes terminal `UNKNOWN_COMPLETION` and is not automatically retried even under `INCLUDING_UNKNOWN_COMPLETION`.
 
-This invariant is mandatory:
+Deadline exhaustion never creates another attempt.
 
-> **Kernel must never translate “I lost certainty about an attempt” into “that attempt definitely failed and is safe to repeat.”**
+## Physical inspection
+
+`WorkInspection` exposes small factual physical information:
+
+- Work state;
+- attempt count;
+- whether retained payload ownership has been released;
+- latest/current attempt number;
+- concrete invocation ID;
+- invocation kind (`PROCESS` or `HTTP`);
+- optional opaque target identity;
+- attempt state;
+- start/end time where known;
+- process exit code where relevant;
+- HTTP response status where relevant;
+- technical failure or uncertainty fact.
+
+It does not expose provider/model semantics or resolved credential values.
+
+The store retains full attempt rows internally; the public LCR2 client exposes the bounded latest/current attempt view rather than introducing pagination/history infrastructure.
+
+## Durable payload retention and terminal release
+
+Physical Work must survive Runtime/Module process disappearance, so Kernel may durably retain request bytes while the Work requires recovery.
+
+This includes provider-shaped HTTP request bodies containing prompt/context bytes after semantic-to-physical translation. Kernel does not semantically understand or classify those bytes.
+
+Late-bound credential values are different: they are not part of durable Work and are never persisted by Kernel.
+
+Every terminal Work state supports `release`:
+
+```text
+SUCCEEDED
+FAILED
+CANCELLED
+UNKNOWN_COMPLETION
+```
+
+`release` means the client is finished with retained physical content. Kernel then performs ordinary deletion of candidate request payload files and any retained result body while keeping minimal Work/attempt lifecycle metadata for truthful inspection.
+
+LCR2 does not claim secure disk erasure.
 
 ## Persistence split
 
-Kernel persists only technical lifecycle.
+Semantic persistence remains above the Kernel boundary and may contain reasoning context, semantic request, origin/correlation and continuation.
 
-Semantic persistence belongs above the boundary and may include the reasoning request, context, origin/correlation and continuation.
+Kernel persists only physical lifecycle:
 
-Kernel persistence contains only physical Work identity, supplied concrete candidates, scheduling state, attempts, retry/cancel state, selected supplied candidate, technical failure facts and terminal physical result.
+- Work identity and timing/retry facts;
+- the complete submitted concrete candidate set;
+- candidate-specific retained request payload-file paths;
+- durable non-secret HTTP header facts and late-binding references;
+- attempts and factual physical outcomes;
+- cancellation state;
+- technical failure/uncertainty facts;
+- retained result path;
+- terminal release state.
 
 Kernel remains correct if Runtime and all Module processes disappear while physical Work is queued or executing.
 
-## Local IPC
+## Local IPC and compatibility
 
 The native Kernel keeps an independent lifetime and uses local-only IPC:
 
 - Unix-domain sockets on Unix-like systems;
 - local Windows named pipes on Windows.
 
-LCR1 introduces no localhost HTTP/TCP requirement.
+LCR2 uses Kernel protocol **v4**. Development protocol v3 databases are rejected rather than migrated or adapted.
 
-## Replaceability and experimentation
+## Replaceability without provider framework drift
 
-The Kernel does not use the semantic SDK, but its real physical responsibilities should remain bounded enough for Owner experiments.
+The real executor seam is now a direct C++ `std::variant` dispatch between `ProcessInvocationSpec` and `HttpInvocationSpec`.
 
-The stable seam is the concrete physical invocation plus its executor. Do not generalize this into a provider SPI, adapter marketplace, generic RPC framework or universal job system before another concrete executor requires it.
+There is no dynamic executor registry, provider SPI, provider adapter marketplace, engine registry, dependency-injection framework or generic plugin system.
 
-A future physical-routing experiment may reason over physical facts Kernel actually owns, but it may still select only from the already-approved candidate set supplied from above.
-
-## Current implementation
-
-LCR1 preserves the valuable Lane C substrate:
-
-- native C++ Kernel executable;
-- independent lifetime;
-- versioned framing;
-- Unix-domain socket / Windows named-pipe IPC;
-- SQLite durable Work and attempt lifecycle;
-- file-backed bounded input/result retention;
-- scheduling, deadlines, timeout, cancellation and restart recovery;
-- Java `madre-kernel-client` physical boundary.
-
-The rejected Lane C engine/worker ownership model, llama.cpp worker, model downloads and inference-runtime-specific Kernel build integration are not part of the current architecture.
-
-The semantic SDK/Module and Runtime layers described by the whole-system architecture are still not implemented by LCR1.
+`ProcessInvocation` and `HttpInvocation` are the concrete mechanisms currently required. They are not declared to be the final universal executor taxonomy.

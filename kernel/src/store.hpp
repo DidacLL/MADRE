@@ -1,6 +1,6 @@
 #pragma once
 
-#include "process_executor.hpp"
+#include "invocation.hpp"
 
 #include <cstdint>
 #include <filesystem>
@@ -12,6 +12,19 @@
 struct sqlite3;
 
 namespace madre::kernel {
+
+struct AttemptRecord {
+    int attempt_number{};
+    std::string candidate_id;
+    std::string kind;
+    std::string target_identity;
+    std::int64_t started_at_ms{};
+    std::optional<std::int64_t> ended_at_ms;
+    std::string state;
+    std::string technical_failure;
+    std::optional<int> exit_code;
+    std::optional<int> http_status;
+};
 
 struct WorkRecord {
     std::string id;
@@ -26,21 +39,18 @@ struct WorkRecord {
     std::int64_t retry_delay_ms{};
     std::string retry_safety;
     int attempt_count{};
-    std::filesystem::path input_path;
     std::filesystem::path result_path;
-    bool acknowledged{};
+    bool released{};
     bool cancel_requested{};
-    std::string selected_candidate_id;
-    std::string selected_target_identity;
     std::string technical_failure;
-    std::vector<ProcessInvocationSpec> candidates;
+    std::vector<ConcretePhysicalInvocationSpec> candidates;
+    std::optional<AttemptRecord> latest_attempt;
 };
 
 class WorkStore {
 public:
     explicit WorkStore(const std::filesystem::path& database_path);
     ~WorkStore();
-
     WorkStore(const WorkStore&) = delete;
     WorkStore& operator=(const WorkStore&) = delete;
 
@@ -49,21 +59,20 @@ public:
     std::optional<WorkRecord> next_eligible(std::int64_t now_ms);
     void expire_queued_deadlines(std::int64_t now_ms);
     void fail_queued(const std::string& id, const std::string& technical_failure);
-    int begin_attempt(const std::string& id, const ProcessInvocationSpec& candidate,
-                      std::int64_t started_at_ms);
-    void finish_success(const std::string& id, int attempt_number,
-                        std::int64_t ended_at_ms);
-    void finish_cancelled(const std::string& id, int attempt_number,
-                          std::int64_t ended_at_ms);
-    void finish_definite_failure(const std::string& id, int attempt_number,
-                                 const std::string& attempt_state,
-                                 const std::string& technical_failure,
-                                 std::optional<int> exit_code,
-                                 std::int64_t ended_at_ms);
+    int begin_attempt(const std::string& id, const ConcretePhysicalInvocationSpec& candidate, std::int64_t started_at_ms);
+    void finish_success(const std::string& id, int attempt_number, std::optional<int> exit_code,
+                        std::optional<int> http_status, std::int64_t ended_at_ms);
+    void finish_cancelled(const std::string& id, int attempt_number, const std::string& technical_failure,
+                          std::optional<int> exit_code, std::optional<int> http_status, std::int64_t ended_at_ms);
+    void finish_definite_failure(const std::string& id, int attempt_number, const std::string& attempt_state,
+                                 const std::string& technical_failure, std::optional<int> exit_code,
+                                 std::optional<int> http_status, std::int64_t ended_at_ms);
+    void finish_unknown_completion(const std::string& id, int attempt_number, const std::string& technical_failure,
+                                   std::optional<int> http_status, std::int64_t ended_at_ms);
     void recover_interrupted(std::int64_t now_ms);
     std::string cancel(const std::string& id);
     bool cancel_requested(const std::string& id);
-    bool acknowledge(const std::string& id);
+    bool release(const std::string& id);
 
 private:
     sqlite3* db_{};

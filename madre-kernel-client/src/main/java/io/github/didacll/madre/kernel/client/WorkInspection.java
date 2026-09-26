@@ -6,16 +6,13 @@ import java.util.Optional;
 public record WorkInspection(
         WorkStatus status,
         int attemptCount,
-        Optional<InvocationId> selectedInvocation,
-        Optional<String> selectedTargetIdentity,
-        Optional<String> technicalFailure) {
+        Optional<AttemptInspection> latestAttempt,
+        Optional<String> technicalFailure,
+        boolean payloadReleased) {
     public WorkInspection {
         Objects.requireNonNull(status, "status");
-        Objects.requireNonNull(selectedInvocation, "selectedInvocation");
-        Objects.requireNonNull(selectedTargetIdentity, "selectedTargetIdentity");
+        Objects.requireNonNull(latestAttempt, "latestAttempt");
         Objects.requireNonNull(technicalFailure, "technicalFailure");
-        if (attemptCount < 0) {
-            throw new IllegalArgumentException("attemptCount must be >= 0");
-        }
+        if (attemptCount < 0) throw new IllegalArgumentException("attemptCount must be >= 0");
     }
 }
