@@ -4,7 +4,7 @@ This is the mandatory short recovery checkpoint for substantial MADRE work.
 
 Before designing, implementing, auditing or correcting a meaningful MADRE slice, answer the eight questions below in the context of the task. Do not answer from industry convention, historical implementation or memory when the repository authorities are available.
 
-This document is deliberately concise. It does **not** replace `docs/product/owner-intent-corpus.md` or the detailed reasoning in `MADRE.md`. If a statement here seems ambiguous, recover its meaning from those richer authorities rather than expanding it with familiar platform assumptions.
+This document is deliberately concise. It does **not** replace `docs/product/owner-intent-corpus.md`, `docs/product/lane-c-owner-decision.md` or the detailed reasoning in `MADRE.md`. If a statement here seems ambiguous, recover its meaning from those richer authorities rather than expanding it with familiar platform assumptions.
 
 ## 1. What is MADRE?
 
@@ -22,7 +22,7 @@ It is not a universal ontology of everything on the Owner's computer, and not ev
 
 It is not a security authority above the Owner.
 
-It is not defined by whichever inference provider or implementation happens to be used today.
+It is not defined by whichever inference provider, model, runtime or implementation happens to be used today.
 
 ## 3. Why does MADRE exist?
 
@@ -38,11 +38,11 @@ Provider independence, privacy and data ownership are major consequences of keep
 
 MADRE owns only the common concepts and shared machinery that genuinely need to be common across independently installed AI-native applications.
 
-That includes the public SDK surface, the installed Runtime coordination/execution environment, and the shared physical inference Kernel boundary.
+That includes the public SDK surface, the installed Runtime coordination/execution environment, and the shared physical inference Kernel: durable physical inference Work, configured inference-capability knowledge, physical observations, inference-aware DRE scheduling and physical execution.
 
 Modules own their application/domain semantics, state, persistence, UI, integrations and internal implementation. Modules provide their own Agents where they need them. Agents belong to their providing Modules. Not every Module provides an Agent.
 
-Models, providers and engines are replaceable mechanisms used by the environment; they are not MADRE's semantic identity.
+Models, providers, inference engines and external agentic runtimes are replaceable mechanisms used by the environment; MADRE does not need to own their internal lifecycle or architecture.
 
 ## 5. What does the final user want?
 
@@ -52,9 +52,9 @@ They want applications that can use domain knowledge, local/open intelligence, d
 
 ## 6. What should the Owner be able to know and edit?
 
-The Owner should be able to inspect the meaningful structure of their installation: installed Modules, available Agents and capabilities, important configuration, relevant information movement, consequential/delayed work, and external intelligence use where it matters.
+The Owner should be able to inspect the meaningful structure of their installation: installed Modules, available Agents and inference capabilities, important configuration, relevant information movement, consequential/delayed work, physical inference observations where useful, and external intelligence use where it matters.
 
-Because the system belongs to them, they should ultimately be able to modify, replace or remove the software, state, configuration and implementations they own, including experimenting at Runtime and Kernel level.
+Because the system belongs to them, they should ultimately be able to modify, replace or remove the software, state, configuration and implementations they own, including experimenting at Runtime and Kernel level and adding unusual inference bindings without requiring a privileged first-party path.
 
 MADRE mechanisms serve the Owner; they do not protect MADRE from the Owner.
 
@@ -80,9 +80,9 @@ A normal user can remain at the first step. Greater depth is optional and progre
 
 MADRE is a one-Owner research/product project developed heavily with AI assistance.
 
-Build the smallest solid environment that can make the MADRE thesis real: powerful public SDK, independently installable Modules, simple Runtime composition/execution, Delayed Reasoning Effort, meaningful SPIRA semantics, and a narrow durable physical Kernel.
+Build the smallest solid environment that can make the MADRE thesis real: powerful public SDK, independently installable Modules, simple Runtime composition/execution, Delayed Reasoning Effort, meaningful SPIRA semantics, and a durable physical Kernel that can schedule and execute reasoning against Owner-configured inference capabilities without becoming an inference provider/runtime platform.
 
-Keep the architecture explicit enough that humans and a wide range of capable AI builders can create ordinary Modules against public contracts without hidden first-party knowledge.
+Keep the architecture explicit enough that humans and a wide range of capable AI builders can create ordinary Modules against public contracts without hidden first-party knowledge, and that advanced Owners can extend physical inference through the same class of seams used by provided integrations.
 
 Prefer working behaviour, clear replaceable boundaries and fast experimentation over enterprise/platform abstractions, compatibility machinery without users, or speculative frameworks.
 
@@ -92,4 +92,6 @@ Before substantial work, answer all eight questions explicitly.
 
 If the proposed implementation changes any answer, stop and determine whether the Owner actually changed MADRE or whether the implementation is drifting.
 
-If this short checkpoint and a richer authority appear to conflict, do not simplify the richer reasoning away. Re-read `docs/product/owner-intent-corpus.md` and `MADRE.md` and recover the intended meaning before changing architecture.
+For Lane C and the semantic/physical inference boundary, `docs/product/lane-c-owner-decision.md` preserves the current accepted correction and the reasons behind it. In particular, do not recover either rejected extreme from historical implementation: Kernel-owned inference workers/runtimes, or an exact-provider/exact-invocation decision completed before Kernel so DRE can no longer perform capability-aware physical scheduling.
+
+If this short checkpoint and a richer authority appear to conflict, do not simplify the richer reasoning away. Re-read the current Owner decision, `docs/product/owner-intent-corpus.md` and `MADRE.md` and recover the intended meaning before changing architecture.
