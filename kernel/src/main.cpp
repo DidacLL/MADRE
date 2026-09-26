@@ -39,6 +39,7 @@ using namespace std::chrono_literals;
 namespace madre::kernel {
 namespace {
 std::atomic_bool g_stop{false};
+constexpr std::size_t kMaxConcurrentLocalClients = 16;
 
 void on_signal(int) { g_stop.store(true); }
 #ifdef _WIN32
@@ -160,6 +161,10 @@ public:
         scheduler_ = std::thread([this] { scheduler_loop(); });
         while (!g_stop.load() && !stop_.load()) {
             std::erase_if(client_tasks_, [](std::future<void>& task) { return task.wait_for(0ms) == std::future_status::ready; });
+            if (client_tasks_.size() >= kMaxConcurrentLocalClients) {
+                std::this_thread::sleep_for(10ms);
+                continue;
+            }
             const int fd = local_ipc_.accept_for(100ms);
             if (fd < 0) continue;
             try {
