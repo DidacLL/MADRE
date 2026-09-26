@@ -34,6 +34,11 @@ struct HttpInvocationSpec {
     std::string target_identity;
 };
 
+// Typed physical extension seam. A future real mechanism extends this algebra
+// with its own typed spec plus executor, bounded persistence/wire support and
+// dispatch integration. Work lifecycle and scheduling remain above the
+// concrete variant; do not replace this with stringly metadata or a plugin
+// registry merely to anticipate unknown mechanisms.
 using ConcretePhysicalInvocationSpec = std::variant<ProcessInvocationSpec, HttpInvocationSpec>;
 
 inline const std::string& invocation_id(const ConcretePhysicalInvocationSpec& value) {

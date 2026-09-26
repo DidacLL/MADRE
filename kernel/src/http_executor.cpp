@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
 
 namespace madre::kernel {
@@ -78,6 +79,10 @@ bool request_may_have_been_submitted(CURL* handle) {
     return false;
 }
 
+bool header_value_has_line_break(std::string_view value) {
+    return value.find_first_of("\r\n") != std::string_view::npos;
+}
+
 struct HeaderList {
     curl_slist* value{};
     ~HeaderList() { if (value != nullptr) curl_slist_free_all(value); }
@@ -131,6 +136,9 @@ HttpOutcome HttpExecutor::execute(
                     return {HttpOutcomeKind::DefiniteFailure, {}, "HTTP_LATE_BOUND_CREDENTIAL_UNAVAILABLE", std::nullopt};
                 }
                 value = header.prefix + secret + header.suffix;
+            }
+            if (header_value_has_line_break(value)) {
+                return {HttpOutcomeKind::DefiniteFailure, {}, "HTTP_HEADER_VALUE_CONTAINS_CR_OR_LF", std::nullopt};
             }
             headers.append(header.name + ": " + value);
         }

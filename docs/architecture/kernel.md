@@ -1,6 +1,6 @@
 # MADRE Kernel — current physical architecture
 
-This document describes the durable physical inference-execution subsystem implemented by Lane C after the LCR1 ownership correction and LCR2 external-inference boundary completion.
+This document describes the durable physical inference-execution subsystem implemented by Lane C after the LCR1 ownership correction, LCR2 external-inference boundary completion and LCR3 physical-substrate closure.
 
 For whole-system semantics and the semantic/physical boundary, see `docs/architecture/mid-level-architecture.md`. For SPIRA, see `docs/architecture/security-algebra.md`.
 
@@ -67,7 +67,7 @@ These are physical mechanisms, not provider/model types and not a registry of in
 
 Each candidate has a stable invocation ID, optional opaque target identity and its own bounded request payload. The v4 submission frame carries candidate payload slices as one bounded transport frame; Kernel immediately materializes each slice into that candidate's own retained payload file. The complete submitted candidate request material is bounded to 1 MiB per Work submission, and each retained result body is also bounded to 1 MiB.
 
-The supplied candidate list is the complete acceptable set. One candidate is exact. Multiple candidates permit only physical routing among those supplied candidates. Kernel does not synthesize a URI, executable, provider, model or replacement target.
+The supplied candidate list is the complete acceptable set. One candidate is exact. Multiple candidates mean the semantic side has already approved every member as a physical realization of the same selected inference choice. Kernel may choose only among that set for factual physical dispatchability. It does not compare reasoning quality, model capability, semantic effort, cost preference, provider meaning or application/domain semantics, and it does not synthesize a URI, executable, provider, model or replacement target.
 
 ## ProcessInvocation
 
@@ -131,9 +131,11 @@ non-secret suffix
 
 The environment-variable value is resolved immediately before the physical HTTP attempt. The resolved value is used only in ephemeral memory to construct the outgoing header. It is not written to SQLite, candidate payload files, result files, ordinary Kernel logs, `WorkInspection` or technical failure strings.
 
+After resolution and prefix/suffix construction, the final header value is rejected if it contains CR or LF before it is handed to libcurl. The rejection reports only a constant technical failure and never echoes the resolved value.
+
 A missing environment binding is a physical dispatchability fact. Kernel may skip that supplied candidate and choose another supplied dispatchable candidate. It may not invent another destination.
 
-LCR2 does not introduce a Kernel secret manager or Runtime/CORE secret configuration. Supplying the Kernel process environment belongs to later host/runtime installation mechanics.
+This mechanism is deliberately only a small late-binding facility. Kernel does not implement secret storage or secret management.
 
 ## Candidate containment and physical routing
 
@@ -153,8 +155,6 @@ No provider/model catalogue, capability interpretation, model substitution, URI 
 
 HTTP creates cases where local disconnection does not prove the remote outcome. LCR2 therefore treats certainty conservatively.
 
-The physical outcomes are distinguished as follows:
-
 ### Definitely failed before meaningful remote submission
 
 Examples include DNS/connect/TLS failure before libcurl reports request bytes as sent, or timeout/cancellation before submission. These are definite physical outcomes.
@@ -173,20 +173,13 @@ A received HTTP status is a factual remote observation.
 
 If request bytes may have reached the remote target but Kernel loses the response, completion is unknown.
 
-Examples include:
+Examples include transport loss after request transmission, attempt timeout or deadline expiration after transmission, and Owner cancellation after transmission. These become `UNKNOWN_COMPLETION`. Closing the local connection is not represented as confirmed remote cancellation or failure.
 
-- transport loss after request transmission;
-- attempt timeout after transmission;
-- deadline expiration after transmission;
-- Owner cancellation after transmission.
-
-These become `UNKNOWN_COMPLETION`. Closing the local connection is not represented as confirmed remote cancellation or failure.
-
-If Kernel disappears while any attempt is active, restart recovery also records `UNKNOWN_COMPLETION`, as in LCR1.
+If Kernel disappears while any attempt is active, restart recovery also records `UNKNOWN_COMPLETION`.
 
 ## Retry and cancellation semantics
 
-The retry safety values remain:
+The current built-in physical retry policy is:
 
 ```text
 NEVER
@@ -201,11 +194,26 @@ INCLUDING_UNKNOWN_COMPLETION
     because the submitting side explicitly declared repetition acceptable
 ```
 
-All retries remain bounded by `maxAttempts`, retry delay and Work deadline.
+All retries remain bounded by `maxAttempts`, retry delay and Work deadline. Retry delay is scheduling eligibility for the next physical attempt, not a semantic inference judgment.
 
-Owner-requested cancellation is stronger than retry permission. If cancellation is requested while an HTTP request may already have reached the target, Work becomes terminal `UNKNOWN_COMPLETION` and is not automatically retried even under `INCLUDING_UNKNOWN_COMPLETION`.
+Owner-requested cancellation is stronger than retry permission. If cancellation is requested while an HTTP request may already have reached the target, Work becomes terminal `UNKNOWN_COMPLETION` and is not automatically retried even under `INCLUDING_UNKNOWN_COMPLETION`. Deadline exhaustion never creates another attempt.
 
-Deadline exhaustion never creates another attempt.
+This policy is a useful current physical strategy, not an immutable inference semantic. A future execution strategy above or around the physical substrate may replace or extend it without requiring provider/model logic in the Kernel.
+
+## Scheduler semantics after LCR3 audit
+
+The current scheduler has no worker inventory, warm-model ownership or per-engine resource reservation. Its admission model is intentionally smaller:
+
+- one configured global bound on simultaneously active physical attempts;
+- only Work whose `eligible_at` and `next_attempt_at` are due is considered;
+- expired queued deadlines are failed without dispatch;
+- among eligible queued Work, urgency orders `INTERACTIVE`, `NORMAL`, then `BACKGROUND`, with creation order as the deterministic tie-breaker;
+- candidate selection is then restricted to the submitted physical alternatives and factual dispatchability;
+- cancellation removes queued Work or requests termination of running Work.
+
+Therefore the historical resource-blocked head-of-line defect from the removed worker/resource architecture is not present in this scheduler. Future-eligible or retry-delayed Work is excluded by the queue predicate and cannot occupy the selected queue head. A candidate set with no currently supported/available physical realization fails as `NO_DISPATCHABLE_CANDIDATE`; there is no hidden resource-wait state that can indefinitely block later Work.
+
+LCR3 adds deterministic acceptance for global capacity, urgency, future eligibility, queued deadline expiry and retry-delay bypass rather than inventing a replacement resource scheduler.
 
 ## Physical inspection
 
@@ -226,13 +234,11 @@ Deadline exhaustion never creates another attempt.
 
 It does not expose provider/model semantics or resolved credential values.
 
-The store retains full attempt rows internally; the public LCR2 client exposes the bounded latest/current attempt view rather than introducing pagination/history infrastructure.
+The store retains full attempt rows internally; the public client exposes the bounded latest/current attempt view rather than introducing pagination/history infrastructure.
 
 ## Durable payload retention and terminal release
 
-Physical Work must survive Runtime/Module process disappearance, so Kernel may durably retain request bytes while the Work requires recovery.
-
-This includes provider-shaped HTTP request bodies containing prompt/context bytes after semantic-to-physical translation. Kernel does not semantically understand or classify those bytes.
+Physical Work must survive Runtime/Module process disappearance, so Kernel may durably retain request bytes while the Work requires recovery. This includes provider-shaped HTTP request bodies containing prompt/context bytes after semantic-to-physical translation. Kernel does not semantically understand or classify those bytes.
 
 Late-bound credential values are different: they are not part of durable Work and are never persisted by Kernel.
 
@@ -245,9 +251,9 @@ CANCELLED
 UNKNOWN_COMPLETION
 ```
 
-`release` means the client is finished with retained physical content. Kernel then performs ordinary deletion of candidate request payload files and any retained result body while keeping minimal Work/attempt lifecycle metadata for truthful inspection.
+`release` is the explicit end of retained physical payload ownership. Kernel performs ordinary deletion of every candidate request payload and any retained result body while keeping minimal Work/attempt lifecycle metadata for truthful inspection. Release is idempotent: repeating it on terminal Work succeeds, and an already-missing candidate/result file is treated as already released content rather than making the Work unreleasable. After release, `result()` does not return prior result content.
 
-LCR2 does not claim secure disk erasure.
+No secure-erasure guarantee is claimed.
 
 ## Persistence split
 
@@ -274,12 +280,41 @@ The native Kernel keeps an independent lifetime and uses local-only IPC:
 - Unix-domain sockets on Unix-like systems;
 - local Windows named pipes on Windows.
 
-LCR2 uses Kernel protocol **v4**. Development protocol v3 databases are rejected rather than migrated or adapted.
+Connection servicing is isolated per accepted local client. The accept loop continues while another client is reading an incomplete bounded frame, so one stalled local caller cannot freeze unrelated control-plane callers. This is deliberately a small concurrency boundary around the existing local framed protocol, not a generic server framework.
 
-## Replaceability without provider framework drift
+LCR3 retains Kernel protocol **v4** and SQLite schema/user version **4** because the public wire and durable schema shapes did not need to change. Development protocol-v3 databases remain rejected rather than migrated or adapted.
 
-The real executor seam is now a direct C++ `std::variant` dispatch between `ProcessInvocationSpec` and `HttpInvocationSpec`.
+## Typed physical extension seam
 
-There is no dynamic executor registry, provider SPI, provider adapter marketplace, engine registry, dependency-injection framework or generic plugin system.
+The native physical algebra remains:
 
-`ProcessInvocation` and `HttpInvocation` are the concrete mechanisms currently required. They are not declared to be the final universal executor taxonomy.
+```text
+ConcretePhysicalInvocationSpec =
+    variant<ProcessInvocationSpec, HttpInvocationSpec>
+```
+
+A future real physical mechanism has a direct typed path: add its invocation representation, executor, bounded persistence/serialization support and dispatch integration. Scheduler, Work lifecycle and semantic MADRE continue to operate over physical Work and do not need conceptual redesign.
+
+There is intentionally no dynamic executor registry, plugin loading, executor marketplace or arbitrary stringly-typed invocation map. Process and HTTP are the working built-ins required now, not a claim that all future inference ecosystems reduce to those two mechanisms.
+
+## Historical Issue #63 disposition
+
+Issue #63 was written against an earlier Lane C implementation that owned an engine inventory, warm workers and resource reservations. LCR1 removed that model rather than repairing it.
+
+Still applicable to the current physical substrate:
+
+- factual physical inspection at the Java boundary — implemented in LCR2;
+- explicit terminal payload ownership/release — implemented in LCR2 and hardened/idempotent in LCR3;
+- isolation of stalled local IPC clients — implemented in LCR3;
+- the general requirement that queued physical Work not head-of-line block unrelated eligible Work — re-audited against the current scheduler and covered by current scheduling acceptance.
+
+Obsolete because their owning architecture no longer exists:
+
+- warm worker RAM/VRAM ownership accounting;
+- warm-worker idle termination/resource release;
+- CPU-vs-resident-model resource leasing;
+- engine selection before resource executability;
+- warm-engine preference;
+- per-engine capacity/resource-blocked dispatch states.
+
+Those findings must not be used to resurrect an engine catalogue, MADRE-managed worker ontology or resource-reservation subsystem unless a future concrete physical mechanism creates a new current need.

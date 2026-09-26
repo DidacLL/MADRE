@@ -33,9 +33,15 @@ jobs:
         run: ctest --test-dir kernel/build --output-on-failure
       - name: Build Java physical client and acceptance harness
         run: ./gradlew --no-daemon clean build
-      - name: Prove LCR2 independent external-inference boundary
+      - name: Prove LCR2 external-inference baseline
         run: |
           python3 ./kernel/tests/lcr2_acceptance.py \
+            ./kernel/build/madre-kernel \
+            ./kernel/build/madre-process-fixture \
+            'madre-kernel-client/build/classes/java/main:madre-kernel-client/build/classes/java/test'
+      - name: Prove LCR3 physical substrate closure
+        run: |
+          python3 ./kernel/tests/lcr3_acceptance.py \
             ./kernel/build/madre-kernel \
             ./kernel/build/madre-process-fixture \
             'madre-kernel-client/build/classes/java/main:madre-kernel-client/build/classes/java/test'
@@ -77,10 +83,17 @@ jobs:
       - name: Build Java physical client and acceptance harness
         shell: pwsh
         run: .\gradlew.bat --no-daemon clean build
-      - name: Prove LCR2 Windows public physical contract
+      - name: Prove LCR2 Windows physical baseline
         shell: pwsh
         run: |
           python .\kernel\tests\lcr2_acceptance.py `
+            .\kernel\build\Release\madre-kernel.exe `
+            .\kernel\build\Release\madre-process-fixture.exe `
+            'madre-kernel-client\build\classes\java\main;madre-kernel-client\build\classes\java\test'
+      - name: Prove LCR3 Windows physical substrate closure
+        shell: pwsh
+        run: |
+          python .\kernel\tests\lcr3_acceptance.py `
             .\kernel\build\Release\madre-kernel.exe `
             .\kernel\build\Release\madre-process-fixture.exe `
             'madre-kernel-client\build\classes\java\main;madre-kernel-client\build\classes\java\test'

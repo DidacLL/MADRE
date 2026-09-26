@@ -24,6 +24,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <thread>
 #include <variant>
 #include <vector>
@@ -73,6 +74,12 @@ std::vector<std::uint8_t> read_binary_bounded(const fs::path& path) {
     std::ifstream stream(path, std::ios::binary); if (!stream) throw std::runtime_error("open payload file for read"); std::vector<std::uint8_t> data(static_cast<std::size_t>(size));
     if (!data.empty()) { stream.read(reinterpret_cast<char*>(data.data()), static_cast<std::streamsize>(data.size())); if (!stream) throw std::runtime_error("read payload file"); }
     return data;
+}
+
+bool remove_retained_file(const fs::path& path) {
+    std::error_code error;
+    fs::remove(path, error);
+    return !error || error == std::errc::no_such_file_or_directory;
 }
 
 Frame response(MessageType type, const Frame& request) { return Frame{type, request.correlation_id, {}, {}}; }
@@ -143,10 +150,28 @@ public:
         : data_dir_(std::move(data_dir)), local_ipc_(std::move(endpoint), data_dir_), store_(data_dir_ / "kernel.db"), max_concurrent_(max_concurrent) {
         fs::create_directories(data_dir_ / "work"); store_.recover_interrupted(now_ms());
     }
-    ~Kernel() { stop_.store(true); wake_.notify_all(); if (scheduler_.joinable()) scheduler_.join(); for (auto& task : attempt_tasks_) if (task.valid()) task.wait(); }
+    ~Kernel() {
+        stop_.store(true); wake_.notify_all();
+        if (scheduler_.joinable()) scheduler_.join();
+        for (auto& task : attempt_tasks_) if (task.valid()) task.wait();
+        for (auto& task : client_tasks_) if (task.valid()) task.wait();
+    }
     void run() {
         scheduler_ = std::thread([this] { scheduler_loop(); });
-        while (!g_stop.load() && !stop_.load()) { const int fd = local_ipc_.accept_for(100ms); if (fd < 0) continue; serve_connection(fd); close_local_ipc(fd); }
+        while (!g_stop.load() && !stop_.load()) {
+            std::erase_if(client_tasks_, [](std::future<void>& task) { return task.wait_for(0ms) == std::future_status::ready; });
+            const int fd = local_ipc_.accept_for(100ms);
+            if (fd < 0) continue;
+            try {
+                client_tasks_.push_back(std::async(std::launch::async, [this, fd] {
+                    serve_connection(fd);
+                    close_local_ipc(fd);
+                }));
+            } catch (...) {
+                close_local_ipc(fd);
+                throw;
+            }
+        }
         stop_.store(true); wake_.notify_all();
     }
 
@@ -313,8 +338,10 @@ private:
         const auto id = metadata_value(request, "work_id"); const auto work = store_.find(id); if (!work) return error_response(request, "WORK_NOT_FOUND", "unknown WorkId");
         const bool terminal = work->state == "SUCCEEDED" || work->state == "FAILED" || work->state == "CANCELLED" || work->state == "UNKNOWN_COMPLETION"; if (!terminal) return error_response(request, "WORK_NOT_TERMINAL", "retained payload may be released only after terminal Work");
         if (!work->released) {
-            for (const auto& candidate : work->candidates) { std::error_code error; fs::remove(payload_path(candidate), error); if (error) return error_response(request, "PAYLOAD_DELETE_FAILED", "failed to remove retained candidate payload"); }
-            std::error_code result_error; fs::remove(work->result_path, result_error); if (result_error) return error_response(request, "PAYLOAD_DELETE_FAILED", "failed to remove retained result payload");
+            for (const auto& candidate : work->candidates) {
+                if (!remove_retained_file(payload_path(candidate))) return error_response(request, "PAYLOAD_DELETE_FAILED", "failed to remove retained candidate payload");
+            }
+            if (!remove_retained_file(work->result_path)) return error_response(request, "PAYLOAD_DELETE_FAILED", "failed to remove retained result payload");
             if (!store_.release(id)) return error_response(request, "RELEASE_REJECTED", "terminal Work could not be marked released");
         }
         auto out = response(MessageType::ReleaseResponse, request); out.metadata["released"] = "true"; return out;
@@ -325,7 +352,7 @@ private:
     }
 
     fs::path data_dir_; LocalIpcServer local_ipc_; WorkStore store_; ProcessExecutor process_executor_; HttpExecutor http_executor_; int max_concurrent_;
-    std::atomic<int> active_attempts_{0}; std::atomic_bool stop_{false}; std::thread scheduler_; std::vector<std::future<void>> attempt_tasks_; std::mutex wake_mutex_; std::condition_variable wake_;
+    std::atomic<int> active_attempts_{0}; std::atomic_bool stop_{false}; std::thread scheduler_; std::vector<std::future<void>> attempt_tasks_; std::vector<std::future<void>> client_tasks_; std::mutex wake_mutex_; std::condition_variable wake_;
 };
 
 struct Options { fs::path data_dir; fs::path endpoint; int max_concurrent{2}; };
