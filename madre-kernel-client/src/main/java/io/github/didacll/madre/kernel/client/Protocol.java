@@ -14,12 +14,9 @@ import java.util.TreeMap;
 
 final class Protocol {
     static final int FRAMING_VERSION = 1;
-    static final int MIN_KERNEL_PROTOCOL_VERSION = 2;
-    static final int MAX_KERNEL_PROTOCOL_VERSION = 2;
-
-    // C1 intentionally buffers bounded opaque text-generation/v1 payloads only.
-    // Large-payload streaming/spooling is deferred beyond C1.
-    static final int MAX_C1_TEXT_GENERATION_OPAQUE_PAYLOAD_BYTES = 1024 * 1024;
+    static final int MIN_KERNEL_PROTOCOL_VERSION = 3;
+    static final int MAX_KERNEL_PROTOCOL_VERSION = 3;
+    static final int MAX_BOUNDED_PAYLOAD_BYTES = 1024 * 1024;
 
     static final int HELLO = 1;
     static final int HELLO_RESPONSE = 2;
@@ -33,10 +30,6 @@ final class Protocol {
     static final int ACKNOWLEDGE_RESPONSE = 41;
     static final int CANCEL = 50;
     static final int CANCEL_RESPONSE = 51;
-    static final int LIST_ENGINES = 60;
-    static final int LIST_ENGINES_RESPONSE = 61;
-    static final int ENGINE_STATUS = 70;
-    static final int ENGINE_STATUS_RESPONSE = 71;
     static final int ERROR = 90;
 
     private static final byte[] MAGIC = {'M', 'A', 'D', 'R'};
@@ -49,9 +42,8 @@ final class Protocol {
         Frame {
             Objects.requireNonNull(metadata, "metadata");
             Objects.requireNonNull(payload, "payload");
-            if (payload.length > MAX_C1_TEXT_GENERATION_OPAQUE_PAYLOAD_BYTES) {
-                throw new IllegalArgumentException(
-                        "frame exceeds C1 bounded text-generation/v1 payload limit");
+            if (payload.length > MAX_BOUNDED_PAYLOAD_BYTES) {
+                throw new IllegalArgumentException("frame exceeds bounded physical payload limit");
             }
             metadata = Collections.unmodifiableMap(new LinkedHashMap<>(metadata));
             payload = payload.clone();
@@ -66,9 +58,8 @@ final class Protocol {
     static void write(ByteChannel channel, Frame frame) throws IOException {
         byte[] metadata = encodeMetadata(frame.metadata());
         byte[] payload = frame.payload();
-        if (metadata.length > MAX_METADATA ||
-                payload.length > MAX_C1_TEXT_GENERATION_OPAQUE_PAYLOAD_BYTES) {
-            throw new IOException("frame exceeds C1 bounded text-generation/v1 framing limits");
+        if (metadata.length > MAX_METADATA || payload.length > MAX_BOUNDED_PAYLOAD_BYTES) {
+            throw new IOException("frame exceeds bounded physical payload limits");
         }
         ByteBuffer header = ByteBuffer.allocate(HEADER_SIZE).order(ByteOrder.BIG_ENDIAN);
         header.put(MAGIC);
@@ -100,9 +91,8 @@ final class Protocol {
         long correlation = header.getLong();
         int metadataLength = header.getInt();
         long payloadLength = header.getLong();
-        if (metadataLength < 0 || metadataLength > MAX_METADATA || payloadLength < 0 ||
-                payloadLength > MAX_C1_TEXT_GENERATION_OPAQUE_PAYLOAD_BYTES) {
-            throw new IOException("frame exceeds C1 bounded text-generation/v1 framing limits");
+        if (metadataLength < 0 || metadataLength > MAX_METADATA || payloadLength < 0 || payloadLength > MAX_BOUNDED_PAYLOAD_BYTES) {
+            throw new IOException("frame exceeds bounded physical payload limits");
         }
         ByteBuffer metadata = ByteBuffer.allocate(metadataLength);
         readFully(channel, metadata);
@@ -129,29 +119,21 @@ final class Protocol {
         Map<String, String> result = new LinkedHashMap<>();
         String text = new String(encoded, StandardCharsets.UTF_8);
         for (String line : text.split("\\n", -1)) {
-            if (line.isEmpty()) {
-                continue;
-            }
+            if (line.isEmpty()) continue;
             int equals = line.indexOf('=');
-            if (equals <= 0) {
-                throw new IOException("malformed framed metadata");
-            }
+            if (equals <= 0) throw new IOException("malformed framed metadata");
             result.put(line.substring(0, equals), line.substring(equals + 1));
         }
         return result;
     }
 
     private static void writeFully(ByteChannel channel, ByteBuffer buffer) throws IOException {
-        while (buffer.hasRemaining()) {
-            channel.write(buffer);
-        }
+        while (buffer.hasRemaining()) channel.write(buffer);
     }
 
     private static void readFully(ByteChannel channel, ByteBuffer buffer) throws IOException {
         while (buffer.hasRemaining()) {
-            if (channel.read(buffer) < 0) {
-                throw new EOFException("peer closed framed IPC");
-            }
+            if (channel.read(buffer) < 0) throw new EOFException("peer closed framed IPC");
         }
     }
 }

@@ -22,21 +22,24 @@ flowchart TB
       M["Modules<br/>independently installable domain applications"]
       SDK["Public MADRE SDK<br/>semantic contracts · reusable facilities · extension contracts"]
       RT["MADRE Runtime<br/>installed semantic environment"]
+      T["Owner inference-target configuration<br/>providers · models · services · executables"]
     end
 
     KC["madre-kernel-client<br/>small physical contract"]
 
     subgraph P["Physical MADRE"]
-      K["Native Kernel<br/>durable physical inference Work"]
-      E["Inference engines / workers"]
+      K["Native Kernel<br/>durable execution of approved physical inference Work"]
+      X["Physical executors<br/>ProcessInvocation now · HTTP-like later"]
     end
 
     O --> M
+    O --> T
     M <--> SDK
     M <--> RT
+    T --> RT
     RT --> KC
     KC --> K
-    K --> E
+    K --> X
 ```
 
 These are not equivalent services.
@@ -44,9 +47,10 @@ These are not equivalent services.
 - **Modules** contain application/domain meaning.
 - **SDK** is the public construction vocabulary shared by shipped, independent and generated software.
 - **Runtime** supplies the installed environment: Module lifecycle/discovery/routing plus shared semantic execution mechanics.
+- **Owner inference-target configuration** lives above Kernel and describes which physical intelligence mechanisms exist and what they mean.
 - **Kernel client** is a small physical boundary artifact.
-- **Kernel** owns already-physical inference Work.
-- **engines/workers** perform physical inference.
+- **Kernel** owns durable execution of already-approved physical inference Work.
+- **physical executors** execute a concrete invocation variant supplied in that Work; they do not define provider/model meaning.
 
 A Module may privately use another AI/inference environment without using the shared Kernel. Kernel is not a universal interceptor.
 
@@ -313,8 +317,8 @@ sequenceDiagram
     A->>A: establish actual semantic context and valid composition
     A->>Q: create semantic reasoning need
     A->>X: ReasoningRequest plus execution preferences
-    X->>X: translate semantic need into physical requirements
-    X->>K: physical Work only
+    X->>X: resolve acceptable concrete physical invocation candidate(s)
+    X->>K: physical Work containing only that approved candidate set
 ```
 
 Risk remains with an actual Operation/effect. Autonomy remains with the current Agent continuation. Other facets remain with the actual objects/boundaries/provenance that contribute them.
@@ -347,7 +351,8 @@ Runtime also provides installation mechanics for:
 - receiving/executing the configured reasoning-to-physical function;
 - persistence/correlation needed for delayed semantic reasoning;
 - correlation between semantic requests and physical Kernel Work/results;
-- continuation/recovery support.
+- continuation/recovery support;
+- access to Owner inference-target configuration needed by the selected reasoning executor.
 
 The meaning of the reasoning remains in the responsible Agent/Module semantic process.
 
@@ -364,10 +369,14 @@ execution preferences/declarations
         ↓
 configured reasoning executor Operation
         ↓
+resolve Owner-configured provider/model/service/executable meaning
+        ↓
+one or more already-approved ConcretePhysicalInvocation candidates
+        ↓
 physical WorkRequest
 ```
 
-The preference/declaration object is intentionally not frozen at this level. It lets semantic code express computation effort, timing and other physical preferences without forcing Agents to understand Kernel mechanics.
+The preference/declaration object is intentionally not frozen at this level. It lets semantic code express computation effort, timing and other inference preferences without forcing Agents to understand Kernel mechanics.
 
 This function follows ordinary MADRE modularity:
 
@@ -385,6 +394,8 @@ flowchart TB
     SEL["Runtime selected implementation"]
     EXT["Optional Owner extension<br/>logging · learning · experiment"]
     CORE["Shipped CORE default implementation"]
+    CFG["Owner inference-target configuration"]
+    C["Approved ConcretePhysicalInvocation candidate(s)"]
     W["Physical WorkRequest"]
     KC["KernelClient"]
     K["Kernel"]
@@ -392,16 +403,20 @@ flowchart TB
     RR --> OP
     EP --> OP
     OP --> SEL
+    CFG --> SEL
     SEL -. optional extension .-> EXT
     EXT -. may delegate .-> CORE
     SEL -. default .-> CORE
-    EXT -. may translate .-> W
-    CORE --> W
+    EXT -. may resolve .-> C
+    CORE --> C
+    C --> W
     W --> KC
     KC --> K
 ```
 
-The selected implementation can inspect semantic facts available to the ReasoningRequest context and factual engine descriptions. It translates the chosen acceptable physical candidate space into physical Work constraints. SPIRA itself does not cross into Kernel.
+The selected implementation can inspect semantic facts available to the ReasoningRequest context and factual information about the Owner's configured inference targets. It is responsible for provider/model/service/executable meaning and for selecting the complete acceptable concrete invocation set.
+
+That set is complete at the Kernel boundary. Kernel cannot widen it. One supplied candidate is exact; multiple candidates permit only physical routing among those candidates. SPIRA itself does not cross into Kernel.
 
 ## 12. Delayed Reasoning Effort
 
@@ -414,18 +429,19 @@ sequenceDiagram
     participant X as Configured reasoning executor
     participant C as KernelClient
     participant K as Kernel
-    participant E as Engine or Worker
+    participant E as Physical executor
 
     A->>R: persist semantic request and continuation as needed
     A->>X: ReasoningRequest plus execution preferences
+    X->>X: resolve approved concrete physical candidate(s)
     X->>C: submit physical Work
-    C->>K: durable physical Work
+    C->>K: durable Work with complete candidate set
     K-->>C: Work identity
     C-->>R: correlate Work identity
     Note right of R: semantic process may stop
     K->>K: retain physical responsibility until eligible
-    K->>E: execute when physically eligible
-    E-->>K: physical result or failure
+    K->>E: execute one supplied concrete candidate
+    E-->>K: physical result or technical outcome
     K->>K: retain terminal outcome
     R->>C: collect correlated outcome later
     C->>K: fetch outcome
@@ -436,26 +452,26 @@ sequenceDiagram
 
 Semantic persistence may include the semantic request, relevant context, origin/correlation, continuation and interpretation state.
 
-Kernel persistence contains only physical lifecycle: Work identity, technical requirements, eligibility/scheduling, attempts, resources, retry/cancel state and terminal result/failure.
+Kernel persistence contains only physical lifecycle: Work identity, supplied concrete candidates, eligibility/scheduling, attempts, retry/cancel state, selected supplied candidate and terminal physical result/failure.
 
 Kernel correctness does not require Module or Runtime processes to remain alive while durable physical Work exists.
 
 ## 13. Kernel boundary
 
-The Kernel is the native physical inference control plane.
+The Kernel is the native durable physical inference-execution control plane.
 
 It owns:
 
-- durable physical Work;
-- technical inference requirements;
-- eligibility and scheduling;
-- engine inventory and factual engine descriptors;
-- technical matching;
-- scarce-resource admission/accounting;
-- worker lifecycle/supervision;
+- durable physical Work identity/lifecycle;
+- eligibility and physical urgency;
+- deadlines and attempt timeout;
+- bounded physical concurrency;
+- physical attempts;
+- simple routing only among the concrete candidates supplied from above;
+- technical execution/failure facts;
 - physical retry/cancellation;
-- attempts and technical failures;
-- terminal physical results.
+- durable terminal physical results;
+- restart recovery.
 
 It must not know or persist:
 
@@ -470,19 +486,35 @@ CORE
 Skill Workflow WorkPlan semantics
 semantic continuation
 semantic persistence
+Owner inference-target catalogue meaning
+semantic effort/capability requirements
 ```
 
-The Kernel may know physical facts such as engine location, provider/model identity where applicable, capabilities, resources, health and warm/loaded state. Semantic software can use those facts above the boundary to determine physical constraints.
+The Kernel must not discover a provider/model outside the supplied candidate set, maintain a model/provider inventory, equate an inference engine with a MADRE-owned worker process, or own model loading/unloading/warmness.
 
-Kernel does not convert physical locality/provider/model facts into Privacy or Integrity.
+Provider/model/destination identity may be retained as opaque descriptive identity on a concrete candidate/attempt, but Kernel does not interpret that identity to find a substitute.
+
+The first implemented concrete variant is `ProcessInvocation`: one fresh operating-system process per attempt, with bounded stdin/stdout/stderr, exit status, timeout and cancellation. That process executor is a physical mechanism rather than the definition of inference.
+
+A future HTTP(S)-like variant belongs behind the same narrow concrete-invocation executor seam. This does not create a generic provider SPI, adapter marketplace or RPC framework.
+
+Having a process executor does not make ordinary Module Operations Kernel Work. Kernel Work still exists only after the semantic reasoning-to-physical bridge produces shared physical inference Work.
+
+### Honest restart semantics
+
+Kernel must distinguish a definitely observed technical failure from loss of certainty about completion.
+
+If Kernel restarts while an attempt was active, that attempt becomes `UNKNOWN_COMPLETION`. It is not rewritten as definite failure.
+
+Automatic repetition after unknown completion is permitted only when the submitted physical retry semantics explicitly declare that repetition safe/idempotent. Conservative defaults do not retry it.
 
 ## 14. Kernel modularity without semantic leakage
 
 MADRE's replaceability principle continues below the SDK boundary even though Kernel does not depend on the SDK.
 
-Physical responsibilities should have bounded enough implementation seams that the Owner can replace or interpose experiments without rewriting the whole subsystem. Examples include another engine matcher, alternative resource admission, extra physical observability or learning-assisted physical routing that itself uses inference.
+Physical responsibilities should have bounded enough implementation seams that the Owner can replace or interpose experiments without rewriting the whole subsystem. The concrete invocation/executor seam is the first such real boundary.
 
-Such an experiment remains physical Kernel behavior. It reasons over physical facts and does not import Modules, Agents, Material or SPIRA into Kernel.
+A physical-routing experiment may reason over facts Kernel actually owns, but it still may choose only among the complete candidate set supplied from above. It may not use physical experimentation as an excuse to rediscover provider/model meaning.
 
 This does not require a speculative generic plugin framework now. It requires avoiding unnecessary closed implementation journeys.
 
@@ -529,14 +561,14 @@ flowchart TB
     RT["MADRE Runtime"]
     KC["madre-kernel-client"]
     K["madre-kernel"]
-    W["engine / worker implementations"]
+    X["physical executor implementations"]
 
     CORE --> SDK
     MOD --> SDK
     RT --> SDK
     RT --> KC
     KC --> K
-    K --> W
+    K --> X
 ```
 
 Hard dependency rules:
@@ -553,22 +585,25 @@ A Module may privately use external AI or other systems without creating a Kerne
 
 ### Implemented and CI-proven
 
-Current `main` contains Lane C:
+The active Lane C/LCR1 tree contains:
 
 - native C++ Kernel;
 - durable physical Work;
-- scheduling/recovery;
-- worker lifecycle and resource accounting;
-- local IPC;
-- Java `madre-kernel-client` physical contract;
-- native llama.cpp worker path;
-- Linux and Windows validation/hardening.
+- eligibility/scheduling and restart recovery;
+- one or more already-approved concrete invocation candidates per Work;
+- generic one-shot `ProcessInvocation` execution;
+- explicit retry safety and terminal `UNKNOWN_COMPLETION` for interrupted attempts;
+- local Unix-domain socket / Windows named-pipe IPC;
+- Java `madre-kernel-client` physical contract at protocol v3;
+- Linux behavioral validation and Windows build/behavior validation in CI.
+
+The active Kernel does not include a model/provider inventory, warm worker/model lifecycle, llama.cpp integration or model downloads.
 
 ### Accepted architecture, not yet implemented in the active tree
 
 The semantic SDK/Module layer and Runtime described in this document are accepted architecture but are not yet present in the active tree.
 
-Historical semantic implementations are evidence for recovering settled semantic meaning but are not code to restore wholesale. Where historical implementation conflicts with later Owner corrections—such as mandatory `EffectProfile` pairing or Runtime-owned algebra evaluation—the later Owner model wins.
+Historical semantic implementations are evidence for recovering settled semantic meaning but are not code to restore wholesale. Where historical implementation conflicts with later Owner corrections—such as mandatory `EffectProfile` pairing, Runtime-owned algebra evaluation or Kernel-owned inference selection—the later Owner model wins.
 
 ## 19. Engineering invariants
 
@@ -585,9 +620,13 @@ Historical semantic implementations are evidence for recovering settled semantic
 11. ReasoningRequest remains semantic and is not mandated to contain a generic SPIRA tuple.
 12. Agents create semantic ReasoningRequests, not Kernel Work.
 13. ReasoningRequest-to-Work conversion is a bounded SDK Operation executed by Runtime and implemented by a selectable Module; shipped CORE provides the default.
-14. Semantic continuation/persistence remains above Kernel.
-15. Kernel owns physical Work and remains semantically blind.
-16. Kernel internals remain replaceable/experimentable without importing semantic SDK concepts.
-17. CORE is an ordinary Module with a role, not a privileged semantic subsystem.
-18. Independent/generated Modules use the same public SDK as shipped software.
-19. Modularity means small replaceable boundaries where a real responsibility exists, not a framework for every possible future idea.
+14. That semantic→physical Operation owns inference-target meaning and produces the complete already-approved concrete invocation candidate set.
+15. Semantic continuation/persistence remains above Kernel.
+16. Kernel owns durable physical execution of that supplied candidate set and remains semantically blind.
+17. Kernel cannot widen the supplied candidate set or rediscover provider/model meaning.
+18. Loss of certainty about an active attempt becomes `UNKNOWN_COMPLETION`; unknown completion is not blindly retried unless explicitly safe/idempotent.
+19. A physical executor mechanism does not turn ordinary Module Operations into Kernel Work.
+20. Kernel internals remain replaceable/experimentable without importing semantic SDK concepts or creating speculative provider/plugin frameworks.
+21. CORE is an ordinary Module with a role, not a privileged semantic subsystem.
+22. Independent/generated Modules use the same public SDK as shipped software.
+23. Modularity means small replaceable boundaries where a real responsibility exists, not a framework for every possible future idea.

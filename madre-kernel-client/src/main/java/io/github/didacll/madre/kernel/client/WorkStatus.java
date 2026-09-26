@@ -5,5 +5,6 @@ public enum WorkStatus {
     RUNNING,
     SUCCEEDED,
     FAILED,
-    CANCELLED
+    CANCELLED,
+    UNKNOWN_COMPLETION
 }

@@ -108,10 +108,13 @@ The SDK defines a bounded required function/Operation:
 
 ```text
 ReasoningRequest + execution preferences/declarations
-    -> physical Work requirements
+    -> one or more already-approved ConcretePhysicalInvocation candidates
+    -> physical Work
 ```
 
 Runtime executes the installation-selected implementation. The implementation belongs to a Module; the shipped CORE Module provides the default. The Owner may wrap or replace it.
+
+That semantic→physical implementation owns the inference meaning: it understands the Owner's configured providers/models/services/executables and resolves which concrete physical invocation candidate or candidates are acceptable. The complete approved candidate set is then submitted as physical Work.
 
 Runtime supplies installation mechanics—Module discovery/lifecycle/addressing/routing, persistence/correlation, configured execution and diagnostics. Runtime does **not** become the semantic owner/evaluator of SPIRA merely because it transports or executes calls.
 
@@ -125,17 +128,21 @@ CORE is not Runtime, Kernel, owner of other Modules or a special SPIRA authority
 
 ## Kernel
 
-Kernel owns already-physical inference Work only.
+Kernel owns durable execution of **already-approved physical inference Work** only.
 
-It handles durable Work, physical engine matching, scheduling/eligibility, resource accounting, worker supervision, retry/cancellation and terminal technical results.
+It owns Work identity/lifecycle, eligibility/urgency, deadlines and attempt timeout, bounded physical concurrency, attempts, cancellation, explicit retry mechanics, durable result retention and restart recovery.
 
-Kernel must remain blind to Module, Agent, Operation semantics, Material, ReasoningRequest, SPIRA, CORE, Workflow/WorkPlan semantics and semantic continuation.
+A Work request contains one or more complete `ConcretePhysicalInvocation` candidates chosen above the boundary. Kernel may route only among that supplied set for physical reasons. One supplied candidate means the choice is exact. Kernel may never discover or substitute another provider/model/destination.
 
-Factual engine descriptors can be inspected above the boundary. Semantic software translates its conclusions into physical constraints; Kernel does not derive Privacy or Integrity from locality/provider/model facts.
+Kernel must remain blind to Module, Agent, Operation semantics, Material, ReasoningRequest, SPIRA, CORE, Workflow/WorkPlan semantics and semantic continuation. It also does not own the Owner's inference-target catalogue, model/provider matching, semantic effort/capability interpretation, model warmness or provider/runtime implementations.
+
+The first implemented executor variant is `ProcessInvocation`: one supplied executable attempt with bounded stdin/stdout/stderr, timeout and cancellation. Process execution is a physical mechanism, not the definition of an inference engine and not a reason to send ordinary Module Operations through Kernel.
 
 The Kernel does not depend on the semantic SDK.
 
-Physical Kernel internals should remain replaceable/experimentable where real needs arise without importing semantic MADRE concepts. An inference-assisted physical router is acceptable if it reasons only over physical Kernel facts.
+Restart recovery is conservative: loss of certainty about a running attempt becomes `UNKNOWN_COMPLETION`. Kernel retries after unknown completion only when the Work explicitly declared that repetition safe/idempotent.
+
+Physical Kernel internals should remain replaceable/experimentable where real needs arise without importing semantic MADRE concepts or widening the supplied candidate set.
 
 ## DRE
 
@@ -155,15 +162,17 @@ A future BuilderModule may be deferred. The requirement that the public SDK be s
 
 ## Current implementation state
 
-`main` contains the accepted native Kernel/Lane C implementation and Java physical client:
+The active tree contains the corrected Lane C/native Kernel implementation and Java physical client:
 
 - native C++ Kernel;
-- durable physical Work;
-- scheduling/restart recovery;
-- worker lifecycle/resource accounting;
-- local IPC and Windows/Linux hardening;
-- Java `madre-kernel-client`;
-- native llama.cpp worker path.
+- durable physical Work and restart recovery;
+- one or more already-approved physical invocation candidates per Work;
+- generic one-shot `ProcessInvocation` executor;
+- conservative `UNKNOWN_COMPLETION` restart semantics;
+- local Unix-domain socket / Windows named-pipe IPC;
+- Java `madre-kernel-client` using protocol v3.
+
+The Kernel does not ship a model runtime, provider implementation, inference-engine inventory or llama.cpp worker.
 
 The semantic SDK/Module layer and Runtime described above are accepted architecture but are **not yet implemented in the active tree**. Do not restore discarded historical semantic implementations to hide that gap.
 

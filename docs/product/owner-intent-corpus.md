@@ -378,7 +378,7 @@ The corpus does **not** require a `ReasoningRequest` to become a generic five-fi
 
 The ReasoningRequest ends on the semantic side. It is not sent into the Kernel as a semantic object.
 
-Only the selected physical invocation crosses the semantic/physical boundary.
+Only already-approved concrete physical invocation candidates cross the semantic/physical boundary.
 
 ## ReasoningRequest and the semantic-to-physical bridge
 
@@ -392,7 +392,7 @@ ReasoningRequest
 execution preferences/declarations
 ```
 
-and translates that semantic reasoning need into the physical Work requirements understood by the Kernel.
+and translates that semantic reasoning need into the already-approved concrete physical invocation candidate or candidates understood by the Kernel Work contract.
 
 The exact preference object and implementation details are intentionally not fixed here. It may express things such as desired effort, timing or other technical preferences without exposing Kernel mechanics to Agent code.
 
@@ -400,7 +400,9 @@ This conversion is executed by Runtime, but—as with other executable MADRE beh
 
 Runtime keeps the installation-level selection of the implementation. The Owner may replace, wrap or extend it; for example, an Owner could insert a logger/learning experiment that observes the reasoning-to-Work journey and delegates to the default implementation.
 
-The implementation can inspect the semantic request and factual engine descriptions as needed, but it outputs physical constraints. Module, Agent, Material and SPIRA semantics do not cross into Kernel Work.
+The implementation owns the inference meaning at this boundary. It can inspect the semantic request, Owner inference-target configuration and factual information about configured providers/models/services/executables as needed. It resolves which concrete physical invocations are acceptable and outputs that complete candidate set. Module, Agent, Material and SPIRA semantics do not cross into Kernel Work.
+
+Kernel cannot discover or widen that set. A single supplied candidate is exact. Multiple supplied candidates allow only physical routing among those candidates.
 
 ## Delayed Reasoning Effort
 
@@ -415,7 +417,7 @@ The semantic reason for delayed work remains above the Kernel. The Kernel unders
 This creates a deliberate persistence split:
 
 - the semantic side preserves what gives the work meaning: relevant context, semantic request, origin/correlation, continuation and interpretation;
-- Kernel preserves the technical lifecycle: opaque Work identity, physical requirements, eligibility/scheduling, attempts, resources, retry/cancel state and terminal technical outcome.
+- Kernel preserves the technical lifecycle: opaque Work identity, supplied concrete candidates, eligibility/scheduling, physical attempts, retry/cancel state and terminal technical outcome.
 
 ## Runtime
 
@@ -449,23 +451,45 @@ Because required Runtime Operations are Module-owned and selected through Runtim
 
 ## Kernel
 
-The Kernel owns physical inference Work only.
+The Kernel owns durable physical execution of inference choices already made above it.
 
-It handles durable Work, scheduling/eligibility, physical engine matching, scarce-resource management, worker supervision, retry/cancellation and terminal technical results.
+It handles:
 
-The Kernel must remain blind to Module, Agent, Operation semantics, Material, ReasoningRequest, SPIRA, CORE, Workflow, WorkPlan and semantic continuation.
+- durable Work identity/lifecycle;
+- eligible execution time and physical urgency;
+- deadlines and attempt timeout;
+- bounded physical concurrency;
+- physical attempts;
+- deterministic routing only among the concrete candidates supplied from above;
+- cancellation and explicit retry mechanics;
+- durable result retention and restart recovery;
+- technical attempt facts.
+
+The Kernel does **not** own the Owner's inference-target catalogue, provider/model discovery, semantic effort/capability interpretation, model/provider matching, model loading/warmness, generic engine RAM/VRAM accounting or provider/runtime implementations.
+
+A Work request contains one or more complete `ConcretePhysicalInvocation` candidates. Kernel may never synthesize another candidate. One candidate means exact execution choice. Multiple candidates permit only physical routing among that complete supplied set.
 
 A Module may contain its own private intelligence and never use the shared Kernel for that internal work. The Kernel is shared MADRE inference infrastructure, not a universal interceptor of every AI computation.
 
-Factual engine descriptors can be inspected above the boundary so semantic software can choose acceptable physical constraints. Kernel reports and executes physical facts; it does not convert them into Privacy, Integrity or other semantic values.
+The first implemented physical executor is `ProcessInvocation`, which represents one one-shot operating-system process attempt. Process execution is a mechanism, not a Module/provider and not the definition of an inference engine. A future HTTP-like executor is another physical mechanism rather than a reason to force all inference through one ontology.
+
+Having a process executor does not turn ordinary Module Operations into Kernel Work. The reasoning-to-physical bridge decides when shared physical inference Work exists.
+
+### Honest completion and retry semantics
+
+Kernel must not invent certainty it no longer has.
+
+A definitely observed process exit, timeout or launch failure is a definite technical outcome. Retry of such failures occurs only when the submitted physical retry policy allows it.
+
+If Kernel restarts while an attempt was active, completion is uncertain. That attempt becomes `UNKNOWN_COMPLETION`; Kernel does not translate it into definite failure. Retry after unknown completion occurs only when the Work explicitly declared repetition safe/idempotent. Conservative defaults do not retry it.
 
 ### Kernel extensibility and experimentation
 
 The Kernel does not use the semantic SDK, but the same MADRE philosophy applies at the physical layer: solid defaults, modular internals, replaceable behaviour and no unnecessary closed doors.
 
-Physical control-flow responsibilities should have explicit enough boundaries that the Owner can replace or interpose experiments without rewriting the whole Kernel. A future experiment could, for example, add learning-assisted physical routing that reasons over factual Kernel state.
+Physical control-flow responsibilities should have explicit enough boundaries that the Owner can replace or interpose experiments without rewriting the whole Kernel. A future experiment could, for example, add learning-assisted physical routing that reasons over facts Kernel actually owns.
 
-Such an experiment remains physical Kernel behaviour. It must not import semantic MADRE concepts merely because it uses inference internally.
+Such routing remains constrained to the complete candidate set supplied from above. It must not import semantic MADRE concepts or discover a new provider/model merely because it uses inference internally.
 
 MADRE should be modifiable at every layer without flattening those layers into each other.
 
@@ -501,7 +525,7 @@ It means each real responsibility has a clear boundary and can be replaced where
 - required Runtime semantic functions are bounded and their Module-owned implementations are selectable/replaceable;
 - the reasoning-to-physical bridge can be wrapped or replaced;
 - the physical Kernel remains independently replaceable and internally adaptable without importing semantic SDK concepts;
-- engine/worker implementations are replaceable behind Kernel's physical contracts.
+- concrete physical executor variants remain small mechanisms behind Kernel's physical contract.
 
 The Owner may experiment at any layer.
 
@@ -525,7 +549,7 @@ New structure earns its place because an actual MADRE responsibility requires it
 
 MADRE's core bet is that much current dependence on frontier-cloud AI is architectural rather than inevitable.
 
-A domain-aware application can retain its own knowledge and state. Deterministic Operations can perform ordinary software work. Agents can compose bounded reasoning. DRE can spend time instead of only model power. ReasoningRequests can be translated through a replaceable Runtime seam into physical Work. The Kernel can execute that Work without knowing semantic MADRE. SPIRA preserves the actual information, receiving boundary, provenance, consequence and autonomy composition without becoming a central security authority. Strong external inference remains available when useful.
+A domain-aware application can retain its own knowledge and state. Deterministic Operations can perform ordinary software work. Agents can compose bounded reasoning. DRE can spend time instead of only model power. ReasoningRequests can be translated through a replaceable Runtime seam into already-approved physical invocation candidates. The Kernel can durably execute that bounded candidate set without owning the intelligence environment or knowing semantic MADRE. SPIRA preserves the actual information, receiving boundary, provenance, consequence and autonomy composition without becoming a central security authority. Strong external inference remains available when useful.
 
 The result is intended to let owner-controlled, locally installed AI-native software do far more useful work than an isolated local model suggests while preserving the freedom to use frontier providers selectively.
 

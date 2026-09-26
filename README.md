@@ -16,7 +16,7 @@ An **Agent** is the semantic actor. An **Operation** is a bounded action. An age
 
 The public SDK is part of the product, not a thin transport adapter. It is intended to be simple and explicit enough for human developers and eventually AI-assisted builders to generate ordinary owner-local Modules without hidden first-party hooks.
 
-MADRE Runtime supplies installation mechanics and shared semantic execution facilities. The native Kernel is deliberately narrower: it owns durable **physical inference Work only**.
+MADRE Runtime supplies installation mechanics and shared semantic execution facilities. The native Kernel is deliberately narrower: it owns durable execution of **already-approved physical inference Work only**.
 
 ## DRE
 
@@ -74,12 +74,17 @@ The SDK defines a bounded required function:
 
 ```text
 ReasoningRequest + execution preferences/declarations
-    -> physical Work requirements
+    -> already-approved ConcretePhysicalInvocation candidate(s)
+    -> physical Work
 ```
 
 Runtime executes the configured implementation. The implementation belongs to a Module; shipped CORE provides the default; the Owner can wrap or replace it.
 
-Kernel receives only physical Work. It does not receive Module/Agent/Material/SPIRA semantics and does not derive Privacy or Integrity from physical engine/provider/locality facts.
+That semantic side understands the Owner's inference targets and resolves provider/model/service/executable choices before Work reaches Kernel.
+
+Kernel receives only physical Work containing the complete approved candidate set. It does not receive Module/Agent/Material/SPIRA semantics, maintain a provider/model catalogue or widen the supplied candidate set.
+
+LCR1 implements the first physical executor variant, `ProcessInvocation`, as one fresh OS process per attempt. This is a mechanism rather than an inference-engine ontology; future HTTP-like execution is a separate concrete variant rather than a reason to generalize every inference target as a process.
 
 ## Modularity
 
@@ -88,9 +93,9 @@ MADRE is intended to remain replaceable at every real boundary without turning e
 - Modules can be replaced or generated against the public SDK.
 - Runtime-required semantic Operations have selectable Module-owned implementations.
 - CORE provides defaults without monopolizing them.
-- the ReasoningRequest-to-Work translation can be wrapped/replaced for Owner experiments.
-- Kernel stays independent of the semantic SDK while physical routing/resource journeys remain adaptable.
-- engine/worker implementations are replaceable behind physical Kernel contracts.
+- the ReasoningRequest-to-physical translation can be wrapped/replaced for Owner experiments.
+- Kernel stays independent of the semantic SDK while its bounded physical execution journeys remain adaptable.
+- new physical invocation mechanisms should earn a small executor seam from a real need rather than a provider/plugin framework.
 
 The hard semantic/physical boundary remains hard even when implementations on either side change.
 
@@ -98,15 +103,18 @@ The hard semantic/physical boundary remains hard even when implementations on ei
 
 ### Implemented
 
-Current `main` contains the accepted Lane C/native Kernel foundation:
+The active tree contains the corrected Lane C/native Kernel foundation:
 
 - C++ native Kernel;
 - durable physical Work and restart recovery;
-- scheduling and worker supervision;
-- physical resource accounting;
-- local IPC and Windows/Linux hardening;
-- small Java `madre-kernel-client`;
-- real native llama.cpp worker path.
+- one or more already-approved concrete invocation candidates per Work;
+- generic one-shot `ProcessInvocation` execution;
+- deadline, attempt timeout, cancellation and explicit retry-safety semantics;
+- honest `UNKNOWN_COMPLETION` after interrupted attempts;
+- local Unix-domain socket / Windows named-pipe IPC;
+- small Java `madre-kernel-client` using protocol v3.
+
+No provider/model runtime is built into Kernel and no llama.cpp/model download is required for Lane C validation.
 
 ### Not yet implemented
 

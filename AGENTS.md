@@ -172,18 +172,18 @@ The SDK defines a bounded required function/Operation:
 
 ```text
 ReasoningRequest + execution preferences/declarations
-    -> physical Work requirements
+    -> already-approved ConcretePhysicalInvocation candidate(s) + physical Work timing/retry facts
 ```
 
 Runtime executes the installation-selected implementation. The implementation belongs to a Module; shipped CORE provides the default; the Owner can replace/wrap/decorate it.
 
 Runtime supplies mechanics. It does **not** own Module semantics or evaluate SPIRA as a central subsystem.
 
-The configured implementation can use the semantic request and factual engine descriptions to choose acceptable physical constraints. Only those physical constraints enter Kernel.
+The configured implementation owns the semantic-to-physical translation. It understands the Owner's configured inference targets and decides the complete acceptable concrete physical invocation set. One candidate is exact. Multiple candidates mean Kernel may choose only among that set for physical reasons. Kernel may never widen the set, rediscover another provider/model, or reinterpret semantic notions such as effort/capability requirements.
 
 ## Kernel
 
-Kernel owns already-physical inference Work only.
+Kernel owns durable physical execution of inference choices already made above it.
 
 It must remain ignorant of:
 
@@ -203,15 +203,19 @@ semantic persistence
 
 `madre-kernel-client` must remain physical and must not depend on `madre-sdk`.
 
-Kernel reports factual physical engine properties; semantic software above the boundary interprets those facts. Kernel does not derive Privacy/Integrity from locality, provider or model identity.
+Kernel does not own an inference-target catalogue, provider/model matching, semantic effort/capability interpretation, model loading/warmness, provider/runtime implementations, or a MADRE-managed worker ontology.
 
-Kernel implementation should remain adaptable/replaceable where a real physical experiment needs it. An inference-assisted physical router is acceptable if it reasons only over physical Kernel facts.
+A concrete invocation may retain opaque target identity for inspection, but Kernel does not interpret that identity to synthesize a substitute. Physical routing is constrained to the supplied concrete candidates. The first implemented executor variant is one-shot `ProcessInvocation`; it is a physical mechanism, not the definition of an inference engine and not a reason to send ordinary Module Operations through Kernel.
+
+Kernel retry semantics must distinguish definitely observed technical failure from lost certainty. Restart interruption is `UNKNOWN_COMPLETION`; it is not automatically safe to repeat. Retry after unknown completion requires an explicit physical declaration that repetition is safe/idempotent.
+
+Kernel implementation should remain adaptable/replaceable where a real physical experiment needs it. A physical router may reason only over facts Kernel actually owns and still cannot widen the supplied candidate set.
 
 Do not build a speculative generic extension framework merely to prove openness.
 
 ## Current tree
 
-The active tree contains the implemented Lane C/native Kernel foundation and Java physical client.
+The active tree contains the implemented Lane C/native Kernel foundation and Java physical client. LCR1 removes the rejected inference-engine inventory/worker ownership model and replaces it with durable execution of already-approved concrete physical invocation candidates, currently through a one-shot process executor.
 
 The semantic SDK/Module layer and MADRE Runtime are accepted architecture but are not yet implemented. Do not restore discarded Python or previous generated semantic code to make the repository look complete.
 

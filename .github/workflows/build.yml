@@ -3,7 +3,7 @@ name: MADRE Lane C validation
 on:
   pull_request:
   push:
-    branches: [main, 'agentic/c2-scheduling-recovery', 'agentic/c3-worker-resources', 'agentic/c4-llamacpp-worker', 'agentic/c5-hardening']
+    branches: [main, 'agentic/lane-c-engine-contract-repair']
   workflow_dispatch:
 
 permissions:
@@ -25,40 +25,30 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Install native build dependency
         run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
-      - name: Build native Kernel
+      - name: Build native Kernel and deterministic process fixture
         run: |
           cmake -S kernel -B kernel/build -DCMAKE_BUILD_TYPE=Release
           cmake --build kernel/build --parallel 2
       - name: Run native unit tests
         run: ctest --test-dir kernel/build --output-on-failure
-      - name: Build Java physical client
+      - name: Build Java physical client and acceptance harness
         run: ./gradlew --no-daemon clean build
-      - name: Prove caller-disappearance durability
-        run: ./kernel/tests/caller_disappearance.sh ./kernel/build/madre-kernel 'madre-kernel-client/build/classes/java/main:madre-kernel-client/build/classes/java/test'
-      - name: Prove C2 scheduling and restart recovery
-        run: python3 ./kernel/tests/c2_acceptance.py ./kernel/build/madre-kernel 'madre-kernel-client/build/classes/java/main:madre-kernel-client/build/classes/java/test'
-      - name: Prove C3 worker lifecycle and resource accounting
-        run: python3 ./kernel/tests/c3_acceptance.py ./kernel/build/madre-kernel ./kernel/build/madre-fake-worker 'madre-kernel-client/build/classes/java/main:madre-kernel-client/build/classes/java/test'
-      - name: Prove C5 Linux hardening and local IPC
-        run: python3 ./kernel/tests/c5_acceptance.py ./kernel/build/madre-kernel ./kernel/build/madre-fake-worker 'madre-kernel-client/build/classes/java/main:madre-kernel-client/build/classes/java/test'
-
-      - name: Checkout pinned llama.cpp for C4
+      - name: Prove LCR1 physical invocation, durability, containment and restart semantics
         run: |
-          git clone --filter=blob:none https://github.com/ggml-org/llama.cpp.git /tmp/llama.cpp
-          git -C /tmp/llama.cpp checkout 26394b4e6749a41c3633db040e0987500a5f7013
-      - name: Download pinned small C4 model
+          python3 ./kernel/tests/lcr1_acceptance.py \
+            ./kernel/build/madre-kernel \
+            ./kernel/build/madre-process-fixture \
+            'madre-kernel-client/build/classes/java/main:madre-kernel-client/build/classes/java/test'
+      - name: Audit production Kernel for provider/runtime contamination
         run: |
-          mkdir -p kernel/test-models
-          curl -L --fail --retry 3 -o kernel/test-models/SmolLM2-135M-Instruct-Q8_0.gguf 'https://huggingface.co/unsloth/SmolLM2-135M-Instruct-GGUF/resolve/main/SmolLM2-135M-Instruct-Q8_0.gguf?download=true'
-          echo 'c4a3dd037301b6ecea31d6da37f5cd793ead920dd5ddfe6d589294628d6ce66a  kernel/test-models/SmolLM2-135M-Instruct-Q8_0.gguf' | sha256sum -c -
-      - name: Build optional native llama.cpp worker
-        run: |
-          cmake -S kernel -B kernel/build-c4 -DCMAKE_BUILD_TYPE=Release -DMADRE_BUILD_LLAMACPP_WORKER=ON -DMADRE_LLAMA_CPP_DIR=/tmp/llama.cpp
-          cmake --build kernel/build-c4 --parallel 2 --target madre-kernel madre-llamacpp-worker
-      - name: Prove C4 real native llama.cpp inference and supervision
-        run: |
-          python3 ./kernel/tests/c4_acceptance.py ./kernel/build-c4/madre-kernel ./kernel/build-c4/madre-llamacpp-worker ./kernel/test-models/SmolLM2-135M-Instruct-Q8_0.gguf 'madre-kernel-client/build/classes/java/main:madre-kernel-client/build/classes/java/test'
-
+          if grep -RniE 'llama|GGUF|Ollama|OpenAI|Anthropic|Gemini|LM Studio|vLLM' kernel/src kernel/CMakeLists.txt; then
+            echo 'Provider/runtime-specific production Kernel contamination found' >&2
+            exit 1
+          fi
+          if grep -RniE 'EngineDescriptor|engine_inventory|WorkerPool|warm worker|required_capabilities|eligible_engine_ids|exact_model_id|exact_engine_id|Effort' kernel/src madre-kernel-client/src/main/java; then
+            echo 'Rejected inference-ownership abstraction found in active production sources' >&2
+            exit 1
+          fi
 
   windows-build:
     runs-on: windows-latest
@@ -72,7 +62,7 @@ jobs:
       - name: Install native SQLite dependency
         shell: pwsh
         run: vcpkg install sqlite3:x64-windows-static
-      - name: Build native Kernel and fake worker
+      - name: Build native Kernel and deterministic process fixture
         shell: pwsh
         run: |
           cmake -S kernel -B kernel/build "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows-static
@@ -83,6 +73,10 @@ jobs:
       - name: Build Java physical client and acceptance harness
         shell: pwsh
         run: .\gradlew.bat --no-daemon clean build
-      - name: Prove C5 Windows named-pipe and process hardening
+      - name: Prove LCR1 Windows named-pipe and one-shot process contract
         shell: pwsh
-        run: python .\kernel\tests\c5_acceptance.py .\kernel\build\Release\madre-kernel.exe .\kernel\build\Release\madre-fake-worker.exe 'madre-kernel-client\build\classes\java\main;madre-kernel-client\build\classes\java\test'
+        run: |
+          python .\kernel\tests\lcr1_acceptance.py `
+            .\kernel\build\Release\madre-kernel.exe `
+            .\kernel\build\Release\madre-process-fixture.exe `
+            'madre-kernel-client\build\classes\java\main;madre-kernel-client\build\classes\java\test'
