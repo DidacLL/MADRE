@@ -1,320 +1,585 @@
-# MADRE Kernel — current physical architecture
+# MADRE Kernel — target physical inference architecture
 
-This document describes the durable physical inference-execution subsystem implemented by Lane C after the LCR1 ownership correction, LCR2 external-inference boundary completion and LCR3 physical-substrate closure.
+Status: **accepted target architecture; replacement implementation not yet complete**.
+
+This document describes the target Lane C physical inference architecture after the Owner correction preserved in `docs/product/lane-c-owner-decision.md`.
+
+The active branch still contains the C++ LCR1–LCR3 concrete-invocation Kernel. That code is retained as a reference implementation/test oracle for useful physical behavior, but its exact-invocation-before-Kernel boundary is no longer the target architecture.
 
 For whole-system semantics and the semantic/physical boundary, see `docs/architecture/mid-level-architecture.md`. For SPIRA, see `docs/architecture/security-algebra.md`.
 
 ## Purpose
 
-The Kernel exists so semantic MADRE does not have to keep a process alive merely to carry already-decided physical inference Work to completion.
+Kernel exists so MADRE can physically realize reasoning needs over time against the Owner's available intelligence without turning those inference systems into MADRE-owned engines/workers.
 
-The invariant remains:
+The governing invariant is:
 
-> **Kernel does not own the intelligence environment. Kernel owns durable physical execution of inference choices already made above it.**
+> **Kernel owns durable physical inference scheduling, capability knowledge and execution. It does not own application semantics or the internal architecture/lifecycle of the Owner's inference systems.**
 
-Inference-target configuration, provider/model/service/executable meaning, semantic reasoning intent and the complete set of acceptable physical destinations belong above Kernel.
+This rejects both historical extremes:
 
-## Hard boundary
+```text
+REJECTED ORIGINAL DRIFT
+Kernel owns engines/workers/model lifecycle
+
+REJECTED OVER-CORRECTION
+semantic side fully selects exact provider/model/configuration/invocation
+before Kernel, leaving DRE unable to make meaningful physical choices
+```
+
+## Semantic / physical boundary
 
 ```text
 SEMANTIC MADRE
 
+Module / Agent owns application meaning and continuation
+        ↓
 Agent creates ReasoningRequest
         ↓
-Runtime executes configured Module-owned reasoning→physical Operation
+semantic MADRE derives physical inference requirement
+    prepared input
+    requested result characteristics
+    desired reasoning depth/effort
+    urgency
+    acceptable delay/deadline
+    relevant modality/context characteristics
+    hard physical restrictions derived above
+    explicit Owner execution preferences where relevant
         ↓
-semantic side resolves acceptable inference choices
-        ↓
-one or more already-approved ConcretePhysicalInvocation candidates
-        ↓
-madre-kernel-client
+madre-kernel-client / physical boundary
 
 ================ HARD BOUNDARY ================
 
-native Kernel
+KERNEL
+
+PhysicalInferenceWork
         ↓
-physical executor for the supplied invocation variant
+DRE + InferenceCapability knowledge/state/observations
+        ↓
+physical strategy / capability / timing
+        ↓
+physical binding(s)
+        ↓
+Owner-selected independent inference environment
 ```
 
-The Kernel must not know Module, Agent, Operation semantics, Material, ReasoningRequest, SPIRA, CORE, Skill, Workflow, WorkPlan semantics, semantic continuation, semantic persistence, the Owner inference-target catalogue, or semantic effort/capability requirements.
+The exact request type remains design work. The first version must stay small: each field must have an implemented DRE consumer.
 
-If Kernel code needs one of those concepts, the semantic/physical boundary has drifted.
+The Kernel must not receive semantic objects merely because their information influenced the physical request.
 
-## Protocol v4 physical Work
-
-Protocol v4 makes each concrete candidate complete with respect to its own request bytes.
-
-A `WorkRequest` contains:
+It must remain ignorant of:
 
 ```text
-candidates
-urgency / eligibility
-deadline / attempt timeout
-retry policy
+Module semantics
+MADRE Agent semantics
+Operation semantics
+Material meaning
+ReasoningRequest semantics
+SPIRA as semantic objects/policy
+CORE semantics
+MADRE Skill / Workflow / WorkPlan semantics
+semantic continuation
+semantic persistence
 ```
 
-There is no Work-global inference payload.
+Kernel may receive physical restrictions derived from those semantics. It does not re-evaluate or reinterpret the semantic construction that produced them.
 
-The Java physical algebra is deliberately small:
+## PhysicalInferenceWork
+
+`PhysicalInferenceWork` is the durable Kernel-side unit representing one physical inference obligation.
+
+Conceptually it needs only enough state for DRE, recovery and result lifecycle:
 
 ```text
-ConcretePhysicalInvocation
-    ├── ProcessInvocation
-    └── HttpInvocation
+identity / lifecycle state
+physical inference requirement + hard constraints
+urgency
+eligibleAt / acceptable delay / deadline
+strategy identity + version/state where relevant
+attempt history / selected capabilities
+checkpoint reference where applicable
+lease/recovery state
+result state
 ```
 
-These are physical mechanisms, not provider/model types and not a registry of inference engines.
+This is not a universal workflow object and not a semantic WorkPlan.
 
-Each candidate has a stable invocation ID, optional opaque target identity and its own bounded request payload. The v4 submission frame carries candidate payload slices as one bounded transport frame; Kernel immediately materializes each slice into that candidate's own retained payload file. The complete submitted candidate request material is bounded to 1 MiB per Work submission, and each retained result body is also bounded to 1 MiB.
+The authoritative Work state belongs to MADRE. Framework-specific state is subordinate.
 
-The supplied candidate list is the complete acceptable set. One candidate is exact. Multiple candidates mean the semantic side has already approved every member as a physical realization of the same selected inference choice. Kernel may choose only among that set for factual physical dispatchability. It does not compare reasoning quality, model capability, semantic effort, cost preference, provider meaning or application/domain semantics, and it does not synthesize a URI, executable, provider, model or replacement target.
+## InferenceCapability
 
-## ProcessInvocation
+An `InferenceCapability` is a configured physical path through which MADRE can obtain intelligence.
 
-`ProcessInvocation` represents one fresh operating-system process attempt:
+It is not:
+
+- a Module;
+- a MADRE Agent;
+- a provider/model ontology;
+- an engine/worker owned by Kernel;
+- an `IChatClient` alias;
+- a MAF `AIAgent` alias;
+- a MAF Workflow.
+
+The same underlying model exposed with materially different configurations can be several capabilities. Conversely, several physical implementations may be interchangeable for a particular physical requirement.
+
+Capability identity therefore belongs to the configured inference path as experienced by MADRE, not merely to a model/provider name.
+
+### Configured / declared facts
+
+Examples include:
 
 ```text
-ProcessInvocation
-    invocation ID
-    executable
-    arguments
-    candidate-specific stdin bytes
-    optional opaque target identity
+locality / external exposure boundary
+input/output modalities
+context characteristics / limits
+declared reasoning/effort features
+cost/price characteristics where meaningful
+Owner configuration/preferences
+execution binding
 ```
 
-Kernel may skip a supplied process candidate when its executable is physically unavailable. When selected, Kernel starts a fresh process, writes that candidate's exact stdin, captures bounded stdout/stderr, observes exit status, and enforces cancellation, deadline and attempt timeout.
+Only properties with a real DRE consumer should be first-class in the initial model.
 
-There are no warm workers, model residency, model loading, provider hosts or process pools in this executor.
+### Current state
 
-## HttpInvocation
-
-`HttpInvocation` is a generic concrete HTTP(S) POST attempt:
+Examples include:
 
 ```text
-HttpInvocation
-    invocation ID
-    exact http/https URI
-    bounded candidate-specific body bytes
-    explicit request headers
-    optional opaque target identity
+reachable / unavailable
+transient degradation
+observable rate/capacity limits
+observable pressure / queue state where exposed
 ```
 
-Kernel does not understand the body schema. Provider-specific JSON remains opaque bytes supplied by the semantic-to-physical implementation above Kernel.
+Current state is not the same as configuration or historical observation.
 
-The native transport is **libcurl**. Production Kernel code:
+### Historical / observed evidence
 
-- accepts only `http` and `https` target schemes;
-- performs POST;
-- retains a bounded response body;
-- uses normal TLS certificate and hostname verification;
-- does not follow redirects;
-- enforces deadline / attempt timeout;
-- supports local cancellation;
-- records factual HTTP status when a response was observed.
-
-Kernel is not a generic browser, REST framework or provider adapter system.
-
-## HTTP headers and late-bound credentials
-
-The public physical API makes persistence intent explicit.
-
-`LiteralHttpHeader` contains a header value that is deliberately durable Work data. It is suitable for non-secret facts such as `Content-Type`. Kernel does not infer secrecy from a header name.
-
-`EnvironmentHttpHeader` contains only durable binding metadata:
+Kernel can accumulate factual physical evidence such as:
 
 ```text
-header name
-environment-variable name
-non-secret prefix
-non-secret suffix
+latency distributions
+throughput
+failure/error rate
+availability history
+malformed/incomplete-result rate
+observed cost
+successful/failed context sizes where meaningful
+benchmark/evaluation evidence with provenance where supplied
 ```
 
-The environment-variable value is resolved immediately before the physical HTTP attempt. The resolved value is used only in ephemeral memory to construct the outgoing header. It is not written to SQLite, candidate payload files, result files, ordinary Kernel logs, `WorkInspection` or technical failure strings.
-
-After resolution and prefix/suffix construction, the final header value is rejected if it contains CR or LF before it is handed to libcurl. The rejection reports only a constant technical failure and never echoes the resolved value.
-
-A missing environment binding is a physical dispatchability fact. Kernel may skip that supplied candidate and choose another supplied dispatchable candidate. It may not invent another destination.
-
-This mechanism is deliberately only a small late-binding facility. Kernel does not implement secret storage or secret management.
-
-## Candidate containment and physical routing
-
-Candidate routing remains intentionally small and deterministic.
-
-For each queued Work, Kernel checks the supplied candidates in order and may use only physical facts it owns, currently including:
-
-- process executable availability;
-- HTTP late-bound environment bindings being available;
-- supported concrete invocation kind.
-
-The selected attempt records the exact supplied invocation ID, kind and optional opaque target identity.
-
-No provider/model catalogue, capability interpretation, model substitution, URI mutation or target discovery exists below the boundary.
-
-## Honest HTTP completion certainty
-
-HTTP creates cases where local disconnection does not prove the remote outcome. LCR2 therefore treats certainty conservatively.
-
-### Definitely failed before meaningful remote submission
-
-Examples include DNS/connect/TLS failure before libcurl reports request bytes as sent, or timeout/cancellation before submission. These are definite physical outcomes.
-
-A definite failure may be retried only if the submitted retry policy permits definite-failure retries and attempt/deadline budget remains.
-
-### Definite HTTP response observed
-
-A received HTTP status is a factual remote observation.
-
-- HTTP 2xx with a complete bounded response body is `SUCCEEDED`.
-- A received non-2xx status is a definite technical `FAILED` outcome with the status exposed for inspection.
-- Kernel does not interpret provider business semantics in the response body.
-
-### Completion unknown
-
-If request bytes may have reached the remote target but Kernel loses the response, completion is unknown.
-
-Examples include transport loss after request transmission, attempt timeout or deadline expiration after transmission, and Owner cancellation after transmission. These become `UNKNOWN_COMPLETION`. Closing the local connection is not represented as confirmed remote cancellation or failure.
-
-If Kernel disappears while any attempt is active, restart recovery also records `UNKNOWN_COMPLETION`.
-
-## Retry and cancellation semantics
-
-The current built-in physical retry policy is:
+Provenance must be preserved.
 
 ```text
-NEVER
-    no automatic retry
-
-DEFINITE_FAILURES
-    retry may occur after a definite technical failure
-    never after UNKNOWN_COMPLETION
-
-INCLUDING_UNKNOWN_COMPLETION
-    retry may also occur after UNKNOWN_COMPLETION
-    because the submitting side explicitly declared repetition acceptable
+provider declares 1M context
+Owner says capability is especially useful
+MADRE has successfully observed 780k
 ```
 
-All retries remain bounded by `maxAttempts`, retry delay and Work deadline. Retry delay is scheduling eligibility for the next physical attempt, not a semantic inference judgment.
+are three different facts.
 
-Owner-requested cancellation is stronger than retry permission. If cancellation is requested while an HTTP request may already have reached the target, Work becomes terminal `UNKNOWN_COMPLETION` and is not automatically retried even under `INCLUDING_UNKNOWN_COMPLETION`. Deadline exhaustion never creates another attempt.
+Do not collapse configured expectation, current state and historical observation into one mutable "truth" field.
 
-This policy is a useful current physical strategy, not an immutable inference semantic. A future execution strategy above or around the physical substrate may replace or extend it without requiring provider/model logic in the Kernel.
+## DRE — inference-aware physical scheduler
 
-## Scheduler semantics after LCR3 audit
+DRE is the intelligence that decides what physical inference should happen next for eligible Work.
 
-The current scheduler has no worker inventory, warm-model ownership or per-engine resource reservation. Its admission model is intentionally smaller:
-
-- one configured global bound on simultaneously active physical attempts;
-- only Work whose `eligible_at` and `next_attempt_at` are due is considered;
-- expired queued deadlines are failed without dispatch;
-- among eligible queued Work, urgency orders `INTERACTIVE`, `NORMAL`, then `BACKGROUND`, with creation order as the deterministic tie-breaker;
-- candidate selection is then restricted to the submitted physical alternatives and factual dispatchability;
-- cancellation removes queued Work or requests termination of running Work.
-
-Therefore the historical resource-blocked head-of-line defect from the removed worker/resource architecture is not present in this scheduler. Future-eligible or retry-delayed Work is excluded by the queue predicate and cannot occupy the selected queue head. A candidate set with no currently supported/available physical realization fails as `NO_DISPATCHABLE_CANDIDATE`; there is no hidden resource-wait state that can indefinitely block later Work.
-
-LCR3 adds deterministic acceptance for global capacity, urgency, future eligibility, queued deadline expiry and retry-delay bypass rather than inventing a replacement resource scheduler.
-
-## Physical inspection
-
-`WorkInspection` exposes small factual physical information:
-
-- Work state;
-- attempt count;
-- whether retained payload ownership has been released;
-- latest/current attempt number;
-- concrete invocation ID;
-- invocation kind (`PROCESS` or `HTTP`);
-- optional opaque target identity;
-- attempt state;
-- start/end time where known;
-- process exit code where relevant;
-- HTTP response status where relevant;
-- technical failure or uncertainty fact.
-
-It does not expose provider/model semantics or resolved credential values.
-
-The store retains full attempt rows internally; the public client exposes the bounded latest/current attempt view rather than introducing pagination/history infrastructure.
-
-## Durable payload retention and terminal release
-
-Physical Work must survive Runtime/Module process disappearance, so Kernel may durably retain request bytes while the Work requires recovery. This includes provider-shaped HTTP request bodies containing prompt/context bytes after semantic-to-physical translation. Kernel does not semantically understand or classify those bytes.
-
-Late-bound credential values are different: they are not part of durable Work and are never persisted by Kernel.
-
-Every terminal Work state supports `release`:
+Its questions include:
 
 ```text
-SUCCEEDED
-FAILED
-CANCELLED
-UNKNOWN_COMPLETION
+run now or later?
+which admissible capability is currently appropriate?
+should current availability/observations justify waiting?
+how much physical reasoning effort should be spent?
+one inference attempt or a richer physical strategy?
+should another capability be used after a physically invalid/unusable outcome?
+should several capabilities run in parallel or sequence?
+should a checkpointed physical strategy resume now?
 ```
 
-`release` is the explicit end of retained physical payload ownership. Kernel performs ordinary deletion of every candidate request payload and any retained result body while keeping minimal Work/attempt lifecycle metadata for truthful inspection. Release is idempotent: repeating it on terminal Work succeeds, and an already-missing candidate/result file is treated as already released content rather than making the Work unreleasable. After release, `result()` does not return prior result content.
+This is why Kernel capability knowledge and observations are first-class. DRE can learn from the Owner's actual inference environment without owning those engines.
 
-No secure-erasure guarantee is claimed.
+`eligibleAt`, deadlines, leases, SQLite transactions and restart recovery are persistence/admission mechanics underneath DRE. A generic timer service does not replace the inference-aware scheduler.
 
-## Persistence split
+There is no Kernel scheduler for Module semantic Workflows or WorkPlans.
 
-Semantic persistence remains above the Kernel boundary and may contain reasoning context, semantic request, origin/correlation and continuation.
+## Physical observation is not semantic judgment
 
-Kernel persists only physical lifecycle:
+Kernel may judge physical validity/observability, not application success.
 
-- Work identity and timing/retry facts;
-- the complete submitted concrete candidate set;
-- candidate-specific retained request payload-file paths;
-- durable non-secret HTTP header facts and late-binding references;
-- attempts and factual physical outcomes;
-- cancellation state;
-- technical failure/uncertainty facts;
-- retained result path;
-- terminal release state.
-
-Kernel remains correct if Runtime and all Module processes disappear while physical Work is queued or executing.
-
-## Local IPC and compatibility
-
-The native Kernel keeps an independent lifetime and uses local-only IPC:
-
-- Unix-domain sockets on Unix-like systems;
-- local Windows named pipes on Windows.
-
-Connection servicing is isolated per accepted local client. The accept loop continues while another client is reading an incomplete bounded frame, so one stalled local caller cannot freeze unrelated control-plane callers. This is deliberately a small concurrency boundary around the existing local framed protocol, not a generic server framework.
-
-LCR3 retains Kernel protocol **v4** and SQLite schema/user version **4** because the public wire and durable schema shapes did not need to change. Development protocol-v3 databases remain rejected rather than migrated or adapted.
-
-## Typed physical extension seam
-
-The native physical algebra remains:
+Examples of physically actionable outcomes include:
 
 ```text
-ConcretePhysicalInvocationSpec =
-    variant<ProcessInvocationSpec, HttpInvocationSpec>
+transport/executor failure
+timeout / interruption
+capability unavailable
+malformed/corrupt/truncated response
+required structural output missing
+required modality missing
+physical validator defined by the strategy failed
 ```
 
-A future real physical mechanism has a direct typed path: add its invocation representation, executor, bounded persistence/serialization support and dispatch integration. Scheduler, Work lifecycle and semantic MADRE continue to operate over physical Work and do not need conceptual redesign.
+A physically valid result is not retried merely because Kernel believes:
 
-There is intentionally no dynamic executor registry, plugin loading, executor marketplace or arbitrary stringly-typed invocation map. Process and HTTP are the working built-ins required now, not a claim that all future inference ecosystems reduce to those two mechanisms.
+```text
+the answer is weak
+the reasoning is unconvincing
+the user's actual problem was not solved
+```
 
-## Historical Issue #63 disposition
+Those are semantic judgments for the Agent/Module consuming the result.
 
-Issue #63 was written against an earlier Lane C implementation that owned an engine inventory, warm workers and resource reservations. LCR1 removed that model rather than repairing it.
+The retry layers are deliberately distinct:
 
-Still applicable to the current physical substrate:
+```text
+executor retry
+    transient physical/executor failure
 
-- factual physical inspection at the Java boundary — implemented in LCR2;
-- explicit terminal payload ownership/release — implemented in LCR2 and hardened/idempotent in LCR3;
-- isolation of stalled local IPC clients — implemented in LCR3;
-- the general requirement that queued physical Work not head-of-line block unrelated eligible Work — re-audited against the current scheduler and covered by current scheduling acceptance.
+DRE retry / escalation
+    physically unusable/incomplete result
+    or another explicit physical strategy condition
 
-Obsolete because their owning architecture no longer exists:
+semantic retry
+    physically valid result does not satisfy application reasoning need
+    -> Agent/Module logic
+```
 
-- warm worker RAM/VRAM ownership accounting;
-- warm-worker idle termination/resource release;
-- CPU-vs-resident-model resource leasing;
-- engine selection before resource executability;
-- warm-engine preference;
-- per-engine capacity/resource-blocked dispatch states.
+External benchmark/evaluation evidence may be stored and used with provenance when a DRE strategy explicitly knows how to interpret it. Kernel does not infer universal semantic truth from arbitrary model output.
 
-Those findings must not be used to resurrect an engine catalogue, MADRE-managed worker ontology or resource-reservation subsystem unless a future concrete physical mechanism creates a new current need.
+## Physical multi-stage strategies
+
+DRE may choose a simple strategy:
+
+```text
+invoke capability A
+```
+
+or a richer physical strategy:
+
+```text
+        capability A
+       /            \
+input                 synthesis
+       \            /
+        capability B
+```
+
+or:
+
+```text
+inference A
+    ↓
+physical/structural validator
+    ↓
+inference B
+```
+
+These are physical inference strategies, not MADRE semantic Workflows.
+
+Physical workflow machinery must not silently acquire application effects such as:
+
+```text
+modify Module/domain state
+send application email
+change project state
+commit code on behalf of a Module
+execute another Module's semantic Operation
+```
+
+Meaning and ownership determine the boundary. Technology does not.
+
+Opaque external intelligence is acceptable. Kernel only models what can honestly be known at the capability boundary.
+
+## Physical construction surface
+
+Kernel should reuse generic open-source inference infrastructure rather than rebuilding another AI platform.
+
+The leading implementation candidature is a cross-platform .NET Kernel.
+
+### Microsoft.Extensions.AI
+
+MEAI is useful as generic inference interoperability where appropriate.
+
+It may back a capability binding, but:
+
+```text
+InferenceCapability != IChatClient
+```
+
+MADRE retains capability identity, configuration, observations and DRE semantics.
+
+### Microsoft Agent Framework
+
+MAF is useful as an optimistic physical construction toolbox where concrete strategies need its machinery:
+
+- provider/runtime integrations;
+- physical workflow graphs;
+- fan-out/fan-in;
+- executor sequencing;
+- checkpoint/resume;
+- custom physical implementations;
+- protocol/agent-runtime integration where useful.
+
+It does not define MADRE ontology:
+
+```text
+MADRE Agent         != MAF AIAgent
+MADRE Workflow      != MAF Workflow
+InferenceCapability != MAF AIAgent
+InferenceCapability != MAF Workflow
+DRE                  != MAF
+```
+
+DRE selects timing, capabilities and physical strategy. A MAF Workflow may execute the chosen graph.
+
+Simple inference must not be forced through a MAF Workflow merely because MAF exists.
+
+Framework-specific execution semantics must not become universal DRE semantics. If a future physical strategy does not map cleanly to MAF, Kernel remains free to execute it another way.
+
+## Open physical binding seam
+
+MADRE must be able to use inference ecosystems that do not have a first-party MEAI/MAF integration.
+
+Useful physical realization paths may include:
+
+```text
+MEAI/provider integration
+OpenAI-compatible endpoint
+generic HTTP/protocol binding
+process/script binding
+A2A/remote intelligence
+Owner-provided .NET binding
+Owner-provided service/executable wrapper
+future typed mechanism
+```
+
+The exact common binding API/protocol remains design work.
+
+The product requirement is openness, not a marketplace:
+
+> An unusual Owner-controlled inference environment should normally be usable through configuration or an installed/custom binding rather than provider-specific changes to Kernel architecture.
+
+Hot-loading, automatic NuGet discovery, a connector marketplace and a defensive plugin sandbox are not first-version requirements.
+
+The Owner is trusted and may deliberately configure bindings that invoke local executables, use credentials, connect to private networks or call external endpoints.
+
+## First-party parity
+
+MADRE-provided inference conveniences must use the same class of physical construction surface available to advanced Owners.
+
+There must be no architectural special cases such as:
+
+```text
+if llama.cpp -> privileged Kernel path
+if Ollama    -> hidden Kernel lifecycle
+if first-party adapter -> secret internal API
+```
+
+A provided local-runtime convenience is legitimate if removing it tomorrow leaves Kernel architecture intact.
+
+This is the physical equivalent of first-party Modules using the same public SDK as independent Modules.
+
+## Durable authority and checkpointing
+
+MADRE keeps one authoritative `PhysicalInferenceWork` lifecycle in its own durable state.
+
+SQLite is the leading initial persistence choice for the single-owner local Kernel.
+
+If a physical strategy uses MAF checkpointing, the relation is:
+
+```text
+MADRE PhysicalInferenceWork
+    authoritative identity/lifecycle/eligibility/cancel/terminal state
+        ↓
+strategy type + version
+checkpoint reference
+        ↓
+MAF checkpoint
+    subordinate execution state for that strategy
+```
+
+A framework checkpoint cannot independently decide whether a MADRE Work exists, is cancelled, terminal or should resume.
+
+Persist enough strategy/binding version identity to detect incompatible continuation after upgrades rather than silently restoring old state into changed code.
+
+## Scheduling persistence
+
+The current target does not assume Quartz, Wolverine, Elsa, Temporal or another generic durable scheduler/workflow platform.
+
+DRE still has to make the meaningful inference-aware decisions even if one of those frameworks stores wakeups or messages. Introducing another durable state model is justified only if concrete implementation evidence shows it removes more complexity than it creates.
+
+A small SQLite-backed Work store, atomic leasing and a Kernel wake/admission loop are currently sufficient assumptions.
+
+This is not an attempt to implement a generic scheduler. It is the minimum durable substrate beneath MADRE's own inference-aware DRE scheduler.
+
+## Honest completion and restart recovery
+
+The replacement must preserve the truthfulness learned from the C++ reference implementation.
+
+If Kernel loses certainty about an active attempt or external operation, it must not rewrite uncertainty into definite failure merely to simplify recovery.
+
+The exact state model may evolve, but the `UNKNOWN_COMPLETION` lesson survives:
+
+```text
+definite observed failure != lost certainty about completion
+```
+
+Automatic repetition after uncertain completion must depend on the physical strategy/binding's explicit semantics rather than an optimistic global default.
+
+Cancellation likewise cannot claim confirmed remote cancellation when Kernel only stopped observing locally.
+
+## Result/payload lifecycle
+
+Physical inference Work may need to retain prepared request material and physical results while Runtime/Module processes are absent.
+
+The replacement must preserve a bounded, inspectable lifecycle for retained physical data and explicit release/acknowledgement semantics where needed.
+
+No secure-erasure guarantee is implied merely by ordinary file/database deletion.
+
+Secrets/credentials should remain late-bound or otherwise deliberately handled rather than accidentally becoming durable Work payload when a binding can avoid it.
+
+## Local control plane
+
+Kernel has an independent lifetime from Runtime/Modules.
+
+The exact replacement transport remains design work. The C++ reference proves useful requirements:
+
+- local-only control-plane operation for the default installation;
+- one stalled local caller must not freeze unrelated clients;
+- bounded framing/requests;
+- Windows and Linux support;
+- versioned physical contract where persistence/transport compatibility matters.
+
+Do not preserve UDS/named-pipe/C++ details merely because the reference implementation uses them if the replacement can satisfy the same behavior more simply.
+
+## Current C++ reference implementation
+
+The active correction branch currently contains the completed LCR1–LCR3 C++ physical substrate.
+
+Useful behavior established there includes:
+
+- independent Kernel lifetime;
+- SQLite durable Work;
+- eligibility/deadlines;
+- caller disappearance;
+- cancellation;
+- attempt history;
+- conservative `UNKNOWN_COMPLETION` restart semantics;
+- candidate-specific `ProcessInvocation` and generic `HttpInvocation` execution;
+- late-bound HTTP credential references and bounded payload/result handling;
+- explicit terminal payload/result release;
+- isolated local IPC clients;
+- Linux/Windows CI evidence.
+
+Those are behavioral evidence/acceptance cases for replacement where still applicable.
+
+The following are **not** target authority merely because the reference code implements them:
+
+- exact `ConcretePhysicalInvocation` selection before Kernel;
+- candidate routing constrained to a semantic-side preselected set as the final DRE architecture;
+- C++ as required implementation language;
+- process/HTTP as exhaustive inference ontology;
+- protocol/schema shapes as future public architecture.
+
+The even older worker/engine architecture remains rejected:
+
+- `WorkerPool` as universal inference abstraction;
+- engine inventory/matching as Kernel ontology;
+- warm workers/model residency;
+- Kernel-owned provider/model process lifecycle;
+- model loading/unloading;
+- generic external-engine RAM/VRAM reservation;
+- privileged llama.cpp worker architecture.
+
+## Leading replacement implementation
+
+The current leading candidate is:
+
+```text
+MADRE Kernel — .NET
+
+MADRE-owned
+    PhysicalInferenceWork
+    InferenceCapability
+    configured/current/observed capability knowledge
+    DRE
+    physical attempts/results/recovery
+    authoritative SQLite durable state
+
+Reusable physical infrastructure
+    Microsoft.Extensions.AI
+    selective Microsoft Agent Framework workflow/checkpointing
+    generic HTTP/protocol/process bindings
+    Owner/custom bindings
+
+External
+    Owner-selected inference systems
+```
+
+.NET is favored because the corrected Kernel workload is primarily async integration, configuration, networking, durable state, observation, scheduling and optional physical workflow execution rather than native model lifecycle.
+
+## Replacement validation sequence
+
+Do not replace the entire Kernel in one framework-driven rewrite.
+
+The first bounded vertical validation must prove:
+
+```text
+physical inference requirement
+        ↓
+PhysicalInferenceWork
+        ↓
+DRE
+        ↓
+InferenceCapability catalogue
+    configured facts
+    current state
+    observations
+        ↓
+choose physical capability/action
+        ↓
+MEAI or generic/custom binding
+        ↓
+execute
+        ↓
+record latency/result/failure
+        ↓
+persist observation
+        ↓
+future DRE can consume that evidence
+```
+
+It should demonstrate at least:
+
+1. one MEAI-backed capability;
+2. one generic low-level capability path such as HTTP/process;
+3. one Owner/custom unusual capability through the same capability/DRE path;
+4. declared/current/observed facts remaining distinct;
+5. durable Work surviving caller disappearance/restart;
+6. truthful physical outcome and observation recording;
+7. no provider/model semantic special case in DRE.
+
+A second validation should demonstrate one genuinely multi-stage physical MAF strategy with checkpoint, Kernel restart and resume while MADRE Work remains authoritative.
+
+Only after those prove the architecture should the reference C++ implementation be removed/replaced.
+
+## Anti-drift checks
+
+A Kernel design is drifting if it:
+
+- converts provider/model/runtime implementations into MADRE-owned workers/engines;
+- requires all meaningful provider/model/capability choice to happen before Kernel;
+- imports Module/Agent/Workflow/Operation semantics into physical Work;
+- treats raw SPIRA as a Kernel policy engine;
+- judges application-level answer quality as a hidden semantic Agent;
+- equates `InferenceCapability` with a MEAI/MAF class;
+- lets MAF define DRE rather than execute selected physical strategies;
+- privileges provided adapters over Owner adapters;
+- creates a connector marketplace/plugin framework before a real need;
+- adds capability fields with no DRE consumer;
+- introduces a generic scheduler/workflow platform without simplifying the actual DRE state problem;
+- treats C++/protocol-v4/reference tests as product authority over later Owner intent.
+
+The target is narrow in ownership, not narrow in useful physical inference capability:
+
+> **MADRE owns DRE, durable physical Work, capability knowledge and observations; external systems own their inference internals; reusable libraries provide generic physical machinery.**
