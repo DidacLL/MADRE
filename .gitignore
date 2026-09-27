@@ -16,6 +16,10 @@ out/
 !.mvn/wrapper/*.jar
 !gradle/wrapper/gradle-wrapper.jar
 
+# .NET
+**/bin/
+**/obj/
+
 # Runtime data
 *.sqlite
 *.sqlite3
