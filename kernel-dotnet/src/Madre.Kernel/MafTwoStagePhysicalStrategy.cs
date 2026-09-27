@@ -124,7 +124,7 @@ internal sealed class MafTwoStagePhysicalStrategy
             return;
         }
 
-        await run.SendResponseAsync(pending.CreateResponse(stageAOutput), cancellationToken).ConfigureAwait(false);
+        await run.SendResponseAsync(pending.CreateResponse(stageAOutput)).ConfigureAwait(false);
 
         await foreach (WorkflowEvent evt in run.WatchStreamAsync(blockOnPendingRequest: false, cancellationToken).ConfigureAwait(false))
         {
