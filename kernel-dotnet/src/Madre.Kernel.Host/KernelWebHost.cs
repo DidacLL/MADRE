@@ -25,6 +25,7 @@ public static class KernelWebHost
             options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 
         WebApplication app = builder.Build();
+        app.Urls.Add($"http://127.0.0.1:{port}");
         var engine = new KernelEngine(new WorkStore(databasePath), capabilities, bindings, maxConcurrent);
         await engine.InitializeAsync(cancellationToken).ConfigureAwait(false);
         engine.Start();
@@ -114,7 +115,7 @@ public static class KernelWebHost
 
         try
         {
-            await app.RunAsync($"http://127.0.0.1:{port}", cancellationToken).ConfigureAwait(false);
+            await app.RunAsync(cancellationToken).ConfigureAwait(false);
         }
         finally
         {
