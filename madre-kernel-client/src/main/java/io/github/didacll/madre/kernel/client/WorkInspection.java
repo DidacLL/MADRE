@@ -1,18 +1,24 @@
 package io.github.didacll.madre.kernel.client;
 
-import java.util.Objects;
-import java.util.Optional;
+import java.time.OffsetDateTime;
+import java.util.List;
 
 public record WorkInspection(
-        WorkStatus status,
-        int attemptCount,
-        Optional<AttemptInspection> latestAttempt,
-        Optional<String> technicalFailure,
-        boolean payloadReleased) {
-    public WorkInspection {
-        Objects.requireNonNull(status, "status");
-        Objects.requireNonNull(latestAttempt, "latestAttempt");
-        Objects.requireNonNull(technicalFailure, "technicalFailure");
-        if (attemptCount < 0) throw new IllegalArgumentException("attemptCount must be >= 0");
-    }
+        String workId,
+        WorkState state,
+        OffsetDateTime createdAt,
+        OffsetDateTime eligibleAt,
+        OffsetDateTime deadline,
+        WorkUrgency urgency,
+        String strategyType,
+        String strategyVersion,
+        String selectedCapabilityId,
+        String selectedBindingId,
+        String selectedBindingVersion,
+        String checkpointSessionId,
+        String checkpointId,
+        boolean cancelRequested,
+        boolean released,
+        String failureCode,
+        List<AttemptInspection> attempts) {
 }

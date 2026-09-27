@@ -1,12 +1,13 @@
 package io.github.didacll.madre.kernel.client;
 
-import java.util.Optional;
+import java.util.List;
 
 public interface KernelClient {
-    WorkId submit(WorkRequest request);
-    WorkStatus status(WorkId id);
-    WorkInspection inspect(WorkId id);
-    Optional<WorkResult> result(WorkId id);
-    WorkStatus cancel(WorkId id);
-    void release(WorkId id);
+    WorkId submit(PhysicalInferenceRequest request);
+    WorkInspection inspect(WorkId workId);
+    WorkResult result(WorkId workId);
+    WorkState cancel(WorkId workId);
+    boolean release(WorkId workId);
+    List<CapabilitySnapshot> capabilities();
+    List<CapabilitySnapshot> refreshCapabilities();
 }
