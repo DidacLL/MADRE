@@ -202,7 +202,7 @@ public sealed class KernelEngine : IAsyncDisposable
                 LaunchDueDemandObservations(now, demandedUnavailable);
 
                 DateTimeOffset? nextWorkBoundary = await _store
-                    .GetNextSchedulingBoundaryAsync(_clock.UtcNow, cancellationToken)
+                    .GetNextSchedulingBoundaryAsync(now, cancellationToken)
                     .ConfigureAwait(false);
                 DateTimeOffset? nextWake = Earliest(nextWorkBoundary, NextProbeBoundary());
                 await WaitForWakeOrBoundaryAsync(nextWake, cancellationToken).ConfigureAwait(false);
