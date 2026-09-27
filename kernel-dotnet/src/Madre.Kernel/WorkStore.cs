@@ -234,17 +234,20 @@ public sealed class WorkStore
         return result;
     }
 
-    internal async Task ExpireQueuedDeadlinesAsync(DateTimeOffset now, CancellationToken cancellationToken)
+    internal async Task ExpirePendingDeadlinesAsync(DateTimeOffset now, CancellationToken cancellationToken)
     {
         await using SqliteConnection connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
         await using SqliteCommand command = connection.CreateCommand();
         command.CommandText = """
             UPDATE work
             SET state = $failed, failure_code = 'DEADLINE_EXPIRED'
-            WHERE state = $queued AND deadline_ms IS NOT NULL AND deadline_ms <= $now;
+            WHERE state IN ($queued, $checkpointed)
+              AND deadline_ms IS NOT NULL
+              AND deadline_ms <= $now;
             """;
         command.Parameters.AddWithValue("$failed", WorkState.Failed.ToString());
         command.Parameters.AddWithValue("$queued", WorkState.Queued.ToString());
+        command.Parameters.AddWithValue("$checkpointed", WorkState.Checkpointed.ToString());
         command.Parameters.AddWithValue("$now", now.ToUnixTimeMilliseconds());
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
@@ -279,7 +282,10 @@ public sealed class WorkStore
                 checkpoint_session_id = NULL,
                 checkpoint_id = NULL,
                 failure_code = NULL
-            WHERE work_id = $id AND state = $queued AND cancel_requested = 0;
+            WHERE work_id = $id
+              AND state = $queued
+              AND cancel_requested = 0
+              AND (deadline_ms IS NULL OR deadline_ms > $now);
             """;
         command.Parameters.AddWithValue("$running", WorkState.Running.ToString());
         command.Parameters.AddWithValue("$queued", WorkState.Queued.ToString());
@@ -289,6 +295,7 @@ public sealed class WorkStore
         command.Parameters.AddWithValue("$binding", capability.BindingId);
         command.Parameters.AddWithValue("$bindingVersion", capability.BindingVersion);
         command.Parameters.AddWithValue("$id", work.WorkId);
+        command.Parameters.AddWithValue("$now", NowMs());
         return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) == 1;
     }
 
@@ -316,7 +323,8 @@ public sealed class WorkStore
                   AND strategy_version = $strategyVersion
                   AND selected_capability_id = $capability
                   AND selected_binding_id = $binding
-                  AND selected_binding_version = $bindingVersion;
+                  AND selected_binding_version = $bindingVersion
+                  AND (deadline_ms IS NULL OR deadline_ms > $started);
                 """;
             state.Parameters.AddWithValue("$checkpointed", WorkState.Checkpointed.ToString());
         }
@@ -342,6 +350,7 @@ public sealed class WorkStore
         state.Parameters.AddWithValue("$binding", capability.BindingId);
         state.Parameters.AddWithValue("$bindingVersion", capability.BindingVersion);
         state.Parameters.AddWithValue("$id", workId);
+        state.Parameters.AddWithValue("$started", startedAt.ToUnixTimeMilliseconds());
         if (await state.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) != 1)
         {
             transaction.Rollback();
@@ -485,7 +494,9 @@ public sealed class WorkStore
                 selected_capability_id = $capability,
                 selected_binding_id = $binding,
                 selected_binding_version = $bindingVersion
-            WHERE work_id = $id AND state = $queued;
+            WHERE work_id = $id
+              AND state = $queued
+              AND (deadline_ms IS NULL OR deadline_ms > $started);
             """;
         claim.Parameters.AddWithValue("$running", WorkState.Running.ToString());
         claim.Parameters.AddWithValue("$queued", WorkState.Queued.ToString());
@@ -493,6 +504,7 @@ public sealed class WorkStore
         claim.Parameters.AddWithValue("$binding", capability.BindingId);
         claim.Parameters.AddWithValue("$bindingVersion", capability.BindingVersion);
         claim.Parameters.AddWithValue("$id", work.WorkId);
+        claim.Parameters.AddWithValue("$started", startedAt.ToUnixTimeMilliseconds());
         if (await claim.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) != 1)
         {
             transaction.Rollback();
