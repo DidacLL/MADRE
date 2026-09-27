@@ -1,6 +1,8 @@
 package io.github.didacll.madre.kernel.client;
 
 public final class KernelClientException extends RuntimeException {
+    private static final long serialVersionUID = 1L;
+
     private final int statusCode;
 
     public KernelClientException(String message, int statusCode) {
