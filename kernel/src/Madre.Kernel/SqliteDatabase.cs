@@ -158,6 +158,11 @@ public sealed class KernelDatabaseLease : IDisposable
 
     public static KernelDatabaseLease Acquire(string databasePath)
     {
+        if (OperatingSystem.IsMacOS())
+        {
+            throw new PlatformNotSupportedException("MADRE Kernel database ownership is supported on Windows and Linux");
+        }
+
         string database = Path.GetFullPath(databasePath);
         string? directory = Path.GetDirectoryName(database);
         if (directory is null)
@@ -203,12 +208,15 @@ public sealed class KernelDatabaseLease : IDisposable
             return;
         }
         _disposed = true;
-        try
+        if (!OperatingSystem.IsMacOS())
         {
-            _stream.Unlock(0, 1);
-        }
-        catch (IOException)
-        {
+            try
+            {
+                _stream.Unlock(0, 1);
+            }
+            catch (IOException)
+            {
+            }
         }
         _stream.Dispose();
     }
