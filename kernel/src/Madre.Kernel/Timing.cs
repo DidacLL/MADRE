@@ -21,12 +21,10 @@ public sealed class SystemKernelClock : IKernelClock
 }
 
 public sealed record KernelTimingOptions(
-    TimeSpan UnavailableReobserveInterval,
-    TimeSpan UnknownReobserveInterval,
-    TimeSpan AvailableReobserveInterval)
+    TimeSpan ProbeTimeout,
+    TimeSpan UnavailableReobserveInterval)
 {
     public static KernelTimingOptions Default { get; } = new(
-        TimeSpan.FromSeconds(1),
-        TimeSpan.FromSeconds(10),
-        TimeSpan.FromSeconds(30));
+        TimeSpan.FromSeconds(3),
+        TimeSpan.FromSeconds(1));
 }

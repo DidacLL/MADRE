@@ -110,7 +110,7 @@ public sealed class MeaiInferenceBinding : IInferenceBinding
 
 public sealed class ProcessInferenceBinding : IInferenceBinding
 {
-    private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(3);
+    private static readonly Encoding Utf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
     private readonly string _executable;
     private readonly IReadOnlyList<string> _arguments;
     private readonly IReadOnlyList<string>? _probeArguments;
@@ -161,22 +161,16 @@ public sealed class ProcessInferenceBinding : IInferenceBinding
             return CapabilityAvailability.Unavailable;
         }
 
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(ProbeTimeout);
         try
         {
-            await process.WaitForExitAsync(timeout.Token).ConfigureAwait(false);
+            await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
             return process.ExitCode == 0
                 ? CapabilityAvailability.Available
                 : CapabilityAvailability.Unavailable;
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            await TryTerminateAndConfirmAsync(process).ConfigureAwait(false);
-            return CapabilityAvailability.Unavailable;
-        }
         catch (OperationCanceledException)
         {
+            _ = await TryTerminateAndConfirmAsync(process).ConfigureAwait(false);
             return CapabilityAvailability.Unknown;
         }
     }
@@ -248,9 +242,9 @@ public sealed class ProcessInferenceBinding : IInferenceBinding
         }
     }
 
-    private Process NewProcess(bool redirectStreams) => new()
+    private Process NewProcess(bool redirectStreams)
     {
-        StartInfo = new ProcessStartInfo
+        var startInfo = new ProcessStartInfo
         {
             FileName = _executable,
             RedirectStandardInput = redirectStreams,
@@ -258,8 +252,15 @@ public sealed class ProcessInferenceBinding : IInferenceBinding
             RedirectStandardError = redirectStreams,
             UseShellExecute = false,
             CreateNoWindow = true
+        };
+        if (redirectStreams)
+        {
+            startInfo.StandardInputEncoding = Utf8;
+            startInfo.StandardOutputEncoding = Utf8;
+            startInfo.StandardErrorEncoding = Utf8;
         }
-    };
+        return new Process { StartInfo = startInfo };
+    }
 
     private static async Task<string> ReadBoundedAsync(StreamReader reader, CancellationToken cancellationToken)
     {

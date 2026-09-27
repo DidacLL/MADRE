@@ -100,15 +100,19 @@ internal sealed class CapabilityStore
                    c.supported_effort, c.supported_effort_source,
                    c.owner_preference,
                    s.availability, s.observed_at_ms,
-                   (SELECT AVG(a.latency_ms) FROM attempts a WHERE a.capability_id = c.capability_id AND a.outcome = $success),
-                   (SELECT COUNT(*) FROM attempts a WHERE a.capability_id = c.capability_id AND a.outcome = $success),
-                   (SELECT COUNT(*) FROM attempts a WHERE a.capability_id = c.capability_id AND a.outcome = $failure)
+                   (
+                       SELECT AVG(a.latency_ms)
+                       FROM attempts a
+                       WHERE a.capability_id = c.capability_id
+                         AND a.binding_id = c.binding_id
+                         AND a.binding_version = c.binding_version
+                         AND a.outcome = $success
+                   )
             FROM capabilities c
             JOIN capability_state s ON s.capability_id = c.capability_id
             ORDER BY c.capability_id;
             """;
         command.Parameters.AddWithValue("$success", PhysicalAttemptOutcome.Succeeded.ToString());
-        command.Parameters.AddWithValue("$failure", PhysicalAttemptOutcome.DefiniteFailure.ToString());
 
         await using SqliteDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
@@ -129,12 +133,7 @@ internal sealed class CapabilityStore
                 Enum.Parse<CapabilityAvailability>(reader.GetString(8)),
                 reader.IsDBNull(9) ? null : SqliteDatabase.FromMs(reader.GetInt64(9)));
             double? latency = reader.IsDBNull(10) ? null : reader.GetDouble(10);
-            result.Add(new CapabilitySnapshot(
-                capability,
-                state,
-                latency,
-                reader.GetInt32(11),
-                reader.GetInt32(12)));
+            result.Add(new CapabilitySnapshot(capability, state, latency));
         }
         return result;
     }

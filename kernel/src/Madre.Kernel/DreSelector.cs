@@ -13,10 +13,23 @@ public sealed record DreDecision(
 
 public sealed class DreSelector
 {
-    public DreDecision Select(PhysicalInferenceRequest request, IReadOnlyList<CapabilitySnapshot> snapshots)
+    public DreDecision Select(PhysicalInferenceRequest request, IReadOnlyList<CapabilitySnapshot> snapshots) =>
+        SelectCore(request.RequestedEffort, request.Urgency, request.ExecutionBoundary, snapshots);
+
+    internal DreDecision Select(SchedulingWork work, IReadOnlyList<CapabilitySnapshot> snapshots) =>
+        SelectCore(work.RequestedEffort, work.Urgency, work.ExecutionBoundary, snapshots);
+
+    internal static bool IsAdmissible(SchedulingWork work, InferenceCapability capability) =>
+        IsAdmissible(work.RequestedEffort, work.ExecutionBoundary, capability);
+
+    private static DreDecision SelectCore(
+        InferenceEffort requestedEffort,
+        WorkUrgency urgency,
+        ExecutionBoundary executionBoundary,
+        IReadOnlyList<CapabilitySnapshot> snapshots)
     {
         List<CapabilitySnapshot> admissible = snapshots
-            .Where(snapshot => IsAdmissible(request, snapshot.Capability))
+            .Where(snapshot => IsAdmissible(requestedEffort, executionBoundary, snapshot.Capability))
             .ToList();
 
         if (admissible.Count == 0)
@@ -29,29 +42,25 @@ public sealed class DreSelector
             .ToList();
         if (available.Count > 0)
         {
-            return new DreDecision(DreDecisionKind.Selected, Choose(request, available).Capability);
+            return new DreDecision(DreDecisionKind.Selected, Choose(urgency, available).Capability);
         }
 
-        // Unknown means that Kernel lacks current availability evidence. It is not evidence
-        // that the configured capability is unavailable. If no known-available option exists,
-        // DRE may try an otherwise admissible Unknown capability and let execution produce
-        // physical evidence. Known-unavailable capabilities remain waiting candidates only.
         List<CapabilitySnapshot> unknown = admissible
             .Where(snapshot => snapshot.State.Availability == CapabilityAvailability.Unknown)
             .ToList();
         if (unknown.Count > 0)
         {
-            return new DreDecision(DreDecisionKind.Selected, Choose(request, unknown).Capability);
+            return new DreDecision(DreDecisionKind.Selected, Choose(urgency, unknown).Capability);
         }
 
         return new DreDecision(DreDecisionKind.WaitForAvailability);
     }
 
     private static CapabilitySnapshot Choose(
-        PhysicalInferenceRequest request,
+        WorkUrgency urgency,
         IReadOnlyList<CapabilitySnapshot> candidates)
     {
-        bool comparableLatency = request.Urgency == WorkUrgency.Interactive
+        bool comparableLatency = urgency == WorkUrgency.Interactive
             && candidates.Count > 1
             && candidates.All(snapshot => snapshot.SuccessfulLatencyMs.HasValue);
 
@@ -67,14 +76,17 @@ public sealed class DreSelector
                 .First();
     }
 
-    private static bool IsAdmissible(PhysicalInferenceRequest request, InferenceCapability capability)
+    private static bool IsAdmissible(
+        InferenceEffort requestedEffort,
+        ExecutionBoundary executionBoundary,
+        InferenceCapability capability)
     {
-        if (!InferenceEffortPolicy.Supports(capability.SupportedEffort.Value, request.RequestedEffort))
+        if (!InferenceEffortPolicy.Supports(capability.SupportedEffort.Value, requestedEffort))
         {
             return false;
         }
 
-        return request.ExecutionBoundary != ExecutionBoundary.LocalOnly
+        return executionBoundary != ExecutionBoundary.LocalOnly
             || capability.ExecutionBoundary.Value == ExecutionBoundary.LocalOnly;
     }
 }

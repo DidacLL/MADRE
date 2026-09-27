@@ -2,12 +2,16 @@ using Microsoft.Data.Sqlite;
 
 namespace Madre.Kernel;
 
-internal sealed record StoredWork(
+internal sealed record SchedulingWork(
     string WorkId,
-    WorkState State,
     DateTimeOffset CreatedAt,
-    PhysicalInferenceRequest Request,
-    bool CancelRequested);
+    InferenceEffort RequestedEffort,
+    WorkUrgency Urgency,
+    DateTimeOffset EligibleAt,
+    DateTimeOffset? Deadline,
+    ExecutionBoundary ExecutionBoundary);
+
+internal sealed record ClaimedAttempt(int AttemptNumber, string PreparedInput);
 
 public sealed class WorkStore
 {
@@ -60,16 +64,16 @@ public sealed class WorkStore
         return id;
     }
 
-    internal async Task<IReadOnlyList<StoredWork>> GetEligibleWorkAsync(
+    internal async Task<IReadOnlyList<SchedulingWork>> GetEligibleWorkAsync(
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
-        var result = new List<StoredWork>();
+        var result = new List<SchedulingWork>();
         await using SqliteConnection connection = await _database.OpenAsync(cancellationToken).ConfigureAwait(false);
         await using SqliteCommand command = connection.CreateCommand();
         command.CommandText = """
-            SELECT work_id, state, prepared_input, requested_effort, urgency, eligible_at_ms, deadline_ms,
-                   execution_boundary, created_at_ms, cancel_requested
+            SELECT work_id, requested_effort, urgency, eligible_at_ms, deadline_ms,
+                   execution_boundary, created_at_ms
             FROM work
             WHERE state = $queued AND eligible_at_ms <= $now AND released = 0
             ORDER BY created_at_ms ASC;
@@ -79,28 +83,18 @@ public sealed class WorkStore
         await using SqliteDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
         {
-            string input = reader.IsDBNull(2)
-                ? throw new InvalidOperationException("active Work has released input")
-                : reader.GetString(2);
-            DateTimeOffset eligible = SqliteDatabase.FromMs(reader.GetInt64(5));
-            DateTimeOffset? deadline = reader.IsDBNull(6) ? null : SqliteDatabase.FromMs(reader.GetInt64(6));
-            var request = new PhysicalInferenceRequest(
-                input,
-                Enum.Parse<InferenceEffort>(reader.GetString(3)),
-                Enum.Parse<WorkUrgency>(reader.GetString(4)),
-                eligible,
-                deadline,
-                Enum.Parse<ExecutionBoundary>(reader.GetString(7)));
-            result.Add(new StoredWork(
+            result.Add(new SchedulingWork(
                 reader.GetString(0),
-                Enum.Parse<WorkState>(reader.GetString(1)),
-                SqliteDatabase.FromMs(reader.GetInt64(8)),
-                request,
-                reader.GetInt64(9) != 0));
+                SqliteDatabase.FromMs(reader.GetInt64(6)),
+                Enum.Parse<InferenceEffort>(reader.GetString(1)),
+                Enum.Parse<WorkUrgency>(reader.GetString(2)),
+                SqliteDatabase.FromMs(reader.GetInt64(3)),
+                reader.IsDBNull(4) ? null : SqliteDatabase.FromMs(reader.GetInt64(4)),
+                Enum.Parse<ExecutionBoundary>(reader.GetString(5))));
         }
 
         return result
-            .OrderByDescending(work => WorkUrgencyPolicy.Priority(work.Request.Urgency))
+            .OrderByDescending(work => WorkUrgencyPolicy.Priority(work.Urgency))
             .ThenBy(work => work.CreatedAt)
             .ToList();
     }
@@ -178,8 +172,8 @@ public sealed class WorkStore
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    internal async Task<int?> TryBeginAttemptAsync(
-        StoredWork work,
+    internal async Task<ClaimedAttempt?> TryBeginAttemptAsync(
+        SchedulingWork work,
         InferenceCapability capability,
         DateTimeOffset startedAt,
         CancellationToken cancellationToken)
@@ -214,6 +208,17 @@ public sealed class WorkStore
             return null;
         }
 
+        await using SqliteCommand payload = connection.CreateCommand();
+        payload.Transaction = transaction;
+        payload.CommandText = "SELECT prepared_input FROM work WHERE work_id = $id;";
+        payload.Parameters.AddWithValue("$id", work.WorkId);
+        object? rawInput = await payload.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+        if (rawInput is null || rawInput is DBNull)
+        {
+            throw new InvalidOperationException("claimed Work has no retained prepared input");
+        }
+        string preparedInput = (string)rawInput;
+
         await using SqliteCommand number = connection.CreateCommand();
         number.Transaction = transaction;
         number.CommandText = "SELECT COALESCE(MAX(attempt_number), 0) + 1 FROM attempts WHERE work_id = $id;";
@@ -236,7 +241,7 @@ public sealed class WorkStore
         insert.Parameters.AddWithValue("$outcome", PhysicalAttemptOutcome.Running.ToString());
         await insert.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         transaction.Commit();
-        return attemptNumber;
+        return new ClaimedAttempt(attemptNumber, preparedInput);
     }
 
     internal async Task CompleteAttemptAsync(
@@ -277,7 +282,10 @@ public sealed class WorkStore
         attempt.Parameters.AddWithValue("$id", workId);
         attempt.Parameters.AddWithValue("$number", attemptNumber);
         attempt.Parameters.AddWithValue("$running", PhysicalAttemptOutcome.Running.ToString());
-        await attempt.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        if (await attempt.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) != 1)
+        {
+            throw new InvalidOperationException($"running attempt {workId}/{attemptNumber} was not present during completion");
+        }
 
         await using SqliteCommand work = connection.CreateCommand();
         work.Transaction = transaction;
@@ -295,7 +303,10 @@ public sealed class WorkStore
         work.Parameters.AddWithValue("$failureDetail", result.Failure?.Detail is null ? DBNull.Value : result.Failure.Detail);
         work.Parameters.AddWithValue("$id", workId);
         work.Parameters.AddWithValue("$running", WorkState.Running.ToString());
-        await work.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        if (await work.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) != 1)
+        {
+            throw new InvalidOperationException($"running Work {workId} was not present during completion");
+        }
         transaction.Commit();
     }
 

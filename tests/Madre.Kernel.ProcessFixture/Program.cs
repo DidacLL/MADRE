@@ -1,3 +1,8 @@
+using System.Text;
+
+Console.InputEncoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
+Console.OutputEncoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
+
 string? probeFile = Get(args, "--probe");
 if (probeFile is not null)
 {

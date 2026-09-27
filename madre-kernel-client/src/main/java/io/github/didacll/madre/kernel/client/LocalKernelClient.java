@@ -19,6 +19,12 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 public final class LocalKernelClient implements KernelClient, AutoCloseable {
     private final Path socketPath;
@@ -28,67 +34,99 @@ public final class LocalKernelClient implements KernelClient, AutoCloseable {
         this.socketPath = Objects.requireNonNull(socketPath, "socketPath").toAbsolutePath();
         this.json = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
-                .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+                .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, true);
     }
 
     @Override
     public KernelProtocolInfo protocolInfo() {
-        return read(send("ProtocolInfo", null), KernelProtocolInfo.class);
+        return read(send(KernelIpcOperation.ProtocolInfo, null), KernelProtocolInfo.class);
     }
 
     @Override
     public WorkId submit(PhysicalInferenceRequest request) {
+        Objects.requireNonNull(request, "request");
         byte[] input = request.preparedInput().getBytes(StandardCharsets.UTF_8);
         if (input.length > KernelProtocol.MAX_PAYLOAD_BYTES) {
-            throw new KernelClientException("preparedInput exceeds Kernel payload bound", "InvalidRequest");
+            throw new KernelClientException("preparedInput exceeds Kernel payload bound", KernelIpcErrorCode.InvalidRequest);
         }
-        SubmissionResponse response = read(send("Submit", request), SubmissionResponse.class);
+        SubmissionResponse response = read(send(KernelIpcOperation.Submit, request), SubmissionResponse.class);
         return new WorkId(response.workId());
     }
 
     @Override
     public WorkInspection inspect(WorkId workId) {
-        return read(send("Inspect", new WorkIdPayload(workId.value())), WorkInspection.class);
+        return read(send(KernelIpcOperation.Inspect, new WorkIdPayload(workId.value())), WorkInspection.class);
     }
 
     @Override
     public WorkResult result(WorkId workId) {
-        return read(send("Result", new WorkIdPayload(workId.value())), WorkResult.class);
+        return read(send(KernelIpcOperation.Result, new WorkIdPayload(workId.value())), WorkResult.class);
     }
 
     @Override
     public WorkState cancel(WorkId workId) {
-        CancelResponse response = read(send("Cancel", new WorkIdPayload(workId.value())), CancelResponse.class);
+        CancelResponse response = read(send(KernelIpcOperation.Cancel, new WorkIdPayload(workId.value())), CancelResponse.class);
         return response.state();
     }
 
     @Override
     public boolean release(WorkId workId) {
-        ReleaseResponse response = read(send("Release", new WorkIdPayload(workId.value())), ReleaseResponse.class);
+        ReleaseResponse response = read(send(KernelIpcOperation.Release, new WorkIdPayload(workId.value())), ReleaseResponse.class);
         return response.released();
     }
 
     @Override
     public List<CapabilitySnapshot> capabilities() {
-        return read(send("Capabilities", null), new TypeReference<>() { });
+        return read(send(KernelIpcOperation.Capabilities, null), new TypeReference<>() { });
     }
 
     @Override
     public List<CapabilitySnapshot> refreshCapabilities() {
-        return read(send("RefreshCapabilities", null), new TypeReference<>() { });
+        return read(send(KernelIpcOperation.RefreshCapabilities, null), new TypeReference<>() { });
     }
 
-    private Response send(String operation, Object payload) {
+    private Response send(KernelIpcOperation operation, Object payload) {
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            Future<Response> call = executor.submit(() -> sendBlocking(operation, payload));
+            try {
+                return call.get(KernelProtocol.CALL_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+            } catch (TimeoutException exception) {
+                call.cancel(true);
+                throw new KernelClientException(
+                        "Kernel IPC request exceeded the local call timeout",
+                        KernelIpcErrorCode.Timeout,
+                        exception);
+            } catch (InterruptedException exception) {
+                call.cancel(true);
+                Thread.currentThread().interrupt();
+                throw new KernelClientException(
+                        "Kernel IPC request was interrupted",
+                        KernelIpcErrorCode.TransportFailure,
+                        exception);
+            } catch (ExecutionException exception) {
+                Throwable cause = exception.getCause();
+                if (cause instanceof KernelClientException clientException) {
+                    throw clientException;
+                }
+                throw new KernelClientException("Kernel IPC request failed", KernelIpcErrorCode.TransportFailure, cause);
+            }
+        }
+    }
+
+    private Response sendBlocking(KernelIpcOperation operation, Object payload) {
         String requestId = UUID.randomUUID().toString();
         Request request = new Request(KernelProtocol.VERSION, requestId, operation, payload);
         byte[] encoded;
         try {
             encoded = json.writeValueAsBytes(request);
         } catch (JsonProcessingException exception) {
-            throw new KernelClientException("failed to encode Kernel IPC request", exception);
+            throw new KernelClientException(
+                    "failed to encode Kernel IPC request",
+                    KernelIpcErrorCode.ProtocolError,
+                    exception);
         }
         if (encoded.length > KernelProtocol.MAX_FRAME_BYTES) {
-            throw new KernelClientException("Kernel IPC request exceeds frame bound", "InvalidRequest");
+            throw new KernelClientException("Kernel IPC request exceeds frame bound", KernelIpcErrorCode.InvalidRequest);
         }
 
         try (SocketChannel channel = SocketChannel.open(StandardProtocolFamily.UNIX)) {
@@ -103,25 +141,31 @@ public final class LocalKernelClient implements KernelClient, AutoCloseable {
             responseHeader.flip();
             int length = responseHeader.getInt();
             if (length <= 0 || length > KernelProtocol.MAX_FRAME_BYTES) {
-                throw new KernelClientException("Kernel IPC response length is outside protocol bound", "ProtocolError");
+                throw new KernelClientException(
+                        "Kernel IPC response length is outside protocol bound",
+                        KernelIpcErrorCode.ProtocolError);
             }
             ByteBuffer responseBody = ByteBuffer.allocate(length);
             readAll(channel, responseBody);
             Response response = json.readValue(responseBody.array(), Response.class);
             if (response.version() != KernelProtocol.VERSION) {
-                throw new KernelClientException("Kernel IPC version mismatch", "ProtocolError");
+                throw new KernelClientException("Kernel IPC version mismatch", KernelIpcErrorCode.ProtocolError);
             }
             if (!Objects.equals(requestId, response.requestId())) {
-                throw new KernelClientException("Kernel IPC request correlation mismatch", "ProtocolError");
+                throw new KernelClientException("Kernel IPC request correlation mismatch", KernelIpcErrorCode.ProtocolError);
             }
             if (!response.ok()) {
-                String code = response.error() == null ? "InternalFailure" : response.error().code();
+                KernelIpcErrorCode code = response.error() == null
+                        ? KernelIpcErrorCode.InternalFailure
+                        : response.error().code();
                 String detail = response.error() == null ? null : response.error().detail();
-                throw new KernelClientException("Kernel IPC " + code + (detail == null ? "" : ": " + detail), code);
+                throw new KernelClientException(
+                        "Kernel IPC " + code + (detail == null ? "" : ": " + detail),
+                        code);
             }
             return response;
         } catch (IOException exception) {
-            throw new KernelClientException("Kernel IPC request failed", exception);
+            throw new KernelClientException("Kernel IPC request failed", KernelIpcErrorCode.TransportFailure, exception);
         }
     }
 
@@ -129,12 +173,22 @@ public final class LocalKernelClient implements KernelClient, AutoCloseable {
         try {
             return json.treeToValue(response.payload(), type);
         } catch (JsonProcessingException exception) {
-            throw new KernelClientException("failed to decode Kernel IPC response", exception);
+            throw new KernelClientException(
+                    "failed to decode Kernel IPC response",
+                    KernelIpcErrorCode.ProtocolError,
+                    exception);
         }
     }
 
     private <T> T read(Response response, TypeReference<T> type) {
-        return json.convertValue(response.payload(), type);
+        try {
+            return json.convertValue(response.payload(), type);
+        } catch (IllegalArgumentException exception) {
+            throw new KernelClientException(
+                    "failed to decode Kernel IPC response",
+                    KernelIpcErrorCode.ProtocolError,
+                    exception);
+        }
     }
 
     private static void writeAll(SocketChannel channel, ByteBuffer buffer) throws IOException {
@@ -156,9 +210,9 @@ public final class LocalKernelClient implements KernelClient, AutoCloseable {
         // Each operation owns one short-lived local socket connection.
     }
 
-    private record Request(int version, String requestId, String operation, Object payload) { }
+    private record Request(int version, String requestId, KernelIpcOperation operation, Object payload) { }
     private record Response(int version, String requestId, boolean ok, JsonNode payload, ErrorBody error) { }
-    private record ErrorBody(String code, String detail) { }
+    private record ErrorBody(KernelIpcErrorCode code, String detail) { }
     private record WorkIdPayload(String workId) { }
     private record SubmissionResponse(String workId) { }
     private record CancelResponse(WorkState state) { }

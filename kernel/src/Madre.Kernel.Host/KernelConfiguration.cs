@@ -4,24 +4,29 @@ using Madre.Kernel;
 
 namespace Madre.Kernel.Host;
 
+public static class KernelHostDefaults
+{
+    public const int MaxConcurrent = 2;
+}
+
 public sealed class KernelHostConfiguration
 {
     public string? DatabasePath { get; init; }
-    public int MaxConcurrent { get; init; } = 2;
-    public List<ProcessCapabilityConfiguration> Capabilities { get; init; } = [];
+    public int? MaxConcurrent { get; init; }
+    public List<ProcessCapabilityConfiguration>? Capabilities { get; init; } = [];
 }
 
 public sealed class ProcessCapabilityConfiguration
 {
-    public required string CapabilityId { get; init; }
-    public required string BindingId { get; init; }
-    public string BindingVersion { get; init; } = "1";
-    public required string Executable { get; init; }
-    public List<string> Arguments { get; init; } = [];
+    public string? CapabilityId { get; init; }
+    public string? BindingId { get; init; }
+    public string? BindingVersion { get; init; }
+    public string? Executable { get; init; }
+    public List<string>? Arguments { get; init; } = [];
     public List<string>? ProbeArguments { get; init; }
-    public ExecutionBoundary ExecutionBoundary { get; init; } = ExecutionBoundary.LocalOnly;
-    public InferenceEffort SupportedEffort { get; init; } = InferenceEffort.Standard;
-    public int OwnerPreference { get; init; }
+    public ExecutionBoundary? ExecutionBoundary { get; init; }
+    public InferenceEffort? SupportedEffort { get; init; }
+    public int? OwnerPreference { get; init; }
 }
 
 public sealed record LoadedKernelConfiguration(
@@ -51,6 +56,8 @@ public static class KernelPaths
 
 public static class KernelConfigurationLoader
 {
+    private static readonly JsonSerializerOptions Json = CreateJson();
+
     public static LoadedKernelConfiguration Load(
         string? configurationPath,
         string? databaseOverride = null,
@@ -70,19 +77,35 @@ public static class KernelConfigurationLoader
                 throw new FileNotFoundException("Kernel configuration file not found", fullPath);
             }
             configurationDirectory = Path.GetDirectoryName(fullPath)!;
-            var options = new JsonSerializerOptions(JsonSerializerDefaults.Web)
+            try
             {
-                PropertyNameCaseInsensitive = true
-            };
-            options.Converters.Add(new JsonStringEnumConverter());
-            configured = JsonSerializer.Deserialize<KernelHostConfiguration>(File.ReadAllText(fullPath), options)
-                ?? throw new InvalidDataException("Kernel configuration is empty");
+                configured = JsonSerializer.Deserialize<KernelHostConfiguration>(File.ReadAllText(fullPath), Json)
+                    ?? throw new InvalidDataException("Kernel configuration is empty");
+            }
+            catch (JsonException ex)
+            {
+                throw new InvalidDataException($"Kernel configuration is invalid: {ex.Message}", ex);
+            }
         }
 
-        int maxConcurrent = maxConcurrentOverride ?? configured.MaxConcurrent;
+        if (configured.Capabilities is null)
+        {
+            throw new InvalidDataException("capabilities must be an array when present");
+        }
+
+        int maxConcurrent = maxConcurrentOverride ?? configured.MaxConcurrent ?? KernelHostDefaults.MaxConcurrent;
         if (maxConcurrent < 1)
         {
             throw new InvalidDataException("maxConcurrent must be at least 1");
+        }
+
+        if (configured.DatabasePath is not null && string.IsNullOrWhiteSpace(configured.DatabasePath))
+        {
+            throw new InvalidDataException("databasePath must not be empty when present");
+        }
+        if (databaseOverride is not null && string.IsNullOrWhiteSpace(databaseOverride))
+        {
+            throw new InvalidDataException("database path override must not be empty");
         }
 
         string database = databaseOverride ?? configured.DatabasePath ?? KernelPaths.DefaultDatabasePath;
@@ -106,6 +129,21 @@ public static class KernelConfigurationLoader
             {
                 throw new InvalidDataException("capabilityId, bindingId, bindingVersion and executable are required");
             }
+            if (entry.ExecutionBoundary is null
+                || entry.SupportedEffort is null
+                || entry.OwnerPreference is null)
+            {
+                throw new InvalidDataException(
+                    $"capability {entry.CapabilityId} requires executionBoundary, supportedEffort and ownerPreference");
+            }
+            if (entry.Arguments is null || entry.Arguments.Any(argument => argument is null))
+            {
+                throw new InvalidDataException($"capability {entry.CapabilityId} arguments must be a string array");
+            }
+            if (entry.ProbeArguments is not null && entry.ProbeArguments.Any(argument => argument is null))
+            {
+                throw new InvalidDataException($"capability {entry.CapabilityId} probeArguments must be a string array");
+            }
             if (!capabilityIds.Add(entry.CapabilityId))
             {
                 throw new InvalidDataException($"duplicate capabilityId: {entry.CapabilityId}");
@@ -120,9 +158,9 @@ public static class KernelConfigurationLoader
                 entry.CapabilityId,
                 entry.BindingId,
                 entry.BindingVersion,
-                new ConfiguredFact<ExecutionBoundary>(entry.ExecutionBoundary, FactProvenance.Owner),
-                new ConfiguredFact<InferenceEffort>(entry.SupportedEffort, FactProvenance.Owner),
-                entry.OwnerPreference));
+                new ConfiguredFact<ExecutionBoundary>(entry.ExecutionBoundary.Value, FactProvenance.Owner),
+                new ConfiguredFact<InferenceEffort>(entry.SupportedEffort.Value, FactProvenance.Owner),
+                entry.OwnerPreference.Value));
             bindings.Add(new ProcessInferenceBinding(
                 entry.BindingId,
                 entry.BindingVersion,
@@ -136,5 +174,16 @@ public static class KernelConfigurationLoader
             maxConcurrent,
             capabilities,
             bindings);
+    }
+
+    private static JsonSerializerOptions CreateJson()
+    {
+        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web)
+        {
+            PropertyNameCaseInsensitive = false,
+            UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow
+        };
+        options.Converters.Add(new JsonStringEnumConverter(namingPolicy: null, allowIntegerValues: false));
+        return options;
     }
 }

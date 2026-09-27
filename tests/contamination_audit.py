@@ -38,6 +38,8 @@ forbidden_patterns = {
     r"--port": "configurable control-plane port returned",
     r"Microsoft\.Agents\.AI\.Workflows|MafTwoStage|maf-two-stage|maf-checkpoint": "MAF validation strategy residue returned",
     r"CheckpointSessionId|CheckpointId|\bCheckpointed\b": "checkpoint scaffolding returned",
+    r"SuccessfulObservationCount|FailureObservationCount": "unused capability aggregate returned",
+    r"UnknownReobserveInterval|AvailableReobserveInterval": "idle periodic capability probe policy returned",
 }
 
 provider_patterns = re.compile(r"\b(llama\.cpp|Ollama|OpenAI|Anthropic|Gemini|LM Studio|vLLM|Hugging Face)\b", re.IGNORECASE)
@@ -60,6 +62,7 @@ for path in AUTHORITY:
         r"loopback HTTP|production control boundary is loopback|current /v1|speaks only the current /v1|Kestrel": "authority still presents the superseded web control plane",
         r"current richer strategy uses MAF|current two-stage MAF|MAF checkpoint is current|concrete checkpointed two-stage strategy|MAF checkpoint/hard-restart suite": "authority still presents MAF validation behavior as current",
         r"bf81a342": "authority still claims prior Lane C closure SHA",
+        r"Lane C (?:is|was) (?:finally )?closed": "authority claims Lane C closure that belongs to Owner/orchestrator audit",
     }.items():
         if re.search(pattern, text, re.IGNORECASE):
             failures.append(f"{path.relative_to(ROOT)}: {label}")
@@ -92,6 +95,12 @@ for jar in (ROOT / "madre-kernel-client" / "build" / "libs").glob("*.jar"):
                 failures.append(f"{jar.relative_to(ROOT)}: acceptance/test helper was packaged in a production Java artifact")
     except zipfile.BadZipFile:
         failures.append(f"{jar.relative_to(ROOT)}: Java artifact is not a readable jar")
+
+sqlite = (ROOT / "kernel" / "src" / "Madre.Kernel" / "SqliteDatabase.cs").read_text(encoding="utf-8")
+if "CREATE TABLE IF NOT EXISTS" in sqlite.upper():
+    failures.append("kernel/src/Madre.Kernel/SqliteDatabase.cs: schema identity regressed to shape-probing IF NOT EXISTS")
+if "PRAGMA user_version" not in sqlite:
+    failures.append("kernel/src/Madre.Kernel/SqliteDatabase.cs: explicit current schema identity missing")
 
 native_sources = list((ROOT / "kernel").rglob("*.cpp")) + list((ROOT / "kernel").rglob("*.hpp"))
 for path in native_sources:

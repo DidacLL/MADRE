@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Runtime.ExceptionServices;
 using System.Text;
 
 namespace Madre.Kernel;
@@ -10,6 +11,7 @@ public sealed class KernelEngine : IAsyncDisposable
     private readonly DreSelector _dre = new();
     private readonly BindingExecutor _bindingExecutor = new();
     private readonly IReadOnlyList<InferenceCapability> _capabilities;
+    private readonly Dictionary<string, InferenceCapability> _capabilitiesById;
     private readonly Dictionary<string, IInferenceBinding> _bindings;
     private readonly SemaphoreSlim _slots;
     private readonly SemaphoreSlim _dispatchGate = new(1, 1);
@@ -19,6 +21,7 @@ public sealed class KernelEngine : IAsyncDisposable
     private readonly ConcurrentDictionary<string, Task> _runningTasks = new();
     private readonly ConcurrentDictionary<string, Lazy<Task>> _probeTasks = new();
     private readonly ConcurrentDictionary<string, DateTimeOffset> _nextProbeAt = new();
+    private readonly TaskCompletionSource<bool> _fatal = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly IKernelClock _clock;
     private readonly KernelTimingOptions _timing;
     private Task? _scheduler;
@@ -27,7 +30,7 @@ public sealed class KernelEngine : IAsyncDisposable
         WorkStore store,
         IReadOnlyList<InferenceCapability> capabilities,
         IReadOnlyList<IInferenceBinding> bindings,
-        int maxConcurrent = 2,
+        int maxConcurrent,
         IKernelClock? clock = null,
         KernelTimingOptions? timing = null)
     {
@@ -38,10 +41,15 @@ public sealed class KernelEngine : IAsyncDisposable
 
         _store = store;
         _capabilities = capabilities;
+        _capabilitiesById = capabilities.ToDictionary(capability => capability.CapabilityId, StringComparer.Ordinal);
         _bindings = bindings.ToDictionary(BindingKey, StringComparer.Ordinal);
         _slots = new SemaphoreSlim(maxConcurrent, maxConcurrent);
         _clock = clock ?? SystemKernelClock.Instance;
         _timing = timing ?? KernelTimingOptions.Default;
+        if (_timing.ProbeTimeout <= TimeSpan.Zero || _timing.UnavailableReobserveInterval <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(timing), "Kernel timing values must be positive");
+        }
 
         foreach (InferenceCapability capability in capabilities)
         {
@@ -53,14 +61,11 @@ public sealed class KernelEngine : IAsyncDisposable
         }
     }
 
+    public Task FatalCompletion => _fatal.Task;
+
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
-        DateTimeOffset now = _clock.UtcNow;
-        await _store.InitializeAsync(_capabilities, now, cancellationToken).ConfigureAwait(false);
-        foreach (InferenceCapability capability in _capabilities)
-        {
-            _nextProbeAt[capability.CapabilityId] = now;
-        }
+        await _store.InitializeAsync(_capabilities, _clock.UtcNow, cancellationToken).ConfigureAwait(false);
     }
 
     public void Start()
@@ -70,7 +75,20 @@ public sealed class KernelEngine : IAsyncDisposable
             throw new InvalidOperationException("Kernel engine already started");
         }
         _scheduler = SchedulerLoopAsync(_shutdown.Token);
+        foreach (InferenceCapability capability in _capabilities)
+        {
+            _ = ObserveCapabilityAsync(capability);
+        }
         Wake();
+    }
+
+    public void ThrowIfFaulted()
+    {
+        if (_fatal.Task.Exception is not { } aggregate)
+        {
+            return;
+        }
+        ExceptionDispatchInfo.Capture(aggregate.GetBaseException()).Throw();
     }
 
     public async Task<string> SubmitAsync(PhysicalInferenceRequest request, CancellationToken cancellationToken = default)
@@ -79,6 +97,12 @@ public sealed class KernelEngine : IAsyncDisposable
         if (string.IsNullOrEmpty(request.PreparedInput))
         {
             throw new ArgumentException("preparedInput must not be empty", nameof(request));
+        }
+        if (!Enum.IsDefined(typeof(InferenceEffort), request.RequestedEffort)
+            || !Enum.IsDefined(typeof(WorkUrgency), request.Urgency)
+            || !Enum.IsDefined(typeof(ExecutionBoundary), request.ExecutionBoundary))
+        {
+            throw new ArgumentException("physical request contains an invalid enum value", nameof(request));
         }
         if (Encoding.UTF8.GetByteCount(request.PreparedInput) > KernelProtocol.MaxPayloadBytes)
         {
@@ -130,9 +154,7 @@ public sealed class KernelEngine : IAsyncDisposable
     public async Task<IReadOnlyList<CapabilitySnapshot>> RefreshCapabilityStatesAsync(
         CancellationToken cancellationToken = default)
     {
-        Task[] probes = _capabilities
-            .Select(ObserveCapabilityAsync)
-            .ToArray();
+        Task[] probes = _capabilities.Select(ObserveCapabilityAsync).ToArray();
         await Task.WhenAll(probes).WaitAsync(cancellationToken).ConfigureAwait(false);
         return await CapabilitiesAsync(cancellationToken).ConfigureAwait(false);
     }
@@ -144,26 +166,22 @@ public sealed class KernelEngine : IAsyncDisposable
             while (!cancellationToken.IsCancellationRequested)
             {
                 DateTimeOffset now = _clock.UtcNow;
-                LaunchDueCapabilityObservations(now);
                 await _store.ExpirePendingDeadlinesAsync(now, cancellationToken).ConfigureAwait(false);
 
-                IReadOnlyList<StoredWork> works = await _store.GetEligibleWorkAsync(now, cancellationToken).ConfigureAwait(false);
+                IReadOnlyList<SchedulingWork> works = await _store.GetEligibleWorkAsync(now, cancellationToken).ConfigureAwait(false);
                 IReadOnlyList<CapabilitySnapshot> snapshots = await _store.Capabilities
                     .GetSnapshotsAsync(cancellationToken)
                     .ConfigureAwait(false);
+                var demandedUnavailable = new HashSet<string>(StringComparer.Ordinal);
 
-                foreach (StoredWork work in works)
+                foreach (SchedulingWork work in works)
                 {
-                    if (_slots.CurrentCount == 0)
-                    {
-                        break;
-                    }
                     if (_runningTasks.ContainsKey(work.WorkId))
                     {
                         continue;
                     }
 
-                    DreDecision decision = _dre.Select(work.Request, snapshots);
+                    DreDecision decision = _dre.Select(work, snapshots);
                     if (decision.Kind == DreDecisionKind.NoAdmissibleCapability)
                     {
                         await _store.FailNoAdmissibleCapabilityAsync(work.WorkId, cancellationToken).ConfigureAwait(false);
@@ -171,34 +189,78 @@ public sealed class KernelEngine : IAsyncDisposable
                     }
                     if (decision.Kind == DreDecisionKind.WaitForAvailability)
                     {
+                        RegisterUnavailableDemand(work, snapshots, now, demandedUnavailable);
                         continue;
                     }
-                    await ScheduleAsync(work, decision.Capability!, cancellationToken).ConfigureAwait(false);
+                    if (_slots.CurrentCount > 0)
+                    {
+                        await ScheduleAsync(work, decision.Capability!, cancellationToken).ConfigureAwait(false);
+                    }
                 }
+
+                PruneInactiveProbeDemand(demandedUnavailable);
+                LaunchDueDemandObservations(now, demandedUnavailable);
 
                 DateTimeOffset? nextWorkBoundary = await _store
                     .GetNextSchedulingBoundaryAsync(_clock.UtcNow, cancellationToken)
                     .ConfigureAwait(false);
-                DateTimeOffset? nextProbe = NextProbeBoundary();
-                DateTimeOffset? nextWake = Earliest(nextWorkBoundary, nextProbe);
+                DateTimeOffset? nextWake = Earliest(nextWorkBoundary, NextProbeBoundary());
                 await WaitForWakeOrBoundaryAsync(nextWake, cancellationToken).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
         }
+        catch (Exception ex)
+        {
+            ReportFatal(ex);
+            throw;
+        }
     }
 
-    private void LaunchDueCapabilityObservations(DateTimeOffset now)
+    private void RegisterUnavailableDemand(
+        SchedulingWork work,
+        IReadOnlyList<CapabilitySnapshot> snapshots,
+        DateTimeOffset now,
+        HashSet<string> demanded)
     {
-        foreach (InferenceCapability capability in _capabilities)
+        foreach (CapabilitySnapshot snapshot in snapshots)
         {
-            if (!_nextProbeAt.TryGetValue(capability.CapabilityId, out DateTimeOffset due) || due > now)
+            if (snapshot.State.Availability != CapabilityAvailability.Unavailable
+                || !DreSelector.IsAdmissible(work, snapshot.Capability))
             {
                 continue;
             }
-            _nextProbeAt[capability.CapabilityId] = DateTimeOffset.MaxValue;
-            _ = ObserveCapabilityAsync(capability);
+            demanded.Add(snapshot.Capability.CapabilityId);
+            DateTimeOffset due = (snapshot.State.ObservedAt ?? now) + _timing.UnavailableReobserveInterval;
+            _nextProbeAt.AddOrUpdate(
+                snapshot.Capability.CapabilityId,
+                due,
+                (_, current) => current == DateTimeOffset.MaxValue || current <= due ? current : due);
+        }
+    }
+
+    private void PruneInactiveProbeDemand(HashSet<string> demanded)
+    {
+        foreach (string capabilityId in _nextProbeAt.Keys)
+        {
+            if (!demanded.Contains(capabilityId))
+            {
+                _nextProbeAt.TryRemove(capabilityId, out _);
+            }
+        }
+    }
+
+    private void LaunchDueDemandObservations(DateTimeOffset now, HashSet<string> demanded)
+    {
+        foreach (string capabilityId in demanded)
+        {
+            if (!_nextProbeAt.TryGetValue(capabilityId, out DateTimeOffset due) || due > now)
+            {
+                continue;
+            }
+            _nextProbeAt[capabilityId] = DateTimeOffset.MaxValue;
+            _ = ObserveCapabilityAsync(_capabilitiesById[capabilityId]);
         }
     }
 
@@ -213,6 +275,14 @@ public sealed class KernelEngine : IAsyncDisposable
         {
             await lazy.Value.ConfigureAwait(false);
         }
+        catch (OperationCanceledException) when (_shutdown.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex)
+        {
+            ReportFatal(ex);
+            throw;
+        }
         finally
         {
             _ = ((ICollection<KeyValuePair<string, Lazy<Task>>>)_probeTasks)
@@ -224,14 +294,27 @@ public sealed class KernelEngine : IAsyncDisposable
         InferenceCapability capability,
         CancellationToken cancellationToken)
     {
-        CapabilityAvailability availability;
         IInferenceBinding binding = _bindings[BindingKey(capability.BindingId, capability.BindingVersion)];
+        CapabilityAvailability availability;
+        using var probeCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        Task<CapabilityAvailability>? physicalProbe = null;
         try
         {
-            availability = await binding.ProbeAsync(cancellationToken).ConfigureAwait(false);
+            physicalProbe = binding.ProbeAsync(probeCancellation.Token);
+            availability = await physicalProbe
+                .WaitAsync(_timing.ProbeTimeout, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            probeCancellation.Cancel();
+            ObserveLateProbeFailure(physicalProbe);
+            availability = CapabilityAvailability.Unknown;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            probeCancellation.Cancel();
+            ObserveLateProbeFailure(physicalProbe);
             throw;
         }
         catch
@@ -239,18 +322,32 @@ public sealed class KernelEngine : IAsyncDisposable
             availability = CapabilityAvailability.Unknown;
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
         DateTimeOffset observedAt = _clock.UtcNow;
         await _store.Capabilities.SetStateAsync(
             capability.CapabilityId,
             availability,
             observedAt,
             CancellationToken.None).ConfigureAwait(false);
-        _nextProbeAt[capability.CapabilityId] = observedAt + ReobserveInterval(availability);
+        _nextProbeAt.TryRemove(capability.CapabilityId, out _);
         Wake();
     }
 
+    private static void ObserveLateProbeFailure(Task<CapabilityAvailability>? probe)
+    {
+        if (probe is null || probe.IsCompleted)
+        {
+            return;
+        }
+        _ = probe.ContinueWith(
+            completed => _ = completed.Exception,
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+    }
+
     private async Task ScheduleAsync(
-        StoredWork work,
+        SchedulingWork work,
         InferenceCapability capability,
         CancellationToken cancellationToken)
     {
@@ -263,10 +360,10 @@ public sealed class KernelEngine : IAsyncDisposable
         try
         {
             DateTimeOffset started = _clock.UtcNow;
-            int? attemptNumber = await _store
+            ClaimedAttempt? claimed = await _store
                 .TryBeginAttemptAsync(work, capability, started, cancellationToken)
                 .ConfigureAwait(false);
-            if (attemptNumber is null)
+            if (claimed is null)
             {
                 _slots.Release();
                 return;
@@ -274,7 +371,12 @@ public sealed class KernelEngine : IAsyncDisposable
 
             var attemptCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             _runningCancellations[work.WorkId] = attemptCancellation;
-            Task task = ExecuteAttemptAsync(work, capability, attemptNumber.Value, attemptCancellation);
+            Task task = ExecuteAttemptAsync(
+                work.WorkId,
+                claimed.PreparedInput,
+                capability,
+                claimed.AttemptNumber,
+                attemptCancellation);
             _runningTasks[work.WorkId] = task;
         }
         finally
@@ -284,31 +386,25 @@ public sealed class KernelEngine : IAsyncDisposable
     }
 
     private async Task ExecuteAttemptAsync(
-        StoredWork work,
+        string workId,
+        string preparedInput,
         InferenceCapability capability,
         int attemptNumber,
         CancellationTokenSource cancellation)
     {
         var stopwatch = Stopwatch.StartNew();
-        BindingExecutionResult result;
         try
         {
             IInferenceBinding binding = _bindings[BindingKey(capability.BindingId, capability.BindingVersion)];
-            result = await _bindingExecutor.ExecuteAsync(
+            BindingExecutionResult result = await _bindingExecutor.ExecuteAsync(
                 binding,
-                new InferenceExecutionRequest(work.Request.PreparedInput),
+                new InferenceExecutionRequest(preparedInput),
                 cancellation.Token).ConfigureAwait(false);
-        }
-        finally
-        {
             stopwatch.Stop();
-        }
 
-        try
-        {
             DateTimeOffset endedAt = _clock.UtcNow;
             await _store.CompleteAttemptAsync(
-                work.WorkId,
+                workId,
                 attemptNumber,
                 result,
                 endedAt,
@@ -316,9 +412,18 @@ public sealed class KernelEngine : IAsyncDisposable
                 CancellationToken.None).ConfigureAwait(false);
             await RecordExecutionAvailabilityAsync(capability, result, endedAt).ConfigureAwait(false);
         }
+        catch (OperationCanceledException) when (_shutdown.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex)
+        {
+            ReportFatal(ex);
+            throw;
+        }
         finally
         {
-            CleanupRunning(work.WorkId, cancellation);
+            stopwatch.Stop();
+            CleanupRunning(workId, cancellation);
         }
     }
 
@@ -338,7 +443,6 @@ public sealed class KernelEngine : IAsyncDisposable
             availability,
             observedAt,
             CancellationToken.None).ConfigureAwait(false);
-        _nextProbeAt[capability.CapabilityId] = observedAt + ReobserveInterval(availability);
     }
 
     private void CleanupRunning(string workId, CancellationTokenSource cancellation)
@@ -349,14 +453,6 @@ public sealed class KernelEngine : IAsyncDisposable
         _slots.Release();
         Wake();
     }
-
-    private TimeSpan ReobserveInterval(CapabilityAvailability availability) => availability switch
-    {
-        CapabilityAvailability.Unavailable => _timing.UnavailableReobserveInterval,
-        CapabilityAvailability.Unknown => _timing.UnknownReobserveInterval,
-        CapabilityAvailability.Available => _timing.AvailableReobserveInterval,
-        _ => throw new ArgumentOutOfRangeException(nameof(availability))
-    };
 
     private DateTimeOffset? NextProbeBoundary()
     {
@@ -402,6 +498,23 @@ public sealed class KernelEngine : IAsyncDisposable
         }
     }
 
+    private void ReportFatal(Exception exception)
+    {
+        if (_shutdown.IsCancellationRequested)
+        {
+            return;
+        }
+        if (_fatal.TrySetException(exception))
+        {
+            _shutdown.Cancel();
+            foreach (CancellationTokenSource attempt in _runningCancellations.Values)
+            {
+                attempt.Cancel();
+            }
+            Wake();
+        }
+    }
+
     private void Wake()
     {
         if (_wake.CurrentCount == 0)
@@ -437,12 +550,15 @@ public sealed class KernelEngine : IAsyncDisposable
             {
                 await _scheduler.ConfigureAwait(false);
             }
-            catch (OperationCanceledException)
+            catch (Exception)
             {
             }
         }
 
-        Task[] probes = _probeTasks.Values.Select(lazy => lazy.Value).ToArray();
+        Task[] probes = _probeTasks.Values
+            .Where(lazy => lazy.IsValueCreated)
+            .Select(lazy => lazy.Value)
+            .ToArray();
         Task[] running = _runningTasks.Values.ToArray();
         if (probes.Length > 0)
         {
@@ -450,13 +566,19 @@ public sealed class KernelEngine : IAsyncDisposable
             {
                 await Task.WhenAll(probes).ConfigureAwait(false);
             }
-            catch (OperationCanceledException)
+            catch (Exception)
             {
             }
         }
         if (running.Length > 0)
         {
-            await Task.WhenAll(running).ConfigureAwait(false);
+            try
+            {
+                await Task.WhenAll(running).ConfigureAwait(false);
+            }
+            catch (Exception)
+            {
+            }
         }
 
         _shutdown.Dispose();

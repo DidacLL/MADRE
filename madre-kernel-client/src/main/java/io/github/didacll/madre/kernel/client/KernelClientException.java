@@ -2,20 +2,19 @@ package io.github.didacll.madre.kernel.client;
 
 public final class KernelClientException extends RuntimeException {
     private static final long serialVersionUID = 1L;
+    private final KernelIpcErrorCode errorCode;
 
-    private final String errorCode;
-
-    public KernelClientException(String message, String errorCode) {
+    public KernelClientException(String message, KernelIpcErrorCode errorCode) {
         super(message);
         this.errorCode = errorCode;
     }
 
-    public KernelClientException(String message, Throwable cause) {
+    public KernelClientException(String message, KernelIpcErrorCode errorCode, Throwable cause) {
         super(message, cause);
-        this.errorCode = null;
+        this.errorCode = errorCode;
     }
 
-    public String errorCode() {
+    public KernelIpcErrorCode errorCode() {
         return errorCode;
     }
 }

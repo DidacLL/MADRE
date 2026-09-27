@@ -17,6 +17,7 @@ internal static partial class Program
         await JavaAndRestartAsync();
         await ReconcileAndOpenBindingAsync();
         await NoHeadStarvationAsync();
+        await AuditBlockersAsync();
         Console.WriteLine("MADRE Lane C convergence acceptance passed");
         return 0;
     }

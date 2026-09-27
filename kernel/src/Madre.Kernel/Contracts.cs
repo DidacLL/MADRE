@@ -125,9 +125,7 @@ public sealed record WorkResultSnapshot(WorkState State, bool Released, string? 
 public sealed record CapabilitySnapshot(
     InferenceCapability Capability,
     CapabilityState State,
-    double? SuccessfulLatencyMs,
-    int SuccessfulObservationCount,
-    int FailureObservationCount);
+    double? SuccessfulLatencyMs);
 
 public static class KernelProtocol
 {
