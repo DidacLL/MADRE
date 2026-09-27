@@ -16,7 +16,7 @@ An **Agent** is the semantic actor. An **Operation** is a bounded action. An age
 
 The public SDK is part of the product, not a thin transport adapter. It is intended to be simple and explicit enough for human developers and eventually AI-assisted builders to generate ordinary owner-local Modules without hidden first-party hooks.
 
-MADRE Runtime supplies installation mechanics and shared semantic execution facilities. The Kernel is the durable physical inference control plane: it schedules physical reasoning against Owner-configured inference capabilities while remaining ignorant of application/domain semantics and external inference-runtime internals.
+MADRE Runtime supplies installation mechanics and shared semantic execution facilities. The Kernel is the durable physical inference substrate: it schedules physical reasoning against Owner-configured inference capabilities while remaining ignorant of application/domain semantics and external inference-runtime internals.
 
 ## DRE
 
@@ -26,7 +26,7 @@ An application can answer what it already knows, decompose work, request bounded
 
 Semantic MADRE knows the application-side facts—what reasoning is needed, context characteristics, urgency, acceptable delay, required result characteristics and constraints derived from the actual semantic/SPIRA construction—and reduces them to a small physical inference requirement.
 
-Kernel DRE combines that requirement with configured `InferenceCapability` facts, current capability state and accumulated physical observations to decide timing, capability, physical effort and strategy.
+Kernel DRE combines that requirement with configured `InferenceCapability` facts, current capability state and accumulated physical observations to decide timing and capability within the implemented physical policy.
 
 The goal is not to pretend small local models equal frontier models. The goal is to make **domain-aware software + time + bounded reasoning + selective physical inference** more capable than one isolated inference call suggests.
 
@@ -45,7 +45,9 @@ Owner inference router
 opaque coding/research intelligence
 ```
 
-Capability knowledge keeps configured/declared facts, current state and historical observations distinct. Physical observations such as latency, availability, throughput, failure rate or observed cost can improve later DRE decisions without making Kernel the owner of the underlying inference runtime.
+Capability knowledge keeps configured/declared facts, current state and historical observations distinct. Physical observations can improve later DRE decisions without making Kernel the owner of the underlying inference runtime.
+
+`Unknown` and `Unavailable` are different physical truths. DRE prefers known-available admissible capabilities. If none are known available, an otherwise admissible configured `Unknown` capability may be tried; actual execution can then provide evidence. Known-unavailable capabilities wait and are re-observed automatically.
 
 Kernel does not silently judge application-level answer quality. A physically valid result that fails the user's semantic objective is handled by the consuming Agent/Module, not retried merely because Kernel dislikes the answer.
 
@@ -77,7 +79,7 @@ Kernel performs DRE against configured `InferenceCapability` facts, current phys
 
 ## Current Lane C implementation
 
-Lane C is now a single current implementation under [`kernel/`](kernel/): the capability-aware .NET physical Kernel. The previous native C++ Kernel, workers, model/runtime integration, protocol-v4 client, native acceptance suites and validation-era `kernel-dotnet` side tree are not present in the active tree. Git history is the historical record.
+Lane C is a single current implementation under [`kernel/`](kernel/): the capability-aware .NET physical Kernel. Superseded native/worker/model-lifecycle implementations and validation side trees are not active alternatives; Git history is the historical record.
 
 MADRE owns below the semantic/physical boundary:
 
@@ -90,30 +92,33 @@ physical attempts/results/recovery
 one authoritative durable Work lifecycle
 ```
 
-The production control boundary is loopback HTTP on `127.0.0.1`, versioned under `/v1`. It is intentionally local-only and small: an independent Kernel process, concurrent bounded clients, bounded payloads, restartable lifetime and the same behavior on Windows and Linux. There is no service discovery, remote-control plane, TLS/PKI platform or tenancy layer.
+The Kernel host uses a small versioned local IPC contract over Unix-domain sockets on supported Windows/Linux targets. Messages are bounded length-prefixed UTF-8 JSON frames. There is no TCP listener, configurable port or web-server dependency. The Java 21 [`madre-kernel-client`](madre-kernel-client/) uses this same local protocol and does not depend on `madre-sdk`.
 
-Normal Kernel startup loads explicit Owner configuration. The first provided universal binding is a shell-free process/executable binding; a configured probe supplies actual physical evidence for current availability. Configuration alone never turns a capability into `Available`. `IInferenceBinding` is the ordinary seam for the provided process binding, optional MEAI use and advanced Owner/custom bindings; there is no dynamic plugin marketplace or privileged first-party route.
+Kernel startup is valid with zero configured capabilities and no configuration file. Capability probing is asynchronous, so slow or broken inference systems do not hold Kernel availability hostage. The configured catalogue is reconciled at restart: removed capabilities cease to be selectable while historical physical attempts remain historical evidence.
 
-The implemented first-version DRE is deliberately small:
+The implemented DRE is deliberately small:
 
 - durable eligibility and deadline admission;
 - hard local/external admissibility;
-- requested physical effort compatibility;
-- current `Available` state only;
+- requested physical-effort compatibility;
+- explicit `Available` / `Unknown` / `Unavailable` handling;
+- automatic capability re-observation;
 - Owner preference as the stable normal selection rule;
-- persisted successful latency evidence for later `Interactive` choices when candidates have comparable evidence;
-- one-shot physical inference normally;
-- the concrete checkpointed two-stage strategy for `High + Background` Work.
+- persisted successful latency evidence for `Interactive` choices when candidates have comparable evidence.
 
-SQLite is authoritative for Work, configured/current capability facts, attempts and retained physical result state. Active attempts whose completion becomes unknowable across hard Kernel death recover as `UnknownCompletion` and are never implicitly duplicated. Terminal input/result retention has explicit release semantics.
+Scheduling is wake/deadline driven rather than busy-polled. Urgency and effort ordering live in explicit domain code rather than enum ordinals or SQL policy. Physical failures use a named typed vocabulary with separate technical detail.
 
-Microsoft Agent Framework is used only by the one concrete multi-stage physical strategy. Its checkpoint is subordinate execution state. Before continuation, MADRE Work authority still checks existence/state, cancellation, deadline, strategy identity/version, selected capability/binding identity/version and current physical admissibility. Simple inference bypasses MAF.
+SQLite is authoritative for Work, configured/current capability state, attempts and retained physical results. Active attempts whose completion becomes unknowable across hard Kernel death recover as `UnknownCompletion` and are never implicitly duplicated. Terminal input/result retention has explicit release semantics.
 
-The Java [`madre-kernel-client`](madre-kernel-client/) speaks only the current `/v1` physical boundary and does not depend on `madre-sdk`.
+`IInferenceBinding` is the ordinary physical seam for the provided shell-free process binding, MEAI interoperability and advanced Owner/custom bindings. Binding execution receives only execution-relevant physical data, and common result validation/failure conversion is centralized.
+
+The earlier validation-only multi-stage checkpoint strategy is not part of the current product implementation. No production checkpoint state, workflow dependency or validation-only strategy registry remains in the active tree.
 
 ## Repository acceptance
 
-The active CI builds and tests only the current architecture on Linux and Windows. It builds the .NET Kernel and Java physical client, runs current lifecycle/capability/DRE/client acceptance, runs the MAF checkpoint/hard-restart suite, and runs contamination/destructive-convergence checks that reject semantic MADRE concepts, rejected worker/engine ontology, protocol-v4 fossils, native Kernel source and validation-only production hooks.
+The active CI runs the complete current Java/.NET Lane C acceptance on Linux and Windows. It proves zero-capability/no-config startup, bounded local IPC, real Java↔.NET operation, concurrent/stalled/disappearing callers, capability truth and automatic recovery, DRE admissibility/Owner preference/observed latency, durable eligibility/deadlines, cancellation, retained results/release, restart `UnknownCompletion`, configuration reconciliation, process/custom binding openness and no fixed-head starvation.
+
+CI also runs destructive-convergence/contamination checks so rejected web/TCP control-plane code, validation checkpoint machinery, semantic leakage, native Kernel fossils and Java test-helper production packaging cannot silently return.
 
 The semantic SDK/Module layer and MADRE Runtime remain outside this Lane C implementation and are not reconstructed here.
 
@@ -122,8 +127,8 @@ The semantic SDK/Module layer and MADRE Runtime remain outside this Lane C imple
 Start here:
 
 - [`NORTH_STAR.md`](NORTH_STAR.md) — short mandatory anti-drift recovery checkpoint;
-- [`docs/product/lane-c-owner-decision.md`](docs/product/lane-c-owner-decision.md) — accepted Lane C/DRE ownership decision and causal reasoning;
-- [`docs/product/owner-intent-corpus.md`](docs/product/owner-intent-corpus.md) — authoritative detailed product reasoning;
+- [`docs/product/lane-c-owner-decision.md`](docs/product/lane-c-owner-decision.md) — accepted Lane C/DRE ownership decision and final engineering correction;
+- [`docs/product/owner-intent-corpus.md`](docs/product/owner-intent-corpus.md) — authoritative detailed product reasoning, subject to later Owner corrections;
 - [`MADRE.md`](MADRE.md) — detailed repository-level product/semantic overview and authority order;
 - [`docs/architecture/security-algebra.md`](docs/architecture/security-algebra.md) — operational SPIRA semantics;
 - [`docs/architecture/mid-level-architecture.md`](docs/architecture/mid-level-architecture.md) — accepted whole-system architecture;

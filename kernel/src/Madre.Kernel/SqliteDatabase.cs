@@ -4,6 +4,7 @@ namespace Madre.Kernel;
 
 internal sealed class SqliteDatabase
 {
+    private const int BusyTimeoutMilliseconds = 5_000;
     private readonly string _connectionString;
 
     public SqliteDatabase(string databasePath)
@@ -87,7 +88,7 @@ internal sealed class SqliteDatabase
         var connection = new SqliteConnection(_connectionString);
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
         await using SqliteCommand pragmas = connection.CreateCommand();
-        pragmas.CommandText = "PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;";
+        pragmas.CommandText = $"PRAGMA foreign_keys=ON; PRAGMA busy_timeout={BusyTimeoutMilliseconds};";
         await pragmas.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         return connection;
     }

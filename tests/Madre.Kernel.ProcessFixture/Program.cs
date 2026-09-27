@@ -29,14 +29,6 @@ if (input.StartsWith("SLOW:", StringComparison.Ordinal))
     }
 }
 
-const string checkpointMarker = "MAF_STAGE_A_MARKER:";
-if (input.StartsWith(checkpointMarker, StringComparison.Ordinal))
-{
-    string marker = input[checkpointMarker.Length..];
-    await File.AppendAllTextAsync(marker, "stage-a\n");
-    delay = Math.Max(delay, 600);
-}
-
 if (delay > 0)
 {
     await Task.Delay(delay);

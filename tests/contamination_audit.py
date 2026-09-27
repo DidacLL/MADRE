@@ -2,6 +2,7 @@
 from pathlib import Path
 import re
 import sys
+import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 PRODUCTION = [ROOT / "kernel" / "src", ROOT / "madre-kernel-client" / "src" / "main"]
@@ -9,7 +10,9 @@ AUTHORITY = [
     ROOT / "NORTH_STAR.md",
     ROOT / "AGENTS.md",
     ROOT / "MADRE.md",
+    ROOT / "README.md",
     ROOT / "docs" / "product" / "lane-c-owner-decision.md",
+    ROOT / "docs" / "product" / "owner-intent-corpus.md",
     ROOT / "docs" / "architecture" / "mid-level-architecture.md",
     ROOT / "docs" / "architecture" / "kernel.md",
 ]
@@ -30,6 +33,7 @@ forbidden_patterns = {
     r"madre-sdk": "physical Lane C depends on semantic SDK",
     r"Kestrel|Microsoft\.AspNetCore": "web-host control plane returned",
     r"HttpClient|HttpRequest|HttpResponse|HttpStatus|MapGet|MapPost": "web control-plane vocabulary returned",
+    r"\bTcpListener\b|\bTcpClient\b|AddressFamily\.InterNetwork(?:V6)?": "TCP control plane returned",
     r"127\.0\.0\.1": "loopback TCP control plane returned",
     r"--port": "configurable control-plane port returned",
     r"Microsoft\.Agents\.AI\.Workflows|MafTwoStage|maf-two-stage|maf-checkpoint": "MAF validation strategy residue returned",
@@ -53,8 +57,8 @@ for root in PRODUCTION:
 for path in AUTHORITY:
     text = path.read_text(encoding="utf-8")
     for pattern, label in {
-        r"loopback HTTP|/v1|Kestrel": "authority still presents the superseded web control plane",
-        r"current richer strategy uses MAF|current two-stage MAF|MAF checkpoint is current": "authority still presents MAF validation behavior as current",
+        r"loopback HTTP|production control boundary is loopback|current /v1|speaks only the current /v1|Kestrel": "authority still presents the superseded web control plane",
+        r"current richer strategy uses MAF|current two-stage MAF|MAF checkpoint is current|concrete checkpointed two-stage strategy|MAF checkpoint/hard-restart suite": "authority still presents MAF validation behavior as current",
         r"bf81a342": "authority still claims prior Lane C closure SHA",
     }.items():
         if re.search(pattern, text, re.IGNORECASE):
@@ -72,9 +76,22 @@ for path in obsolete:
     if path.exists():
         failures.append(f"obsolete active-tree artifact remains: {path.relative_to(ROOT)}")
 
+process_fixture = ROOT / "tests" / "Madre.Kernel.ProcessFixture" / "Program.cs"
+if process_fixture.exists() and "MAF_STAGE_A_MARKER" in process_fixture.read_text(encoding="utf-8"):
+    failures.append("tests/Madre.Kernel.ProcessFixture/Program.cs: validation-only MAF fixture behavior remains")
+
 client_build = (ROOT / "madre-kernel-client" / "build.gradle.kts").read_text(encoding="utf-8")
 if "sourceSets.test" in client_build and "Jar::class" in client_build:
     failures.append("madre-kernel-client/build.gradle.kts: test-source classes are packaged into a Java artifact")
+
+production_helper = "io/github/didacll/madre/kernel/client/KernelClientProcess.class"
+for jar in (ROOT / "madre-kernel-client" / "build" / "libs").glob("*.jar"):
+    try:
+        with zipfile.ZipFile(jar) as archive:
+            if production_helper in archive.namelist():
+                failures.append(f"{jar.relative_to(ROOT)}: acceptance/test helper was packaged in a production Java artifact")
+    except zipfile.BadZipFile:
+        failures.append(f"{jar.relative_to(ROOT)}: Java artifact is not a readable jar")
 
 native_sources = list((ROOT / "kernel").rglob("*.cpp")) + list((ROOT / "kernel").rglob("*.hpp"))
 for path in native_sources:
