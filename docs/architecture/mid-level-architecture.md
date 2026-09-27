@@ -404,7 +404,7 @@ Only physical consequences cross the boundary. The request must not contain Modu
 
 The first version must remain small. A field is justified by an implemented DRE consumer, not by hypothetical platform flexibility.
 
-The previous LCR1–LCR3 boundary that supplied an exact `ConcretePhysicalInvocation` candidate set before Kernel is retained only as implementation evidence. It is not the target contract because it removes meaningful capability/effort selection from Kernel DRE.
+The previous LCR1–LCR3 boundary that supplied an exact `ConcretePhysicalInvocation` candidate set before Kernel remains historical implementation evidence in Git history. It is not the current contract because it removes meaningful capability/effort selection from Kernel DRE.
 
 ## 12. Delayed Reasoning Effort
 
@@ -471,7 +471,7 @@ PhysicalInferenceWork
     result state
 ```
 
-SQLite is the leading local persistence choice for the first implementation unless a concrete need demonstrates otherwise.
+SQLite is the current authoritative local persistence for Lane C unless a concrete later need demonstrates otherwise.
 
 ### InferenceCapability
 
@@ -538,7 +538,7 @@ Opaque inference systems are valid. Kernel models only what can honestly be know
 
 ## 14. Physical construction surface and framework containment
 
-The leading target implementation is a cross-platform .NET Kernel because the relevant workload is now asynchronous integration, structured configuration, capability knowledge/observations, durable Work, inference-aware scheduling and optional physical workflow execution rather than native model lifecycle.
+The current implementation is a cross-platform .NET Kernel because the relevant workload is asynchronous integration, structured configuration, capability knowledge/observations, durable Work, inference-aware scheduling and selective physical workflow execution rather than native model lifecycle.
 
 ### Microsoft.Extensions.AI
 
@@ -561,7 +561,7 @@ InferenceCapability != MAF Workflow
 DRE                  != MAF
 ```
 
-A MAF Workflow may execute a physical graph selected by DRE. Simple inference is not required to use a workflow.
+The current richer strategy uses MAF for one concrete two-stage checkpointed physical strategy selected by DRE. Simple inference bypasses MAF completely.
 
 Framework checkpoint state is subordinate to MADRE `PhysicalInferenceWork`. It cannot independently decide whether Work exists, is cancelled, terminal or resumable.
 
@@ -585,7 +585,7 @@ The practical requirement is that unusual Owner-controlled inference normally be
 
 MADRE-provided adapters use the same class of physical construction surface available to advanced Owners. A provider/runtime never receives a privileged Kernel ontology merely because MADRE ships a convenience adapter for it.
 
-Generic scheduler/workflow platforms such as Quartz, Wolverine, Elsa or Temporal are not currently part of the target. They may be reconsidered if concrete requirements make them simpler than the small MADRE-owned durable substrate.
+Generic scheduler/workflow platforms such as Quartz, Wolverine, Elsa or Temporal are not part of the current accepted implementation. They may be reconsidered only if concrete requirements make them simpler than the small MADRE-owned durable substrate.
 
 ## 15. CORE position
 
@@ -660,33 +660,24 @@ A Module may privately use external AI or other systems without creating a Kerne
 
 ## 18. Current implementation status
 
-### Implemented and CI-proven reference behavior
+Current Lane C is implemented and CI-proven as:
 
-The active Lane C/LCR1–LCR3 branch contains:
+- capability-aware cross-platform .NET Kernel under `kernel/`;
+- SQLite durable `PhysicalInferenceWork`, configured/current capability facts, attempts and retained physical result state;
+- DRE over `InferenceCapability` configuration, current availability and observed physical evidence;
+- normal Owner JSON configuration and truthful process probing;
+- shell-free process/executable binding plus the same open `IInferenceBinding` path for MEAI and Owner/custom bindings;
+- bounded concurrency, eligibility/deadlines, cancellation, caller disappearance, restart recovery and truthful `UnknownCompletion`;
+- explicit terminal release of retained SQLite input/result and subordinate MAF checkpoint state;
+- selective two-stage MAF checkpoint/resume with MADRE Work authority, hard-death recovery, deadline/cancellation authority and strategy/binding version rejection;
+- simple inference bypassing MAF;
+- local loopback HTTP `/v1` physical boundary;
+- current Java `madre-kernel-client` using that `/v1` boundary;
+- Linux and Windows behavioral acceptance plus contamination/destructive-convergence checks.
 
-- native C++ Kernel;
-- SQLite durable physical Work;
-- eligibility/scheduling and restart recovery;
-- candidate-specific one-shot `ProcessInvocation` and generic `HttpInvocation` execution;
-- bounded retry/cancellation and conservative `UNKNOWN_COMPLETION` for interrupted attempts;
-- result/payload release lifecycle;
-- isolated local Unix-domain socket / Windows named-pipe IPC;
-- Java physical client at protocol v4;
-- Linux and Windows behavioral CI evidence.
+The superseded native C++ Kernel, workers, engine/model lifecycle, llama.cpp integration, CMake/native acceptance, UDS/named-pipe protocol-v4 implementation and validation-era `kernel-dotnet` side tree are deleted from the active repository. Git history preserves their useful causal and behavioral evidence; they are not an active reference/test oracle.
 
-The active Kernel does not include a model/provider inventory, warm worker/model lifecycle, llama.cpp integration or model downloads.
-
-These behaviors are evidence/test requirements for replacement where still relevant.
-
-### Accepted target architecture, not yet implemented
-
-The current C++ concrete-invocation Kernel is no longer the target Lane C architecture because its boundary completes provider/model/invocation selection before Kernel DRE can make capability-aware physical decisions.
-
-The target Kernel is capability-aware and receives a small physical inference requirement rather than a fully preselected concrete invocation set.
-
-The leading implementation candidature is .NET + SQLite + MEAI where useful + selective MAF physical workflow/checkpoint infrastructure + generic/custom physical binding seams.
-
-The semantic SDK/Module layer and Runtime described in this document are also accepted architecture but are not yet present in the active tree.
+The semantic SDK/Module layer and Runtime described in this document are accepted architecture but are not yet present in the active tree.
 
 Historical implementations remain evidence. They do not outrank later Owner corrections.
 

@@ -198,11 +198,11 @@ Opaque external inference systems are valid. Kernel need only model what can hon
 
 ## Open-source physical construction surface
 
-The leading implementation candidature is a cross-platform .NET Kernel using open-source infrastructure where it removes generic physical AI engineering.
+The current Lane C implementation is a cross-platform .NET Kernel using open-source infrastructure where it removes generic physical AI engineering.
 
 ### Microsoft.Extensions.AI
 
-MEAI is a strong low-level interoperability candidate for inference clients and related generic AI transport abstractions.
+MEAI is a low-level interoperability mechanism for inference clients and related generic AI transport abstractions.
 
 `InferenceCapability` is not `IChatClient`. MEAI is an implementation mechanism behind a capability binding.
 
@@ -274,7 +274,7 @@ This is the physical equivalent of first-party Modules using the same public MAD
 
 ## Durability
 
-MADRE keeps one authoritative `PhysicalInferenceWork` lifecycle in its own durable state, initially SQLite unless a real need justifies replacement.
+MADRE keeps one authoritative `PhysicalInferenceWork` lifecycle in its own durable state, currently SQLite unless a real need justifies replacement.
 
 Conceptually:
 
@@ -302,9 +302,9 @@ They either solve only the generic wake/delivery part while DRE still owns the m
 
 This is not a permanent ban. They may be reconsidered if concrete requirements make them simpler than the small MADRE-owned durable substrate.
 
-## .NET candidature
+## .NET implementation
 
-.NET is the leading implementation candidate because the corrected Kernel workload is now primarily:
+The current Kernel is cross-platform .NET because the corrected Kernel workload is primarily:
 
 - asynchronous inference integration;
 - structured configuration;
@@ -315,13 +315,13 @@ This is not a permanent ban. They may be reconsidered if concrete requirements m
 - physical workflow execution/checkpointing;
 - Owner-extensible physical bindings.
 
-The old native-worker motivations—model lifecycle, warm workers, RAM/VRAM ownership and in-Kernel native inference—have been rejected.
+The old native-worker motivations—model lifecycle, warm workers, RAM/VRAM ownership and in-Kernel native inference—remain rejected.
 
-C++ is therefore not retained merely because the current reference implementation exists.
+The native C++ implementation was therefore removed after the capability-aware replacement proved the required physical behavior.
 
-## What survives from current Lane C
+## What survived from historical C++ Lane C
 
-The existing C++ LCR1–LCR3 implementation remains valuable evidence/test material for physical behavior, including:
+The deleted C++ LCR1–LCR3 implementation remains useful Git-history evidence for physical behavior that the current implementation preserves, including:
 
 - independent Kernel lifetime;
 - durable physical Work identity;
@@ -332,12 +332,12 @@ The existing C++ LCR1–LCR3 implementation remains valuable evidence/test mater
 - attempt history;
 - conservative `UNKNOWN_COMPLETION` after interrupted active attempts;
 - result acknowledgement/release lifecycle;
-- local IPC and Windows/Linux behavioral requirements;
-- generic process/HTTP execution as useful low-level escape hatches.
+- local-only Windows/Linux behavioral requirements;
+- generic low-level execution as an escape hatch.
 
-Those behaviors survive because MADRE needs them, not because the current C++ abstractions are authoritative.
+Those behaviors survive because MADRE needs them, not because historical C++ abstractions remain active authority.
 
-The following must not survive by implementation inertia:
+The following did not survive by implementation inertia:
 
 - `WorkerPool` as universal inference abstraction;
 - engine/worker inventory as Kernel ontology;
@@ -346,15 +346,12 @@ The following must not survive by implementation inertia:
 - Kernel-owned provider/model processes;
 - mandatory resource reservations for external engines;
 - privileged llama.cpp integration;
-- the exact-invocation-before-Kernel rule.
+- the exact-invocation-before-Kernel rule;
+- protocol-v4 and native IPC as current control-plane authority.
 
-## Current implementation versus target architecture
+## Current implementation
 
-The active corrective branch still contains the C++ concrete-invocation Kernel. It is now a **reference implementation/test oracle**, not the target Lane C architecture.
-
-Do not continue hardening it merely because it exists unless a fix is required to preserve evidence needed by the replacement.
-
-The target architecture must first validate the new center:
+The active tree now implements the accepted center directly:
 
 ```text
 physical inference requirement
@@ -377,7 +374,11 @@ physical observations persisted
 future DRE may use that evidence
 ```
 
-A later validation should exercise one genuinely multi-stage physical MAF workflow with checkpoint/restart/resume while MADRE Work remains authoritative.
+Current Lane C is the capability-aware .NET Kernel under `kernel/`, SQLite durable physical Work, the Java `madre-kernel-client`, normal Owner JSON configuration, truthful process probing, the open `IInferenceBinding` seam, selective subordinate MAF checkpointing, and the local loopback `/v1` physical boundary.
+
+The required vertical validation has happened. Linux and Windows acceptance cover capability truth/DRE, lifecycle/cancellation/release, external Java-client/caller disappearance/restart, binding openness, MAF checkpoint/hard-death/resume, checkpoint deadline/cancellation authority, incompatible strategy/binding rejection, simple-inference MAF bypass, and contamination/destructive convergence.
+
+The native C++/workers/llama.cpp/CMake/protocol-v4 implementation is deleted from the active tree and exists only in Git history.
 
 ## Anti-drift test
 
@@ -392,6 +393,6 @@ A Lane C design is drifting if it does any of the following:
 - makes first-party adapters more privileged than Owner adapters;
 - introduces a generic scheduler/workflow platform without removing more complexity than it adds;
 - freezes speculative capability properties with no DRE consumer;
-- treats the current C++ implementation as authority over the accepted product decision.
+- treats historical deleted C++ implementation details as authority over the accepted product decision.
 
 The target remains: **MADRE owns the physical concepts that make DRE useful while reusing generic inference infrastructure and leaving the Owner's actual intelligence environment independent.**

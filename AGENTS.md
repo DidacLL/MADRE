@@ -15,7 +15,7 @@ Then use this authority order:
 5. `MADRE.md` for the detailed cross-repository product/semantic overview;
 6. `docs/architecture/security-algebra.md` for operational SPIRA semantics;
 7. `docs/architecture/mid-level-architecture.md` for accepted whole-system engineering boundaries;
-8. `docs/architecture/kernel.md` for current target Kernel architecture;
+8. `docs/architecture/kernel.md` for the current physical Kernel architecture and implementation;
 9. active implementation/tests/CI as evidence of what exists.
 
 `NORTH_STAR.md` is deliberately short. It does not replace the richer authorities. `docs/product/lane-c-owner-decision.md` is deliberately narrow: it supersedes older exact-invocation-before-Kernel statements where they conflict, but it does not rewrite unrelated Module, Agent, Operation, Material or SPIRA semantics.
@@ -190,7 +190,7 @@ Kernel DRE chooses physical capability / timing / effort / strategy
 
 Module, Agent, MADRE Workflow/WorkPlan, Operation semantics, raw SPIRA as a Kernel policy object and semantic continuation do not cross this boundary.
 
-Semantic MADRE must not preselect an exact provider/model/configuration merely because the current C++ implementation accepts `ConcretePhysicalInvocation` candidates. That exact-invocation contract is implementation evidence from an over-corrective Lane C stage, not the target boundary.
+Semantic MADRE must not preselect an exact provider/model/configuration merely because the historical deleted C++ Lane C implementation accepted `ConcretePhysicalInvocation` candidates. That exact-invocation contract remains Git-history evidence from an over-corrective stage, not the current boundary.
 
 ## Kernel / DRE
 
@@ -239,7 +239,7 @@ A DRE strategy may legitimately use several inference capabilities, physical val
 
 Physical workflow machinery must not silently acquire application effects such as changing Module state, sending application email, committing domain/project state or invoking another Module's semantic Operation as though those were mere inference internals.
 
-Microsoft.Extensions.AI and Microsoft Agent Framework are leading implementation tools, not MADRE ontology:
+Microsoft.Extensions.AI and Microsoft Agent Framework are physical implementation infrastructure, not MADRE ontology:
 
 ```text
 MADRE Agent         != MAF AIAgent
@@ -262,30 +262,32 @@ MADRE-provided inference conveniences must use the same class of physical constr
 
 ## Durable physical truth
 
-MADRE keeps one authoritative durable `PhysicalInferenceWork` lifecycle. SQLite is the current leading local persistence choice unless a real requirement demonstrates otherwise.
+MADRE keeps one authoritative durable `PhysicalInferenceWork` lifecycle. SQLite is the current authoritative durable state for Lane C unless a real requirement later demonstrates a simpler replacement.
 
 Framework state is subordinate. If a MAF Workflow is used, its checkpoint is physical strategy execution state referenced by MADRE Work; it does not independently decide whether the Work exists, is cancelled, terminal or resumable.
 
 Durable strategy/binding identity must be sufficient to detect incompatible continuation after upgrades rather than silently restoring old checkpoint state into a changed implementation.
 
-Loss of certainty about an active physical attempt remains an important truthfulness requirement. `UNKNOWN_COMPLETION` from the current reference implementation is evidence for the replacement: interruption must not be rewritten as definite failure merely for convenience.
+Loss of certainty about an active physical attempt remains an important truthfulness requirement. `UNKNOWN_COMPLETION` is current Lane C behavior: interruption must not be rewritten as definite failure merely for convenience.
 
-## Current tree and target implementation
+## Current tree and implementation status
 
-The active correction branch contains the C++ LCR1–LCR3 physical Kernel and Java client. That implementation successfully removed the rejected worker/engine/model-runtime ownership architecture and established useful physical behavior including durability, caller disappearance, deadlines, cancellation, attempt history, conservative unknown-completion semantics, terminal payload release, process/HTTP escape hatches and Linux/Windows behavior.
+The active tree contains one current Lane C implementation:
 
-It is now a **reference implementation/test oracle**, not the target Lane C architecture.
+- capability-aware cross-platform .NET Kernel under `kernel/`;
+- SQLite authoritative durable physical Work, configured/current capability facts, attempts and retained result state;
+- current Java `madre-kernel-client` using the local loopback `/v1` physical boundary;
+- DRE over `InferenceCapability` configuration, current state and observed physical evidence;
+- normal Owner JSON configuration and truthful physical probing;
+- shell-free process/executable binding plus the ordinary open `IInferenceBinding` seam for MEAI/custom bindings;
+- bounded physical concurrency, eligibility/deadlines, cancellation, caller disappearance, restart recovery and `UnknownCompletion` truth;
+- explicit terminal payload/result release;
+- selective two-stage MAF physical strategy with subordinate checkpoint state, hard-death resume, deadline/cancellation authority and strategy/binding version rejection;
+- Linux and Windows behavioral acceptance plus contamination/destructive-convergence checks.
 
-Do not continue hardening the exact-invocation C++ design merely because it exists, except where needed to preserve evidence for the replacement.
+The superseded native C++ Kernel, workers, model/runtime ownership, llama.cpp integration, CMake/native acceptance, protocol-v4 client and validation-era `kernel-dotnet` side tree are deleted from the active repository. Their useful causal and behavioral evidence remains available only in Git history.
 
-The leading target implementation candidate is a cross-platform .NET Kernel with:
-
-- MADRE-owned `PhysicalInferenceWork`, `InferenceCapability`, DRE and observations;
-- SQLite as the initial authoritative durable state;
-- Microsoft.Extensions.AI as useful inference interoperability infrastructure;
-- selective Microsoft Agent Framework workflow/checkpoint machinery where a concrete physical strategy needs it;
-- generic protocol/HTTP/process and Owner-defined physical bindings;
-- no assumed Quartz/Wolverine/Elsa/Temporal layer unless later evidence makes one simpler than the small MADRE-owned durable substrate.
+Do not direct future work toward the deleted C++ tree or preserve it as an active reference/test oracle. When historical C++ behavior explains a current invariant, cite it explicitly as historical evidence and validate the invariant against the current implementation.
 
 The semantic SDK/Module layer and Runtime remain accepted architecture but are not yet implemented in the active tree. Do not restore discarded Python or previous generated semantic code to make the repository look complete.
 

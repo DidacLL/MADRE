@@ -4,7 +4,7 @@ MADRE — **Model-Agnostic Delayed Reasoning Effort Agentic System** — is an o
 
 This file is the **detailed repository-level product and semantic overview**. It intentionally preserves the reasoning connections among Modules, Agents, Operations, SPIRA, DRE, Runtime, CORE, Kernel and the SDK generation target.
 
-Read `NORTH_STAR.md` first as the short mandatory recovery checkpoint before substantial MADRE work. Read `docs/product/lane-c-owner-decision.md` for the current accepted DRE/physical-inference correction and its rationale, `docs/product/owner-intent-corpus.md` for the deeper product reasoning, `docs/architecture/security-algebra.md` for the operational SPIRA model, `docs/architecture/mid-level-architecture.md` for the accepted whole-system design, and `docs/architecture/kernel.md` for the target physical Kernel architecture.
+Read `NORTH_STAR.md` first as the short mandatory recovery checkpoint before substantial MADRE work. Read `docs/product/lane-c-owner-decision.md` for the current accepted DRE/physical-inference correction and its rationale, `docs/product/owner-intent-corpus.md` for the deeper product reasoning, `docs/architecture/security-algebra.md` for the operational SPIRA model, `docs/architecture/mid-level-architecture.md` for the accepted whole-system design, and `docs/architecture/kernel.md` for the current physical Kernel architecture and implementation.
 
 `NORTH_STAR.md` does **not** replace the detail in the richer authorities. Its purpose is to force recovery of the governing product answers before an agent derives architecture from code or convention.
 
@@ -232,7 +232,7 @@ MADRE-provided inference conveniences must use the same class of physical constr
 
 ### MEAI and MAF containment
 
-The leading target implementation may reuse Microsoft.Extensions.AI and Microsoft Agent Framework as open-source physical infrastructure.
+The current Lane C implementation reuses Microsoft.Extensions.AI and Microsoft Agent Framework as physical infrastructure where useful.
 
 They do not define MADRE concepts:
 
@@ -247,15 +247,15 @@ DRE                  != MAF
 
 MEAI can provide common inference interoperability behind a capability binding.
 
-MAF can provide physical workflow graphs, fan-out/fan-in, executor sequencing, checkpoint/resume and custom physical implementations where a selected DRE strategy actually benefits from those mechanisms. Simple inference must not be forced through a workflow merely because MAF exists.
+MAF provides the concrete checkpointed two-stage physical strategy currently selected by DRE for the implemented richer strategy, and remains optional per strategy. Simple inference bypasses MAF completely.
 
 ### Durable physical truth
 
-MADRE keeps one authoritative `PhysicalInferenceWork` lifecycle. SQLite is the current leading local persistence choice unless a real requirement demonstrates otherwise.
+MADRE keeps one authoritative `PhysicalInferenceWork` lifecycle. SQLite is the current authoritative durable state for Lane C unless a concrete later requirement justifies replacement.
 
-Framework checkpoint state is subordinate execution state. A MAF checkpoint, if used, does not independently determine whether MADRE Work exists, is cancelled, terminal or should resume. Durable strategy/binding identity must make incompatible continuation after upgrades detectable rather than silently restoring old state into a changed implementation.
+Framework checkpoint state is subordinate execution state. A MAF checkpoint does not independently determine whether MADRE Work exists, is cancelled, terminal or should resume. Durable strategy/binding identity makes incompatible continuation after upgrades detectable rather than silently restoring old state into a changed implementation.
 
-Restart recovery must remain truthful. Loss of certainty about an active attempt cannot be rewritten as definite failure merely for convenience; the current reference implementation's `UNKNOWN_COMPLETION` behavior is valuable evidence for the replacement.
+Restart recovery remains truthful. Loss of certainty about an active attempt is represented as `UnknownCompletion`; it is not rewritten as definite failure merely for convenience and is not implicitly duplicated.
 
 Generic scheduler/workflow platforms such as Quartz, Wolverine, Elsa or Temporal are not currently required. They may be reconsidered if concrete needs make them simpler than the small MADRE-owned durable substrate.
 
@@ -283,25 +283,24 @@ A future BuilderModule may be deferred. The requirement that the public SDK be s
 
 ## Current implementation state
 
-The active Lane C correction branch currently contains the completed C++ LCR1–LCR3 reference implementation and Java physical client:
+Current Lane C is the capability-aware .NET Kernel under `kernel/` together with the current Java `madre-kernel-client`.
 
-- native C++ Kernel;
-- durable physical Work and restart recovery;
-- candidate-specific one-shot `ProcessInvocation` and generic `HttpInvocation` execution;
-- bounded retry/cancellation and truthful `UNKNOWN_COMPLETION` semantics;
-- terminal payload/result release;
-- isolated local Unix-domain socket / Windows named-pipe IPC;
-- SQLite durable state;
-- Java physical client using protocol v4;
-- Linux/Windows behavioral CI evidence.
+The active implementation includes:
 
-That implementation does not ship a model runtime, provider implementation, inference-engine inventory or llama.cpp worker.
+- SQLite authoritative durable physical Work and restart recovery;
+- configured/current/observed `InferenceCapability` truth with provenance-preserving evidence;
+- DRE selection using physical effort, hard local/external admissibility, current availability, Owner preference and persisted latency evidence where the current rules consume it;
+- normal Owner JSON configuration with truthful process probing;
+- the shell-free process/executable binding and the same ordinary `IInferenceBinding` seam for MEAI and Owner/custom bindings;
+- bounded physical concurrency, eligibility/deadlines, cancellation, attempt history, caller disappearance and truthful `UnknownCompletion` recovery;
+- explicit terminal payload/result release, including subordinate MAF checkpoint cleanup when terminal Work is released;
+- selective two-stage MAF physical checkpoint/resume while MADRE Work remains authoritative;
+- strategy/binding compatibility checks, cancellation/deadline authority and simple-inference MAF bypass;
+- a local loopback HTTP `/v1` physical control boundary on Windows and Linux;
+- Java physical-client submission/inspection/cancel/result/release over that current boundary;
+- Linux/Windows behavioral CI and contamination/destructive-convergence acceptance.
 
-It is now a **reference implementation/test oracle**, not the target Lane C architecture, because its Runtime→Kernel contract still assumes inference choice is already reduced to concrete invocation candidates before Kernel.
-
-The accepted target is a capability-aware physical Kernel in which semantic MADRE supplies physical inference requirements and Kernel DRE schedules them against `InferenceCapability` configuration/state/observations.
-
-The leading implementation candidature is a cross-platform .NET Kernel using SQLite, MEAI where useful, selective MAF physical workflow/checkpoint machinery where useful, and open generic/custom physical binding seams. C++ is not preserved merely because the reference implementation exists.
+The superseded native C++ Kernel, workers, engine/model lifecycle, llama.cpp integration, CMake/native acceptance, Unix-domain-socket/named-pipe protocol-v4 implementation and validation-era `kernel-dotnet` side tree are deleted from the active tree. They remain historical implementation evidence in Git history only; they are not an active reference implementation or test oracle.
 
 The semantic SDK/Module layer and Runtime described above are accepted architecture but are **not yet implemented in the active tree**. Do not restore discarded historical semantic implementations to hide that gap.
 
@@ -326,7 +325,7 @@ Likewise, simplicity does not mean narrowing Kernel until meaningful physical in
 5. this file as the detailed repository-level product/semantic overview;
 6. `docs/architecture/security-algebra.md` for SPIRA;
 7. `docs/architecture/mid-level-architecture.md` for whole-system engineering;
-8. `docs/architecture/kernel.md` for target Kernel architecture;
+8. `docs/architecture/kernel.md` for the current Kernel architecture and implementation;
 9. active implementation/tests/CI as evidence.
 
 Historical implementation is evidence only and loses whenever later Owner intent supersedes it.

@@ -1,10 +1,10 @@
-# MADRE Kernel — target physical inference architecture
+# MADRE Kernel — current physical inference architecture
 
-Status: **accepted target architecture; replacement implementation not yet complete**.
+Status: **accepted architecture and current Lane C implementation**.
 
-This document describes the target Lane C physical inference architecture after the Owner correction preserved in `docs/product/lane-c-owner-decision.md`.
+This document describes the current Lane C physical inference architecture after the Owner correction preserved in `docs/product/lane-c-owner-decision.md`.
 
-The active branch still contains the C++ LCR1–LCR3 concrete-invocation Kernel. That code is retained as a reference implementation/test oracle for useful physical behavior, but its exact-invocation-before-Kernel boundary is no longer the target architecture.
+The active tree implements that architecture as the capability-aware .NET Kernel under `kernel/`. The superseded C++ LCR1–LCR3 concrete-invocation Kernel is deleted; its useful causal and behavioral evidence is available only in Git history.
 
 For whole-system semantics and the semantic/physical boundary, see `docs/architecture/mid-level-architecture.md`. For SPIRA, see `docs/architecture/security-algebra.md`.
 
@@ -63,7 +63,7 @@ physical binding(s)
 Owner-selected independent inference environment
 ```
 
-The exact request type remains design work. The first version must stay small: each field must have an implemented DRE consumer.
+The current Lane C `/v1` request carries only the implemented physical facts consumed today: prepared input, requested physical effort, urgency, optional eligibility/deadline and the hard local/external execution boundary. The future semantic SDK/Runtime carrier above that boundary remains design work and must stay small.
 
 The Kernel must not receive semantic objects merely because their information influenced the physical request.
 
@@ -88,18 +88,17 @@ Kernel may receive physical restrictions derived from those semantics. It does n
 
 `PhysicalInferenceWork` is the durable Kernel-side unit representing one physical inference obligation.
 
-Conceptually it needs only enough state for DRE, recovery and result lifecycle:
+It carries only enough state for current DRE, recovery and result lifecycle:
 
 ```text
 identity / lifecycle state
-physical inference requirement + hard constraints
-urgency
-eligibleAt / acceptable delay / deadline
+prepared physical input + hard constraints
+requested effort / urgency
+eligibleAt / deadline
 strategy identity + version/state where relevant
-attempt history / selected capabilities
+attempt history / selected capability and binding
 checkpoint reference where applicable
-lease/recovery state
-result state
+result state / release state
 ```
 
 This is not a universal workflow object and not a semantic WorkPlan.
@@ -140,6 +139,8 @@ execution binding
 
 Only properties with a real DRE consumer should be first-class in the initial model.
 
+The current typed core uses the configured execution boundary, supported effort, Owner preference and binding identity/version because the implemented DRE and recovery paths consume them.
+
 ### Current state
 
 Examples include:
@@ -152,6 +153,8 @@ observable pressure / queue state where exposed
 ```
 
 Current state is not the same as configuration or historical observation.
+
+In the current implementation, normal startup and explicit refresh obtain availability through the binding's physical probe. Configuration alone does not fabricate `Available`.
 
 ### Historical / observed evidence
 
@@ -180,6 +183,8 @@ are three different facts.
 
 Do not collapse configured expectation, current state and historical observation into one mutable "truth" field.
 
+The current implementation persists successful latency and success/failure observation counts because the first DRE rules consume that evidence. It does not freeze a speculative exhaustive capability ontology.
+
 ## DRE — inference-aware physical scheduler
 
 DRE is the intelligence that decides what physical inference should happen next for eligible Work.
@@ -199,7 +204,9 @@ should a checkpointed physical strategy resume now?
 
 This is why Kernel capability knowledge and observations are first-class. DRE can learn from the Owner's actual inference environment without owning those engines.
 
-`eligibleAt`, deadlines, leases, SQLite transactions and restart recovery are persistence/admission mechanics underneath DRE. A generic timer service does not replace the inference-aware scheduler.
+`eligibleAt`, deadlines, SQLite transactions and restart recovery are persistence/admission mechanics underneath DRE. A generic timer service does not replace the inference-aware scheduler.
+
+The current scheduler deliberately remains small: it scans the currently eligible local Work set in urgency/creation order and asks DRE about each Work. Waiting Work whose admissible capability is currently unavailable remains queued, but cannot hide later runnable Work behind a fixed head page.
 
 There is no Kernel scheduler for Module semantic Workflows or WorkPlans.
 
@@ -292,9 +299,9 @@ Opaque external intelligence is acceptable. Kernel only models what can honestly
 
 ## Physical construction surface
 
-Kernel should reuse generic open-source inference infrastructure rather than rebuilding another AI platform.
+Kernel reuses generic open-source inference infrastructure where useful rather than rebuilding another AI platform.
 
-The leading implementation candidature is a cross-platform .NET Kernel.
+The current implementation is cross-platform .NET.
 
 ### Microsoft.Extensions.AI
 
@@ -330,11 +337,11 @@ InferenceCapability != MAF Workflow
 DRE                  != MAF
 ```
 
-DRE selects timing, capabilities and physical strategy. A MAF Workflow may execute the chosen graph.
+DRE selects timing, capabilities and physical strategy. The current richer strategy uses a MAF Workflow for one concrete two-stage physical graph with a durable checkpoint between stages.
 
-Simple inference must not be forced through a MAF Workflow merely because MAF exists.
+Simple inference bypasses MAF completely.
 
-Framework-specific execution semantics must not become universal DRE semantics. If a future physical strategy does not map cleanly to MAF, Kernel remains free to execute it another way.
+Framework-specific execution semantics do not become universal DRE semantics. A future physical strategy that does not map cleanly to MAF remains free to execute another way through the same MADRE physical ownership boundary.
 
 ## Open physical binding seam
 
@@ -353,7 +360,7 @@ Owner-provided service/executable wrapper
 future typed mechanism
 ```
 
-The exact common binding API/protocol remains design work.
+The current ordinary binding API is `IInferenceBinding`: binding identity/version, a truthful availability probe and physical execution of the current request. Normal Owner JSON configuration instantiates the provided shell-free process/executable binding; MEAI and Owner/custom bindings use the same seam where useful.
 
 The product requirement is openness, not a marketplace:
 
@@ -383,9 +390,9 @@ This is the physical equivalent of first-party Modules using the same public SDK
 
 MADRE keeps one authoritative `PhysicalInferenceWork` lifecycle in its own durable state.
 
-SQLite is the leading initial persistence choice for the single-owner local Kernel.
+SQLite is the current authoritative persistence for the single-owner local Kernel.
 
-If a physical strategy uses MAF checkpointing, the relation is:
+For the concrete MAF strategy, the relation is:
 
 ```text
 MADRE PhysicalInferenceWork
@@ -400,39 +407,39 @@ MAF checkpoint
 
 A framework checkpoint cannot independently decide whether a MADRE Work exists, is cancelled, terminal or should resume.
 
-Persist enough strategy/binding version identity to detect incompatible continuation after upgrades rather than silently restoring old state into changed code.
+The current Work state persists strategy and binding identity/version so incompatible continuation is rejected rather than silently restoring old state into changed code.
+
+When a terminal Work is explicitly released, its retained SQLite input/result are cleared and any subordinate per-Work MAF checkpoint directory is removed. Work identity, terminal state and attempt history remain inspectable. Release remains harmless when no checkpoint exists and idempotent when repeated. Active or checkpointed resumable Work is not releasable.
 
 ## Scheduling persistence
 
-The current target does not assume Quartz, Wolverine, Elsa, Temporal or another generic durable scheduler/workflow platform.
+The current implementation does not use Quartz, Wolverine, Elsa, Temporal or another generic durable scheduler/workflow platform.
 
-DRE still has to make the meaningful inference-aware decisions even if one of those frameworks stores wakeups or messages. Introducing another durable state model is justified only if concrete implementation evidence shows it removes more complexity than it creates.
+DRE still has to make the meaningful inference-aware decisions even if one of those frameworks could store wakeups or messages. Introducing another durable state model is justified only if concrete implementation evidence shows it removes more complexity than it creates.
 
-A small SQLite-backed Work store, atomic leasing and a Kernel wake/admission loop are currently sufficient assumptions.
-
-This is not an attempt to implement a generic scheduler. It is the minimum durable substrate beneath MADRE's own inference-aware DRE scheduler.
+A small SQLite-backed Work store and Kernel wake/admission loop are sufficient for current Lane C. This is not an attempt to implement a generic scheduler; it is the minimum durable substrate beneath MADRE's own inference-aware DRE scheduler.
 
 ## Honest completion and restart recovery
 
-The replacement must preserve the truthfulness learned from the C++ reference implementation.
+The current implementation preserves the truthfulness learned from the historical C++ work.
 
-If Kernel loses certainty about an active attempt or external operation, it must not rewrite uncertainty into definite failure merely to simplify recovery.
+If Kernel loses certainty about an active attempt or external operation, it does not rewrite uncertainty into definite failure merely to simplify recovery.
 
-The exact state model may evolve, but the `UNKNOWN_COMPLETION` lesson survives:
+The current state model uses `UnknownCompletion`:
 
 ```text
 definite observed failure != lost certainty about completion
 ```
 
-Automatic repetition after uncertain completion must depend on the physical strategy/binding's explicit semantics rather than an optimistic global default.
+An interrupted uncertain physical attempt is not implicitly repeated.
 
-Cancellation likewise cannot claim confirmed remote cancellation when Kernel only stopped observing locally.
+Cancellation likewise cannot claim confirmed remote cancellation when Kernel only stopped observing locally. The provided local process binding reports confirmed cancellation only when it has physically terminated its process tree; uncertain bindings can report unknown completion instead.
 
 ## Result/payload lifecycle
 
 Physical inference Work may need to retain prepared request material and physical results while Runtime/Module processes are absent.
 
-The replacement must preserve a bounded, inspectable lifecycle for retained physical data and explicit release/acknowledgement semantics where needed.
+Current Lane C retains those bounded payloads durably until explicit terminal release. Release clears retained SQLite request/result payload and, for completed checkpointed MAF Work, deletes subordinate per-Work checkpoint state while preserving Work identity/history.
 
 No secure-erasure guarantee is implied merely by ordinary file/database deletion.
 
@@ -442,21 +449,22 @@ Secrets/credentials should remain late-bound or otherwise deliberately handled r
 
 Kernel has an independent lifetime from Runtime/Modules.
 
-The exact replacement transport remains design work. The C++ reference proves useful requirements:
+The current physical control plane is loopback HTTP bound to `127.0.0.1`, versioned under `/v1`.
+
+It preserves the required behavior:
 
 - local-only control-plane operation for the default installation;
-- one stalled local caller must not freeze unrelated clients;
-- bounded framing/requests;
+- one stalled local caller does not freeze unrelated clients;
+- bounded request/result payload handling;
+- independent client and Kernel lifetimes;
 - Windows and Linux support;
-- versioned physical contract where persistence/transport compatibility matters.
+- a versioned physical contract used by the current Java `madre-kernel-client`.
 
-Do not preserve UDS/named-pipe/C++ details merely because the reference implementation uses them if the replacement can satisfy the same behavior more simply.
+There is no current UDS/named-pipe/protocol-v4 compatibility layer. Those belonged to the deleted historical native implementation.
 
-## Current C++ reference implementation
+## Historical C++ implementation evidence
 
-The active correction branch currently contains the completed LCR1–LCR3 C++ physical substrate.
-
-Useful behavior established there includes:
+The deleted LCR1–LCR3 C++ physical substrate established useful behavioral evidence including:
 
 - independent Kernel lifetime;
 - SQLite durable Work;
@@ -465,21 +473,19 @@ Useful behavior established there includes:
 - cancellation;
 - attempt history;
 - conservative `UNKNOWN_COMPLETION` restart semantics;
-- candidate-specific `ProcessInvocation` and generic `HttpInvocation` execution;
-- late-bound HTTP credential references and bounded payload/result handling;
+- bounded payload/result handling;
 - explicit terminal payload/result release;
-- isolated local IPC clients;
-- Linux/Windows CI evidence.
+- local-only Windows/Linux behavior.
 
-Those are behavioral evidence/acceptance cases for replacement where still applicable.
+Those behaviors were revalidated against the current implementation where they remain applicable. The historical source and protocol shapes are available in Git history only.
 
-The following are **not** target authority merely because the reference code implements them:
+The following are **not** current authority merely because historical code implemented them:
 
 - exact `ConcretePhysicalInvocation` selection before Kernel;
 - candidate routing constrained to a semantic-side preselected set as the final DRE architecture;
 - C++ as required implementation language;
 - process/HTTP as exhaustive inference ontology;
-- protocol/schema shapes as future public architecture.
+- protocol-v4, UDS or named-pipe shapes as current public architecture.
 
 The even older worker/engine architecture remains rejected:
 
@@ -491,77 +497,56 @@ The even older worker/engine architecture remains rejected:
 - generic external-engine RAM/VRAM reservation;
 - privileged llama.cpp worker architecture.
 
-## Leading replacement implementation
-
-The current leading candidate is:
+## Current Lane C implementation
 
 ```text
-MADRE Kernel — .NET
+MADRE Kernel — .NET under kernel/
 
 MADRE-owned
     PhysicalInferenceWork
     InferenceCapability
-    configured/current/observed capability knowledge
+    configured/current/observed capability truth
     DRE
     physical attempts/results/recovery
     authoritative SQLite durable state
 
 Reusable physical infrastructure
-    Microsoft.Extensions.AI
+    Microsoft.Extensions.AI where useful
     selective Microsoft Agent Framework workflow/checkpointing
-    generic HTTP/protocol/process bindings
-    Owner/custom bindings
+    process/executable binding
+    Owner/custom IInferenceBinding implementations
+
+Control boundary
+    local loopback HTTP /v1
+    Java madre-kernel-client
 
 External
     Owner-selected inference systems
 ```
 
-.NET is favored because the corrected Kernel workload is primarily async integration, configuration, networking, durable state, observation, scheduling and optional physical workflow execution rather than native model lifecycle.
+The first-version DRE currently enforces eligibility/deadlines and hard local/external and effort admissibility, requires current availability, uses Owner preference as the normal stable choice, uses persisted successful latency evidence for `Interactive` choice when candidates have comparable evidence, runs simple inference directly and selects the checkpointed two-stage MAF strategy for `High + Background` Work.
 
-## Replacement validation sequence
+No provider/model brand receives special routing or lifecycle ownership.
 
-Do not replace the entire Kernel in one framework-driven rewrite.
+## Acceptance evidence
 
-The first bounded vertical validation must prove:
+The replacement validation has happened and is part of normal CI on Linux and Windows.
 
-```text
-physical inference requirement
-        ↓
-PhysicalInferenceWork
-        ↓
-DRE
-        ↓
-InferenceCapability catalogue
-    configured facts
-    current state
-    observations
-        ↓
-choose physical capability/action
-        ↓
-MEAI or generic/custom binding
-        ↓
-execute
-        ↓
-record latency/result/failure
-        ↓
-persist observation
-        ↓
-future DRE can consume that evidence
-```
+Current acceptance proves:
 
-It should demonstrate at least:
-
-1. one MEAI-backed capability;
-2. one generic low-level capability path such as HTTP/process;
-3. one Owner/custom unusual capability through the same capability/DRE path;
-4. declared/current/observed facts remaining distinct;
-5. durable Work surviving caller disappearance/restart;
-6. truthful physical outcome and observation recording;
-7. no provider/model semantic special case in DRE.
-
-A second validation should demonstrate one genuinely multi-stage physical MAF strategy with checkpoint, Kernel restart and resume while MADRE Work remains authoritative.
-
-Only after those prove the architecture should the reference C++ implementation be removed/replaced.
+1. configured/current/observed capability facts remain distinct and current availability comes from physical evidence;
+2. DRE respects hard restrictions, Owner preference and persisted latency evidence;
+3. eligible/deadline/urgency behavior, bounded concurrency and concurrent clients;
+4. queued and running cancellation truth plus explicit release;
+5. the external Java client submits, inspects, cancels, collects and releases physical Work across an independent process boundary;
+6. queued Work survives Kernel restart and interrupted active Work recovers as `UnknownCompletion` without implicit duplicate inference;
+7. Owner/custom bindings use the same ordinary capability/DRE path;
+8. the concrete two-stage MAF strategy checkpoints, survives hard Kernel death and resumes without replaying stage A;
+9. checkpoint deadline/cancellation authority and strategy/binding incompatibility rejection;
+10. simple inference bypasses MAF;
+11. more than 64 earlier waiting Works cannot starve a later runnable Work;
+12. explicit release of completed checkpointed Work removes subordinate MAF filesystem state while preserving Work identity/history;
+13. contamination/destructive-convergence checks reject native/reference implementation return, semantic SDK leakage, worker/engine ontology, protocol-v4 fossils and validation-only production hooks.
 
 ## Anti-drift checks
 
@@ -578,7 +563,7 @@ A Kernel design is drifting if it:
 - creates a connector marketplace/plugin framework before a real need;
 - adds capability fields with no DRE consumer;
 - introduces a generic scheduler/workflow platform without simplifying the actual DRE state problem;
-- treats C++/protocol-v4/reference tests as product authority over later Owner intent.
+- treats deleted C++/protocol-v4 historical implementation details as product authority over later Owner intent.
 
 The target is narrow in ownership, not narrow in useful physical inference capability:
 
