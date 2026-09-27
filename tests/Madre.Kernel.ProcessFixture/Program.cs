@@ -20,6 +20,20 @@ if (string.Equals(input, "FAIL", StringComparison.Ordinal))
     return 17;
 }
 
+if (TryGetByteCount(input, "FLOOD_STDOUT:", out int stdoutBytes))
+{
+    await FloodAsync(Console.OpenStandardOutput(), stdoutBytes);
+    return 0;
+}
+
+if (TryGetByteCount(input, "INVALID_UTF8_STDERR:", out int stderrBytes))
+{
+    Stream stderr = Console.OpenStandardError();
+    await stderr.WriteAsync(new byte[] { 0xff });
+    await FloodAsync(stderr, stderrBytes);
+    return 0;
+}
+
 int delay = configuredDelay;
 if (input.StartsWith("SLOW:", StringComparison.Ordinal))
 {
@@ -41,6 +55,31 @@ if (delay > 0)
 
 await Console.Out.WriteAsync(prefix + input);
 return 0;
+
+static async Task FloodAsync(Stream stream, int byteCount)
+{
+    byte[] chunk = Enumerable.Repeat((byte)'x', 64 * 1024).ToArray();
+    int remaining = byteCount;
+    while (remaining > 0)
+    {
+        int count = Math.Min(chunk.Length, remaining);
+        await stream.WriteAsync(chunk.AsMemory(0, count));
+        remaining -= count;
+    }
+    await stream.FlushAsync();
+}
+
+static bool TryGetByteCount(string value, string prefix, out int byteCount)
+{
+    if (value.StartsWith(prefix, StringComparison.Ordinal)
+        && int.TryParse(value[prefix.Length..], out byteCount)
+        && byteCount > 0)
+    {
+        return true;
+    }
+    byteCount = 0;
+    return false;
+}
 
 static string? Get(string[] values, string key)
 {

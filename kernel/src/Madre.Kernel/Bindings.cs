@@ -213,14 +213,14 @@ public sealed class ProcessInferenceBinding : IInferenceBinding
         {
             Task<string> stdout = ReadBoundedAsync(process.StandardOutput, cancellationToken);
             Task<string> stderr = ReadBoundedAsync(process.StandardError, cancellationToken);
+            Task input = WriteInputAsync(process.StandardInput, request.PreparedInput, cancellationToken);
 
-            await process.StandardInput.WriteAsync(request.PreparedInput.AsMemory(), cancellationToken).ConfigureAwait(false);
-            await process.StandardInput.FlushAsync(cancellationToken).ConfigureAwait(false);
-            process.StandardInput.Close();
-
-            await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
-            string output = await stdout.ConfigureAwait(false);
-            string error = await stderr.ConfigureAwait(false);
+            (string output, string error) = await SuperviseAsync(
+                process,
+                input,
+                stdout,
+                stderr,
+                cancellationToken).ConfigureAwait(false);
 
             if (process.ExitCode != 0)
             {
@@ -283,6 +283,77 @@ public sealed class ProcessInferenceBinding : IInferenceBinding
         return new Process { StartInfo = startInfo };
     }
 
+    private static async Task WriteInputAsync(
+        StreamWriter writer,
+        string input,
+        CancellationToken cancellationToken)
+    {
+        await writer.WriteAsync(input.AsMemory(), cancellationToken).ConfigureAwait(false);
+        await writer.FlushAsync(cancellationToken).ConfigureAwait(false);
+        writer.Close();
+    }
+
+    private static async Task<(string Output, string Error)> SuperviseAsync(
+        Process process,
+        Task input,
+        Task<string> stdout,
+        Task<string> stderr,
+        CancellationToken cancellationToken)
+    {
+        Task? inputTask = input;
+        Task? exitTask = process.WaitForExitAsync(cancellationToken);
+        Task<string>? stdoutTask = stdout;
+        Task<string>? stderrTask = stderr;
+        string output = string.Empty;
+        string error = string.Empty;
+
+        while (inputTask is not null || exitTask is not null || stdoutTask is not null || stderrTask is not null)
+        {
+            var pending = new List<Task>(4);
+            if (inputTask is not null)
+            {
+                pending.Add(inputTask);
+            }
+            if (exitTask is not null)
+            {
+                pending.Add(exitTask);
+            }
+            if (stdoutTask is not null)
+            {
+                pending.Add(stdoutTask);
+            }
+            if (stderrTask is not null)
+            {
+                pending.Add(stderrTask);
+            }
+
+            Task completed = await Task.WhenAny(pending).ConfigureAwait(false);
+            if (ReferenceEquals(completed, inputTask))
+            {
+                await inputTask!.ConfigureAwait(false);
+                inputTask = null;
+                continue;
+            }
+            if (ReferenceEquals(completed, exitTask))
+            {
+                await exitTask!.ConfigureAwait(false);
+                exitTask = null;
+                continue;
+            }
+            if (ReferenceEquals(completed, stdoutTask))
+            {
+                output = await stdoutTask!.ConfigureAwait(false);
+                stdoutTask = null;
+                continue;
+            }
+
+            error = await stderrTask!.ConfigureAwait(false);
+            stderrTask = null;
+        }
+
+        return (output, error);
+    }
+
     private static async Task<string> ReadBoundedAsync(StreamReader reader, CancellationToken cancellationToken)
     {
         var builder = new StringBuilder();
@@ -290,7 +361,20 @@ public sealed class ProcessInferenceBinding : IInferenceBinding
         int bytes = 0;
         while (true)
         {
-            int read = await reader.ReadAsync(buffer.AsMemory(), cancellationToken).ConfigureAwait(false);
+            int read;
+            try
+            {
+                read = await reader.ReadAsync(buffer.AsMemory(), cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                throw new IOException("process output read failed", ex);
+            }
+
             if (read == 0)
             {
                 return builder.ToString();
