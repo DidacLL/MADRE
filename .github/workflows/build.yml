@@ -97,3 +97,29 @@ jobs:
             .\kernel\build\Release\madre-kernel.exe `
             .\kernel\build\Release\madre-process-fixture.exe `
             'madre-kernel-client\build\classes\java\main;madre-kernel-client\build\classes\java\test'
+
+  dotnet-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build .NET architecture-validation slice
+        run: dotnet build kernel-dotnet/validation/Madre.Kernel.Acceptance/Madre.Kernel.Acceptance.csproj --configuration Release
+      - name: Run .NET architecture-validation acceptance
+        run: dotnet run --project kernel-dotnet/validation/Madre.Kernel.Acceptance/Madre.Kernel.Acceptance.csproj --configuration Release --no-build
+
+  dotnet-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build .NET architecture-validation slice
+        shell: pwsh
+        run: dotnet build kernel-dotnet/validation/Madre.Kernel.Acceptance/Madre.Kernel.Acceptance.csproj --configuration Release
+      - name: Run .NET architecture-validation acceptance
+        shell: pwsh
+        run: dotnet run --project kernel-dotnet/validation/Madre.Kernel.Acceptance/Madre.Kernel.Acceptance.csproj --configuration Release --no-build
