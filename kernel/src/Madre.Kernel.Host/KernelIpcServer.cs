@@ -310,7 +310,7 @@ public static class KernelIpcServer
         Directory.CreateDirectory(directory);
         if (!OperatingSystem.IsWindows())
         {
-            Directory.SetUnixFileMode(
+            File.SetUnixFileMode(
                 directory,
                 UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         }
