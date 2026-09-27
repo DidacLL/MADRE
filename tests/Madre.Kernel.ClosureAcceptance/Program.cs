@@ -227,6 +227,7 @@ internal static class Program
 
         public void Dispose()
         {
+            SqliteConnection.ClearAllPools();
             if (Directory.Exists(Path))
             {
                 Directory.Delete(Path, recursive: true);
