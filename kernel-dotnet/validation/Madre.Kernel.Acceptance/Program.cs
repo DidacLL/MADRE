@@ -41,12 +41,6 @@ internal static class Program
 
     private static void ContractArchitectureChecks()
     {
-        string[] requestFields = typeof(PhysicalInferenceRequest).GetProperties().Select(property => property.Name).ToArray();
-        AssertSet(requestFields, "PreparedInput", "RequestedEffort", "Urgency", "EligibleAt", "Deadline", "ExecutionBoundary");
-
-        string[] capabilityFields = typeof(InferenceCapability).GetProperties().Select(property => property.Name).ToArray();
-        AssertSet(capabilityFields, "CapabilityId", "BindingId", "BindingVersion", "ExecutionBoundary", "SupportedEffort", "OwnerPreference");
-
         Assert(typeof(DreSelector).GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public).Length == 0,
             "DRE must not hold binding/provider implementation dependencies");
         string dreSource = File.ReadAllText(Path.Combine(_root, "kernel-dotnet", "src", "Madre.Kernel", "DreSelector.cs"));
@@ -54,7 +48,14 @@ internal static class Program
         {
             Assert(!dreSource.Contains(forbidden, StringComparison.Ordinal), $"DRE contains binding-type branch: {forbidden}");
         }
-        Console.WriteLine("PASS contract minimality and no binding-type routing");
+
+        string hostSource = File.ReadAllText(Path.Combine(_root, "kernel-dotnet", "src", "Madre.Kernel.Host", "KernelWebHost.cs"));
+        Assert(!hostSource.Contains("/v1/capabilities/{id}/state", StringComparison.Ordinal),
+            "validation capability-state mutation leaked into the public-looking /v1 surface");
+        Assert(hostSource.Contains("/_validation/capabilities/{id}/state", StringComparison.Ordinal),
+            "deterministic capability-state control is not clearly validation-only");
+
+        Console.WriteLine("PASS behavioral contract checks, validation-only state control, and no binding-type routing");
     }
 
     private static async Task ObservationFeedbackAndBindingParityAsync()
@@ -62,8 +63,35 @@ internal static class Program
         using var temp = new TempDirectory("madre-dotnet-feedback");
         string db = Path.Combine(temp.Path, "kernel.db");
         await using KernelProcess kernel = await StartKernelAsync(db, maxConcurrent: 1);
-        await SetOnlyAsync(kernel, ProcessCapability);
 
+        IReadOnlyList<CapabilitySnapshot> fresh = await CapabilitiesAsync(kernel);
+        Assert(fresh.Count == 3, "fresh capability catalogue incomplete");
+        Assert(fresh.All(snapshot => snapshot.State.Availability == CapabilityAvailability.Unknown),
+            "freshly configured capability fabricated a known availability state");
+        Assert(fresh.All(snapshot => snapshot.State.ObservedAt is null),
+            "freshly configured capability fabricated an availability observation timestamp");
+        Assert(fresh.All(snapshot => snapshot.SuccessfulObservationCount == 0 && snapshot.FailureObservationCount == 0),
+            "fresh capability catalogue unexpectedly contains execution observations");
+
+        using (HttpResponseMessage oldRoute = await kernel.Client.PutAsJsonAsync(
+            $"/v1/capabilities/{ProcessCapability}/state", new { available = true }, Json))
+        {
+            Assert(oldRoute.StatusCode == HttpStatusCode.NotFound,
+                "public-looking /v1 capability-state mutation route still exists");
+        }
+
+        string unknownWait = await SubmitAsync(kernel, Request(
+            "wait-while-unknown", InferenceEffort.Standard, WorkUrgency.Normal, ExecutionBoundary.LocalOnly));
+        await Task.Delay(200);
+        WorkInspection waitingUnknown = await InspectAsync(kernel, unknownWait);
+        Assert(waitingUnknown.State == WorkState.Queued && waitingUnknown.Attempts.Count == 0,
+            "admissible capability with Unknown state was treated as dispatchable");
+        await SetAvailabilityAsync(kernel, ProcessCapability, true);
+        WorkInspection releasedFromUnknown = await WaitForStateAsync(kernel, unknownWait, WorkState.Succeeded);
+        Assert(releasedFromUnknown.SelectedCapabilityId == ProcessCapability,
+            "same Work did not proceed after the admissible capability became explicitly Available");
+
+        await SetOnlyAsync(kernel, ProcessCapability);
         string slow = await SubmitAsync(kernel, Request("latency-process", InferenceEffort.Standard, WorkUrgency.Interactive, ExecutionBoundary.LocalOnly));
         WorkInspection slowDone = await WaitForStateAsync(kernel, slow, WorkState.Succeeded);
         long slowLatency = slowDone.Attempts.Single().LatencyMs!.Value;
@@ -87,7 +115,7 @@ internal static class Program
         IReadOnlyList<CapabilitySnapshot> snapshots = await CapabilitiesAsync(restarted);
         CapabilitySnapshot process = snapshots.Single(snapshot => snapshot.Capability.CapabilityId == ProcessCapability);
         CapabilitySnapshot meai = snapshots.Single(snapshot => snapshot.Capability.CapabilityId == Meai);
-        Assert(process.Capability.OwnerPreference.Value > meai.Capability.OwnerPreference.Value,
+        Assert(process.Capability.OwnerPreference > meai.Capability.OwnerPreference,
             "test requires Owner fallback preference to favor slower process capability");
         Assert(process.SuccessfulLatencyMs.HasValue && meai.SuccessfulLatencyMs.HasValue,
             "persisted latency observations missing after restart");
@@ -134,7 +162,7 @@ internal static class Program
         await WaitForStateAsync(restarted, unavailable, WorkState.Succeeded);
 
         await AssertKnowledgeSeparationAsync(db, restarted);
-        Console.WriteLine("PASS MEAI/process/Owner-custom parity, physical-success semantics, failure evidence, and capability knowledge separation");
+        Console.WriteLine("PASS unknown-state truth, MEAI/process/Owner-custom parity, physical-success semantics, failure evidence, and capability knowledge separation");
     }
 
     private static async Task SchedulingCancellationRetentionAsync()
@@ -180,6 +208,8 @@ internal static class Program
         WorkInspection processCancelled = await WaitForStateAsync(kernel, runningCancel, WorkState.Cancelled);
         Assert(processCancelled.Attempts.Single().Outcome == PhysicalAttemptOutcome.ConfirmedCancelled,
             "process binding did not preserve confirmed local cancellation truth");
+        Assert(processCancelled.Attempts.Single().TechnicalFailure == "PROCESS_CANCELLED_CONFIRMED",
+            "confirmed process cancellation was not tied to observed local termination");
 
         await SetOnlyAsync(kernel, Meai);
         string uncertainCancel = await SubmitAsync(kernel, Request("MEAI_SLOW", InferenceEffort.High, WorkUrgency.Normal, ExecutionBoundary.ExternalAllowed));
@@ -256,15 +286,20 @@ internal static class Program
     {
         IReadOnlyList<CapabilitySnapshot> before = await CapabilitiesAsync(kernel);
         CapabilitySnapshot configured = before.Single(snapshot => snapshot.Capability.CapabilityId == ProcessCapability);
-        int preference = configured.Capability.OwnerPreference.Value;
-        FactProvenance preferenceSource = configured.Capability.OwnerPreference.Provenance;
+        InferenceCapability configuredFacts = configured.Capability;
         int observations = configured.SuccessfulObservationCount + configured.FailureObservationCount;
         await SetAvailabilityAsync(kernel, ProcessCapability, false);
         CapabilitySnapshot after = (await CapabilitiesAsync(kernel)).Single(snapshot => snapshot.Capability.CapabilityId == ProcessCapability);
-        Assert(after.Capability.OwnerPreference.Value == preference && after.Capability.OwnerPreference.Provenance == preferenceSource,
-            "current state mutation overwrote configured evidence");
+        Assert(after.Capability.BindingId == configuredFacts.BindingId
+               && after.Capability.BindingVersion == configuredFacts.BindingVersion
+               && after.Capability.ExecutionBoundary == configuredFacts.ExecutionBoundary
+               && after.Capability.SupportedEffort == configuredFacts.SupportedEffort
+               && after.Capability.OwnerPreference == configuredFacts.OwnerPreference,
+            "current state mutation overwrote configured capability facts");
         Assert(after.SuccessfulObservationCount + after.FailureObservationCount == observations,
             "current state mutation overwrote historical observations");
+        Assert(after.State.Availability == CapabilityAvailability.Unavailable && after.State.ObservedAt.HasValue,
+            "explicit current-state change was not represented as an observation");
 
         await using var connection = new SqliteConnection($"Data Source={db}");
         await connection.OpenAsync();
@@ -275,6 +310,20 @@ internal static class Program
             command.Parameters.AddWithValue("$name", table);
             Assert(Convert.ToInt32(await command.ExecuteScalarAsync()) == 1, $"missing distinct durable evidence table {table}");
         }
+
+        await using (SqliteCommand columns = connection.CreateCommand())
+        {
+            columns.CommandText = "PRAGMA table_info(capabilities);";
+            await using SqliteDataReader reader = await columns.ExecuteReaderAsync();
+            var names = new List<string>();
+            while (await reader.ReadAsync())
+            {
+                names.Add(reader.GetString(1));
+            }
+            Assert(!names.Contains("owner_preference_source", StringComparer.Ordinal),
+                "OwnerPreference retained meaningless generic provenance in the validation schema");
+        }
+
         await SetAvailabilityAsync(kernel, ProcessCapability, true);
     }
 
@@ -356,7 +405,7 @@ internal static class Program
 
     private static async Task SetAvailabilityAsync(KernelProcess kernel, string capability, bool available)
     {
-        using HttpResponseMessage response = await kernel.Client.PutAsJsonAsync($"/v1/capabilities/{capability}/state", new { available }, Json);
+        using HttpResponseMessage response = await kernel.Client.PutAsJsonAsync($"/_validation/capabilities/{capability}/state", new { available }, Json);
         response.EnsureSuccessStatusCode();
     }
 
@@ -448,14 +497,6 @@ internal static class Program
         var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
         options.Converters.Add(new JsonStringEnumConverter());
         return options;
-    }
-
-    private static void AssertSet(IEnumerable<string> actual, params string[] expected)
-    {
-        string[] actualSorted = actual.Order(StringComparer.Ordinal).ToArray();
-        string[] expectedSorted = expected.Order(StringComparer.Ordinal).ToArray();
-        Assert(actualSorted.SequenceEqual(expectedSorted),
-            $"contract fields differ. actual=[{string.Join(',', actualSorted)}], expected=[{string.Join(',', expectedSorted)}]");
     }
 
     private static void Assert(bool condition, string message)
