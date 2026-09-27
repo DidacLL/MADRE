@@ -6,6 +6,9 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 PRODUCTION = [ROOT / "kernel" / "src", ROOT / "madre-kernel-client" / "src" / "main"]
 
+# Semantic MADRE concepts and rejected Lane C fossils are proper contract/type names here;
+# keep these checks case-sensitive so ordinary implementation/package words such as
+# Jackson's `core` do not become false positives for the semantic CORE Module.
 forbidden_patterns = {
     r"\bReasoningRequest\b": "semantic ReasoningRequest leaked into Lane C",
     r"\bSPIRA\b": "semantic SPIRA leaked into Lane C",
@@ -33,7 +36,7 @@ for root in PRODUCTION:
             continue
         text = path.read_text(encoding="utf-8")
         for pattern, message in forbidden_patterns.items():
-            if re.search(pattern, text, re.IGNORECASE):
+            if re.search(pattern, text):
                 failures.append(f"{path.relative_to(ROOT)}: {message}")
         if provider_patterns.search(text):
             failures.append(f"{path.relative_to(ROOT)}: provider/model-specific production routing or ownership found")
