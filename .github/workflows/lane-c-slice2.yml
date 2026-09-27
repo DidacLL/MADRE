@@ -1,0 +1,41 @@
+name: MADRE Lane C Slice 2 validation
+
+on:
+  pull_request:
+  push:
+    branches: [main, 'agentic/lane-c-engine-contract-repair']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  slice2-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build Slice 2 checkpoint validation
+        run: dotnet build kernel-dotnet/validation/Madre.Kernel.Slice2Acceptance/Madre.Kernel.Slice2Acceptance.csproj --configuration Release
+      - name: Run Slice 2 checkpoint validation
+        run: dotnet run --project kernel-dotnet/validation/Madre.Kernel.Slice2Acceptance/Madre.Kernel.Slice2Acceptance.csproj --configuration Release --no-build
+
+  slice2-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build Slice 2 checkpoint validation
+        shell: pwsh
+        run: dotnet build kernel-dotnet/validation/Madre.Kernel.Slice2Acceptance/Madre.Kernel.Slice2Acceptance.csproj --configuration Release
+      - name: Run Slice 2 checkpoint validation
+        shell: pwsh
+        run: dotnet run --project kernel-dotnet/validation/Madre.Kernel.Slice2Acceptance/Madre.Kernel.Slice2Acceptance.csproj --configuration Release --no-build

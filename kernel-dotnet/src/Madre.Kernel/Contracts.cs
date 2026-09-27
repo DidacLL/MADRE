@@ -37,6 +37,7 @@ public enum WorkState
 {
     Queued,
     Running,
+    Checkpointed,
     Succeeded,
     Failed,
     Cancelled,
@@ -98,6 +99,8 @@ public sealed record WorkInspection(
     string? SelectedCapabilityId,
     string? SelectedBindingId,
     string? SelectedBindingVersion,
+    string? CheckpointSessionId,
+    string? CheckpointId,
     bool CancelRequested,
     bool Released,
     string? FailureCode,
@@ -119,4 +122,6 @@ public static class KernelContract
     public const int MaxPayloadBytes = 1024 * 1024;
     public const string StrategyType = "single-inference";
     public const string StrategyVersion = "v1";
+    public const string CheckpointedTwoStageStrategyType = "maf-two-stage-inference";
+    public const string CheckpointedTwoStageStrategyVersion = "v1";
 }

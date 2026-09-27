@@ -7,6 +7,7 @@ string database = Required(args, "--db");
 string fixture = Required(args, "--fixture");
 int port = int.Parse(Required(args, "--port"));
 int maxConcurrent = int.Parse(Get(args, "--max-concurrent") ?? "1");
+bool holdCheckpointedResume = args.Contains("--hold-checkpointed", StringComparer.Ordinal);
 string dotnet = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet";
 
 var capabilities = new[]
@@ -41,7 +42,13 @@ IInferenceBinding[] bindings =
     new OwnerCustomBinding()
 ];
 
-await KernelWebHost.RunAsync(database, port, maxConcurrent, capabilities, bindings);
+await KernelWebHost.RunAsync(
+    database,
+    port,
+    maxConcurrent,
+    capabilities,
+    bindings,
+    validationHoldCheckpointedResume: holdCheckpointedResume);
 
 static string Required(string[] values, string key) => Get(values, key) ?? throw new ArgumentException($"missing {key}");
 static string? Get(string[] values, string key)
@@ -52,6 +59,8 @@ static string? Get(string[] values, string key)
 
 sealed class DeterministicChatClient : IChatClient
 {
+    private const string StageAMarkerPrefix = "MAF_STAGE_A_MARKER:";
+
     public ChatClientMetadata Metadata { get; } = new(nameof(DeterministicChatClient), new Uri("http://127.0.0.1"), "deterministic-test");
 
     public async Task<ChatResponse> GetResponseAsync(
@@ -62,6 +71,11 @@ sealed class DeterministicChatClient : IChatClient
         string input = string.Concat(messages.Select(message => message.Text));
         int delay = input.StartsWith("MEAI_SLOW", StringComparison.Ordinal) ? 2000 : 40;
         await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+        if (input.StartsWith(StageAMarkerPrefix, StringComparison.Ordinal))
+        {
+            string marker = input[StageAMarkerPrefix.Length..];
+            await File.AppendAllTextAsync(marker, "stage-a\n", cancellationToken).ConfigureAwait(false);
+        }
         return new ChatResponse(new ChatMessage(ChatRole.Assistant, "meai:" + input));
     }
 

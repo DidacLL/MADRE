@@ -7,7 +7,10 @@ public enum DreDecisionKind
     NoAdmissibleCapability
 }
 
-public sealed record DreDecision(DreDecisionKind Kind, InferenceCapability? Capability = null);
+public sealed record DreDecision(
+    DreDecisionKind Kind,
+    InferenceCapability? Capability = null,
+    bool UseCheckpointedTwoStageStrategy = false);
 
 public sealed class DreSelector
 {
@@ -52,7 +55,31 @@ public sealed class DreSelector
                 .First();
         }
 
-        return new DreDecision(DreDecisionKind.Selected, selected.Capability);
+        // Slice 2 validates one concrete richer physical strategy without adding a strategy DSL.
+        // High-effort background Work is the narrow DRE case used by this validation; existing
+        // one-shot High/Normal and High/Interactive behavior remains unchanged.
+        bool useCheckpointedTwoStage = request.RequestedEffort == InferenceEffort.High
+            && request.Urgency == WorkUrgency.Background;
+
+        return new DreDecision(DreDecisionKind.Selected, selected.Capability, useCheckpointedTwoStage);
+    }
+
+    internal DreDecision SelectCheckpointResume(
+        PhysicalInferenceRequest request,
+        string selectedCapabilityId,
+        IReadOnlyList<CapabilitySnapshot> snapshots)
+    {
+        CapabilitySnapshot? selected = snapshots.FirstOrDefault(
+            snapshot => string.Equals(snapshot.Capability.CapabilityId, selectedCapabilityId, StringComparison.Ordinal));
+        if (selected is null || !IsAdmissible(request, selected.Capability))
+        {
+            return new DreDecision(DreDecisionKind.NoAdmissibleCapability);
+        }
+        if (selected.State.Availability != CapabilityAvailability.Available)
+        {
+            return new DreDecision(DreDecisionKind.WaitForAvailability);
+        }
+        return new DreDecision(DreDecisionKind.Selected, selected.Capability, UseCheckpointedTwoStageStrategy: true);
     }
 
     private static bool IsAdmissible(PhysicalInferenceRequest request, InferenceCapability capability)

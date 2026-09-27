@@ -8,7 +8,13 @@ internal sealed record StoredWork(
     DateTimeOffset CreatedAt,
     PhysicalInferenceRequest Request,
     string StrategyType,
-    string StrategyVersion);
+    string StrategyVersion,
+    string? SelectedCapabilityId,
+    string? SelectedBindingId,
+    string? SelectedBindingVersion,
+    string? CheckpointSessionId,
+    string? CheckpointId,
+    bool CancelRequested);
 
 public sealed class WorkStore
 {
@@ -16,15 +22,18 @@ public sealed class WorkStore
 
     public WorkStore(string databasePath)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(databasePath))!);
+        DatabasePath = Path.GetFullPath(databasePath);
+        Directory.CreateDirectory(Path.GetDirectoryName(DatabasePath)!);
         _connectionString = new SqliteConnectionStringBuilder
         {
-            DataSource = databasePath,
+            DataSource = DatabasePath,
             Mode = SqliteOpenMode.ReadWriteCreate,
             Cache = SqliteCacheMode.Shared,
             Pooling = true
         }.ToString();
     }
+
+    internal string DatabasePath { get; }
 
     public async Task InitializeAsync(IReadOnlyList<InferenceCapability> capabilities, CancellationToken cancellationToken = default)
     {
@@ -64,6 +73,8 @@ public sealed class WorkStore
                     selected_capability_id TEXT,
                     selected_binding_id TEXT,
                     selected_binding_version TEXT,
+                    checkpoint_session_id TEXT,
+                    checkpoint_id TEXT,
                     cancel_requested INTEGER NOT NULL DEFAULT 0,
                     result_text TEXT,
                     failure_code TEXT,
@@ -127,13 +138,20 @@ public sealed class WorkStore
                 UPDATE work
                 SET state = $failed,
                     failure_code = 'INCOMPATIBLE_STRATEGY_VERSION'
-                WHERE state = $queued
-                  AND (strategy_type <> $strategyType OR strategy_version <> $strategyVersion);
+                WHERE state IN ($queued, $checkpointed)
+                  AND NOT (
+                    (strategy_type = $singleType AND strategy_version = $singleVersion)
+                    OR
+                    (strategy_type = $twoType AND strategy_version = $twoVersion)
+                  );
                 """;
             incompatible.Parameters.AddWithValue("$failed", WorkState.Failed.ToString());
             incompatible.Parameters.AddWithValue("$queued", WorkState.Queued.ToString());
-            incompatible.Parameters.AddWithValue("$strategyType", KernelContract.StrategyType);
-            incompatible.Parameters.AddWithValue("$strategyVersion", KernelContract.StrategyVersion);
+            incompatible.Parameters.AddWithValue("$checkpointed", WorkState.Checkpointed.ToString());
+            incompatible.Parameters.AddWithValue("$singleType", KernelContract.StrategyType);
+            incompatible.Parameters.AddWithValue("$singleVersion", KernelContract.StrategyVersion);
+            incompatible.Parameters.AddWithValue("$twoType", KernelContract.CheckpointedTwoStageStrategyType);
+            incompatible.Parameters.AddWithValue("$twoVersion", KernelContract.CheckpointedTwoStageStrategyVersion);
             await incompatible.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
     }
@@ -173,20 +191,23 @@ public sealed class WorkStore
         await using SqliteCommand command = connection.CreateCommand();
         command.CommandText = """
             SELECT work_id, state, prepared_input, requested_effort, urgency, eligible_at_ms, deadline_ms,
-                   execution_boundary, created_at_ms, strategy_type, strategy_version
+                   execution_boundary, created_at_ms, strategy_type, strategy_version,
+                   selected_capability_id, selected_binding_id, selected_binding_version,
+                   checkpoint_session_id, checkpoint_id, cancel_requested
             FROM work
-            WHERE state = $queued AND eligible_at_ms <= $now AND released = 0
+            WHERE state IN ($queued, $checkpointed) AND eligible_at_ms <= $now AND released = 0
             ORDER BY CASE urgency WHEN 'Interactive' THEN 2 WHEN 'Normal' THEN 1 ELSE 0 END DESC,
                      created_at_ms ASC
             LIMIT $limit;
             """;
         command.Parameters.AddWithValue("$queued", WorkState.Queued.ToString());
+        command.Parameters.AddWithValue("$checkpointed", WorkState.Checkpointed.ToString());
         command.Parameters.AddWithValue("$now", now.ToUnixTimeMilliseconds());
         command.Parameters.AddWithValue("$limit", limit);
         await using SqliteDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
         {
-            string input = reader.IsDBNull(2) ? throw new InvalidOperationException("queued Work has released input") : reader.GetString(2);
+            string input = reader.IsDBNull(2) ? throw new InvalidOperationException("active Work has released input") : reader.GetString(2);
             DateTimeOffset eligible = FromMs(reader.GetInt64(5));
             DateTimeOffset? deadline = reader.IsDBNull(6) ? null : FromMs(reader.GetInt64(6));
             var request = new PhysicalInferenceRequest(
@@ -202,7 +223,13 @@ public sealed class WorkStore
                 FromMs(reader.GetInt64(8)),
                 request,
                 reader.GetString(9),
-                reader.GetString(10)));
+                reader.GetString(10),
+                reader.IsDBNull(11) ? null : reader.GetString(11),
+                reader.IsDBNull(12) ? null : reader.GetString(12),
+                reader.IsDBNull(13) ? null : reader.GetString(13),
+                reader.IsDBNull(14) ? null : reader.GetString(14),
+                reader.IsDBNull(15) ? null : reader.GetString(15),
+                reader.GetInt64(16) != 0));
         }
         return result;
     }
@@ -229,6 +256,218 @@ public sealed class WorkStore
         command.CommandText = "UPDATE work SET state = $failed, failure_code = $failure WHERE work_id = $id AND state = $queued;";
         command.Parameters.AddWithValue("$failed", WorkState.Failed.ToString());
         command.Parameters.AddWithValue("$queued", WorkState.Queued.ToString());
+        command.Parameters.AddWithValue("$failure", failureCode);
+        command.Parameters.AddWithValue("$id", workId);
+        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    internal async Task<bool> TryClaimCheckpointedTwoStageAsync(
+        StoredWork work,
+        InferenceCapability capability,
+        CancellationToken cancellationToken)
+    {
+        await using SqliteConnection connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using SqliteCommand command = connection.CreateCommand();
+        command.CommandText = """
+            UPDATE work
+            SET state = $running,
+                strategy_type = $strategyType,
+                strategy_version = $strategyVersion,
+                selected_capability_id = $capability,
+                selected_binding_id = $binding,
+                selected_binding_version = $bindingVersion,
+                checkpoint_session_id = NULL,
+                checkpoint_id = NULL,
+                failure_code = NULL
+            WHERE work_id = $id AND state = $queued AND cancel_requested = 0;
+            """;
+        command.Parameters.AddWithValue("$running", WorkState.Running.ToString());
+        command.Parameters.AddWithValue("$queued", WorkState.Queued.ToString());
+        command.Parameters.AddWithValue("$strategyType", KernelContract.CheckpointedTwoStageStrategyType);
+        command.Parameters.AddWithValue("$strategyVersion", KernelContract.CheckpointedTwoStageStrategyVersion);
+        command.Parameters.AddWithValue("$capability", capability.CapabilityId);
+        command.Parameters.AddWithValue("$binding", capability.BindingId);
+        command.Parameters.AddWithValue("$bindingVersion", capability.BindingVersion);
+        command.Parameters.AddWithValue("$id", work.WorkId);
+        return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) == 1;
+    }
+
+    internal async Task<int?> TryBeginCheckpointedStrategyAttemptAsync(
+        string workId,
+        InferenceCapability capability,
+        DateTimeOffset startedAt,
+        bool resumeFromCheckpoint,
+        CancellationToken cancellationToken)
+    {
+        await using SqliteConnection connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        using SqliteTransaction transaction = connection.BeginTransaction();
+
+        await using SqliteCommand state = connection.CreateCommand();
+        state.Transaction = transaction;
+        if (resumeFromCheckpoint)
+        {
+            state.CommandText = """
+                UPDATE work
+                SET state = $running
+                WHERE work_id = $id
+                  AND state = $checkpointed
+                  AND cancel_requested = 0
+                  AND strategy_type = $strategyType
+                  AND strategy_version = $strategyVersion
+                  AND selected_capability_id = $capability
+                  AND selected_binding_id = $binding
+                  AND selected_binding_version = $bindingVersion;
+                """;
+            state.Parameters.AddWithValue("$checkpointed", WorkState.Checkpointed.ToString());
+        }
+        else
+        {
+            state.CommandText = """
+                UPDATE work
+                SET state = state
+                WHERE work_id = $id
+                  AND state = $running
+                  AND cancel_requested = 0
+                  AND strategy_type = $strategyType
+                  AND strategy_version = $strategyVersion
+                  AND selected_capability_id = $capability
+                  AND selected_binding_id = $binding
+                  AND selected_binding_version = $bindingVersion;
+                """;
+        }
+        state.Parameters.AddWithValue("$running", WorkState.Running.ToString());
+        state.Parameters.AddWithValue("$strategyType", KernelContract.CheckpointedTwoStageStrategyType);
+        state.Parameters.AddWithValue("$strategyVersion", KernelContract.CheckpointedTwoStageStrategyVersion);
+        state.Parameters.AddWithValue("$capability", capability.CapabilityId);
+        state.Parameters.AddWithValue("$binding", capability.BindingId);
+        state.Parameters.AddWithValue("$bindingVersion", capability.BindingVersion);
+        state.Parameters.AddWithValue("$id", workId);
+        if (await state.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) != 1)
+        {
+            transaction.Rollback();
+            return null;
+        }
+
+        await using SqliteCommand number = connection.CreateCommand();
+        number.Transaction = transaction;
+        number.CommandText = "SELECT COALESCE(MAX(attempt_number), 0) + 1 FROM attempts WHERE work_id = $id;";
+        number.Parameters.AddWithValue("$id", workId);
+        int attemptNumber = Convert.ToInt32(await number.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false));
+
+        await using SqliteCommand insert = connection.CreateCommand();
+        insert.Transaction = transaction;
+        insert.CommandText = """
+            INSERT INTO attempts (
+                work_id, attempt_number, capability_id, binding_id, binding_version, started_at_ms, outcome)
+            VALUES ($id, $number, $capability, $binding, $bindingVersion, $started, $outcome);
+            """;
+        insert.Parameters.AddWithValue("$id", workId);
+        insert.Parameters.AddWithValue("$number", attemptNumber);
+        insert.Parameters.AddWithValue("$capability", capability.CapabilityId);
+        insert.Parameters.AddWithValue("$binding", capability.BindingId);
+        insert.Parameters.AddWithValue("$bindingVersion", capability.BindingVersion);
+        insert.Parameters.AddWithValue("$started", startedAt.ToUnixTimeMilliseconds());
+        insert.Parameters.AddWithValue("$outcome", PhysicalAttemptOutcome.Running.ToString());
+        await insert.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        transaction.Commit();
+        return attemptNumber;
+    }
+
+    internal async Task CompleteCheckpointedStrategyAttemptAsync(
+        string workId,
+        int attemptNumber,
+        BindingExecutionResult result,
+        DateTimeOffset endedAt,
+        long latencyMs,
+        bool finalStage,
+        CancellationToken cancellationToken)
+    {
+        await using SqliteConnection connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        using SqliteTransaction transaction = connection.BeginTransaction();
+        await using SqliteCommand attempt = connection.CreateCommand();
+        attempt.Transaction = transaction;
+        attempt.CommandText = """
+            UPDATE attempts
+            SET ended_at_ms = $ended, latency_ms = $latency, outcome = $outcome, technical_failure = $failure
+            WHERE work_id = $id AND attempt_number = $number AND outcome = $running;
+            """;
+        attempt.Parameters.AddWithValue("$ended", endedAt.ToUnixTimeMilliseconds());
+        attempt.Parameters.AddWithValue("$latency", latencyMs);
+        attempt.Parameters.AddWithValue("$outcome", result.Outcome.ToString());
+        attempt.Parameters.AddWithValue("$failure", result.TechnicalFailure is null ? DBNull.Value : result.TechnicalFailure);
+        attempt.Parameters.AddWithValue("$id", workId);
+        attempt.Parameters.AddWithValue("$number", attemptNumber);
+        attempt.Parameters.AddWithValue("$running", PhysicalAttemptOutcome.Running.ToString());
+        await attempt.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+
+        if (finalStage || result.Outcome != PhysicalAttemptOutcome.Succeeded)
+        {
+            WorkState workState = result.Outcome switch
+            {
+                PhysicalAttemptOutcome.Succeeded => WorkState.Succeeded,
+                PhysicalAttemptOutcome.DefiniteFailure => WorkState.Failed,
+                PhysicalAttemptOutcome.ConfirmedCancelled => WorkState.Cancelled,
+                PhysicalAttemptOutcome.UnknownCompletion => WorkState.UnknownCompletion,
+                _ => throw new InvalidOperationException("attempt cannot complete as Running")
+            };
+            await using SqliteCommand work = connection.CreateCommand();
+            work.Transaction = transaction;
+            work.CommandText = """
+                UPDATE work
+                SET state = $state, result_text = $result, failure_code = $failure
+                WHERE work_id = $id AND state = $running;
+                """;
+            work.Parameters.AddWithValue("$state", workState.ToString());
+            work.Parameters.AddWithValue("$result", result.Result is null ? DBNull.Value : result.Result);
+            work.Parameters.AddWithValue("$failure", result.TechnicalFailure is null ? DBNull.Value : result.TechnicalFailure);
+            work.Parameters.AddWithValue("$id", workId);
+            work.Parameters.AddWithValue("$running", WorkState.Running.ToString());
+            await work.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+        transaction.Commit();
+    }
+
+    internal async Task<bool> MarkCheckpointedAsync(
+        string workId,
+        string sessionId,
+        string checkpointId,
+        CancellationToken cancellationToken)
+    {
+        await using SqliteConnection connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using SqliteCommand command = connection.CreateCommand();
+        command.CommandText = """
+            UPDATE work
+            SET state = $checkpointed,
+                checkpoint_session_id = $session,
+                checkpoint_id = $checkpoint
+            WHERE work_id = $id
+              AND state = $running
+              AND cancel_requested = 0
+              AND strategy_type = $strategyType
+              AND strategy_version = $strategyVersion;
+            """;
+        command.Parameters.AddWithValue("$checkpointed", WorkState.Checkpointed.ToString());
+        command.Parameters.AddWithValue("$running", WorkState.Running.ToString());
+        command.Parameters.AddWithValue("$session", sessionId);
+        command.Parameters.AddWithValue("$checkpoint", checkpointId);
+        command.Parameters.AddWithValue("$id", workId);
+        command.Parameters.AddWithValue("$strategyType", KernelContract.CheckpointedTwoStageStrategyType);
+        command.Parameters.AddWithValue("$strategyVersion", KernelContract.CheckpointedTwoStageStrategyVersion);
+        return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) == 1;
+    }
+
+    internal async Task FailStrategyIfActiveAsync(string workId, string failureCode, CancellationToken cancellationToken)
+    {
+        await using SqliteConnection connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using SqliteCommand command = connection.CreateCommand();
+        command.CommandText = """
+            UPDATE work
+            SET state = $failed, failure_code = $failure
+            WHERE work_id = $id AND state IN ($running, $checkpointed);
+            """;
+        command.Parameters.AddWithValue("$failed", WorkState.Failed.ToString());
+        command.Parameters.AddWithValue("$running", WorkState.Running.ToString());
+        command.Parameters.AddWithValue("$checkpointed", WorkState.Checkpointed.ToString());
         command.Parameters.AddWithValue("$failure", failureCode);
         command.Parameters.AddWithValue("$id", workId);
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
@@ -359,6 +598,12 @@ public sealed class WorkStore
             update.Parameters.AddWithValue("$cancelled", WorkState.Cancelled.ToString());
             state = WorkState.Cancelled;
         }
+        else if (state == WorkState.Checkpointed)
+        {
+            update.CommandText = "UPDATE work SET state = $cancelled, cancel_requested = 1, failure_code = 'CANCELLED_WHILE_CHECKPOINTED' WHERE work_id = $id;";
+            update.Parameters.AddWithValue("$cancelled", WorkState.Cancelled.ToString());
+            state = WorkState.Cancelled;
+        }
         else if (state == WorkState.Running)
         {
             update.CommandText = "UPDATE work SET cancel_requested = 1 WHERE work_id = $id;";
@@ -386,7 +631,7 @@ public sealed class WorkStore
             return null;
         }
         WorkState state = Enum.Parse<WorkState>((string)raw);
-        if (state is WorkState.Queued or WorkState.Running)
+        if (state is WorkState.Queued or WorkState.Running or WorkState.Checkpointed)
         {
             return false;
         }
@@ -404,6 +649,7 @@ public sealed class WorkStore
         work.CommandText = """
             SELECT state, created_at_ms, eligible_at_ms, deadline_ms, urgency, strategy_type, strategy_version,
                    selected_capability_id, selected_binding_id, selected_binding_version,
+                   checkpoint_session_id, checkpoint_id,
                    cancel_requested, released, failure_code
             FROM work WHERE work_id = $id;
             """;
@@ -423,9 +669,11 @@ public sealed class WorkStore
         string? selectedCapability = reader.IsDBNull(7) ? null : reader.GetString(7);
         string? selectedBinding = reader.IsDBNull(8) ? null : reader.GetString(8);
         string? selectedBindingVersion = reader.IsDBNull(9) ? null : reader.GetString(9);
-        bool cancelRequested = reader.GetInt64(10) != 0;
-        bool released = reader.GetInt64(11) != 0;
-        string? failure = reader.IsDBNull(12) ? null : reader.GetString(12);
+        string? checkpointSession = reader.IsDBNull(10) ? null : reader.GetString(10);
+        string? checkpointId = reader.IsDBNull(11) ? null : reader.GetString(11);
+        bool cancelRequested = reader.GetInt64(12) != 0;
+        bool released = reader.GetInt64(13) != 0;
+        string? failure = reader.IsDBNull(14) ? null : reader.GetString(14);
         await reader.DisposeAsync().ConfigureAwait(false);
 
         var attempts = new List<AttemptInspection>();
@@ -454,6 +702,7 @@ public sealed class WorkStore
         return new WorkInspection(
             workId, state, created, eligible, deadline, urgency, strategyType, strategyVersion,
             selectedCapability, selectedBinding, selectedBindingVersion,
+            checkpointSession, checkpointId,
             cancelRequested, released, failure, attempts);
     }
 

@@ -13,6 +13,7 @@ public static class KernelWebHost
         int maxConcurrent,
         IReadOnlyList<InferenceCapability> capabilities,
         IReadOnlyList<IInferenceBinding> bindings,
+        bool validationHoldCheckpointedResume = false,
         CancellationToken cancellationToken = default)
     {
         var builder = WebApplication.CreateBuilder();
@@ -26,7 +27,12 @@ public static class KernelWebHost
 
         WebApplication app = builder.Build();
         app.Urls.Add($"http://127.0.0.1:{port}");
-        var engine = new KernelEngine(new WorkStore(databasePath), capabilities, bindings, maxConcurrent);
+        var engine = new KernelEngine(
+            new WorkStore(databasePath),
+            capabilities,
+            bindings,
+            maxConcurrent,
+            validationHoldCheckpointedResume);
         await engine.InitializeAsync(cancellationToken).ConfigureAwait(false);
         engine.Start();
 

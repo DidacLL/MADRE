@@ -10,6 +10,8 @@ public sealed class KernelEngine : IAsyncDisposable
     private readonly DreSelector _dre;
     private readonly IReadOnlyList<InferenceCapability> _capabilities;
     private readonly Dictionary<string, IInferenceBinding> _bindings;
+    private readonly MafTwoStagePhysicalStrategy _twoStageStrategy;
+    private readonly bool _validationHoldCheckpointedResume;
     private readonly SemaphoreSlim _slots;
     private readonly CancellationTokenSource _shutdown = new();
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _runningCancellations = new();
@@ -20,7 +22,8 @@ public sealed class KernelEngine : IAsyncDisposable
         WorkStore store,
         IReadOnlyList<InferenceCapability> capabilities,
         IReadOnlyList<IInferenceBinding> bindings,
-        int maxConcurrent = 2)
+        int maxConcurrent = 2,
+        bool validationHoldCheckpointedResume = false)
     {
         if (maxConcurrent < 1)
         {
@@ -30,6 +33,11 @@ public sealed class KernelEngine : IAsyncDisposable
         _dre = new DreSelector();
         _capabilities = capabilities;
         _bindings = bindings.ToDictionary(BindingKey, StringComparer.Ordinal);
+        _twoStageStrategy = new MafTwoStagePhysicalStrategy(
+            store,
+            _bindings,
+            store.DatabasePath + ".maf-checkpoints");
+        _validationHoldCheckpointedResume = validationHoldCheckpointedResume;
         _slots = new SemaphoreSlim(maxConcurrent, maxConcurrent);
 
         foreach (InferenceCapability capability in capabilities)
@@ -79,7 +87,7 @@ public sealed class KernelEngine : IAsyncDisposable
     public async Task<WorkState?> CancelAsync(string workId, CancellationToken cancellationToken = default)
     {
         WorkState? state = await _store.CancelAsync(workId, cancellationToken).ConfigureAwait(false);
-        if (state == WorkState.Running && _runningCancellations.TryGetValue(workId, out CancellationTokenSource? attempt))
+        if (_runningCancellations.TryGetValue(workId, out CancellationTokenSource? attempt))
         {
             attempt.Cancel();
         }
@@ -112,6 +120,17 @@ public sealed class KernelEngine : IAsyncDisposable
                     {
                         break;
                     }
+                    if (_runningTasks.ContainsKey(work.WorkId))
+                    {
+                        continue;
+                    }
+
+                    if (work.State == WorkState.Checkpointed)
+                    {
+                        await ScheduleCheckpointResumeAsync(work, snapshots, cancellationToken).ConfigureAwait(false);
+                        continue;
+                    }
+
                     DreDecision decision = _dre.Select(work.Request, snapshots);
                     if (decision.Kind == DreDecisionKind.NoAdmissibleCapability)
                     {
@@ -123,22 +142,15 @@ public sealed class KernelEngine : IAsyncDisposable
                         continue;
                     }
                     InferenceCapability capability = decision.Capability!;
-                    if (!_slots.Wait(0))
-                    {
-                        break;
-                    }
-                    DateTimeOffset started = DateTimeOffset.UtcNow;
-                    int? attemptNumber = await _store.TryBeginAttemptAsync(work, capability, started, cancellationToken).ConfigureAwait(false);
-                    if (attemptNumber is null)
-                    {
-                        _slots.Release();
-                        continue;
-                    }
 
-                    var attemptCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                    _runningCancellations[work.WorkId] = attemptCancellation;
-                    Task task = ExecuteAttemptAsync(work, capability, attemptNumber.Value, started, attemptCancellation);
-                    _runningTasks[work.WorkId] = task;
+                    if (decision.UseCheckpointedTwoStageStrategy)
+                    {
+                        await ScheduleTwoStageStartAsync(work, capability, cancellationToken).ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        await ScheduleSingleInferenceAsync(work, capability, cancellationToken).ConfigureAwait(false);
+                    }
                 }
 
                 await Task.Delay(25, cancellationToken).ConfigureAwait(false);
@@ -146,6 +158,144 @@ public sealed class KernelEngine : IAsyncDisposable
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+        }
+    }
+
+    private async Task ScheduleSingleInferenceAsync(
+        StoredWork work,
+        InferenceCapability capability,
+        CancellationToken cancellationToken)
+    {
+        if (!_slots.Wait(0))
+        {
+            return;
+        }
+        DateTimeOffset started = DateTimeOffset.UtcNow;
+        int? attemptNumber = await _store.TryBeginAttemptAsync(work, capability, started, cancellationToken).ConfigureAwait(false);
+        if (attemptNumber is null)
+        {
+            _slots.Release();
+            return;
+        }
+
+        var attemptCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        _runningCancellations[work.WorkId] = attemptCancellation;
+        Task task = ExecuteAttemptAsync(work, capability, attemptNumber.Value, started, attemptCancellation);
+        _runningTasks[work.WorkId] = task;
+    }
+
+    private async Task ScheduleTwoStageStartAsync(
+        StoredWork work,
+        InferenceCapability capability,
+        CancellationToken cancellationToken)
+    {
+        if (!_slots.Wait(0))
+        {
+            return;
+        }
+        if (!await _store.TryClaimCheckpointedTwoStageAsync(work, capability, cancellationToken).ConfigureAwait(false))
+        {
+            _slots.Release();
+            return;
+        }
+
+        var strategyCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        _runningCancellations[work.WorkId] = strategyCancellation;
+        Task task = ExecuteTwoStageStartAsync(work, capability, strategyCancellation);
+        _runningTasks[work.WorkId] = task;
+    }
+
+    private async Task ScheduleCheckpointResumeAsync(
+        StoredWork work,
+        IReadOnlyList<CapabilitySnapshot> snapshots,
+        CancellationToken cancellationToken)
+    {
+        if (_validationHoldCheckpointedResume)
+        {
+            return;
+        }
+        if (work.CancelRequested)
+        {
+            return;
+        }
+        if (work.StrategyType != KernelContract.CheckpointedTwoStageStrategyType
+            || work.StrategyVersion != KernelContract.CheckpointedTwoStageStrategyVersion
+            || work.CheckpointSessionId is null
+            || work.CheckpointId is null
+            || work.SelectedCapabilityId is null)
+        {
+            await _store.FailStrategyIfActiveAsync(work.WorkId, "INCOMPATIBLE_STRATEGY_CONTINUATION", cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        DreDecision decision = _dre.SelectCheckpointResume(work.Request, work.SelectedCapabilityId, snapshots);
+        if (decision.Kind == DreDecisionKind.NoAdmissibleCapability)
+        {
+            await _store.FailStrategyIfActiveAsync(work.WorkId, "CHECKPOINT_CAPABILITY_INCOMPATIBLE", cancellationToken).ConfigureAwait(false);
+            return;
+        }
+        if (decision.Kind == DreDecisionKind.WaitForAvailability)
+        {
+            return;
+        }
+        if (!_slots.Wait(0))
+        {
+            return;
+        }
+
+        var strategyCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        _runningCancellations[work.WorkId] = strategyCancellation;
+        Task task = ExecuteTwoStageResumeAsync(work, decision.Capability!, strategyCancellation);
+        _runningTasks[work.WorkId] = task;
+    }
+
+    private async Task ExecuteTwoStageStartAsync(
+        StoredWork work,
+        InferenceCapability capability,
+        CancellationTokenSource cancellation)
+    {
+        try
+        {
+            await _twoStageStrategy.StartAsync(work, capability, cancellation.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            await _store.FailStrategyIfActiveAsync(
+                work.WorkId,
+                $"MAF_STRATEGY_START_FAILURE:{ex.GetType().Name}",
+                CancellationToken.None).ConfigureAwait(false);
+        }
+        finally
+        {
+            CleanupRunning(work.WorkId, cancellation);
+        }
+    }
+
+    private async Task ExecuteTwoStageResumeAsync(
+        StoredWork work,
+        InferenceCapability capability,
+        CancellationTokenSource cancellation)
+    {
+        try
+        {
+            await _twoStageStrategy.ResumeAsync(work, capability, cancellation.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            await _store.FailStrategyIfActiveAsync(
+                work.WorkId,
+                $"MAF_STRATEGY_RESUME_FAILURE:{ex.GetType().Name}",
+                CancellationToken.None).ConfigureAwait(false);
+        }
+        finally
+        {
+            CleanupRunning(work.WorkId, cancellation);
         }
     }
 
@@ -189,11 +339,16 @@ public sealed class KernelEngine : IAsyncDisposable
         }
         finally
         {
-            _runningCancellations.TryRemove(work.WorkId, out _);
-            _runningTasks.TryRemove(work.WorkId, out _);
-            cancellation.Dispose();
-            _slots.Release();
+            CleanupRunning(work.WorkId, cancellation);
         }
+    }
+
+    private void CleanupRunning(string workId, CancellationTokenSource cancellation)
+    {
+        _runningCancellations.TryRemove(workId, out _);
+        _runningTasks.TryRemove(workId, out _);
+        cancellation.Dispose();
+        _slots.Release();
     }
 
     private static BindingExecutionResult EnforceResultContract(BindingExecutionResult result)
