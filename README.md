@@ -63,136 +63,71 @@ actual selected Operation/effect      -> Risk
 current acting Agent continuation     -> Autonomy
 ```
 
-Integrity levels are:
-
-```text
-NOT_DECLARED -> DECLARED -> TRUSTED -> ACCEPTED -> VALIDATED
-```
-
-The same-facet reductions are `max(Sensitivity)`, `min(Privacy)` and `min(Integrity)`. Risk comes from the concrete Operation/effect actually being used. Autonomy comes from the current Agent continuation.
-
-There is **no mandatory `EffectProfile`** and no Agent-owned `Compound` manager in the current architecture. The compound exists because actual constituents compose.
-
-Where the current construction makes the relations relevant:
-
-```text
-max(S_actual_information) <= min(P_actual_receiving_boundaries)
-
-min(R_actual_operation, A_current_agent_continuation)
-    <= min(I_actual_non_user_causal_participants)
-
-R_actual_operation
-    <= min(I_actual_effect_realizers)
-```
-
-These are composition relations, not permission decisions. The Agent changes actual constituents when a construction does not compose; it does not rewrite algebra values.
+There is no mandatory `EffectProfile` and no Agent-owned `Compound` manager in the current architecture. The compound exists because actual constituents compose. Semantic MADRE changes actual constituents when a construction does not compose; it does not rewrite algebra values.
 
 See [`docs/architecture/security-algebra.md`](docs/architecture/security-algebra.md) for the operational model.
 
 ## Reasoning and the Kernel boundary
 
-A `ReasoningRequest` is semantic and is created by an Agent. It can involve context, Material, provenance, relevant SPIRA facts and the reasoning objective, but MADRE does not require it to become one generic SPIRA tuple.
+A `ReasoningRequest` is semantic and is created by an Agent. It can involve context, Material, provenance, relevant SPIRA facts and the reasoning objective, but the semantic `ReasoningRequest` itself does not cross into Kernel.
 
-`ReasoningRequest` itself does not cross into Kernel. Semantic MADRE derives only the physical inference facts needed below the boundary, conceptually such as:
+Semantic MADRE derives only the physical inference facts needed below the boundary. The current Lane C contract carries prepared physical input, requested physical effort, urgency, eligibility/deadline and the hard local/external execution restriction consumed by the implemented DRE.
 
-```text
-prepared inference input
-requested result characteristics
-reasoning depth / effort indication
-urgency
-acceptable delay / deadline
-modality/context characteristics
-hard physical restrictions
-```
+Kernel performs DRE against configured `InferenceCapability` facts, current physical state and observed physical evidence. It does not receive Module/Agent/Material/SPIRA semantics, own model loading/warmness, or rematerialize external inference systems as MADRE workers.
 
-Kernel then performs DRE against its configured `InferenceCapability` catalogue/state/observations.
+## Current Lane C implementation
 
-This supersedes the intermediate Lane C rule that provider/model/configuration must be fully resolved to exact `ConcretePhysicalInvocation` candidates before Kernel. That correction successfully removed Kernel-owned inference engines, but it also prevented meaningful capability-aware DRE scheduling.
+Lane C is now a single current implementation under [`kernel/`](kernel/): the capability-aware .NET physical Kernel. The previous native C++ Kernel, workers, model/runtime integration, protocol-v4 client, native acceptance suites and validation-era `kernel-dotnet` side tree are not present in the active tree. Git history is the historical record.
 
-Kernel still does **not** receive Module/Agent/Material/SPIRA semantics, own model loading/warmness, or rematerialize external inference systems as MADRE workers.
-
-## Physical construction surface
-
-The leading target Kernel implementation is cross-platform .NET.
-
-MADRE owns:
+MADRE owns below the semantic/physical boundary:
 
 ```text
 PhysicalInferenceWork
 InferenceCapability
-configured/current/observed capability knowledge
+configured/current/observed capability truth
 DRE
 physical attempts/results/recovery
 one authoritative durable Work lifecycle
 ```
 
-Generic open-source infrastructure may provide the machinery beneath those concepts:
+The production control boundary is loopback HTTP on `127.0.0.1`, versioned under `/v1`. It is intentionally local-only and small: an independent Kernel process, concurrent bounded clients, bounded payloads, restartable lifetime and the same behavior on Windows and Linux. There is no service discovery, remote-control plane, TLS/PKI platform or tenancy layer.
 
-- Microsoft.Extensions.AI for common inference interoperability where useful;
-- Microsoft Agent Framework for physical workflow graphs/checkpointing where a concrete DRE strategy needs it;
-- generic HTTP/protocol/process bindings;
-- Owner/custom bindings for unusual inference environments.
+Normal Kernel startup loads explicit Owner configuration. The first provided universal binding is a shell-free process/executable binding; a configured probe supplies actual physical evidence for current availability. Configuration alone never turns a capability into `Available`. `IInferenceBinding` is the ordinary seam for the provided process binding, optional MEAI use and advanced Owner/custom bindings; there is no dynamic plugin marketplace or privileged first-party route.
 
-Framework types do not become MADRE concepts:
+The implemented first-version DRE is deliberately small:
 
-```text
-MADRE Agent         != MAF AIAgent
-MADRE Workflow      != MAF Workflow
-InferenceCapability != IChatClient / MAF AIAgent / MAF Workflow
-DRE                  != MAF
-```
+- durable eligibility and deadline admission;
+- hard local/external admissibility;
+- requested physical effort compatibility;
+- current `Available` state only;
+- Owner preference as the stable normal selection rule;
+- persisted successful latency evidence for later `Interactive` choices when candidates have comparable evidence;
+- one-shot physical inference normally;
+- the concrete checkpointed two-stage strategy for `High + Background` Work.
 
-MADRE-provided inference adapters must use the same class of physical construction surface available to advanced Owners. No provider/runtime receives a privileged Kernel path merely because MADRE ships a convenience integration for it.
+SQLite is authoritative for Work, configured/current capability facts, attempts and retained physical result state. Active attempts whose completion becomes unknowable across hard Kernel death recover as `UnknownCompletion` and are never implicitly duplicated. Terminal input/result retention has explicit release semantics.
 
-## Modularity
+Microsoft Agent Framework is used only by the one concrete multi-stage physical strategy. Its checkpoint is subordinate execution state. Before continuation, MADRE Work authority still checks existence/state, cancellation, deadline, strategy identity/version, selected capability/binding identity/version and current physical admissibility. Simple inference bypasses MAF.
 
-MADRE is intended to remain replaceable at every real boundary without turning every boundary into a speculative plugin framework.
+The Java [`madre-kernel-client`](madre-kernel-client/) speaks only the current `/v1` physical boundary and does not depend on `madre-sdk`.
 
-- Modules can be replaced or generated against the public SDK.
-- CORE provides defaults without monopolizing semantic ownership.
-- the semantic→physical inference requirement contract remains small and replaceable;
-- Kernel owns MADRE's physical DRE/capability concepts while external engines own their internals;
-- MEAI/MAF are implementation infrastructure, not public semantic API;
-- provided and Owner-built physical adapters use the same class of extension surface;
-- new capability fields or physical mechanisms should be justified by actual DRE consumers/needs rather than hypothetical completeness.
+## Repository acceptance
 
-## Current repository state
+The active CI builds and tests only the current architecture on Linux and Windows. It builds the .NET Kernel and Java physical client, runs current lifecycle/capability/DRE/client acceptance, runs the MAF checkpoint/hard-restart suite, and runs contamination/destructive-convergence checks that reject semantic MADRE concepts, rejected worker/engine ontology, protocol-v4 fossils, native Kernel source and validation-only production hooks.
 
-### Implemented reference behavior
-
-The active Lane C correction branch contains the completed C++ LCR1–LCR3 physical reference implementation:
-
-- native C++ Kernel;
-- SQLite durable physical Work and restart recovery;
-- generic candidate-specific `ProcessInvocation` and `HttpInvocation` execution;
-- deadlines, cancellation and bounded retry semantics;
-- truthful `UNKNOWN_COMPLETION` after interrupted active attempts;
-- explicit terminal payload/result release;
-- isolated local Unix-domain socket / Windows named-pipe clients;
-- Java physical client at protocol v4;
-- Linux/Windows CI evidence.
-
-No provider/model runtime is built into that Kernel and no llama.cpp/model download is required for validation.
-
-The C++ implementation is now a **reference implementation/test oracle**, not the target Lane C architecture, because its boundary still assumes inference choices have already become concrete invocations before Kernel.
-
-### Accepted target, not yet implemented
-
-The target is the capability-aware Kernel described above: semantic MADRE supplies a physical inference requirement; Kernel DRE schedules it against configured capability facts/state/observations and executes through open physical bindings.
-
-The semantic SDK/Module layer and MADRE Runtime are also accepted architecture but are still missing from the active tree. Their implementation must be built cleanly rather than restored wholesale from discarded historical code.
+The semantic SDK/Module layer and MADRE Runtime remain outside this Lane C implementation and are not reconstructed here.
 
 ## Documentation
 
 Start here:
 
 - [`NORTH_STAR.md`](NORTH_STAR.md) — short mandatory anti-drift recovery checkpoint;
-- [`docs/product/lane-c-owner-decision.md`](docs/product/lane-c-owner-decision.md) — accepted current Lane C/DRE decision and the causal reasoning behind it;
+- [`docs/product/lane-c-owner-decision.md`](docs/product/lane-c-owner-decision.md) — accepted Lane C/DRE ownership decision and causal reasoning;
 - [`docs/product/owner-intent-corpus.md`](docs/product/owner-intent-corpus.md) — authoritative detailed product reasoning;
 - [`MADRE.md`](MADRE.md) — detailed repository-level product/semantic overview and authority order;
 - [`docs/architecture/security-algebra.md`](docs/architecture/security-algebra.md) — operational SPIRA semantics;
-- [`docs/architecture/mid-level-architecture.md`](docs/architecture/mid-level-architecture.md) — accepted whole-system architecture and diagrams;
-- [`docs/architecture/kernel.md`](docs/architecture/kernel.md) — target physical Kernel/DRE architecture and replacement validation path.
+- [`docs/architecture/mid-level-architecture.md`](docs/architecture/mid-level-architecture.md) — accepted whole-system architecture;
+- [`docs/architecture/kernel.md`](docs/architecture/kernel.md) — current physical Kernel/DRE architecture and implementation.
 
 ## Development principle
 
@@ -200,4 +135,4 @@ MADRE is a one-Owner research/product project developed heavily with AI assistan
 
 > **powerful SDK, simple implementation, fast experimentation, minimal ceremony**
 
-Do not infer missing MADRE semantics from industry convention or historical generated code. Do not simplify an established concept by deleting the concrete carrier, causal relation or boundary that gives it meaning. Do not preserve a corrective implementation boundary after the Owner has established that it prevents the product's DRE behavior.
+Do not infer missing MADRE semantics from industry convention or historical generated code. Do not simplify an established concept by deleting the concrete carrier, causal relation or boundary that gives it meaning. Do not preserve a superseded implementation boundary after the Owner has established that it prevents the product's DRE behavior.
