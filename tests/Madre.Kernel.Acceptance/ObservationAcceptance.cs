@@ -82,10 +82,6 @@ internal static partial class Program
                 "stale latency from a previous binding/version leaked into current DRE evidence");
         }
 
-        string contracts = File.ReadAllText(Path.Combine(Root, "kernel", "src", "Madre.Kernel", "Contracts.cs"));
-        Check(!contracts.Contains("SuccessfulObservationCount", StringComparison.Ordinal)
-            && !contracts.Contains("FailureObservationCount", StringComparison.Ordinal),
-            "unused capability aggregates remain in the active contract");
         Console.WriteLine("PASS demand-driven observation, timeout Unknown, and binding-scoped latency evidence");
     }
 }

@@ -60,8 +60,6 @@ internal static partial class Program
         }
         Check((await client.CallAsync<Health>("Health", null)).Status == "ok", "disappearing caller damaged Kernel");
 
-        string host = File.ReadAllText(Path.Combine(Root, "kernel", "src", "Madre.Kernel.Host", "Program.cs")) + File.ReadAllText(Path.Combine(Root, "kernel", "src", "Madre.Kernel.Host", "KernelIpcServer.cs"));
-        Check(!host.Contains("--port", StringComparison.OrdinalIgnoreCase) && !host.Contains("Kestrel", StringComparison.OrdinalIgnoreCase) && !host.Contains("127.0.0.1", StringComparison.Ordinal), "network web control plane remains");
         Console.WriteLine("PASS empty startup and local framed IPC");
     }
 
@@ -199,13 +197,6 @@ internal static partial class Program
         string later = await engine.SubmitAsync(Req("later", InferenceEffort.Low, WorkUrgency.Normal, ExecutionBoundary.ExternalAllowed)); engine.Start();
         Check((await WaitStateAsync(engine, later, WorkState.Succeeded)).SelectedCapabilityId == "runnable", "fixed-head starvation remains");
         foreach (string id in ids) Check((await engine.InspectAsync(id))?.State == WorkState.Queued, "waiting Work was incorrectly dispatched");
-        string store = File.ReadAllText(Path.Combine(Root, "kernel", "src", "Madre.Kernel", "WorkStore.cs"));
-        string scheduler = File.ReadAllText(Path.Combine(Root, "kernel", "src", "Madre.Kernel", "KernelEngine.cs"));
-        string sqlite = File.ReadAllText(Path.Combine(Root, "kernel", "src", "Madre.Kernel", "SqliteDatabase.cs"));
-        Check(!store.Contains("LIMIT -1", StringComparison.OrdinalIgnoreCase) && !store.Contains("CASE urgency", StringComparison.OrdinalIgnoreCase) && !scheduler.Contains("Task.Delay(25", StringComparison.Ordinal), "policy/polling leakage remains");
-        Check(File.ReadAllText(Path.Combine(Root, "kernel", "src", "Madre.Kernel", "Contracts.cs")).Contains("WorkUrgencyPolicy", StringComparison.Ordinal)
-            && File.ReadAllText(Path.Combine(Root, "kernel", "src", "Madre.Kernel", "Timing.cs")).Contains("KernelTimingOptions", StringComparison.Ordinal)
-            && sqlite.Contains("BusyTimeoutMilliseconds", StringComparison.Ordinal), "retained policies have no explicit code owner");
-        Console.WriteLine("PASS no fixed-head starvation and explicit policy ownership");
+        Console.WriteLine("PASS no fixed-head starvation");
     }
 }

@@ -226,9 +226,8 @@ Normal CI runs the complete Java/.NET Lane C suite on Linux and Windows. It prov
 - probe timeout remains `Unknown`;
 - binding/version-scoped latency evidence;
 - process/custom binding openness;
-- no fixed-head starvation and metadata-only scheduling candidates;
-- forced scheduler/probe/attempt persistence failures fail the host instead of creating zombie health;
-- contamination checks rejecting semantic leakage, web/port residue, MAF/checkpoint residue and production packaging of Java test helpers.
+- no fixed-head starvation and deterministic eligibility-boundary wake behavior;
+- forced scheduler/probe/attempt persistence failures fail the host instead of creating zombie health.
 
 ## Historical evidence
 

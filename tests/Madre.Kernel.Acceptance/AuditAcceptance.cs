@@ -7,6 +7,6 @@ internal static partial class Program
         await ObservationDemandAndProvenanceAsync();
         await StrictBoundaryAsync();
         await IpcBoundednessAndUtf8Async();
-        await PersistenceAndSchedulingShapeAsync();
+        await PersistenceAndSchedulingBehaviorAsync();
     }
 }

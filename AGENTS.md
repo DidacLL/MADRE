@@ -226,7 +226,7 @@ The active tree contains one current Lane C implementation under `kernel/` plus 
 - strict IPC/config/CLI parsing rather than silent defaults;
 - supervised Kernel-owned scheduler/probe/execution persistence: fatal infrastructure failure terminates/fails the host instead of leaving a zombie healthy Kernel;
 - bounded concurrency, caller disappearance, eligibility/deadlines, cancellation, retained results/release and restart `UnknownCompletion` behavior;
-- Linux and Windows behavioral CI plus contamination/destructive-convergence checks.
+- Linux and Windows behavioral CI.
 
 There is no TCP/loopback web control plane, configurable port, ASP.NET host dependency, production MAF workflow/checkpoint strategy, checkpoint state, MAF package dependency, packaged Java CLI containing test classes, or compatibility/migration layer for pre-release databases.
 

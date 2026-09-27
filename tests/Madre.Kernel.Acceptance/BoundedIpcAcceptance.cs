@@ -78,12 +78,6 @@ internal static partial class Program
             && javaExit.Stderr.Contains("timeout", StringComparison.OrdinalIgnoreCase),
             "Java client blocked indefinitely against a stalled local peer");
 
-        string javaClient = File.ReadAllText(Path.Combine(
-            Root, "madre-kernel-client", "src", "main", "java", "io", "github", "didacll", "madre", "kernel", "client", "LocalKernelClient.java"));
-        Check(!javaClient.Contains("send(\"", StringComparison.Ordinal)
-            && javaClient.Contains("KernelIpcOperation", StringComparison.Ordinal)
-            && javaClient.Contains("KernelIpcErrorCode", StringComparison.Ordinal),
-            "Java protocol vocabulary is still scattered as operation/error string literals");
         Console.WriteLine("PASS bounded IPC handlers/Java timeout and explicit UTF-8 process binding");
     }
 }

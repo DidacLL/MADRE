@@ -16,7 +16,6 @@ internal sealed class SqliteDatabase
         {
             DataSource = DatabasePath,
             Mode = SqliteOpenMode.ReadWriteCreate,
-            Cache = SqliteCacheMode.Shared,
             Pooling = true
         }.ToString();
     }

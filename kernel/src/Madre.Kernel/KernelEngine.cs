@@ -378,6 +378,10 @@ public sealed class KernelEngine : IAsyncDisposable
                 claimed.AttemptNumber,
                 attemptCancellation);
             _runningTasks[work.WorkId] = task;
+            if (task.IsCompleted)
+            {
+                _runningTasks.TryRemove(work.WorkId, out _);
+            }
         }
         finally
         {

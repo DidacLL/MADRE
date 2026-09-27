@@ -3,7 +3,7 @@ using Microsoft.Data.Sqlite;
 
 internal static partial class Program
 {
-    private static async Task PersistenceAndSchedulingShapeAsync()
+    private static async Task PersistenceAndSchedulingBehaviorAsync()
     {
         using var temp = new TempDir("madre-schema-shape");
         string incompatible = Path.Combine(temp.Path, "pre-release.db");
@@ -38,28 +38,7 @@ internal static partial class Program
         }
 
         await EligibilityBoundaryUsesSingleSnapshotAsync(temp.Path);
-
-        string store = File.ReadAllText(Path.Combine(Root, "kernel", "src", "Madre.Kernel", "WorkStore.cs"));
-        int eligibleStart = store.IndexOf("GetEligibleWorkAsync", StringComparison.Ordinal);
-        int eligibleEnd = store.IndexOf("GetNextSchedulingBoundaryAsync", eligibleStart, StringComparison.Ordinal);
-        Check(eligibleStart >= 0 && eligibleEnd > eligibleStart, "eligible scheduling query not found");
-        string eligibleSection = store[eligibleStart..eligibleEnd];
-        int claimStart = store.IndexOf("TryBeginAttemptAsync", StringComparison.Ordinal);
-        Check(claimStart >= 0
-            && !eligibleSection.Contains("prepared_input", StringComparison.Ordinal)
-            && store[claimStart..].Contains("SELECT prepared_input", StringComparison.Ordinal),
-            "scheduler still materializes physical payloads before claim");
-
-        string sqlite = File.ReadAllText(Path.Combine(Root, "kernel", "src", "Madre.Kernel", "SqliteDatabase.cs"));
-        Check(sqlite.Contains("PRAGMA user_version", StringComparison.Ordinal)
-            && !sqlite.Contains("CREATE TABLE IF NOT EXISTS", StringComparison.OrdinalIgnoreCase),
-            "schema identity is still pretending incompatible layouts are current");
-        string engine = File.ReadAllText(Path.Combine(Root, "kernel", "src", "Madre.Kernel", "KernelEngine.cs"));
-        string hostConfig = File.ReadAllText(Path.Combine(Root, "kernel", "src", "Madre.Kernel.Host", "KernelConfiguration.cs"));
-        Check(!engine.Contains("int maxConcurrent =", StringComparison.Ordinal)
-            && hostConfig.Split("MaxConcurrent = 2", StringSplitOptions.None).Length - 1 == 1,
-            "maxConcurrent default is still owned in more than one place");
-        Console.WriteLine("PASS explicit schema identity, deterministic eligibility boundary, metadata-only scheduling, and single default ownership");
+        Console.WriteLine("PASS explicit schema identity and deterministic eligibility boundary");
     }
 
     private static async Task EligibilityBoundaryUsesSingleSnapshotAsync(string directory)

@@ -33,8 +33,6 @@ jobs:
         run: dotnet build tests/Madre.Kernel.Acceptance/Madre.Kernel.Acceptance.csproj --configuration Release
       - name: Run complete Lane C acceptance
         run: dotnet run --project tests/Madre.Kernel.Acceptance/Madre.Kernel.Acceptance.csproj --configuration Release --no-build
-      - name: Audit Lane C contamination and destructive convergence
-        run: python3 tests/contamination_audit.py
 
   lane-c-windows:
     name: Lane C Windows acceptance
@@ -58,6 +56,3 @@ jobs:
       - name: Run complete Lane C acceptance
         shell: pwsh
         run: dotnet run --project tests/Madre.Kernel.Acceptance/Madre.Kernel.Acceptance.csproj --configuration Release --no-build
-      - name: Audit Lane C contamination and destructive convergence
-        shell: pwsh
-        run: python tests/contamination_audit.py

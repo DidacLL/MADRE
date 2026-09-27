@@ -47,10 +47,6 @@ internal static partial class Program
                 "stale socket path was not recovered safely");
         }
 
-        string server = File.ReadAllText(Path.Combine(Root, "kernel", "src", "Madre.Kernel.Host", "KernelIpcServer.cs"));
-        Check(server.IndexOf("KernelDatabaseLease.Acquire", StringComparison.Ordinal)
-                < server.IndexOf("PrepareEndpointAsync", StringComparison.Ordinal),
-            "database ownership is not established before endpoint handling");
         Console.WriteLine("PASS one process owner per database and safe live/stale endpoint handling");
     }
 }

@@ -111,9 +111,17 @@ public sealed class MeaiInferenceBinding : IInferenceBinding
 public sealed class ProcessInferenceBinding : IInferenceBinding
 {
     private static readonly Encoding Utf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
+    private static readonly TimeSpan TerminationConfirmationTimeout = TimeSpan.FromSeconds(2);
     private readonly string _executable;
     private readonly IReadOnlyList<string> _arguments;
     private readonly IReadOnlyList<string>? _probeArguments;
+
+    private enum ProcessTerminationState
+    {
+        AlreadyExited,
+        Terminated,
+        Unknown
+    }
 
     public ProcessInferenceBinding(
         string bindingId,
@@ -225,20 +233,33 @@ public sealed class ProcessInferenceBinding : IInferenceBinding
         }
         catch (OperationCanceledException)
         {
-            bool confirmed = await TryTerminateAndConfirmAsync(process).ConfigureAwait(false);
-            return confirmed
-                ? BindingExecutionResult.Cancelled("process tree terminated")
-                : BindingExecutionResult.Unknown("process cancellation completion could not be confirmed");
+            ProcessTerminationState termination = await TryTerminateAndConfirmAsync(process).ConfigureAwait(false);
+            return termination switch
+            {
+                ProcessTerminationState.Terminated =>
+                    BindingExecutionResult.Cancelled("process tree terminated"),
+                ProcessTerminationState.AlreadyExited =>
+                    BindingExecutionResult.Fail(
+                        PhysicalFailureKind.Cancelled,
+                        "process completed before cancellation could be confirmed"),
+                _ => BindingExecutionResult.Unknown("process cancellation completion could not be confirmed")
+            };
         }
         catch (InvalidDataException ex)
         {
-            _ = await TryTerminateAndConfirmAsync(process).ConfigureAwait(false);
-            return BindingExecutionResult.Fail(PhysicalFailureKind.PayloadLimitExceeded, ex.Message);
+            ProcessTerminationState termination = await TryTerminateAndConfirmAsync(process).ConfigureAwait(false);
+            return termination == ProcessTerminationState.Unknown
+                ? BindingExecutionResult.Unknown(
+                    $"process output limit exceeded and completion could not be confirmed: {ex.Message}")
+                : BindingExecutionResult.Fail(PhysicalFailureKind.PayloadLimitExceeded, ex.Message);
         }
         catch (IOException ex)
         {
-            _ = await TryTerminateAndConfirmAsync(process).ConfigureAwait(false);
-            return BindingExecutionResult.Fail(PhysicalFailureKind.IoFailure, ex.GetType().Name);
+            ProcessTerminationState termination = await TryTerminateAndConfirmAsync(process).ConfigureAwait(false);
+            return termination == ProcessTerminationState.Unknown
+                ? BindingExecutionResult.Unknown(
+                    $"process I/O failed and completion could not be confirmed: {ex.GetType().Name}")
+                : BindingExecutionResult.Fail(PhysicalFailureKind.IoFailure, ex.GetType().Name);
         }
     }
 
@@ -283,31 +304,64 @@ public sealed class ProcessInferenceBinding : IInferenceBinding
         }
     }
 
-    private static async Task<bool> TryTerminateAndConfirmAsync(Process process)
+    private static async Task<ProcessTerminationState> TryTerminateAndConfirmAsync(Process process)
+    {
+        if (HasExited(process))
+        {
+            return ProcessTerminationState.AlreadyExited;
+        }
+
+        try
+        {
+            process.Kill(entireProcessTree: true);
+        }
+        catch (InvalidOperationException)
+        {
+            return HasExited(process)
+                ? ProcessTerminationState.AlreadyExited
+                : ProcessTerminationState.Unknown;
+        }
+        catch (Win32Exception)
+        {
+            return HasExited(process)
+                ? ProcessTerminationState.AlreadyExited
+                : ProcessTerminationState.Unknown;
+        }
+
+        try
+        {
+            await process.WaitForExitAsync(CancellationToken.None)
+                .WaitAsync(TerminationConfirmationTimeout)
+                .ConfigureAwait(false);
+            return HasExited(process)
+                ? ProcessTerminationState.Terminated
+                : ProcessTerminationState.Unknown;
+        }
+        catch (TimeoutException)
+        {
+            return HasExited(process)
+                ? ProcessTerminationState.Terminated
+                : ProcessTerminationState.Unknown;
+        }
+        catch (InvalidOperationException)
+        {
+            return HasExited(process)
+                ? ProcessTerminationState.Terminated
+                : ProcessTerminationState.Unknown;
+        }
+    }
+
+    private static bool HasExited(Process process)
     {
         try
         {
-            if (process.HasExited)
-            {
-                return false;
-            }
-            process.Kill(entireProcessTree: true);
+            return process.HasExited;
         }
         catch (InvalidOperationException)
         {
             return false;
         }
         catch (Win32Exception)
-        {
-            return false;
-        }
-
-        try
-        {
-            await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
-            return process.HasExited;
-        }
-        catch (InvalidOperationException)
         {
             return false;
         }
