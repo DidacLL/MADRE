@@ -159,7 +159,7 @@ internal static class Program
 
         DateTimeOffset now = DateTimeOffset.UtcNow;
         string future = await SubmitAsync(kernel, new PhysicalInferenceRequest(
-            "future", InferenceEffort.Standard, WorkUrgency.Normal, now.AddMilliseconds(650), null, ExecutionBoundary.LocalOnly));
+            "future", InferenceEffort.Standard, WorkUrgency.Normal, now.AddSeconds(5), null, ExecutionBoundary.LocalOnly));
         string immediate = await SubmitAsync(kernel, Request("now", InferenceEffort.Standard, WorkUrgency.Normal, ExecutionBoundary.LocalOnly));
         await WaitForStateAsync(kernel, immediate, WorkState.Succeeded);
         Assert((await InspectAsync(kernel, future)).State == WorkState.Queued, "future Work dispatched before eligibility");

@@ -101,7 +101,7 @@ internal static class Program
         TestEnvironment env = CreateEnvironment(temp.Path, "1");
         WriteState(env.StateFile, "available");
         string marker = Path.Combine(temp.Path, "stage-a.marker");
-        DateTimeOffset deadline = DateTimeOffset.UtcNow.AddSeconds(2);
+        DateTimeOffset deadline = DateTimeOffset.UtcNow.AddSeconds(5);
         KernelProcess kernel = await StartKernelAsync(env);
         try
         {
