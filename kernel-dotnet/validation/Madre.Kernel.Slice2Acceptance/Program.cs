@@ -28,6 +28,7 @@ internal static class Program
 
         DreChoosesConcreteStrategy();
         await CheckpointHardRestartResumeAsync();
+        await CheckpointDeadlinePreventsResumeAsync();
         await CancelledCheckpointDoesNotResumeAsync();
         await IncompatibleCheckpointVersionDoesNotResumeAsync();
         await SimpleInferenceBypassesMafAsync();
@@ -116,6 +117,73 @@ internal static class Program
             Assert(meai.SuccessfulObservationCount >= 2,
                 "multi-stage physical attempts did not remain observable in capability history");
             Console.WriteLine("PASS durable MAF checkpoint + hard Kernel death + MADRE-authorized resume; stage A invocation count remained exactly one");
+        }
+        finally
+        {
+            await kernel.DisposeAsync();
+        }
+    }
+
+    private static async Task CheckpointDeadlinePreventsResumeAsync()
+    {
+        using var temp = new TempDirectory("madre-dotnet-maf-deadline");
+        string db = Path.Combine(temp.Path, "kernel.db");
+        string marker = Path.Combine(temp.Path, "stage-a.marker");
+        string input = "MAF_STAGE_A_MARKER:" + marker;
+        DateTimeOffset deadline = DateTimeOffset.UtcNow.AddSeconds(2);
+
+        KernelProcess kernel = await StartKernelAsync(db, holdCheckpointed: true);
+        try
+        {
+            await SetOnlyAsync(kernel, Meai);
+            string workId = await SubmitAsync(kernel, new PhysicalInferenceRequest(
+                input,
+                InferenceEffort.High,
+                WorkUrgency.Background,
+                null,
+                deadline,
+                ExecutionBoundary.ExternalAllowed));
+            WorkInspection checkpointed = await WaitForStateAsync(kernel, workId, WorkState.Checkpointed);
+
+            Assert(checkpointed.Attempts.Count == 1
+                   && checkpointed.Attempts[0].Outcome == PhysicalAttemptOutcome.Succeeded
+                   && checkpointed.Attempts[0].CapabilityId == Meai,
+                "deadline proof did not reach checkpoint with exactly one successful stage-A attempt");
+            Assert(MarkerCount(marker) == 1, "deadline proof stage-A marker count was not exactly one at checkpoint");
+            Assert(checkpointed.CheckpointSessionId == workId && !string.IsNullOrWhiteSpace(checkpointed.CheckpointId),
+                "deadline proof did not establish the durable subordinate checkpoint linkage");
+
+            TimeSpan untilDefinitelyPast = deadline - DateTimeOffset.UtcNow + TimeSpan.FromMilliseconds(250);
+            if (untilDefinitelyPast > TimeSpan.Zero)
+            {
+                await Task.Delay(untilDefinitelyPast);
+            }
+            Assert(DateTimeOffset.UtcNow > deadline, "deadline proof did not wait until the MADRE Work deadline was in the past");
+
+            await kernel.StopAsync(hard: true);
+            await kernel.DisposeAsync();
+            kernel = await StartKernelAsync(db, holdCheckpointed: false);
+
+            WorkInspection failed = await WaitForStateAsync(kernel, workId, WorkState.Failed);
+            Assert(failed.FailureCode == "DEADLINE_EXPIRED",
+                "checkpointed Work did not fail factually when its deadline expired before continuation");
+            Assert(failed.Attempts.Count == 1
+                   && failed.Attempts[0].Outcome == PhysicalAttemptOutcome.Succeeded,
+                "deadline-expired checkpoint dispatched or rewrote physical attempt evidence");
+            Assert(MarkerCount(marker) == 1,
+                "deadline-expired checkpoint replayed stage A or otherwise changed the stage-A marker");
+            Assert(failed.CheckpointSessionId == checkpointed.CheckpointSessionId
+                   && failed.CheckpointId == checkpointed.CheckpointId,
+                "MADRE deadline failure rewrote the subordinate checkpoint identity instead of simply refusing continuation");
+
+            await Task.Delay(300);
+            WorkInspection stable = await InspectAsync(kernel, workId);
+            Assert(stable.State == WorkState.Failed
+                   && stable.FailureCode == "DEADLINE_EXPIRED"
+                   && stable.Attempts.Count == 1
+                   && MarkerCount(marker) == 1,
+                "MAF checkpoint independently resumed after MADRE rejected continuation at the deadline");
+            Console.WriteLine("PASS checkpointed MADRE Work deadline blocks MAF resume and stage-B physical inference");
         }
         finally
         {
