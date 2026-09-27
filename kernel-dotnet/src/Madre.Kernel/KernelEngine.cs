@@ -162,6 +162,7 @@ public sealed class KernelEngine : IAsyncDisposable
         {
             IInferenceBinding binding = _bindings[BindingKey(capability.BindingId, capability.BindingVersion)];
             result = await binding.ExecuteAsync(work.Request, cancellation.Token).ConfigureAwait(false);
+            result = EnforceResultContract(result);
         }
         catch (OperationCanceledException)
         {
@@ -193,6 +194,23 @@ public sealed class KernelEngine : IAsyncDisposable
             cancellation.Dispose();
             _slots.Release();
         }
+    }
+
+    private static BindingExecutionResult EnforceResultContract(BindingExecutionResult result)
+    {
+        if (result.Outcome != PhysicalAttemptOutcome.Succeeded)
+        {
+            return result;
+        }
+        if (result.Result is null)
+        {
+            return BindingExecutionResult.Failure("INVALID_BINDING_SUCCESS_RESULT");
+        }
+        if (Encoding.UTF8.GetByteCount(result.Result) > KernelContract.MaxPayloadBytes)
+        {
+            return BindingExecutionResult.Failure("OUTPUT_LIMIT_EXCEEDED");
+        }
+        return result;
     }
 
     private static string BindingKey(IInferenceBinding binding) => BindingKey(binding.BindingId, binding.BindingVersion);
