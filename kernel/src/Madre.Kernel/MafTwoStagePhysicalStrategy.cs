@@ -140,6 +140,24 @@ internal sealed class MafTwoStagePhysicalStrategy
         }
     }
 
+    public void DeleteCheckpointState(string workId)
+    {
+        string directory = CheckpointDirectory(workId);
+        if (!Directory.Exists(directory))
+        {
+            return;
+        }
+
+        try
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+        catch (DirectoryNotFoundException)
+        {
+            // A concurrent idempotent release already removed the same subordinate state.
+        }
+    }
+
     private Workflow BuildWorkflow(StoredWork work, InferenceCapability capability)
     {
         var stageA = new PhysicalStageAExecutor(

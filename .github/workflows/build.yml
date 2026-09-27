@@ -37,6 +37,10 @@ jobs:
         run: dotnet build tests/Madre.Kernel.MafAcceptance/Madre.Kernel.MafAcceptance.csproj --configuration Release
       - name: Run MAF checkpoint/restart acceptance
         run: dotnet run --project tests/Madre.Kernel.MafAcceptance/Madre.Kernel.MafAcceptance.csproj --configuration Release --no-build
+      - name: Build Lane C closure regressions
+        run: dotnet build tests/Madre.Kernel.ClosureAcceptance/Madre.Kernel.ClosureAcceptance.csproj --configuration Release
+      - name: Run Lane C closure regressions
+        run: dotnet run --project tests/Madre.Kernel.ClosureAcceptance/Madre.Kernel.ClosureAcceptance.csproj --configuration Release --no-build
       - name: Audit Lane C contamination and destructive convergence
         run: python3 tests/contamination_audit.py
 
@@ -68,6 +72,12 @@ jobs:
       - name: Run MAF checkpoint/restart acceptance
         shell: pwsh
         run: dotnet run --project tests/Madre.Kernel.MafAcceptance/Madre.Kernel.MafAcceptance.csproj --configuration Release --no-build
+      - name: Build Lane C closure regressions
+        shell: pwsh
+        run: dotnet build tests/Madre.Kernel.ClosureAcceptance/Madre.Kernel.ClosureAcceptance.csproj --configuration Release
+      - name: Run Lane C closure regressions
+        shell: pwsh
+        run: dotnet run --project tests/Madre.Kernel.ClosureAcceptance/Madre.Kernel.ClosureAcceptance.csproj --configuration Release --no-build
       - name: Audit Lane C contamination and destructive convergence
         shell: pwsh
         run: python tests/contamination_audit.py

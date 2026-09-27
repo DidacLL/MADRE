@@ -101,8 +101,24 @@ public sealed class KernelEngine : IAsyncDisposable
         }
     }
 
-    public Task<bool?> ReleaseAsync(string workId, CancellationToken cancellationToken = default) =>
-        _store.ReleaseAsync(workId, cancellationToken);
+    public async Task<bool?> ReleaseAsync(string workId, CancellationToken cancellationToken = default)
+    {
+        WorkInspection? inspection = await _store.GetInspectionAsync(workId, cancellationToken).ConfigureAwait(false);
+        if (inspection is null)
+        {
+            return null;
+        }
+        if (inspection.State is WorkState.Queued or WorkState.Running or WorkState.Checkpointed)
+        {
+            return false;
+        }
+
+        // A terminal Work no longer needs subordinate execution state. Remove the concrete
+        // MAF checkpoint before committing the durable release flag so a successful release
+        // cannot leave checkpoint payload behind.
+        _twoStageStrategy.DeleteCheckpointState(workId);
+        return await _store.ReleaseAsync(workId, cancellationToken).ConfigureAwait(false);
+    }
 
     public Task<IReadOnlyList<CapabilitySnapshot>> CapabilitiesAsync(CancellationToken cancellationToken = default) =>
         _store.GetCapabilitiesAsync(cancellationToken);
@@ -138,7 +154,9 @@ public sealed class KernelEngine : IAsyncDisposable
             {
                 DateTimeOffset now = DateTimeOffset.UtcNow;
                 await _store.ExpirePendingDeadlinesAsync(now, cancellationToken).ConfigureAwait(false);
-                IReadOnlyList<StoredWork> works = await _store.GetEligibleWorkAsync(now, 64, cancellationToken).ConfigureAwait(false);
+                // SQLite LIMIT -1 means no limit. This one-Owner local scheduler must inspect
+                // the complete eligible set so unavailable head Work cannot hide later runnable Work.
+                IReadOnlyList<StoredWork> works = await _store.GetEligibleWorkAsync(now, -1, cancellationToken).ConfigureAwait(false);
                 IReadOnlyList<CapabilitySnapshot> snapshots = await _store.GetCapabilitiesAsync(cancellationToken).ConfigureAwait(false);
 
                 foreach (StoredWork work in works)
