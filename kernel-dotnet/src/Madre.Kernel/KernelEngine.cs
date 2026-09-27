@@ -110,7 +110,7 @@ public sealed class KernelEngine : IAsyncDisposable
             while (!cancellationToken.IsCancellationRequested)
             {
                 DateTimeOffset now = DateTimeOffset.UtcNow;
-                await _store.ExpireQueuedDeadlinesAsync(now, cancellationToken).ConfigureAwait(false);
+                await _store.ExpirePendingDeadlinesAsync(now, cancellationToken).ConfigureAwait(false);
                 IReadOnlyList<StoredWork> works = await _store.GetEligibleWorkAsync(now, 64, cancellationToken).ConfigureAwait(false);
                 IReadOnlyList<CapabilitySnapshot> snapshots = await _store.GetCapabilitiesAsync(cancellationToken).ConfigureAwait(false);
 
@@ -218,6 +218,14 @@ public sealed class KernelEngine : IAsyncDisposable
         {
             return;
         }
+
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        if (work.Request.Deadline is { } deadline && deadline <= now)
+        {
+            await _store.ExpirePendingDeadlinesAsync(now, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
         if (work.StrategyType != KernelContract.CheckpointedTwoStageStrategyType
             || work.StrategyVersion != KernelContract.CheckpointedTwoStageStrategyVersion
             || work.CheckpointSessionId is null
