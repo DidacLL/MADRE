@@ -94,7 +94,8 @@ internal static class Program
             string checkpointDirectory = Path.Combine(db + ".maf-checkpoints", workId);
             Assert(File.Exists(Path.Combine(checkpointDirectory, "index.jsonl")),
                 "MAF durable checkpoint store was not created");
-            Assert(Directory.GetFiles(checkpointDirectory, "*.json").Length > 0,
+            Assert(Directory.GetFiles(checkpointDirectory).Any(path =>
+                    !string.Equals(Path.GetFileName(path), "index.jsonl", StringComparison.Ordinal)),
                 "MAF durable subordinate checkpoint payload is missing");
 
             await kernel.StopAsync(hard: true);
