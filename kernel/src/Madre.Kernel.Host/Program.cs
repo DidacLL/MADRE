@@ -1,19 +1,18 @@
 using Madre.Kernel.Host;
 
-string configPath = Get(args, "--config") ?? Path.Combine(Environment.CurrentDirectory, "madre-kernel.json");
+string? configPath = Get(args, "--config");
 string? database = Get(args, "--db");
-int? port = ParseOptionalInt(args, "--port");
+string ipcPath = Get(args, "--ipc-path") ?? KernelPaths.DefaultIpcPath;
 int? maxConcurrent = ParseOptionalInt(args, "--max-concurrent");
 
 LoadedKernelConfiguration configuration = KernelConfigurationLoader.Load(
     configPath,
     database,
-    port,
     maxConcurrent);
 
-await KernelWebHost.RunAsync(
+await KernelIpcServer.RunAsync(
     configuration.DatabasePath,
-    configuration.Port,
+    Path.GetFullPath(ipcPath),
     configuration.MaxConcurrent,
     configuration.Capabilities,
     configuration.Bindings);

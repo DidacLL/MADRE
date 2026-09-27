@@ -21,24 +21,15 @@ tasks.withType<JavaCompile>().configureEach {
     options.compilerArgs.addAll(listOf("-Xlint:all", "-Werror"))
 }
 
-val testRuntimeClasspath by configurations
-
-val clientCliJar by tasks.registering(Jar::class) {
+val writeAcceptanceClasspath by tasks.registering {
     dependsOn(tasks.testClasses)
-    archiveClassifier.set("cli")
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-    from(sourceSets.main.get().output)
-    from(sourceSets.test.get().output)
-    from({
-        testRuntimeClasspath.map { file ->
-            if (file.isDirectory) file else zipTree(file)
-        }
-    })
-    manifest {
-        attributes["Main-Class"] = "io.github.didacll.madre.kernel.client.KernelClientProcess"
+    val output = layout.buildDirectory.file("acceptance-classpath.txt")
+    outputs.file(output)
+    doLast {
+        output.get().asFile.writeText(sourceSets.test.get().runtimeClasspath.asPath)
     }
 }
 
 tasks.named("build") {
-    dependsOn(clientCliJar)
+    dependsOn(writeAcceptanceClasspath)
 }

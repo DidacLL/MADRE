@@ -27,20 +27,12 @@ jobs:
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '10.0.x'
-      - name: Build current Java physical client
+      - name: Build Java physical client and acceptance tooling
         run: ./gradlew --no-daemon clean build
-      - name: Build current .NET Kernel acceptance
+      - name: Build Lane C acceptance
         run: dotnet build tests/Madre.Kernel.Acceptance/Madre.Kernel.Acceptance.csproj --configuration Release
-      - name: Run current physical Kernel acceptance
+      - name: Run complete Lane C acceptance
         run: dotnet run --project tests/Madre.Kernel.Acceptance/Madre.Kernel.Acceptance.csproj --configuration Release --no-build
-      - name: Build MAF checkpoint/restart acceptance
-        run: dotnet build tests/Madre.Kernel.MafAcceptance/Madre.Kernel.MafAcceptance.csproj --configuration Release
-      - name: Run MAF checkpoint/restart acceptance
-        run: dotnet run --project tests/Madre.Kernel.MafAcceptance/Madre.Kernel.MafAcceptance.csproj --configuration Release --no-build
-      - name: Build Lane C closure regressions
-        run: dotnet build tests/Madre.Kernel.ClosureAcceptance/Madre.Kernel.ClosureAcceptance.csproj --configuration Release
-      - name: Run Lane C closure regressions
-        run: dotnet run --project tests/Madre.Kernel.ClosureAcceptance/Madre.Kernel.ClosureAcceptance.csproj --configuration Release --no-build
       - name: Audit Lane C contamination and destructive convergence
         run: python3 tests/contamination_audit.py
 
@@ -57,27 +49,15 @@ jobs:
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '10.0.x'
-      - name: Build current Java physical client
+      - name: Build Java physical client and acceptance tooling
         shell: pwsh
         run: .\gradlew.bat --no-daemon clean build
-      - name: Build current .NET Kernel acceptance
+      - name: Build Lane C acceptance
         shell: pwsh
         run: dotnet build tests/Madre.Kernel.Acceptance/Madre.Kernel.Acceptance.csproj --configuration Release
-      - name: Run current physical Kernel acceptance
+      - name: Run complete Lane C acceptance
         shell: pwsh
         run: dotnet run --project tests/Madre.Kernel.Acceptance/Madre.Kernel.Acceptance.csproj --configuration Release --no-build
-      - name: Build MAF checkpoint/restart acceptance
-        shell: pwsh
-        run: dotnet build tests/Madre.Kernel.MafAcceptance/Madre.Kernel.MafAcceptance.csproj --configuration Release
-      - name: Run MAF checkpoint/restart acceptance
-        shell: pwsh
-        run: dotnet run --project tests/Madre.Kernel.MafAcceptance/Madre.Kernel.MafAcceptance.csproj --configuration Release --no-build
-      - name: Build Lane C closure regressions
-        shell: pwsh
-        run: dotnet build tests/Madre.Kernel.ClosureAcceptance/Madre.Kernel.ClosureAcceptance.csproj --configuration Release
-      - name: Run Lane C closure regressions
-        shell: pwsh
-        run: dotnet run --project tests/Madre.Kernel.ClosureAcceptance/Madre.Kernel.ClosureAcceptance.csproj --configuration Release --no-build
       - name: Audit Lane C contamination and destructive convergence
         shell: pwsh
         run: python tests/contamination_audit.py

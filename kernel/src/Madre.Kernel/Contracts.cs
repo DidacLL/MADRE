@@ -2,42 +2,41 @@ namespace Madre.Kernel;
 
 public enum InferenceEffort
 {
-    Low = 0,
-    Standard = 1,
-    High = 2
+    Low,
+    Standard,
+    High
 }
 
 public enum WorkUrgency
 {
-    Background = 0,
-    Normal = 1,
-    Interactive = 2
+    Background,
+    Normal,
+    Interactive
 }
 
 public enum ExecutionBoundary
 {
-    LocalOnly = 0,
-    ExternalAllowed = 1
+    LocalOnly,
+    ExternalAllowed
 }
 
 public enum FactProvenance
 {
-    Owner = 0,
-    ProviderOrRuntime = 1
+    Owner,
+    ProviderOrRuntime
 }
 
 public enum CapabilityAvailability
 {
-    Unknown = 0,
-    Unavailable = 1,
-    Available = 2
+    Unknown,
+    Unavailable,
+    Available
 }
 
 public enum WorkState
 {
     Queued,
     Running,
-    Checkpointed,
     Succeeded,
     Failed,
     Cancelled,
@@ -53,6 +52,21 @@ public enum PhysicalAttemptOutcome
     UnknownCompletion
 }
 
+public enum PhysicalFailureKind
+{
+    NoAdmissibleCapability,
+    DeadlineExpired,
+    Cancelled,
+    LaunchFailed,
+    ProcessExited,
+    PayloadLimitExceeded,
+    IoFailure,
+    InvalidBindingResult,
+    CompletionUnknown
+}
+
+public sealed record PhysicalFailure(PhysicalFailureKind Kind, string? Detail = null);
+
 public sealed record ConfiguredFact<T>(T Value, FactProvenance Provenance);
 
 public sealed record PhysicalInferenceRequest(
@@ -62,6 +76,8 @@ public sealed record PhysicalInferenceRequest(
     DateTimeOffset? EligibleAt,
     DateTimeOffset? Deadline,
     ExecutionBoundary ExecutionBoundary);
+
+public sealed record InferenceExecutionRequest(string PreparedInput);
 
 public sealed record InferenceCapability(
     string CapabilityId,
@@ -85,7 +101,7 @@ public sealed record AttemptInspection(
     DateTimeOffset? EndedAt,
     long? LatencyMs,
     PhysicalAttemptOutcome Outcome,
-    string? TechnicalFailure);
+    PhysicalFailure? Failure);
 
 public sealed record WorkInspection(
     string WorkId,
@@ -94,16 +110,12 @@ public sealed record WorkInspection(
     DateTimeOffset EligibleAt,
     DateTimeOffset? Deadline,
     WorkUrgency Urgency,
-    string StrategyType,
-    string StrategyVersion,
     string? SelectedCapabilityId,
     string? SelectedBindingId,
     string? SelectedBindingVersion,
-    string? CheckpointSessionId,
-    string? CheckpointId,
     bool CancelRequested,
     bool Released,
-    string? FailureCode,
+    PhysicalFailure? Failure,
     IReadOnlyList<AttemptInspection> Attempts);
 
 public sealed record WorkSubmissionResponse(string WorkId);
@@ -117,11 +129,31 @@ public sealed record CapabilitySnapshot(
     int SuccessfulObservationCount,
     int FailureObservationCount);
 
-public static class KernelContract
+public static class KernelProtocol
 {
+    public const int Version = 1;
     public const int MaxPayloadBytes = 1024 * 1024;
-    public const string StrategyType = "single-inference";
-    public const string StrategyVersion = "v1";
-    public const string CheckpointedTwoStageStrategyType = "maf-two-stage-inference";
-    public const string CheckpointedTwoStageStrategyVersion = "v1";
+    public const int MaxFrameBytes = (8 * MaxPayloadBytes) + (64 * 1024);
+}
+
+public static class InferenceEffortPolicy
+{
+    public static bool Supports(InferenceEffort supported, InferenceEffort requested) => requested switch
+    {
+        InferenceEffort.Low => true,
+        InferenceEffort.Standard => supported is InferenceEffort.Standard or InferenceEffort.High,
+        InferenceEffort.High => supported == InferenceEffort.High,
+        _ => false
+    };
+}
+
+public static class WorkUrgencyPolicy
+{
+    public static int Priority(WorkUrgency urgency) => urgency switch
+    {
+        WorkUrgency.Background => 0,
+        WorkUrgency.Normal => 1,
+        WorkUrgency.Interactive => 2,
+        _ => throw new ArgumentOutOfRangeException(nameof(urgency))
+    };
 }

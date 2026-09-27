@@ -9,8 +9,7 @@ public enum DreDecisionKind
 
 public sealed record DreDecision(
     DreDecisionKind Kind,
-    InferenceCapability? Capability = null,
-    bool UseCheckpointedTwoStageStrategy = false);
+    InferenceCapability? Capability = null);
 
 public sealed class DreSelector
 {
@@ -28,72 +27,54 @@ public sealed class DreSelector
         List<CapabilitySnapshot> available = admissible
             .Where(snapshot => snapshot.State.Availability == CapabilityAvailability.Available)
             .ToList();
-
-        if (available.Count == 0)
+        if (available.Count > 0)
         {
-            return new DreDecision(DreDecisionKind.WaitForAvailability);
+            return new DreDecision(DreDecisionKind.Selected, Choose(request, available).Capability);
         }
 
-        CapabilitySnapshot selected;
-        bool comparableLatency = request.Urgency == WorkUrgency.Interactive
-            && available.Count > 1
-            && available.All(snapshot => snapshot.SuccessfulLatencyMs.HasValue);
-
-        if (comparableLatency)
+        // Unknown means that Kernel lacks current availability evidence. It is not evidence
+        // that the configured capability is unavailable. If no known-available option exists,
+        // DRE may try an otherwise admissible Unknown capability and let execution produce
+        // physical evidence. Known-unavailable capabilities remain waiting candidates only.
+        List<CapabilitySnapshot> unknown = admissible
+            .Where(snapshot => snapshot.State.Availability == CapabilityAvailability.Unknown)
+            .ToList();
+        if (unknown.Count > 0)
         {
-            selected = available
+            return new DreDecision(DreDecisionKind.Selected, Choose(request, unknown).Capability);
+        }
+
+        return new DreDecision(DreDecisionKind.WaitForAvailability);
+    }
+
+    private static CapabilitySnapshot Choose(
+        PhysicalInferenceRequest request,
+        IReadOnlyList<CapabilitySnapshot> candidates)
+    {
+        bool comparableLatency = request.Urgency == WorkUrgency.Interactive
+            && candidates.Count > 1
+            && candidates.All(snapshot => snapshot.SuccessfulLatencyMs.HasValue);
+
+        return comparableLatency
+            ? candidates
                 .OrderBy(snapshot => snapshot.SuccessfulLatencyMs!.Value)
                 .ThenByDescending(snapshot => snapshot.Capability.OwnerPreference)
                 .ThenBy(snapshot => snapshot.Capability.CapabilityId, StringComparer.Ordinal)
-                .First();
-        }
-        else
-        {
-            selected = available
+                .First()
+            : candidates
                 .OrderByDescending(snapshot => snapshot.Capability.OwnerPreference)
                 .ThenBy(snapshot => snapshot.Capability.CapabilityId, StringComparer.Ordinal)
                 .First();
-        }
-
-        // First-version richer physical strategy: high-effort background Work spends two
-        // sequential inference stages with a durable physical checkpoint between them.
-        bool useCheckpointedTwoStage = request.RequestedEffort == InferenceEffort.High
-            && request.Urgency == WorkUrgency.Background;
-
-        return new DreDecision(DreDecisionKind.Selected, selected.Capability, useCheckpointedTwoStage);
-    }
-
-    internal DreDecision SelectCheckpointResume(
-        PhysicalInferenceRequest request,
-        string selectedCapabilityId,
-        IReadOnlyList<CapabilitySnapshot> snapshots)
-    {
-        CapabilitySnapshot? selected = snapshots.FirstOrDefault(
-            snapshot => string.Equals(snapshot.Capability.CapabilityId, selectedCapabilityId, StringComparison.Ordinal));
-        if (selected is null || !IsAdmissible(request, selected.Capability))
-        {
-            return new DreDecision(DreDecisionKind.NoAdmissibleCapability);
-        }
-        if (selected.State.Availability != CapabilityAvailability.Available)
-        {
-            return new DreDecision(DreDecisionKind.WaitForAvailability);
-        }
-        return new DreDecision(DreDecisionKind.Selected, selected.Capability, UseCheckpointedTwoStageStrategy: true);
     }
 
     private static bool IsAdmissible(PhysicalInferenceRequest request, InferenceCapability capability)
     {
-        if ((int)capability.SupportedEffort.Value < (int)request.RequestedEffort)
+        if (!InferenceEffortPolicy.Supports(capability.SupportedEffort.Value, request.RequestedEffort))
         {
             return false;
         }
 
-        if (request.ExecutionBoundary == ExecutionBoundary.LocalOnly
-            && capability.ExecutionBoundary.Value != ExecutionBoundary.LocalOnly)
-        {
-            return false;
-        }
-
-        return true;
+        return request.ExecutionBoundary != ExecutionBoundary.LocalOnly
+            || capability.ExecutionBoundary.Value == ExecutionBoundary.LocalOnly;
     }
 }

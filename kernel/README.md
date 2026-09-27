@@ -1,46 +1,41 @@
 # MADRE Kernel
 
-This directory contains the sole current Lane C implementation: the .NET MADRE physical inference Kernel.
+Lane C is MADRE's local physical inference substrate. It owns durable physical Work, capability truth/observations, DRE scheduling, binding execution and truthful recovery. It does not own Module, Agent, Material, SPIRA, ReasoningRequest, CORE or application semantics.
 
-The Kernel is a local-first physical control plane. It owns durable `PhysicalInferenceWork`, `InferenceCapability` configuration/current state/observations, physical DRE scheduling, attempts, checkpoint linkage, results, cancellation and restart recovery. It does not depend on `madre-sdk` and does not understand Module, MADRE Agent, Operation, Material, ReasoningRequest, SPIRA, CORE, semantic Workflow/WorkPlan or semantic continuation.
+## Startup
 
-## Control boundary
+The Kernel is valid with zero configured capabilities. A missing configuration file therefore does not block startup. Configuration only becomes necessary when the owner expects the Kernel to execute inference.
 
-The production host listens only on loopback HTTP (`127.0.0.1`) by default. This is intentionally the smallest cross-platform boundary that gives the Kernel an independent process lifetime, concurrent clients, bounded requests and a versionable physical contract on both Windows and Linux.
+The host accepts these technical process arguments:
 
-Current endpoints are under `/v1` for submit, inspection, result collection, cancellation, release, capability inspection and physical capability-state refresh. There is no remote discovery, TLS/PKI, tenancy or network control plane.
+- `--config <path>`: optional JSON capability configuration;
+- `--db <path>`: optional SQLite location override;
+- `--ipc-path <path>`: optional local-socket path override, mainly useful for tests/embedding;
+- `--max-concurrent <n>`: optional physical-concurrency override.
 
-## Owner-configured capability
+There is no TCP port and no web server. The default endpoint is a versioned Unix-domain socket in the current owner's local application-data directory. Linux creates the endpoint directory owner-only and the socket owner read/write. Windows uses the platform Unix-domain-socket implementation supported by .NET and Java 21.
 
-Normal startup reads an explicit JSON configuration:
+## Local IPC
 
-```text
-dotnet run --project kernel/src/Madre.Kernel.Host -- --config ./madre-kernel.json
-```
+The Java client and .NET host speak a small versioned framed protocol over the local socket. Each message is:
 
-`madre-kernel.example.json` shows the first production binding: a shell-free generic process/executable capability. The executable receives the prepared physical input on stdin and writes its physical result to stdout. `probeArguments` are optional but are the normal way for the process binding to establish current availability from actual physical evidence. Without a probe, current availability remains `Unknown` and DRE will not dispatch through that capability.
+1. a 4-byte big-endian frame length;
+2. one UTF-8 JSON request or response envelope.
 
-The process binding is not privileged. It implements the same `IInferenceBinding` seam as `MeaiInferenceBinding` and Owner/custom bindings. MADRE does not dynamically discover DLLs or build a connector marketplace; an advanced Owner can compose another binding against the same seam or put unusual intelligence behind an executable/service wrapper.
+`KernelProtocol` owns protocol version and payload/frame limits on the .NET side. `KernelProtocol` in `madre-kernel-client` owns the Java-side constants. Acceptance proves parity through the live `ProtocolInfo` operation. Callers use independent short-lived connections, so a stalled or disappearing caller cannot own the Kernel lifetime or block other callers.
 
 ## Capability truth and DRE
 
-Configured facts, current physical state and observed attempt history are stored separately. Configuration alone never marks a capability `Available`. Kernel probes bindings at startup and when `/v1/capabilities/refresh` is called; the resulting observation and timestamp become current state.
+Configured capability facts, current availability and historical observations remain distinct. Startup resets current availability to `Unknown` and probes asynchronously. DRE prefers known-available admissible capabilities. When none are known available, an otherwise admissible configured `Unknown` capability may be tried because `Unknown` is absence of evidence, not evidence of unavailability. Execution then contributes physical evidence.
 
-The current first-version DRE rules are intentionally narrow:
+Known-unavailable capabilities are not dispatched. They are re-observed automatically using Kernel-owned timing defaults; no caller must refresh them forever. Owner preference and observed successful latency remain DRE inputs. Eligibility, deadlines, execution boundary and explicit effort admissibility remain physical Kernel policy.
 
-- eligibility and deadline are durable admission facts;
-- hard `LocalOnly` restrictions reject external capabilities;
-- requested effort rejects capabilities that declare insufficient effort;
-- only currently `Available` capabilities dispatch;
-- `Interactive` Work uses persisted successful latency evidence when all available candidates have comparable evidence;
-- otherwise Owner preference is the stable choice rule;
-- `High + Background` selects the concrete two-stage checkpointed physical strategy;
-- all other Work uses one-shot physical inference.
+## Bindings
 
-There is no provider/model-specific routing and no semantic answer-quality judgment.
+`IInferenceBinding` is the open physical seam. A binding receives only `InferenceExecutionRequest`, currently the prepared physical input, rather than scheduling metadata. The provided process binding and MEAI interoperability use the same execution responsibility as owner-defined bindings. Common result validation and conversion of binding exceptions to truthful physical outcomes happen once in `BindingExecutor`.
 
-## Durable truth
+## Durability
 
-SQLite is authoritative for Work, configured/current capability facts, physical attempt history and retained results. Active attempts whose completion becomes unknowable across hard Kernel death become `UnknownCompletion` and are not implicitly repeated. Cancellation only becomes confirmed where the binding can physically confirm it. Terminal retained input/result can be explicitly released while preserving Work identity and history.
+SQLite is authoritative for Work, attempts, configured capability catalogue/current state and retained results. Removing a configured capability removes it from the selectable current catalogue while attempt history remains historical evidence. Active attempts interrupted by Kernel process loss recover as `UnknownCompletion`; they are never implicitly duplicated.
 
-The two-stage physical strategy uses Microsoft Agent Framework checkpoint state only as subordinate execution state. MADRE Work remains authoritative for existence, cancellation, terminal state, deadline, strategy version and selected capability/binding compatibility before continuation.
+Release preserves Work identity/attempt history while deleting retained input/result payload. No production checkpoint/MAF strategy is present. Git history retains the earlier validation experiment; a future real physical strategy may introduce additional machinery only when an actual MADRE need requires it.

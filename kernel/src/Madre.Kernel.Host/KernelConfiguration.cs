@@ -6,8 +6,7 @@ namespace Madre.Kernel.Host;
 
 public sealed class KernelHostConfiguration
 {
-    public int Port { get; init; } = 5187;
-    public string DatabasePath { get; init; } = "./madre-kernel.db";
+    public string? DatabasePath { get; init; }
     public int MaxConcurrent { get; init; } = 2;
     public List<ProcessCapabilityConfiguration> Capabilities { get; init; } = [];
 }
@@ -27,51 +26,71 @@ public sealed class ProcessCapabilityConfiguration
 
 public sealed record LoadedKernelConfiguration(
     string DatabasePath,
-    int Port,
     int MaxConcurrent,
     IReadOnlyList<InferenceCapability> Capabilities,
     IReadOnlyList<IInferenceBinding> Bindings);
 
+public static class KernelPaths
+{
+    public static string UserDataDirectory
+    {
+        get
+        {
+            string root = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            if (string.IsNullOrWhiteSpace(root))
+            {
+                root = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            }
+            return Path.Combine(root, "MADRE", "kernel");
+        }
+    }
+
+    public static string DefaultDatabasePath => Path.Combine(UserDataDirectory, "kernel.db");
+    public static string DefaultIpcPath => Path.Combine(UserDataDirectory, $"kernel-v{KernelProtocol.Version}.sock");
+}
+
 public static class KernelConfigurationLoader
 {
     public static LoadedKernelConfiguration Load(
-        string configurationPath,
+        string? configurationPath,
         string? databaseOverride = null,
-        int? portOverride = null,
         int? maxConcurrentOverride = null)
     {
-        string fullPath = Path.GetFullPath(configurationPath);
-        if (!File.Exists(fullPath))
+        KernelHostConfiguration configured;
+        string? configurationDirectory = null;
+        if (string.IsNullOrWhiteSpace(configurationPath))
         {
-            throw new FileNotFoundException("Kernel configuration file not found", fullPath);
+            configured = new KernelHostConfiguration();
+        }
+        else
+        {
+            string fullPath = Path.GetFullPath(configurationPath);
+            if (!File.Exists(fullPath))
+            {
+                throw new FileNotFoundException("Kernel configuration file not found", fullPath);
+            }
+            configurationDirectory = Path.GetDirectoryName(fullPath)!;
+            var options = new JsonSerializerOptions(JsonSerializerDefaults.Web)
+            {
+                PropertyNameCaseInsensitive = true
+            };
+            options.Converters.Add(new JsonStringEnumConverter());
+            configured = JsonSerializer.Deserialize<KernelHostConfiguration>(File.ReadAllText(fullPath), options)
+                ?? throw new InvalidDataException("Kernel configuration is empty");
         }
 
-        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web)
-        {
-            PropertyNameCaseInsensitive = true
-        };
-        options.Converters.Add(new JsonStringEnumConverter());
-        KernelHostConfiguration configured = JsonSerializer.Deserialize<KernelHostConfiguration>(File.ReadAllText(fullPath), options)
-            ?? throw new InvalidDataException("Kernel configuration is empty");
-
-        int port = portOverride ?? configured.Port;
         int maxConcurrent = maxConcurrentOverride ?? configured.MaxConcurrent;
-        if (port is < 1 or > 65535)
-        {
-            throw new InvalidDataException("port must be between 1 and 65535");
-        }
         if (maxConcurrent < 1)
         {
             throw new InvalidDataException("maxConcurrent must be at least 1");
         }
-        if (configured.Capabilities.Count == 0)
-        {
-            throw new InvalidDataException("at least one inference capability must be configured");
-        }
 
-        string root = Path.GetDirectoryName(fullPath)!;
-        string database = databaseOverride ?? configured.DatabasePath;
-        database = Path.IsPathRooted(database) ? database : Path.Combine(root, database);
+        string database = databaseOverride ?? configured.DatabasePath ?? KernelPaths.DefaultDatabasePath;
+        if (!Path.IsPathRooted(database) && configurationDirectory is not null)
+        {
+            database = Path.Combine(configurationDirectory, database);
+        }
+        database = Path.GetFullPath(database);
 
         var capabilities = new List<InferenceCapability>(configured.Capabilities.Count);
         var bindings = new List<IInferenceBinding>(configured.Capabilities.Count);
@@ -113,8 +132,7 @@ public static class KernelConfigurationLoader
         }
 
         return new LoadedKernelConfiguration(
-            Path.GetFullPath(database),
-            port,
+            database,
             maxConcurrent,
             capabilities,
             bindings);

@@ -8,12 +8,19 @@ namespace Madre.Kernel;
 public sealed record BindingExecutionResult(
     PhysicalAttemptOutcome Outcome,
     string? Result = null,
-    string? TechnicalFailure = null)
+    PhysicalFailure? Failure = null)
 {
-    public static BindingExecutionResult Success(string result) => new(PhysicalAttemptOutcome.Succeeded, result);
-    public static BindingExecutionResult Failure(string failure) => new(PhysicalAttemptOutcome.DefiniteFailure, null, failure);
-    public static BindingExecutionResult Cancelled(string failure) => new(PhysicalAttemptOutcome.ConfirmedCancelled, null, failure);
-    public static BindingExecutionResult Unknown(string failure) => new(PhysicalAttemptOutcome.UnknownCompletion, null, failure);
+    public static BindingExecutionResult Success(string result) =>
+        new(PhysicalAttemptOutcome.Succeeded, result);
+
+    public static BindingExecutionResult Failure(PhysicalFailureKind kind, string? detail = null) =>
+        new(PhysicalAttemptOutcome.DefiniteFailure, null, new PhysicalFailure(kind, detail));
+
+    public static BindingExecutionResult Cancelled(string? detail = null) =>
+        new(PhysicalAttemptOutcome.ConfirmedCancelled, null, new PhysicalFailure(PhysicalFailureKind.Cancelled, detail));
+
+    public static BindingExecutionResult Unknown(string? detail = null) =>
+        new(PhysicalAttemptOutcome.UnknownCompletion, null, new PhysicalFailure(PhysicalFailureKind.CompletionUnknown, detail));
 }
 
 public interface IInferenceBinding
@@ -21,7 +28,48 @@ public interface IInferenceBinding
     string BindingId { get; }
     string BindingVersion { get; }
     Task<CapabilityAvailability> ProbeAsync(CancellationToken cancellationToken);
-    Task<BindingExecutionResult> ExecuteAsync(PhysicalInferenceRequest request, CancellationToken cancellationToken);
+    Task<BindingExecutionResult> ExecuteAsync(InferenceExecutionRequest request, CancellationToken cancellationToken);
+}
+
+internal sealed class BindingExecutor
+{
+    public async Task<BindingExecutionResult> ExecuteAsync(
+        IInferenceBinding binding,
+        InferenceExecutionRequest request,
+        CancellationToken cancellationToken)
+    {
+        BindingExecutionResult result;
+        try
+        {
+            result = await binding.ExecuteAsync(request, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return BindingExecutionResult.Unknown("binding execution cancelled without confirmed physical completion");
+        }
+        catch (Exception ex)
+        {
+            return BindingExecutionResult.Unknown($"binding threw {ex.GetType().Name}");
+        }
+
+        if (result.Outcome != PhysicalAttemptOutcome.Succeeded)
+        {
+            return result;
+        }
+        if (result.Result is null)
+        {
+            return BindingExecutionResult.Failure(
+                PhysicalFailureKind.InvalidBindingResult,
+                "binding reported success without a result");
+        }
+        if (Encoding.UTF8.GetByteCount(result.Result) > KernelProtocol.MaxPayloadBytes)
+        {
+            return BindingExecutionResult.Failure(
+                PhysicalFailureKind.PayloadLimitExceeded,
+                $"result exceeded {KernelProtocol.MaxPayloadBytes} UTF-8 bytes");
+        }
+        return result;
+    }
 }
 
 public sealed class MeaiInferenceBinding : IInferenceBinding
@@ -49,26 +97,14 @@ public sealed class MeaiInferenceBinding : IInferenceBinding
             ? Task.FromResult(CapabilityAvailability.Unknown)
             : _probe(cancellationToken);
 
-    public async Task<BindingExecutionResult> ExecuteAsync(PhysicalInferenceRequest request, CancellationToken cancellationToken)
+    public async Task<BindingExecutionResult> ExecuteAsync(
+        InferenceExecutionRequest request,
+        CancellationToken cancellationToken)
     {
-        try
-        {
-            ChatResponse response = await _chatClient.GetResponseAsync(request.PreparedInput, cancellationToken: cancellationToken)
-                .ConfigureAwait(false);
-            if (Encoding.UTF8.GetByteCount(response.Text) > KernelContract.MaxPayloadBytes)
-            {
-                return BindingExecutionResult.Failure("OUTPUT_LIMIT_EXCEEDED");
-            }
-            return BindingExecutionResult.Success(response.Text);
-        }
-        catch (OperationCanceledException)
-        {
-            return BindingExecutionResult.Unknown("MEAI_CANCELLATION_COMPLETION_UNKNOWN");
-        }
-        catch (Exception ex)
-        {
-            return BindingExecutionResult.Unknown($"MEAI_COMPLETION_UNKNOWN:{ex.GetType().Name}");
-        }
+        ChatResponse response = await _chatClient
+            .GetResponseAsync(request.PreparedInput, cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+        return BindingExecutionResult.Success(response.Text);
     }
 }
 
@@ -103,7 +139,7 @@ public sealed class ProcessInferenceBinding : IInferenceBinding
             return CapabilityAvailability.Unknown;
         }
 
-        using var process = NewProcess(redirectStreams: false);
+        using Process process = NewProcess(redirectStreams: false);
         foreach (string argument in _probeArguments)
         {
             process.StartInfo.ArgumentList.Add(argument);
@@ -145,9 +181,11 @@ public sealed class ProcessInferenceBinding : IInferenceBinding
         }
     }
 
-    public async Task<BindingExecutionResult> ExecuteAsync(PhysicalInferenceRequest request, CancellationToken cancellationToken)
+    public async Task<BindingExecutionResult> ExecuteAsync(
+        InferenceExecutionRequest request,
+        CancellationToken cancellationToken)
     {
-        using var process = NewProcess(redirectStreams: true);
+        using Process process = NewProcess(redirectStreams: true);
         foreach (string argument in _arguments)
         {
             process.StartInfo.ArgumentList.Add(argument);
@@ -157,22 +195,22 @@ public sealed class ProcessInferenceBinding : IInferenceBinding
         {
             if (!process.Start())
             {
-                return BindingExecutionResult.Failure("PROCESS_LAUNCH_FAILED");
+                return BindingExecutionResult.Failure(PhysicalFailureKind.LaunchFailed, "Process.Start returned false");
             }
         }
-        catch (Win32Exception)
+        catch (Win32Exception ex)
         {
-            return BindingExecutionResult.Failure("PROCESS_LAUNCH_FAILED");
+            return BindingExecutionResult.Failure(PhysicalFailureKind.LaunchFailed, ex.NativeErrorCode.ToString());
         }
-        catch (InvalidOperationException)
+        catch (InvalidOperationException ex)
         {
-            return BindingExecutionResult.Failure("PROCESS_LAUNCH_FAILED");
+            return BindingExecutionResult.Failure(PhysicalFailureKind.LaunchFailed, ex.GetType().Name);
         }
 
         try
         {
-            Task<string> stdout = ReadBoundedAsync(process.StandardOutput, KernelContract.MaxPayloadBytes, cancellationToken);
-            Task<string> stderr = ReadBoundedAsync(process.StandardError, KernelContract.MaxPayloadBytes, cancellationToken);
+            Task<string> stdout = ReadBoundedAsync(process.StandardOutput, cancellationToken);
+            Task<string> stderr = ReadBoundedAsync(process.StandardError, cancellationToken);
 
             await process.StandardInput.WriteAsync(request.PreparedInput.AsMemory(), cancellationToken).ConfigureAwait(false);
             await process.StandardInput.FlushAsync(cancellationToken).ConfigureAwait(false);
@@ -180,11 +218,14 @@ public sealed class ProcessInferenceBinding : IInferenceBinding
 
             await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
             string output = await stdout.ConfigureAwait(false);
-            _ = await stderr.ConfigureAwait(false);
+            string error = await stderr.ConfigureAwait(false);
 
             if (process.ExitCode != 0)
             {
-                return BindingExecutionResult.Failure($"PROCESS_EXIT_{process.ExitCode}");
+                string detail = string.IsNullOrWhiteSpace(error)
+                    ? $"exitCode={process.ExitCode}"
+                    : $"exitCode={process.ExitCode}; stderr={error}";
+                return BindingExecutionResult.Failure(PhysicalFailureKind.ProcessExited, detail);
             }
             return BindingExecutionResult.Success(output);
         }
@@ -192,18 +233,18 @@ public sealed class ProcessInferenceBinding : IInferenceBinding
         {
             bool confirmed = await TryTerminateAndConfirmAsync(process).ConfigureAwait(false);
             return confirmed
-                ? BindingExecutionResult.Cancelled("PROCESS_CANCELLED_CONFIRMED")
-                : BindingExecutionResult.Unknown("PROCESS_CANCELLATION_COMPLETION_UNKNOWN");
+                ? BindingExecutionResult.Cancelled("process tree terminated")
+                : BindingExecutionResult.Unknown("process cancellation completion could not be confirmed");
         }
-        catch (InvalidDataException)
+        catch (InvalidDataException ex)
         {
             _ = await TryTerminateAndConfirmAsync(process).ConfigureAwait(false);
-            return BindingExecutionResult.Failure("OUTPUT_LIMIT_EXCEEDED");
+            return BindingExecutionResult.Failure(PhysicalFailureKind.PayloadLimitExceeded, ex.Message);
         }
-        catch (IOException)
+        catch (IOException ex)
         {
             _ = await TryTerminateAndConfirmAsync(process).ConfigureAwait(false);
-            return BindingExecutionResult.Failure("PROCESS_IO_FAILURE");
+            return BindingExecutionResult.Failure(PhysicalFailureKind.IoFailure, ex.GetType().Name);
         }
     }
 
@@ -220,7 +261,7 @@ public sealed class ProcessInferenceBinding : IInferenceBinding
         }
     };
 
-    private static async Task<string> ReadBoundedAsync(StreamReader reader, int maxBytes, CancellationToken cancellationToken)
+    private static async Task<string> ReadBoundedAsync(StreamReader reader, CancellationToken cancellationToken)
     {
         var builder = new StringBuilder();
         var buffer = new char[4096];
@@ -233,9 +274,9 @@ public sealed class ProcessInferenceBinding : IInferenceBinding
                 return builder.ToString();
             }
             bytes += Encoding.UTF8.GetByteCount(buffer, 0, read);
-            if (bytes > maxBytes)
+            if (bytes > KernelProtocol.MaxPayloadBytes)
             {
-                throw new InvalidDataException("process output exceeded bound");
+                throw new InvalidDataException($"process output exceeded {KernelProtocol.MaxPayloadBytes} UTF-8 bytes");
             }
             builder.Append(buffer, 0, read);
         }

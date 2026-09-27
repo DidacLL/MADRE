@@ -11,5 +11,5 @@ public record AttemptInspection(
         OffsetDateTime endedAt,
         Long latencyMs,
         PhysicalAttemptOutcome outcome,
-        String technicalFailure) {
+        PhysicalFailure failure) {
 }

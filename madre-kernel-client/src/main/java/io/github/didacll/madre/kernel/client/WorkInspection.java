@@ -10,15 +10,11 @@ public record WorkInspection(
         OffsetDateTime eligibleAt,
         OffsetDateTime deadline,
         WorkUrgency urgency,
-        String strategyType,
-        String strategyVersion,
         String selectedCapabilityId,
         String selectedBindingId,
         String selectedBindingVersion,
-        String checkpointSessionId,
-        String checkpointId,
         boolean cancelRequested,
         boolean released,
-        String failureCode,
+        PhysicalFailure failure,
         List<AttemptInspection> attempts) {
 }

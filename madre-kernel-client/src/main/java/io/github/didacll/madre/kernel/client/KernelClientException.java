@@ -3,19 +3,19 @@ package io.github.didacll.madre.kernel.client;
 public final class KernelClientException extends RuntimeException {
     private static final long serialVersionUID = 1L;
 
-    private final int statusCode;
+    private final String errorCode;
 
-    public KernelClientException(String message, int statusCode) {
+    public KernelClientException(String message, String errorCode) {
         super(message);
-        this.statusCode = statusCode;
+        this.errorCode = errorCode;
     }
 
     public KernelClientException(String message, Throwable cause) {
         super(message, cause);
-        this.statusCode = -1;
+        this.errorCode = null;
     }
 
-    public int statusCode() {
-        return statusCode;
+    public String errorCode() {
+        return errorCode;
     }
 }

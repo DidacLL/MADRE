@@ -1,17 +1,15 @@
 {
-  "port": 5187,
-  "databasePath": "./state/madre-kernel.db",
+  "databasePath": "./madre-kernel.db",
   "maxConcurrent": 2,
   "capabilities": [
     {
-      "capabilityId": "owner-process",
-      "bindingId": "process/owner",
+      "capabilityId": "local-example",
+      "bindingId": "process/example",
       "bindingVersion": "1",
-      "executable": "/path/to/owner-inference-wrapper",
+      "executable": "path-to-inference-wrapper",
       "arguments": [],
-      "probeArguments": ["--probe"],
       "executionBoundary": "LocalOnly",
-      "supportedEffort": "High",
+      "supportedEffort": "Standard",
       "ownerPreference": 100
     }
   ]

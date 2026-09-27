@@ -3,18 +3,19 @@ package io.github.didacll.madre.kernel.client;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 
-import java.net.URI;
+import java.nio.file.Path;
 
 public final class KernelClientProcess {
     private KernelClientProcess() { }
 
     public static void main(String[] args) throws Exception {
         if (args.length < 2) {
-            throw new IllegalArgumentException("usage: <base-uri> <command> [arguments]");
+            throw new IllegalArgumentException("usage: <socket-path> <command> [arguments]");
         }
         ObjectMapper json = new ObjectMapper().registerModule(new JavaTimeModule());
-        try (LocalKernelClient client = new LocalKernelClient(URI.create(args[0]))) {
+        try (LocalKernelClient client = new LocalKernelClient(Path.of(args[0]))) {
             switch (args[1]) {
+                case "protocol" -> System.out.println(json.writeValueAsString(client.protocolInfo()));
                 case "submit" -> {
                     if (args.length < 3) {
                         throw new IllegalArgumentException("submit requires input");

@@ -2,51 +2,35 @@
 
 MADRE — **Model-Agnostic Delayed Reasoning Effort Agentic System** — is an owner-controlled, local-first environment for using and creating AI-native software.
 
-This file is the **detailed repository-level product and semantic overview**. It intentionally preserves the reasoning connections among Modules, Agents, Operations, SPIRA, DRE, Runtime, CORE, Kernel and the SDK generation target.
+Read `NORTH_STAR.md` first before substantial work. `docs/product/owner-intent-corpus.md` preserves deeper product reasoning; `docs/product/lane-c-owner-decision.md` is the current Lane C/DRE correction; `docs/architecture/mid-level-architecture.md` describes whole-system engineering; `docs/architecture/kernel.md` describes current physical Lane C.
 
-Read `NORTH_STAR.md` first as the short mandatory recovery checkpoint before substantial MADRE work. Read `docs/product/lane-c-owner-decision.md` for the current accepted DRE/physical-inference correction and its rationale, `docs/product/owner-intent-corpus.md` for the deeper product reasoning, `docs/architecture/security-algebra.md` for the operational SPIRA model, `docs/architecture/mid-level-architecture.md` for the accepted whole-system design, and `docs/architecture/kernel.md` for the current physical Kernel architecture and implementation.
-
-`NORTH_STAR.md` does **not** replace the detail in the richer authorities. Its purpose is to force recovery of the governing product answers before an agent derives architecture from code or convention.
-
-Current Owner instructions override repository documentation when more specific. Historical code/tests/PRs/commits and familiar AI-platform patterns are evidence only.
+Current Owner instructions override repository documentation when more specific. Historical code/tests/commits and familiar platform patterns are evidence only.
 
 ## Product thesis
 
-MADRE is built around the idea that useful application capability does not have to equal one synchronous frontier-model invocation.
-
-Domain knowledge, deterministic bounded Operations, reusable Agents/Skills, accumulated state, decomposition and **Delayed Reasoning Effort** can make local/open intelligence sufficient for a large part of ordinary user work. Stronger external inference remains available selectively when it adds real value or the Owner wants it.
+MADRE does not equate application capability with one synchronous frontier-model invocation. Domain knowledge, deterministic Operations, accumulated state, reusable Agents/Skills and **Delayed Reasoning Effort** can make local/open intelligence sufficient for much ordinary work, while stronger external inference remains selectively available.
 
 The application and reasoning environment stays with the Owner. Models/providers are resources used by that environment rather than the place where the environment must live.
 
 ## Owner sovereignty
 
-The Owner owns the complete installation and is never MADRE's adversary.
+The Owner owns the complete installation and is never MADRE's adversary. MADRE may provide minimisation, diagnostics, recovery and useful defaults; those mechanisms serve the Owner rather than governing them.
 
-MADRE may provide minimisation, diagnostics, recovery and useful defaults, and its semantic objects participate in the intrinsic SPIRA relations described below. Those mechanisms serve the Owner; they do not create an authority above the Owner.
-
-The Owner may inspect, modify, replace or experiment with Modules, Agent state, Runtime behaviour, CORE assignment, inference configuration, Kernel state/implementation, inference bindings, generated software and source code.
+The Owner may inspect, modify, replace or experiment with Modules, Agent state, Runtime behavior, CORE assignment, inference configuration, Kernel state/implementation, inference bindings, generated software and source code.
 
 ## Modules, Agents and Operations
 
-The public SDK is the construction surface for shipped, independent and eventually AI-generated MADRE software.
+A **Module** is an independently installable application/domain semantic boundary. It owns its domain state, persistence, types, integrations, optional UI, optional Agents and domain-specific behavior.
 
-A **Module** is an independently installable application/domain semantic boundary. It owns its domain state, persistence, types, integrations, optional UI, optional Agents and domain-specific behaviour.
+An **Agent** is a semantic reasoning actor. An **Operation** is bounded executable behavior. The distinction matters: another Agent can invoke an Operation exposed by an agentless Module without transferring semantic continuation. Agent-to-Agent delegation is explicit and different.
 
-An **Agent** is a semantic reasoning actor.
+A **Skill** is reusable know-how. Where MADRE uses Workflow/WorkPlan concepts, they remain semantic Agent behavior/planning rather than Kernel scheduling.
 
-An **Operation** is bounded executable behaviour.
-
-The actor/action distinction is intentional. An agentless Module can expose Operations; another Agent can invoke them. Invoking another Module's Operation does not transfer semantic continuation to a target Agent unless an explicit Agent-to-Agent delegation occurs.
-
-A **Skill** is reusable know-how. A **Workflow** is reusable Agent behaviour. A **WorkPlan** is objective-specific semantic planning that may coordinate multiple Agents/Workflows.
-
-Reusable behaviour such as research, file access, search, calendar access or inference does not become a Module merely because it is useful.
+The public SDK is intended to be the construction surface for shipped, independent and eventually AI-generated Modules. It must remain small and explicit enough that an automated builder can generate ordinary installed software without hidden MADRE knowledge.
 
 ## SPIRA
 
-MADRE's Security Algebra is the intrinsic composition of the actual semantic facts participating now. It is not a permission/authorization service, policy engine or mutable Agent-owned security context.
-
-The five facets and their direct meanings are:
+MADRE's Security Algebra is intrinsic composition of actual semantic facts, not a central authorization service or Agent-owned mutable security context.
 
 ```text
 Material/context representation       -> Sensitivity
@@ -56,253 +40,101 @@ actual selected Operation/effect      -> Risk
 current acting Agent continuation     -> Autonomy
 ```
 
-Values are:
+Only actual constituents participate. If a semantic composition is incompatible, software changes the actual constituents rather than relabeling facts. SPIRA remains above the Kernel boundary.
 
-```text
-Sensitivity: SYSTEM_RESERVED, TRIVIAL, SHARED, PROFILING, SENSITIVE, SECRET
-Privacy:    SYSTEM_RESERVED, PUBLIC, UNKNOWN, LOCAL, MODULE, ISOLATED
-Integrity:  SYSTEM_RESERVED, NOT_DECLARED, DECLARED, TRUSTED, ACCEPTED, VALIDATED
-Risk:       SYSTEM_RESERVED, READ, WRITE, DELETE, EXECUTE, POTENTIALLY_HARMFUL
-Autonomy:   SYSTEM_RESERVED, LIVE_INTERACTION, ASK_ALWAYS, ASK_ONCE, ACKNOWLEDGE, AUTONOMOUS
-```
+## ReasoningRequest and physical inference
 
-Same-facet reductions are:
+A `ReasoningRequest` represents a semantic need for reasoning and is created by an Agent. It can involve context, Material, provenance, Owner instruction and relevant semantic facts.
 
-```text
-Sensitivity = max(actual participating Sensitivities)
-Privacy     = min(actual participating Privacies)
-Integrity   = min(actual participating Integrities)
-```
+It does not cross into Kernel. Semantic MADRE derives a small physical inference requirement containing only what physical execution needs today, such as prepared input, requested effort, urgency, eligibility/deadline and hard execution restrictions.
 
-Risk is the Risk of the concrete Operation/effect actually selected. Autonomy is the state of the actual Agent continuation. They are deliberately separate.
-
-There is **no mandatory `EffectProfile`** in the current architecture and no Agent-owned `Compound` object. Historical implementations that paired Risk/Autonomy in `EffectProfile` are evidence from an earlier design, not current authority.
-
-Where the actual semantic construction makes the relations relevant:
-
-```text
-max(S_actual_information) <= min(P_actual_receiving_boundaries)
-
-min(R_actual_operation, A_current_agent_continuation)
-    <= min(I_actual_non_user_causal_participants)
-
-R_actual_operation
-    <= min(I_actual_effect_realizers)
-```
-
-These describe intrinsic compatibility of the current construction, not permission from a central authority. If the exact construction is incompatible, semantic software changes actual constituents and derives again.
-
-The Agent decides what to try; the algebra follows from what actually participates.
-
-Detailed authority: `docs/architecture/security-algebra.md`.
-
-## ReasoningRequest and the physical inference boundary
-
-A `ReasoningRequest` is a semantic need for reasoning created by an Agent. It can involve context, Material, provenance, Owner instruction, relevant SPIRA facts and the reasoning objective.
-
-It is **not** required to become a generic SPIRA tuple. The facets remain on the actual semantic facts where they belong.
-
-Agents do not construct Kernel Work directly, and `ReasoningRequest` does not cross into Kernel as a semantic object.
-
-Semantic MADRE derives a small physical inference requirement from what it can actually know about the reasoning need, for example:
-
-```text
-prepared inference input
-requested result characteristics
-desired reasoning depth / effort
-context characteristics
-urgency
-acceptable delay / deadline
-required modality/context characteristics
-hard physical restrictions derived from semantic composition
-explicit Owner execution preferences where relevant
-```
-
-The exact SDK carrier and Runtime journey remain design work. The first version must stay small: a field belongs in the contract because an implemented DRE decision consumes it, not because a generic AI platform might want it.
-
-The semantic side does not need to resolve an exact provider/model/configuration before Kernel. That was an intermediate corrective Lane C architecture which successfully removed Kernel-owned inference engines but also prevented Kernel DRE from doing meaningful capability-aware physical scheduling.
-
-Runtime supplies installation mechanics—Module discovery/lifecycle/addressing/routing, persistence/correlation, configured execution and diagnostics. Runtime does **not** become the semantic owner/evaluator of SPIRA merely because it transports or executes calls.
+This boundary preserves model agnosticism: application meaning is not defined by whichever physical inference mechanism is eventually used.
 
 ## CORE
 
-CORE is an ordinary Module assigned the CORE installation role.
+CORE is an ordinary Module assigned the CORE role. It can provide the normal Owner interaction and useful default/meta behavior. It does not own other Modules/Agents, Runtime, Kernel or SPIRA.
 
-It can provide ordinary Owner interaction, default/meta behaviour, default Agents and reusable generic behaviour.
+## Kernel and Delayed Reasoning Effort
 
-CORE is not Runtime, Kernel, owner of other Modules or a special SPIRA authority.
-
-Kernel inference-capability knowledge and physical DRE scheduling do not become CORE ownership merely because a previous architecture used a Module-owned reasoning-to-physical executor.
-
-## Kernel
-
-Kernel is MADRE's shared durable physical inference control plane.
-
-It owns the common physical concepts needed to make DRE useful across independently installed applications:
+Kernel is MADRE's shared durable physical inference substrate. It owns:
 
 ```text
 PhysicalInferenceWork
-InferenceCapability
-configured/declared capability facts
-current capability state
-provenance-preserving physical observations/evidence
-DRE inference-aware scheduling / physical strategy
-physical attempts, results and recovery
+InferenceCapability configured facts
+current capability availability
+historical physical observations/evidence
+DRE physical scheduling
+attempt/result/cancel/recovery lifecycle
 ```
 
-Kernel owns Work identity/lifecycle, eligibility/urgency, deadlines, bounded physical concurrency, cancellation, physically justified retry/escalation, durable result retention and restart recovery.
+It does **not** understand Module, Agent, Operation semantics, Material meaning, ReasoningRequest semantics, SPIRA, CORE or semantic continuation.
 
-### InferenceCapability
+Kernel capability knowledge is deliberately empirical. Configured facts, current availability and historical observations are separate. DRE uses the physical evidence it actually has rather than assuming all inference paths are equal.
 
-An `InferenceCapability` represents a physical path through which MADRE can obtain intelligence. It is not a provider/model ontology and it does not make the external inference runtime MADRE-owned.
+### Current DRE behavior
 
-The same underlying model exposed with materially different configurations can be several capabilities. Different providers/runtimes can also be interchangeable for a given physical requirement.
+Current Lane C preserves durable eligibility/deadlines, hard execution-boundary/effort admissibility, current availability truth, Owner preference and observed successful latency where the implemented interactive rule consumes it.
 
-Capability knowledge preserves provenance rather than flattening every fact into one mutable truth:
+Known available is preferred. A configured `Unknown` capability remains a legitimate option when no known-available admissible candidate exists because lack of probe evidence is not unavailability. Known-unavailable capabilities wait and are re-observed automatically.
+
+Kernel does not become an application answer judge. A physically valid result that does not solve the user's semantic problem is handled by the Agent/Module above Kernel.
+
+## Current physical construction surface
+
+Current Lane C is a cross-platform .NET Kernel under `kernel/` with:
+
+- SQLite authoritative durable Work, attempts, configured/current capability truth and retained results;
+- wake/deadline-driven DRE scheduling with explicit domain policy;
+- asynchronous capability observation so startup is not held hostage by slow/broken inference systems;
+- configuration reconciliation so removed capabilities are no longer selectable while attempt history remains historical;
+- typed physical failure vocabulary with separate technical detail;
+- one physical binding-execution responsibility;
+- shell-free process binding, MEAI interoperability and open `IInferenceBinding` extensibility;
+- a small versioned bounded Unix-domain-socket IPC contract used by Java 21 on Windows/Linux;
+- independent Kernel/client lifetimes, bounded concurrency, cancellation, release and truthful `UnknownCompletion` restart recovery.
+
+A missing configuration and zero configured capabilities are valid; configuration becomes necessary only when inference is actually expected.
+
+There is no TCP/loopback web control plane, configurable port or web-host dependency.
+
+The earlier `High + Background` MAF two-stage/checkpoint behavior was a validation strategy rather than MADRE product strategy and has been deleted together with its production dependency/state/tests. Git history preserves that experiment. Future real physical strategies may use MAF when a concrete need exists; no scaffolding is kept speculatively.
+
+## Physical binding openness
+
+The Owner's inference systems remain independent. `InferenceCapability` describes the physical opportunity available to MADRE; it does not rematerialize the provider/runtime as a MADRE-owned engine.
+
+MADRE-provided integrations use the same class of binding seam available to advanced Owners. Removing one adapter must leave Kernel architecture coherent. Connector marketplaces, plugin prisons, generic schedulers and speculative strategy registries are not current requirements.
+
+## DRE and domain knowledge together
+
+MADRE's practical comparison is not simply small local model versus frontier model. It is:
 
 ```text
-CONFIGURED / DECLARED
-    locality / external boundary
-    modalities
-    context characteristics
-    declared inference/reasoning features
-    cost characteristics where meaningful
-    Owner configuration/preferences
-    execution binding
-
-CURRENT
-    reachability / availability
-    transient degradation or limits
-    observable pressure where meaningful
-
-HISTORICAL / OBSERVED
-    latency
-    throughput
-    failures / error rates
-    availability history
-    malformed/incomplete-result rates
-    observed costs
-    benchmark/evaluation evidence with provenance where supplied
+domain-aware application
++ deterministic software
++ accumulated knowledge
++ semantic Agents
++ Delayed Reasoning Effort
++ selective physical inference
 ```
 
-Only properties with an actual DRE consumer need first-class representation in the first version.
+versus repeatedly reconstructing the whole domain in a synchronous provider conversation.
 
-### DRE and physical observations
-
-Kernel DRE is the inference-aware physical scheduler. It can decide when to run, which admissible capability to use, how much physical effort to spend, whether to defer, whether a richer physical inference strategy is worthwhile, whether physically justified retry/escalation is appropriate and whether a checkpointed physical strategy should resume.
-
-Kernel may accumulate factual evidence such as latency, availability, throughput, failure/error rates and observed cost and use that evidence in future DRE decisions. Explicit benchmark/evaluation evidence may also be retained with provenance when a DRE strategy understands it.
-
-Kernel does not become an application semantic evaluator. A physically valid inference result is not retried merely because Kernel believes the answer is weak or does not solve the user's actual task. Semantic dissatisfaction belongs to the consuming Agent/Module.
-
-A useful distinction is:
-
-```text
-executor retry
-    transient physical/executor failure
-
-DRE retry / escalation
-    physical inference result is unusable/incomplete
-    or an explicitly physical strategy condition requires continuation
-
-semantic retry
-    physically valid result does not satisfy the application need
-    -> Agent/Module logic
-```
-
-### Semantic blindness remains real
-
-Kernel must remain blind to Module, MADRE Agent, Operation, Material meaning, ReasoningRequest semantics, SPIRA as semantic objects/policy, CORE semantics, MADRE Skill/Workflow/WorkPlan semantics and semantic continuation/persistence.
-
-It also does not own model loading/warmness, provider/runtime internal process lifecycle, generic engine RAM/VRAM accounting or external inference-engine implementation.
-
-A Module may privately use another AI/inference environment without using the shared Kernel. Kernel is not a universal interceptor.
-
-### Physical strategy and binding openness
-
-A DRE strategy may legitimately invoke several inference capabilities, perform physical/structural validation, fan out, compare or synthesize physical outputs. That is physical inference orchestration and does not automatically become a MADRE semantic Workflow.
-
-Physical workflow machinery must not silently acquire semantic/application effects such as modifying Module state, sending application email, committing project/domain state or invoking another Module's semantic Operation merely because a framework can call tools.
-
-Inference engines/runtimes remain external mechanisms connected through physical bindings. Useful bindings can include provider/model interoperability, OpenAI-compatible endpoints, generic HTTP/protocol, process/script wrappers, A2A/remote intelligence and future Owner-defined mechanisms.
-
-MADRE does not require a first-version connector marketplace or universal hot-loader. An unusual Owner-controlled inference environment should normally be integrable through configuration or a physical binding rather than provider-specific changes to Kernel architecture.
-
-MADRE-provided inference conveniences must use the same class of physical construction surface available to advanced Owners. No provider/runtime receives a privileged Kernel ontology or hidden first-party lifecycle.
-
-### MEAI and MAF containment
-
-The current Lane C implementation reuses Microsoft.Extensions.AI and Microsoft Agent Framework as physical infrastructure where useful.
-
-They do not define MADRE concepts:
-
-```text
-MADRE Agent         != MAF AIAgent
-MADRE Workflow      != MAF Workflow
-InferenceCapability != IChatClient
-InferenceCapability != MAF AIAgent
-InferenceCapability != MAF Workflow
-DRE                  != MAF
-```
-
-MEAI can provide common inference interoperability behind a capability binding.
-
-MAF provides the concrete checkpointed two-stage physical strategy currently selected by DRE for the implemented richer strategy, and remains optional per strategy. Simple inference bypasses MAF completely.
-
-### Durable physical truth
-
-MADRE keeps one authoritative `PhysicalInferenceWork` lifecycle. SQLite is the current authoritative durable state for Lane C unless a concrete later requirement justifies replacement.
-
-Framework checkpoint state is subordinate execution state. A MAF checkpoint does not independently determine whether MADRE Work exists, is cancelled, terminal or should resume. Durable strategy/binding identity makes incompatible continuation after upgrades detectable rather than silently restoring old state into a changed implementation.
-
-Restart recovery remains truthful. Loss of certainty about an active attempt is represented as `UnknownCompletion`; it is not rewritten as definite failure merely for convenience and is not implicitly duplicated.
-
-Generic scheduler/workflow platforms such as Quartz, Wolverine, Elsa or Temporal are not currently required. They may be reconsidered if concrete needs make them simpler than the small MADRE-owned durable substrate.
-
-## Delayed Reasoning Effort
-
-DRE allows semantic reasoning to outlive an immediate interaction while keeping semantic and physical persistence separate.
-
-Semantic MADRE retains why the work exists, relevant context and continuation. It derives the physical inference requirements it can know from application meaning.
-
-Kernel retains and schedules the durable physical inference Work, combines those requirements with configured capability facts, current state and observations, and physically realizes the requested reasoning effort over time.
-
-There is no global semantic scheduler. A Module/Agent can have an outstanding physical reasoning request for minutes or hours while keeping ownership of its own semantic continuation.
-
-Whether semantic preparation is verbally counted as "DRE" or DRE is named only for the Kernel-side scheduler is terminology; the architectural responsibility split is fixed.
-
-This is a core part of MADRE's thesis: time, decomposition, domain knowledge and local resources can substitute for some amount of instantaneous frontier inference, while stronger providers remain available selectively.
+Time, decomposition and existing domain state can substitute for some amount of immediate model power. When they cannot, MADRE can still use stronger external intelligence selectively.
 
 ## SDK as generation target
 
-MADRE is intended not only to run AI-native software but to make creation of owner-native software cheap.
+A central product goal is that the public semantic surface be simple enough for AI-assisted development to generate reliable Modules. The eventual builder may be deferred, but the architecture must already avoid hidden conventions and privileged first-party semantic APIs.
 
-A capable development AI should eventually be able to use the public SDK plus a domain requirement to generate, build, test and install an ordinary Module locally. The builder should not be required for normal runtime execution after the software exists.
+Generated software should become normal installed local software. The development AI need not remain in the runtime loop after the Module exists.
 
-A future BuilderModule may be deferred. The requirement that the public SDK be simple, explicit and sufficient is current.
+## Current implementation status
 
-## Current implementation state
+Lane C is the only current implemented physical inference layer. Its Linux/Windows CI re-proves durable Work, capability-aware DRE, local bounded IPC, Java client interoperability, caller disappearance, eligibility/deadlines, cancellation, release, restart recovery, process/custom binding openness, optional-probe behavior, automatic availability recovery, configuration reconciliation and no-head-starvation scheduling.
 
-Current Lane C is the capability-aware .NET Kernel under `kernel/` together with the current Java `madre-kernel-client`.
+The superseded native C++ Kernel, workers, model/process lifecycle, llama.cpp privilege, protocol-v4 shapes, loopback web host and MAF validation strategy are deleted from the active tree and remain historical evidence only.
 
-The active implementation includes:
-
-- SQLite authoritative durable physical Work and restart recovery;
-- configured/current/observed `InferenceCapability` truth with provenance-preserving evidence;
-- DRE selection using physical effort, hard local/external admissibility, current availability, Owner preference and persisted latency evidence where the current rules consume it;
-- normal Owner JSON configuration with truthful process probing;
-- the shell-free process/executable binding and the same ordinary `IInferenceBinding` seam for MEAI and Owner/custom bindings;
-- bounded physical concurrency, eligibility/deadlines, cancellation, attempt history, caller disappearance and truthful `UnknownCompletion` recovery;
-- explicit terminal payload/result release, including subordinate MAF checkpoint cleanup when terminal Work is released;
-- selective two-stage MAF physical checkpoint/resume while MADRE Work remains authoritative;
-- strategy/binding compatibility checks, cancellation/deadline authority and simple-inference MAF bypass;
-- a local loopback HTTP `/v1` physical control boundary on Windows and Linux;
-- Java physical-client submission/inspection/cancel/result/release over that current boundary;
-- Linux/Windows behavioral CI and contamination/destructive-convergence acceptance.
-
-The superseded native C++ Kernel, workers, engine/model lifecycle, llama.cpp integration, CMake/native acceptance, Unix-domain-socket/named-pipe protocol-v4 implementation and validation-era `kernel-dotnet` side tree are deleted from the active tree. They remain historical implementation evidence in Git history only; they are not an active reference implementation or test oracle.
-
-The semantic SDK/Module layer and Runtime described above are accepted architecture but are **not yet implemented in the active tree**. Do not restore discarded historical semantic implementations to hide that gap.
+The semantic SDK/Module layer and Runtime described by architecture are **not yet implemented in the active tree**. Lane C correction must not be used as an excuse to start SDK/Runtime work.
 
 ## Development character
 
@@ -312,20 +144,4 @@ Engineering target:
 
 > **powerful SDK, simple implementation, fast experimentation, minimal ceremony**
 
-Simplicity does not mean deleting the semantic ownership/application points that make a concept operational. Do not generalise SPIRA, Module/Agent/Operation semantics or the semantic/physical boundary into vague platform abstractions.
-
-Likewise, simplicity does not mean narrowing Kernel until meaningful physical inference scheduling/capability choice has already been completed elsewhere. DRE must remain operational.
-
-## Authority order
-
-1. current Owner instruction;
-2. `docs/product/lane-c-owner-decision.md` for the accepted Lane C/DRE/physical-inference correction and causal rationale;
-3. `docs/product/owner-intent-corpus.md` for detailed product meaning not superseded by that later decision;
-4. `NORTH_STAR.md` as the short mandatory anti-drift recovery checkpoint;
-5. this file as the detailed repository-level product/semantic overview;
-6. `docs/architecture/security-algebra.md` for SPIRA;
-7. `docs/architecture/mid-level-architecture.md` for whole-system engineering;
-8. `docs/architecture/kernel.md` for the current Kernel architecture and implementation;
-9. active implementation/tests/CI as evidence.
-
-Historical implementation is evidence only and loses whenever later Owner intent supersedes it.
+New structure earns its place because an actual MADRE responsibility needs it, not because conventional platforms usually contain it.
