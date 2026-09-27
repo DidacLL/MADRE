@@ -308,7 +308,11 @@ public static class KernelIpcServer
         string directory = Path.GetDirectoryName(fullPath)
             ?? throw new InvalidOperationException("IPC path has no parent directory");
         Directory.CreateDirectory(directory);
-        if (!OperatingSystem.IsWindows())
+        if (!OperatingSystem.IsWindows()
+            && string.Equals(
+                Path.GetFullPath(directory),
+                Path.GetFullPath(KernelPaths.UserDataDirectory),
+                StringComparison.Ordinal))
         {
             File.SetUnixFileMode(
                 directory,
