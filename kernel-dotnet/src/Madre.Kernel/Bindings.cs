@@ -136,17 +136,19 @@ public sealed class ProcessInferenceBinding : IInferenceBinding
         }
         catch (OperationCanceledException)
         {
-            await KillAndWaitAsync(process).ConfigureAwait(false);
-            return BindingExecutionResult.Cancelled("PROCESS_CANCELLED_CONFIRMED");
+            bool confirmed = await TryTerminateAndConfirmAsync(process).ConfigureAwait(false);
+            return confirmed
+                ? BindingExecutionResult.Cancelled("PROCESS_CANCELLED_CONFIRMED")
+                : BindingExecutionResult.Unknown("PROCESS_CANCELLATION_COMPLETION_UNKNOWN");
         }
         catch (InvalidDataException)
         {
-            await KillAndWaitAsync(process).ConfigureAwait(false);
+            _ = await TryTerminateAndConfirmAsync(process).ConfigureAwait(false);
             return BindingExecutionResult.Failure("OUTPUT_LIMIT_EXCEEDED");
         }
         catch (IOException)
         {
-            await KillAndWaitAsync(process).ConfigureAwait(false);
+            _ = await TryTerminateAndConfirmAsync(process).ConfigureAwait(false);
             return BindingExecutionResult.Failure("PROCESS_IO_FAILURE");
         }
     }
@@ -172,28 +174,33 @@ public sealed class ProcessInferenceBinding : IInferenceBinding
         }
     }
 
-    private static async Task KillAndWaitAsync(Process process)
+    private static async Task<bool> TryTerminateAndConfirmAsync(Process process)
     {
         try
         {
-            if (!process.HasExited)
+            if (process.HasExited)
             {
-                process.Kill(entireProcessTree: true);
+                return false;
             }
+            process.Kill(entireProcessTree: true);
         }
         catch (InvalidOperationException)
         {
+            return false;
         }
         catch (Win32Exception)
         {
+            return false;
         }
 
         try
         {
             await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+            return process.HasExited;
         }
         catch (InvalidOperationException)
         {
+            return false;
         }
     }
 }

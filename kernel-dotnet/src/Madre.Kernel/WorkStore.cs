@@ -42,13 +42,12 @@ public sealed class WorkStore
                     execution_boundary_source TEXT NOT NULL,
                     supported_effort TEXT NOT NULL,
                     supported_effort_source TEXT NOT NULL,
-                    owner_preference INTEGER NOT NULL,
-                    owner_preference_source TEXT NOT NULL
+                    owner_preference INTEGER NOT NULL
                 );
                 CREATE TABLE IF NOT EXISTS capability_state (
                     capability_id TEXT PRIMARY KEY REFERENCES capabilities(capability_id) ON DELETE CASCADE,
                     availability TEXT NOT NULL,
-                    observed_at_ms INTEGER NOT NULL
+                    observed_at_ms INTEGER
                 );
                 CREATE TABLE IF NOT EXISTS work (
                     work_id TEXT PRIMARY KEY,
@@ -498,7 +497,7 @@ public sealed class WorkStore
             SELECT c.capability_id, c.binding_id, c.binding_version,
                    c.execution_boundary, c.execution_boundary_source,
                    c.supported_effort, c.supported_effort_source,
-                   c.owner_preference, c.owner_preference_source,
+                   c.owner_preference,
                    s.availability, s.observed_at_ms,
                    (SELECT AVG(a.latency_ms) FROM attempts a WHERE a.capability_id = c.capability_id AND a.outcome = $success),
                    (SELECT COUNT(*) FROM attempts a WHERE a.capability_id = c.capability_id AND a.outcome = $success),
@@ -522,13 +521,13 @@ public sealed class WorkStore
                 new ConfiguredFact<InferenceEffort>(
                     Enum.Parse<InferenceEffort>(reader.GetString(5)),
                     Enum.Parse<FactProvenance>(reader.GetString(6))),
-                new ConfiguredFact<int>(reader.GetInt32(7), Enum.Parse<FactProvenance>(reader.GetString(8))));
+                reader.GetInt32(7));
             var state = new CapabilityState(
                 capability.CapabilityId,
-                Enum.Parse<CapabilityAvailability>(reader.GetString(9)),
-                FromMs(reader.GetInt64(10)));
-            double? latency = reader.IsDBNull(11) ? null : reader.GetDouble(11);
-            result.Add(new CapabilitySnapshot(capability, state, latency, reader.GetInt32(12), reader.GetInt32(13)));
+                Enum.Parse<CapabilityAvailability>(reader.GetString(8)),
+                reader.IsDBNull(9) ? null : FromMs(reader.GetInt64(9)));
+            double? latency = reader.IsDBNull(10) ? null : reader.GetDouble(10);
+            result.Add(new CapabilitySnapshot(capability, state, latency, reader.GetInt32(11), reader.GetInt32(12)));
         }
         return result;
     }
@@ -541,8 +540,8 @@ public sealed class WorkStore
                 capability_id, binding_id, binding_version,
                 execution_boundary, execution_boundary_source,
                 supported_effort, supported_effort_source,
-                owner_preference, owner_preference_source)
-            VALUES ($id, $binding, $bindingVersion, $boundary, $boundarySource, $effort, $effortSource, $preference, $preferenceSource)
+                owner_preference)
+            VALUES ($id, $binding, $bindingVersion, $boundary, $boundarySource, $effort, $effortSource, $preference)
             ON CONFLICT(capability_id) DO UPDATE SET
                 binding_id = excluded.binding_id,
                 binding_version = excluded.binding_version,
@@ -550,8 +549,7 @@ public sealed class WorkStore
                 execution_boundary_source = excluded.execution_boundary_source,
                 supported_effort = excluded.supported_effort,
                 supported_effort_source = excluded.supported_effort_source,
-                owner_preference = excluded.owner_preference,
-                owner_preference_source = excluded.owner_preference_source;
+                owner_preference = excluded.owner_preference;
             """;
         command.Parameters.AddWithValue("$id", capability.CapabilityId);
         command.Parameters.AddWithValue("$binding", capability.BindingId);
@@ -560,19 +558,17 @@ public sealed class WorkStore
         command.Parameters.AddWithValue("$boundarySource", capability.ExecutionBoundary.Provenance.ToString());
         command.Parameters.AddWithValue("$effort", capability.SupportedEffort.Value.ToString());
         command.Parameters.AddWithValue("$effortSource", capability.SupportedEffort.Provenance.ToString());
-        command.Parameters.AddWithValue("$preference", capability.OwnerPreference.Value);
-        command.Parameters.AddWithValue("$preferenceSource", capability.OwnerPreference.Provenance.ToString());
+        command.Parameters.AddWithValue("$preference", capability.OwnerPreference);
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
 
         await using SqliteCommand state = connection.CreateCommand();
         state.CommandText = """
             INSERT INTO capability_state (capability_id, availability, observed_at_ms)
-            VALUES ($id, $availability, $now)
+            VALUES ($id, $availability, NULL)
             ON CONFLICT(capability_id) DO NOTHING;
             """;
         state.Parameters.AddWithValue("$id", capability.CapabilityId);
-        state.Parameters.AddWithValue("$availability", CapabilityAvailability.Available.ToString());
-        state.Parameters.AddWithValue("$now", NowMs());
+        state.Parameters.AddWithValue("$availability", CapabilityAvailability.Unknown.ToString());
         await state.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 

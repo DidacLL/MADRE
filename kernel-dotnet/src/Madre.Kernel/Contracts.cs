@@ -28,8 +28,9 @@ public enum FactProvenance
 
 public enum CapabilityAvailability
 {
-    Unavailable = 0,
-    Available = 1
+    Unknown = 0,
+    Unavailable = 1,
+    Available = 2
 }
 
 public enum WorkState
@@ -67,12 +68,12 @@ public sealed record InferenceCapability(
     string BindingVersion,
     ConfiguredFact<ExecutionBoundary> ExecutionBoundary,
     ConfiguredFact<InferenceEffort> SupportedEffort,
-    ConfiguredFact<int> OwnerPreference);
+    int OwnerPreference);
 
 public sealed record CapabilityState(
     string CapabilityId,
     CapabilityAvailability Availability,
-    DateTimeOffset ObservedAt);
+    DateTimeOffset? ObservedAt);
 
 public sealed record AttemptInspection(
     int AttemptNumber,

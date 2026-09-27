@@ -97,7 +97,7 @@ public static class KernelWebHost
         app.MapGet("/v1/capabilities", async (CancellationToken ct) =>
             Results.Ok(await engine.CapabilitiesAsync(ct).ConfigureAwait(false)));
 
-        app.MapPut("/v1/capabilities/{id}/state", async (string id, CapabilityStateUpdate update, CancellationToken ct) =>
+        app.MapPut("/_validation/capabilities/{id}/state", async (string id, CapabilityStateUpdate update, CancellationToken ct) =>
         {
             try
             {

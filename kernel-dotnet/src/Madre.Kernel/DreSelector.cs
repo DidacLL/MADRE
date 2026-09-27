@@ -40,14 +40,14 @@ public sealed class DreSelector
         {
             selected = available
                 .OrderBy(snapshot => snapshot.SuccessfulLatencyMs!.Value)
-                .ThenByDescending(snapshot => snapshot.Capability.OwnerPreference.Value)
+                .ThenByDescending(snapshot => snapshot.Capability.OwnerPreference)
                 .ThenBy(snapshot => snapshot.Capability.CapabilityId, StringComparer.Ordinal)
                 .First();
         }
         else
         {
             selected = available
-                .OrderByDescending(snapshot => snapshot.Capability.OwnerPreference.Value)
+                .OrderByDescending(snapshot => snapshot.Capability.OwnerPreference)
                 .ThenBy(snapshot => snapshot.Capability.CapabilityId, StringComparer.Ordinal)
                 .First();
         }

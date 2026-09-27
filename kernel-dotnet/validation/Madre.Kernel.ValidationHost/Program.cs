@@ -17,21 +17,21 @@ var capabilities = new[]
         "1",
         new ConfiguredFact<ExecutionBoundary>(ExecutionBoundary.ExternalAllowed, FactProvenance.Owner),
         new ConfiguredFact<InferenceEffort>(InferenceEffort.High, FactProvenance.ProviderOrRuntime),
-        new ConfiguredFact<int>(10, FactProvenance.Owner)),
+        10),
     new InferenceCapability(
         "process-local",
         "process/test",
         "1",
         new ConfiguredFact<ExecutionBoundary>(ExecutionBoundary.LocalOnly, FactProvenance.Owner),
         new ConfiguredFact<InferenceEffort>(InferenceEffort.Standard, FactProvenance.ProviderOrRuntime),
-        new ConfiguredFact<int>(100, FactProvenance.Owner)),
+        100),
     new InferenceCapability(
         "owner-custom",
         "owner/custom",
         "1",
         new ConfiguredFact<ExecutionBoundary>(ExecutionBoundary.LocalOnly, FactProvenance.Owner),
         new ConfiguredFact<InferenceEffort>(InferenceEffort.Low, FactProvenance.Owner),
-        new ConfiguredFact<int>(50, FactProvenance.Owner))
+        50)
 };
 
 IInferenceBinding[] bindings =
