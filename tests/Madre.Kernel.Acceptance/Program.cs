@@ -33,6 +33,19 @@ internal static partial class Program
         using JsonDocument java = JsonDocument.Parse(await JavaAsync(socket, "protocol"));
         Check(java.RootElement.GetProperty("version").GetInt32() == KernelProtocol.Version && java.RootElement.GetProperty("maxPayloadBytes").GetInt32() == KernelProtocol.MaxPayloadBytes && java.RootElement.GetProperty("maxFrameBytes").GetInt32() == KernelProtocol.MaxFrameBytes, "Java/.NET protocol constants diverged");
 
+        bool oversizedRejected = false;
+        try
+        {
+            await client.CallAsync<WorkSubmissionResponse>(
+                "Submit",
+                Req(new string('x', KernelProtocol.MaxPayloadBytes + 1), InferenceEffort.Low, WorkUrgency.Normal, ExecutionBoundary.LocalOnly));
+        }
+        catch (InvalidOperationException exception) when (exception.Message.Contains("InvalidRequest", StringComparison.Ordinal))
+        {
+            oversizedRejected = true;
+        }
+        Check(oversizedRejected, "prepared input payload bound was not enforced");
+
         using Socket stalled = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
         await stalled.ConnectAsync(new UnixDomainSocketEndPoint(socket));
         byte[] header = new byte[4]; BinaryPrimitives.WriteInt32BigEndian(header, 100);
@@ -96,8 +109,11 @@ internal static partial class Program
         DateTimeOffset now = DateTimeOffset.UtcNow;
         string future = await SubmitAsync(client, new PhysicalInferenceRequest("future", InferenceEffort.Standard, WorkUrgency.Normal, now.AddMilliseconds(450), null, ExecutionBoundary.LocalOnly));
         await Task.Delay(150); Check((await InspectAsync(client, future)).State == WorkState.Queued, "eligibility ignored"); await WaitStateAsync(client, future, WorkState.Succeeded);
-        string expired = await SubmitAsync(client, new PhysicalInferenceRequest("expired", InferenceEffort.Standard, WorkUrgency.Normal, now.AddMilliseconds(800), now.AddMilliseconds(300), ExecutionBoundary.LocalOnly));
+        string deadlineBlocker = await SubmitAsync(client, Req("SLOW:600", InferenceEffort.Standard, WorkUrgency.Normal, ExecutionBoundary.LocalOnly));
+        await WaitStateAsync(client, deadlineBlocker, WorkState.Running);
+        string expired = await SubmitAsync(client, new PhysicalInferenceRequest("expired", InferenceEffort.Standard, WorkUrgency.Normal, null, DateTimeOffset.UtcNow.AddMilliseconds(120), ExecutionBoundary.LocalOnly));
         WorkInspection dead = await WaitStateAsync(client, expired, WorkState.Failed); Check(dead.Failure?.Kind == PhysicalFailureKind.DeadlineExpired && dead.Attempts.Count == 0, "deadline behavior failed");
+        await WaitStateAsync(client, deadlineBlocker, WorkState.Succeeded);
 
         string queued = await SubmitAsync(client, new PhysicalInferenceRequest("cancel", InferenceEffort.Standard, WorkUrgency.Normal, DateTimeOffset.UtcNow.AddSeconds(2), null, ExecutionBoundary.LocalOnly));
         await client.CallAsync<CancelReply>("Cancel", new WorkIdArg(queued)); Check((await WaitStateAsync(client, queued, WorkState.Cancelled)).Attempts.Count == 0, "queued cancellation raced");
@@ -105,7 +121,7 @@ internal static partial class Program
         await client.CallAsync<CancelReply>("Cancel", new WorkIdArg(running)); WorkInspection cancelled = await WaitStateAsync(client, running, WorkState.Cancelled); Check(cancelled.Attempts.Single().Outcome == PhysicalAttemptOutcome.ConfirmedCancelled, "running process cancellation was not confirmed");
 
         string fail = await SubmitAsync(client, Req("FAIL", InferenceEffort.Standard, WorkUrgency.Normal, ExecutionBoundary.LocalOnly)); WorkInspection failed = await WaitStateAsync(client, fail, WorkState.Failed);
-        Check(failed.Failure?.Kind == PhysicalFailureKind.ProcessExited && failed.Failure.Detail?.Contains("17", StringComparison.Ordinal) == true, "typed process failure lost detail");
+        Check(failed.Failure?.Kind == PhysicalFailureKind.ProcessExited && failed.Failure?.Detail?.Contains("17", StringComparison.Ordinal) == true, "typed process failure lost detail");
 
         string retained = await SubmitAsync(client, Req("retain", InferenceEffort.Standard, WorkUrgency.Normal, ExecutionBoundary.LocalOnly)); await WaitStateAsync(client, retained, WorkState.Succeeded);
         Check((await client.CallAsync<WorkResultSnapshot>("Result", new WorkIdArg(retained))).Result == "slow:retain", "result not retained");

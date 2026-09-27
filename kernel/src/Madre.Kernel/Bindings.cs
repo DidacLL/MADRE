@@ -13,7 +13,7 @@ public sealed record BindingExecutionResult(
     public static BindingExecutionResult Success(string result) =>
         new(PhysicalAttemptOutcome.Succeeded, result);
 
-    public static BindingExecutionResult Failure(PhysicalFailureKind kind, string? detail = null) =>
+    public static BindingExecutionResult Fail(PhysicalFailureKind kind, string? detail = null) =>
         new(PhysicalAttemptOutcome.DefiniteFailure, null, new PhysicalFailure(kind, detail));
 
     public static BindingExecutionResult Cancelled(string? detail = null) =>
@@ -58,13 +58,13 @@ internal sealed class BindingExecutor
         }
         if (result.Result is null)
         {
-            return BindingExecutionResult.Failure(
+            return BindingExecutionResult.Fail(
                 PhysicalFailureKind.InvalidBindingResult,
                 "binding reported success without a result");
         }
         if (Encoding.UTF8.GetByteCount(result.Result) > KernelProtocol.MaxPayloadBytes)
         {
-            return BindingExecutionResult.Failure(
+            return BindingExecutionResult.Fail(
                 PhysicalFailureKind.PayloadLimitExceeded,
                 $"result exceeded {KernelProtocol.MaxPayloadBytes} UTF-8 bytes");
         }
@@ -195,16 +195,16 @@ public sealed class ProcessInferenceBinding : IInferenceBinding
         {
             if (!process.Start())
             {
-                return BindingExecutionResult.Failure(PhysicalFailureKind.LaunchFailed, "Process.Start returned false");
+                return BindingExecutionResult.Fail(PhysicalFailureKind.LaunchFailed, "Process.Start returned false");
             }
         }
         catch (Win32Exception ex)
         {
-            return BindingExecutionResult.Failure(PhysicalFailureKind.LaunchFailed, ex.NativeErrorCode.ToString());
+            return BindingExecutionResult.Fail(PhysicalFailureKind.LaunchFailed, ex.NativeErrorCode.ToString());
         }
         catch (InvalidOperationException ex)
         {
-            return BindingExecutionResult.Failure(PhysicalFailureKind.LaunchFailed, ex.GetType().Name);
+            return BindingExecutionResult.Fail(PhysicalFailureKind.LaunchFailed, ex.GetType().Name);
         }
 
         try
@@ -225,7 +225,7 @@ public sealed class ProcessInferenceBinding : IInferenceBinding
                 string detail = string.IsNullOrWhiteSpace(error)
                     ? $"exitCode={process.ExitCode}"
                     : $"exitCode={process.ExitCode}; stderr={error}";
-                return BindingExecutionResult.Failure(PhysicalFailureKind.ProcessExited, detail);
+                return BindingExecutionResult.Fail(PhysicalFailureKind.ProcessExited, detail);
             }
             return BindingExecutionResult.Success(output);
         }
@@ -239,12 +239,12 @@ public sealed class ProcessInferenceBinding : IInferenceBinding
         catch (InvalidDataException ex)
         {
             _ = await TryTerminateAndConfirmAsync(process).ConfigureAwait(false);
-            return BindingExecutionResult.Failure(PhysicalFailureKind.PayloadLimitExceeded, ex.Message);
+            return BindingExecutionResult.Fail(PhysicalFailureKind.PayloadLimitExceeded, ex.Message);
         }
         catch (IOException ex)
         {
             _ = await TryTerminateAndConfirmAsync(process).ConfigureAwait(false);
-            return BindingExecutionResult.Failure(PhysicalFailureKind.IoFailure, ex.GetType().Name);
+            return BindingExecutionResult.Fail(PhysicalFailureKind.IoFailure, ex.GetType().Name);
         }
     }
 
