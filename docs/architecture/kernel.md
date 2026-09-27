@@ -1,6 +1,6 @@
 # MADRE Kernel — current physical inference architecture
 
-Status: **accepted architecture and current Lane C implementation after final engineering convergence**.
+Status: **current accepted physical architecture and implementation; Lane C closure remains an Owner/orchestrator audit decision**.
 
 This document describes the active capability-aware .NET Kernel under `kernel/`. Historical C++, loopback web-host and MAF-validation implementations remain Git-history evidence only.
 
@@ -14,31 +14,37 @@ Kernel exists so MADRE can physically realize reasoning needs over time against 
 SEMANTIC MADRE
     Module / Agent owns meaning and continuation
         ↓
-    semantic reasoning need
-        ↓
-    small physical inference requirement
+    small derived physical inference requirement
         ↓
 madre-kernel-client / physical boundary
-
 ================ HARD BOUNDARY ================
-
 KERNEL
     PhysicalInferenceWork
         ↓
-    DRE + InferenceCapability truth/observations
+    DRE + InferenceCapability truth/evidence
         ↓
     selected physical binding
         ↓
     Owner-selected inference environment
 ```
 
-The current physical request contains only implemented facts consumed by DRE: prepared input, requested effort, urgency, optional eligibility/deadline and hard local/external execution boundary.
+The current physical request contains only prepared input, requested effort, urgency, optional eligibility/deadline and hard local/external execution boundary. Kernel remains ignorant of Module, Agent, Operation, Material, ReasoningRequest, SPIRA, CORE, semantic Workflow/WorkPlan and semantic continuation/persistence.
 
-Kernel remains ignorant of Module, MADRE Agent, Operation, Material meaning, ReasoningRequest semantics, SPIRA policy, CORE, MADRE Skill/Workflow/WorkPlan semantics and semantic continuation/persistence.
+## Process ownership and local endpoint
 
-## Physical Work
+Exactly one Kernel process owns a given SQLite database at a time, independent of IPC path. The process acquires a database-scoped lifetime lease before touching the IPC endpoint or starting scheduling.
 
-One authoritative durable Work lifecycle holds the physical request and execution state required for DRE/recovery:
+A second Kernel targeting the same database fails whether it requests the same socket or another socket. It cannot unlink the first Kernel's endpoint and cannot run another scheduler over the same authoritative database.
+
+Endpoint preparation is separately conservative. A proven-live local socket is never deleted. A stale filesystem socket is removed only after a connection attempt establishes that it is not live. Endpoint cleanup remains process-local and does not define database ownership.
+
+## Durable Work and schema truth
+
+SQLite is authoritative for current Lane C physical Work, attempt history, configured/current capability truth and retained results.
+
+The current schema has an explicit `PRAGMA user_version` identity. A fresh database is created as the current schema. An existing unversioned database with pre-release tables, or a database with another schema version, fails early with a clear incompatibility error. Lane C does not add migrations or compatibility machinery for pre-release physical schemas.
+
+One durable Work lifecycle holds:
 
 ```text
 identity / lifecycle state
@@ -50,17 +56,13 @@ attempt history
 result / failure / release state
 ```
 
-There is no current production strategy/checkpoint field or checkpointed Work state. The earlier MAF checkpoint experiment is not part of the product implementation.
-
-SQLite is the current authoritative local persistence. Work interrupted while actively executing recovers as `UnknownCompletion`; uncertain execution is not silently duplicated.
-
-Terminal release clears retained request/result payload while preserving Work identity, terminal state and attempt history.
+Active attempts interrupted by process loss recover as `UnknownCompletion`; uncertain execution is never silently duplicated. Terminal release clears retained request/result payload while preserving Work identity, terminal state and attempt history.
 
 ## InferenceCapability truth
 
-An `InferenceCapability` is a configured physical path through which MADRE can obtain intelligence. It is not a Module, semantic Agent, provider/model ontology, MADRE-owned engine/worker, `IChatClient`, or workflow object.
+An `InferenceCapability` is a configured physical path through which MADRE can obtain intelligence. It is not a provider/model ontology or MADRE-owned worker.
 
-The current typed core separates:
+The typed core separates:
 
 ```text
 CONFIGURED / DECLARED
@@ -75,29 +77,28 @@ CURRENT
     observed-at time
 
 HISTORICAL / OBSERVED
-    attempt outcomes
-    successful latency evidence
-    failure evidence
+    durable physical attempts
+    successful latency evidence for the current capability/binding/version
 ```
 
-These are distinct truth domains. Configuration does not fabricate availability. Current state is re-observed. Historical attempt evidence remains historical even when a capability is later removed from configuration.
+Configured expectation, current observation and historical evidence are distinct. Removed configured capabilities disappear from selectable current catalogue/state while historical attempt rows remain historical.
 
-At startup the persisted configured catalogue is reconciled to the actual current configuration. Removed capability rows/current state therefore cannot survive as selectable stale configuration. Attempt rows are not deleted by that reconciliation.
+Latency evidence is provenance-scoped to `(capability_id, binding_id, binding_version)`. Reconfiguring the same capability id to another binding/version does not reuse stale latency in DRE. Success/failure aggregate counters with no current DRE consumer are not exposed as capability state.
 
 ### Unknown and Unavailable
 
-`Unknown` means Kernel lacks current availability evidence. It does not mean the capability is unusable.
+`Unknown` means Kernel lacks current availability evidence. It does not mean unusable.
 
-DRE selection rule:
+Selection rule:
 
 1. filter by hard effort and execution-boundary admissibility;
 2. prefer known-available candidates;
-3. if none are known available, an admissible configured `Unknown` candidate may be tried;
+3. if none are known available, an admissible configured `Unknown` may be tried;
 4. if all admissible candidates are known unavailable, Work waits for re-observation.
 
-Successful or otherwise physically informative execution updates current availability evidence. Known-unavailable capabilities are automatically re-observed on a Kernel-owned schedule. Recovery therefore does not rely on a caller manually invoking refresh forever.
+Startup observation is asynchronous. A probe exceeding its technical timeout becomes `Unknown`, not `Unavailable`.
 
-Capability probes run asynchronously after Kernel startup. Slow/broken probes cannot prevent an otherwise valid empty or configured Kernel from becoming available.
+Known-unavailable capabilities are automatically re-observed only while relevant pending Work creates demand. Kernel does not periodically probe every capability forever while idle. Explicit refresh remains available, and successful/physically informative execution may update current state.
 
 ## DRE scheduling
 
@@ -110,15 +111,25 @@ Current decisions consume:
 - hard local/external admissibility;
 - current capability availability;
 - Owner preference;
-- persisted successful latency evidence for interactive choice when candidates have comparable evidence.
+- binding/version-scoped successful latency evidence for interactive choice when comparable evidence exists.
 
-Effort support and urgency priority are explicit domain functions. Enum ordinals do not carry domain semantics. SQL persists/query facts; it does not embed urgency policy.
+Effort support and urgency priority are explicit domain functions. Enum ordinals do not carry policy. SQL persists/query facts; it does not embed urgency policy.
 
-The scheduler is wake/deadline driven. Submission, cancellation, attempt completion and capability observations wake it. The next future Work eligibility/deadline or capability re-observation supplies the next timed wake. There is no fixed busy-poll interval and no SQLite `LIMIT -1` sentinel leaking into scheduling.
+The scheduler is wake/deadline driven. Submission, cancellation, attempt completion and capability observations wake it. Future eligibility/deadlines and demanded unavailable-capability re-observation provide timed wakes. There is no fixed busy-poll interval.
 
-Eligible Work is considered as a complete local set with explicit urgency/creation ordering, so unavailable head Work cannot starve later runnable Work.
+Eligible Work is considered as a complete metadata set with explicit urgency/creation ordering, so waiting unavailable Work cannot starve a later runnable item. The candidate query does **not** load `prepared_input`; payload is loaded transactionally only after Work is actually claimed for an attempt.
 
-Timing defaults are named technical Kernel policy and can be injected for tests through `IKernelClock` / `KernelTimingOptions`; they are not nontechnical Owner configuration knobs.
+Timing defaults are named technical Kernel policy and injectable for tests. They are not nontechnical Owner knobs.
+
+## Background supervision and health truth
+
+Scheduler, capability observation and attempt execution/persistence are Kernel-owned background work and are supervised.
+
+Normal physical probe failure may produce `Unknown`; that is not a fatal infrastructure event. By contrast, failure to maintain authoritative Kernel state—scheduler persistence/query failure, capability-state persistence failure, or attempt completion persistence failure—is fatal.
+
+A fatal infrastructure failure signals Kernel fatal completion, cancels host lifetime and causes the host process to fail/terminate. It must not continue serving `Health = ok` after the authoritative scheduler/state machinery has died.
+
+If an attempt completion could not be durably recorded before the fatal process exit, restart recovery converts the still-`Running` durable attempt/Work to `UnknownCompletion` rather than leaving it forever running or replaying it.
 
 ## Binding execution
 
@@ -129,29 +140,15 @@ ProbeAsync()
 ExecuteAsync(InferenceExecutionRequest)
 ```
 
-`InferenceExecutionRequest` contains execution-relevant physical input only. Scheduler metadata such as urgency, eligibility and deadline is not passed to bindings.
+`InferenceExecutionRequest` contains execution-relevant prepared input only. Scheduler metadata does not cross into bindings.
 
-The provided shell-free process binding, MEAI interoperability and Owner/custom bindings all use the same ordinary seam. Common execution responsibility is centralized in `BindingExecutor`: exception conversion, successful-result validity and output-size enforcement happen once.
+The provided process binding, MEAI interoperability and Owner/custom bindings use the same ordinary seam. Common execution responsibility is centralized in `BindingExecutor`: exception conversion, successful-result validity and output-size enforcement happen once.
 
-Process-specific mechanics remain inside the process binding: launch, bounded stdout/stderr, exit status and confirmed process-tree cancellation.
+Process-specific mechanics stay in the process binding: shell-free launch, explicitly UTF-8 stdin/stdout/stderr, bounded output, exit status and confirmed process-tree cancellation.
 
 ## Physical failure vocabulary
 
-Physical failures use `PhysicalFailureKind` plus separate optional technical detail. Current kinds cover:
-
-```text
-NoAdmissibleCapability
-DeadlineExpired
-Cancelled
-LaunchFailed
-ProcessExited
-PayloadLimitExceeded
-IoFailure
-InvalidBindingResult
-CompletionUnknown
-```
-
-Persistence stores the named kind and detail separately. Scheduling does not depend on scattered magic strings.
+Failures use `PhysicalFailureKind` plus optional technical detail. Current kinds cover no-admissible-capability, deadline expiry, cancellation, launch failure, process exit, payload overflow, I/O failure, invalid binding result and unknown completion. Persistence stores kind and detail separately; scheduling does not depend on magic failure strings.
 
 ## Local IPC
 
@@ -166,68 +163,75 @@ Each message is one bounded frame:
 UTF-8 JSON envelope
 ```
 
-The envelope carries protocol version, request correlation id, operation and payload; responses carry success payload or a small IPC error code/detail.
+`KernelProtocol` owns version/payload/frame limits in .NET. The Java package has one corresponding `KernelProtocol`; live `ProtocolInfo` acceptance proves parity.
 
-`KernelProtocol` owns version and payload/frame limits in .NET. The Java package has one corresponding `KernelProtocol` source. Live acceptance asks the host for `ProtocolInfo` and proves the Java/.NET values match rather than relying on unexplained duplicate literals.
+Each client operation uses an independent short-lived local socket. The server has both a listen backlog and a hard bound on active client handlers, so stalled connections cannot create unbounded task exposure. Per-client idle timeout bounds server-side stalls.
 
-Each client operation uses an independent local socket connection. The server accepts clients concurrently; a stalled or disappearing connection is bounded by its own idle timeout and cannot block unrelated callers or own Kernel lifetime.
+The Java client uses typed `KernelIpcOperation` and `KernelIpcErrorCode` vocabulary and wraps each blocking local call in a bounded technical call lifetime. A bogus/stalled socket peer therefore fails rather than blocking a caller forever.
 
-The default socket lives in the current owner's local application-data directory. Linux restricts the containing directory and socket to owner access. A technical `--ipc-path` override exists for testing/embedding; there is no port setting.
+## Strict boundary parsing
 
-## Durability and restart truth
+Protocol/configuration/CLI boundaries do not silently acquire defaults for required facts.
 
-SQLite owns the durable physical lifecycle. On startup:
+IPC requires protocol version, request id and operation. Submit requires prepared input, effort, urgency and execution boundary. String enums are required; numeric enum encodings are rejected. Unknown parsed JSON properties are rejected.
 
-- schema is opened;
-- configured capability catalogue/current state is reconciled to configuration;
-- current capability state starts `Unknown` until observed again;
+Capability configuration requires explicit capability id, binding id/version, executable, execution boundary, supported effort and Owner preference. Unknown properties, numeric enums and malformed required values fail loading.
+
+CLI accepts only the documented flags, exactly once, with explicit values. Unknown flags, duplicate flags, missing values and malformed integer values fail before host startup.
+
+The normal Kernel host default for physical concurrency has one owner (`KernelHostDefaults`), rather than being duplicated in `KernelEngine` and configuration types.
+
+## Restart, cancellation and release
+
+On startup:
+
+- current schema identity is verified;
+- current configured capability catalogue/state is reconciled;
+- current capability state begins `Unknown` until observed again;
 - attempts left `Running` by process loss become `UnknownCompletion` with technical restart detail;
 - corresponding Work becomes `UnknownCompletion`.
 
-Kernel does not infer that an interrupted physical attempt failed and does not replay it automatically.
+Queued Work cancels without an attempt. Running Work records a cancellation request and signals active binding execution. The process binding reports confirmed cancellation only after physically terminating/observing its process tree. Uncertain cancellation becomes `UnknownCompletion` rather than invented certainty.
 
-## Cancellation
+Terminal release preserves identity/history while deleting retained request/result payload.
 
-Queued Work cancels without creating an attempt. Running Work records a cancellation request and signals the active binding execution.
-
-The process binding reports confirmed cancellation only after physically terminating and observing its process tree. Other uncertain cancellation paths become `UnknownCompletion` rather than claiming certainty Kernel does not have.
-
-## MEAI and future physical strategies
+## Framework containment and openness
 
 Microsoft.Extensions.AI remains useful generic inference interoperability behind bindings. It does not define `InferenceCapability` or DRE.
 
-There is no current production Microsoft Agent Framework dependency or workflow/checkpoint strategy. The previous two-stage `High + Background` experiment proved checkpoint machinery but encoded no meaningful MADRE product strategy, so it and its durable scaffolding were deleted.
+There is no current production Microsoft Agent Framework dependency or workflow/checkpoint strategy. A future actual physical strategy may use MAF, another workflow mechanism or direct code if a concrete product need earns it. No strategy registry/checkpoint fields are retained speculatively.
 
-A future actual physical strategy may use MAF, another workflow mechanism or direct code if a concrete product need earns it. No strategy registry/checkpoint fields are retained speculatively.
-
-## Open physical binding and first-party parity
-
-An unusual Owner-controlled inference system should normally be usable through configuration or an `IInferenceBinding`, not provider-specific edits to Kernel architecture.
-
-Do not add connector marketplaces, hot-loading frameworks, generic plugin systems or security prisons without evidence. MADRE-provided integrations use the same class of physical seam available to advanced Owners. Removing one adapter must leave Kernel architecture coherent.
+An unusual Owner-controlled inference system should normally be usable through configuration or an `IInferenceBinding`, not provider-specific edits to Kernel architecture. Do not add connector marketplaces, hot-loading frameworks, generic plugin systems or security prisons without evidence. Provided integrations use the same class of seam available to advanced Owners.
 
 ## Current acceptance
 
-Normal CI runs the complete Java/.NET Lane C suite on Linux and Windows. It proves:
+Normal CI runs the complete Java/.NET Lane C suite on Linux and Windows. It proves, among other retained behavior:
 
 - zero-capability/no-config startup;
-- no port/web/TCP control-plane implementation;
+- same-database single-process ownership for same and different socket paths;
+- non-destructive live endpoint handling and stale filesystem-socket recovery where applicable;
+- explicit schema identity and incompatible pre-release rejection;
 - bounded versioned local-socket protocol and Java/.NET parity;
-- real Java 21 ↔ .NET local-socket submit/inspect/result/cancel/release behavior;
-- stalled/disappearing clients do not block other callers;
-- caller process disappearance does not destroy durable Work;
-- bounded payloads/concurrency;
-- eligibility, urgency and deadlines;
-- cancellation and retained-result release;
-- restart recovery with `UnknownCompletion` and no implicit duplication;
-- current configured-capability reconciliation with historical attempts retained;
-- optional-probe `Unknown` capability execution and evidence update;
-- automatic recovery of known-unavailable capabilities without manual refresh;
-- Owner preference / observed-latency DRE behavior where applicable;
-- process binding and Owner/custom binding openness;
-- no fixed-head starvation;
+- strict IPC/config/CLI validation;
+- bounded active client handlers and Java stalled-peer timeout;
+- real Java 21 ↔ .NET submit/inspect/result/cancel/release;
+- explicit UTF-8 non-ASCII process round-trip;
+- stalled/disappearing clients do not own Kernel lifetime;
+- eligibility, urgency, deadlines, cancellation and release;
+- restart `UnknownCompletion` with no implicit duplication;
+- configured-capability reconciliation with history retained;
+- optional-probe `Unknown` execution and evidence update;
+- idle capabilities are not periodically reprobed;
+- unavailable capabilities recover under pending demand;
+- probe timeout remains `Unknown`;
+- binding/version-scoped latency evidence;
+- process/custom binding openness;
+- no fixed-head starvation and metadata-only scheduling candidates;
+- forced scheduler/probe/attempt persistence failures fail the host instead of creating zombie health;
 - contamination checks rejecting semantic leakage, web/port residue, MAF/checkpoint residue and production packaging of Java test helpers.
 
 ## Historical evidence
 
-Historical native C++, worker/runtime, llama.cpp, protocol-v4, loopback web-host and MAF validation implementations are not current architecture. Their useful behaviors survive only when independently justified by MADRE and re-proven in the current tree.
+Historical native C++, worker/runtime, llama.cpp, protocol-v4, loopback web-host and MAF validation implementations are not current architecture. Useful behaviors survive only when independently justified by MADRE and re-proven in the current tree.
+
+This implementation status is evidence for Owner/orchestrator audit. The implementation does not declare Lane C closed.
