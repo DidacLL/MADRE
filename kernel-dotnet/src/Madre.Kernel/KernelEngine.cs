@@ -11,6 +11,7 @@ public sealed class KernelEngine : IAsyncDisposable
     private readonly IReadOnlyList<InferenceCapability> _capabilities;
     private readonly Dictionary<string, IInferenceBinding> _bindings;
     private readonly MafTwoStagePhysicalStrategy _twoStageStrategy;
+    // Validation-only deterministic checkpoint window; delete when this validation implementation is promoted to the replacement Kernel.
     private readonly bool _validationHoldCheckpointedResume;
     private readonly SemaphoreSlim _slots;
     private readonly CancellationTokenSource _shutdown = new();
