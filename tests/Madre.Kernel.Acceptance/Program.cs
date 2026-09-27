@@ -147,6 +147,11 @@ internal static partial class Program
         Check((await JavaAsync(env.Socket, "result", id)).Contains("slow:SLOW:250", StringComparison.Ordinal), "Java result failed");
         Check((await JavaAsync(env.Socket, "release", id)).Trim() == "true", "Java release failed");
 
+        string javaCancel = (await JavaAsync(env.Socket, "submit", "SLOW:2000", "Standard", "Normal", "LocalOnly")).Trim();
+        await WaitStateAsync(client, javaCancel, WorkState.Running);
+        Check((await JavaAsync(env.Socket, "cancel", javaCancel)).Trim() == "Running", "Java cancel did not reach active Work");
+        await WaitStateAsync(client, javaCancel, WorkState.Cancelled);
+
         string queued = await SubmitAsync(client, new PhysicalInferenceRequest("restart-queued", InferenceEffort.Standard, WorkUrgency.Normal, DateTimeOffset.UtcNow.AddMilliseconds(500), null, ExecutionBoundary.LocalOnly));
         await kernel.RestartAsync(); client = new IpcClient(env.Socket); Check((await WaitStateAsync(client, queued, WorkState.Succeeded, 5000)).Attempts.Count == 1, "queued Work did not survive restart");
 
@@ -155,7 +160,7 @@ internal static partial class Program
         await kernel.RestartAsync(); client = new IpcClient(env.Socket); WorkInspection unknown = await WaitStateAsync(client, active, WorkState.UnknownCompletion);
         Check(unknown.Attempts.Single().Outcome == PhysicalAttemptOutcome.UnknownCompletion, "restart lost UnknownCompletion truth");
         await Task.Delay(1400); Check(File.ReadAllLines(marker).Length == 1, "uncertain physical inference was duplicated");
-        Console.WriteLine("PASS Java socket operation, caller disappearance and restart recovery");
+        Console.WriteLine("PASS Java socket operation, cancellation, caller disappearance and restart recovery");
     }
 
     private static async Task ReconcileAndOpenBindingAsync()
@@ -195,8 +200,11 @@ internal static partial class Program
         foreach (string id in ids) Check((await engine.InspectAsync(id))?.State == WorkState.Queued, "waiting Work was incorrectly dispatched");
         string store = File.ReadAllText(Path.Combine(Root, "kernel", "src", "Madre.Kernel", "WorkStore.cs"));
         string scheduler = File.ReadAllText(Path.Combine(Root, "kernel", "src", "Madre.Kernel", "KernelEngine.cs"));
+        string sqlite = File.ReadAllText(Path.Combine(Root, "kernel", "src", "Madre.Kernel", "SqliteDatabase.cs"));
         Check(!store.Contains("LIMIT -1", StringComparison.OrdinalIgnoreCase) && !store.Contains("CASE urgency", StringComparison.OrdinalIgnoreCase) && !scheduler.Contains("Task.Delay(25", StringComparison.Ordinal), "policy/polling leakage remains");
-        Check(File.ReadAllText(Path.Combine(Root, "kernel", "src", "Madre.Kernel", "Contracts.cs")).Contains("WorkUrgencyPolicy", StringComparison.Ordinal) && File.ReadAllText(Path.Combine(Root, "kernel", "src", "Madre.Kernel", "Timing.cs")).Contains("KernelTimingOptions", StringComparison.Ordinal), "retained policies have no explicit code owner");
+        Check(File.ReadAllText(Path.Combine(Root, "kernel", "src", "Madre.Kernel", "Contracts.cs")).Contains("WorkUrgencyPolicy", StringComparison.Ordinal)
+            && File.ReadAllText(Path.Combine(Root, "kernel", "src", "Madre.Kernel", "Timing.cs")).Contains("KernelTimingOptions", StringComparison.Ordinal)
+            && sqlite.Contains("BusyTimeoutMilliseconds", StringComparison.Ordinal), "retained policies have no explicit code owner");
         Console.WriteLine("PASS no fixed-head starvation and explicit policy ownership");
     }
 }
