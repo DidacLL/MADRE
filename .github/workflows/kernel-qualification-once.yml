@@ -1,0 +1,71 @@
+name: MADRE Kernel One-Off Qualification
+
+on:
+  push:
+    branches:
+      - agentic/kernel-qualification-execution
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    name: ${{ matrix.suite }} / ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        suite: [regression, qualification, stress, soak]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout exact audited Kernel verification SHA
+        uses: actions/checkout@v4
+        with:
+          ref: 3454187841dc285ac6c9a887dbc23c053d3038f3
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Confirm exact tested SHA
+        shell: bash
+        if: runner.os == 'Linux'
+        run: test "$(git rev-parse HEAD)" = "3454187841dc285ac6c9a887dbc23c053d3038f3"
+      - name: Confirm exact tested SHA
+        shell: pwsh
+        if: runner.os == 'Windows'
+        run: if ((git rev-parse HEAD).Trim() -ne '3454187841dc285ac6c9a887dbc23c053d3038f3') { throw 'wrong tested SHA' }
+
+      - name: Build Java physical client and acceptance tooling
+        if: runner.os == 'Linux'
+        run: ./gradlew --no-daemon clean build
+      - name: Build Java physical client and acceptance tooling
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: .\gradlew.bat --no-daemon clean build
+
+      - name: Build Kernel acceptance and verification
+        run: >-
+          dotnet build tests/Madre.Kernel.Acceptance/Madre.Kernel.Acceptance.csproj
+          --configuration Release
+          && dotnet build tests/Madre.Kernel.Verification/Madre.Kernel.Verification.csproj
+          --configuration Release
+
+      - name: Run preserved Lane C acceptance
+        if: matrix.suite == 'regression' || matrix.suite == 'qualification'
+        run: >-
+          dotnet run --project tests/Madre.Kernel.Acceptance/Madre.Kernel.Acceptance.csproj
+          --configuration Release --no-build
+
+      - name: Run selected verification suite
+        run: >-
+          dotnet run --project tests/Madre.Kernel.Verification/Madre.Kernel.Verification.csproj
+          --configuration Release --no-build --
+          --mode "${{ matrix.suite }}"
+          --seed "12648430"
+          --scale "medium"
+          --soak-seconds "60"
