@@ -88,10 +88,10 @@ internal static partial class Program
         }
     }
 
-    private static async Task RunQualifiedSoakVerificationAsync(VerificationOptions options)
+    private static async Task RunSoakVerificationAsync(VerificationOptions options)
     {
         Console.WriteLine($"SOAK seed={options.Seed} duration={options.SoakDuration}");
-        using var temp = new TempDir("verify-qualified-soak");
+        using var temp = new TempDir("verify-soak");
         TestEnv env = MakeEnv(temp.Path, true, true);
         File.WriteAllText(env.SlowState, "available");
         File.WriteAllText(env.FastState, "unavailable");
