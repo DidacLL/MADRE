@@ -165,6 +165,7 @@ public sealed class KernelEngine : IAsyncDisposable
         {
             while (!cancellationToken.IsCancellationRequested)
             {
+                int dispatchBudget = _slots.CurrentCount;
                 DateTimeOffset now = _clock.UtcNow;
                 await _store.ExpirePendingDeadlinesAsync(now, cancellationToken).ConfigureAwait(false);
 
@@ -192,9 +193,10 @@ public sealed class KernelEngine : IAsyncDisposable
                         RegisterUnavailableDemand(work, snapshots, now, demandedUnavailable);
                         continue;
                     }
-                    if (_slots.CurrentCount > 0)
+                    if (dispatchBudget > 0
+                        && await ScheduleAsync(work, decision.Capability!, cancellationToken).ConfigureAwait(false))
                     {
-                        await ScheduleAsync(work, decision.Capability!, cancellationToken).ConfigureAwait(false);
+                        dispatchBudget--;
                     }
                 }
 
@@ -346,14 +348,14 @@ public sealed class KernelEngine : IAsyncDisposable
             TaskScheduler.Default);
     }
 
-    private async Task ScheduleAsync(
+    private async Task<bool> ScheduleAsync(
         SchedulingWork work,
         InferenceCapability capability,
         CancellationToken cancellationToken)
     {
         if (!_slots.Wait(0))
         {
-            return;
+            return false;
         }
 
         await _dispatchGate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -366,7 +368,7 @@ public sealed class KernelEngine : IAsyncDisposable
             if (claimed is null)
             {
                 _slots.Release();
-                return;
+                return false;
             }
 
             var attemptCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -382,6 +384,7 @@ public sealed class KernelEngine : IAsyncDisposable
             {
                 _runningTasks.TryRemove(work.WorkId, out _);
             }
+            return true;
         }
         finally
         {
