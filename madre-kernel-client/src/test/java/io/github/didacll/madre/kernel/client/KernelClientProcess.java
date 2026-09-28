@@ -39,6 +39,16 @@ public final class KernelClientProcess {
                 }
                 case "inspect" -> System.out.println(json.writeValueAsString(client.inspect(new WorkId(args[2]))));
                 case "result" -> System.out.println(json.writeValueAsString(client.result(new WorkId(args[2]))));
+                case "result-equals" -> {
+                    if (args.length < 4) {
+                        throw new IllegalArgumentException("result-equals requires work id and expected result");
+                    }
+                    WorkResult result = client.result(new WorkId(args[2]));
+                    if (!args[3].equals(result.result())) {
+                        throw new IllegalStateException("result did not match expected value");
+                    }
+                    System.out.println("true");
+                }
                 case "cancel" -> System.out.println(client.cancel(new WorkId(args[2])));
                 case "release" -> System.out.println(client.release(new WorkId(args[2])));
                 case "capabilities" -> System.out.println(json.writeValueAsString(client.capabilities()));

@@ -96,7 +96,7 @@ internal static partial class Program
         await AssertCleanIpcWorkAsync(client, "after-ipc-hostility");
 
         using JsonDocument protocol = JsonDocument.Parse(await JavaAsync(env.Socket, "protocol")); Check(protocol.RootElement.GetProperty("version").GetInt32() == KernelProtocol.Version, "Java protocol mismatch");
-        string id = (await JavaAsync(env.Socket, "submit", "java-á😀𐐷", "Standard", "Normal", "LocalOnly")).Trim(); await WaitStateAsync(client, id, WorkState.Succeeded); Check((await JavaAsync(env.Socket, "result", id)).Contains("java-á😀𐐷", StringComparison.Ordinal), "Java Unicode roundtrip failed");
+        string id = (await JavaAsync(env.Socket, "submit", "java-á😀𐐷", "Standard", "Normal", "LocalOnly")).Trim(); await WaitStateAsync(client, id, WorkState.Succeeded); Check((await JavaAsync(env.Socket, "result-equals", id, "slow:java-á😀𐐷")).Trim() == "true", "Java Unicode roundtrip failed");
         Check((await RunJavaToExitAsync(env.Socket, "submit-generated", KernelProtocol.MaxPayloadBytes.ToString(), "x", "Standard", "Normal", "LocalOnly")).ExitCode == 0, "Java max payload failed");
         Check((await RunJavaToExitAsync(env.Socket, "submit-generated", (KernelProtocol.MaxPayloadBytes + 1).ToString(), "x", "Standard", "Normal", "LocalOnly")).ExitCode != 0, "Java oversized payload accepted");
         Check((await RunJavaToExitAsync(env.Socket, "sequential-protocol", "50")).ExitCode == 0 && (await RunJavaToExitAsync(env.Socket, "parallel-protocol", "16")).ExitCode == 0, "Java sequential/concurrent calls failed");
