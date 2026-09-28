@@ -1,8 +1,24 @@
 # MADRE Kernel — current physical inference architecture
 
-Status: **current accepted physical architecture and implementation; Lane C closure remains an Owner/orchestrator audit decision**.
+Status: **closed and qualified current physical architecture and implementation**.
 
 This document describes the active capability-aware .NET Kernel under `kernel/`. Historical C++, loopback web-host and MAF-validation implementations remain Git-history evidence only.
+
+Lane C closure qualifies the current physical architecture; it does not claim that future Kernel defects are impossible. Reopen this architecture only for a concrete physical defect, a current Owner decision, or a real physical requirement that the present contracts cannot express.
+
+## Closure baseline
+
+The executable Kernel baseline qualified at:
+
+```text
+95ddf2250c27d28e90e215391223164965b68729
+```
+
+The subsequent closure-policy commit `bacdb37eef38af90fe7b5c380bf69dacbd320872` removed obsolete automatic Lane C CI without changing executable Kernel behavior.
+
+Full cross-platform requalification is GitHub Actions run `36493627377`, seed `12648430`, scale `medium`, soak `60` seconds. Regression, qualification, stress and soak passed on both Ubuntu and Windows.
+
+`docs/architecture/kernel-handoff.md` records closure evidence, later-lane integration constraints and anti-drift backlog. It is an operational handoff, not a higher product authority than this architecture or the Owner/product documents.
 
 ## Purpose and boundary
 
@@ -33,6 +49,8 @@ The current physical request contains only prepared input, requested effort, urg
 ## Process ownership and local endpoint
 
 Exactly one Kernel process owns a given SQLite database at a time, independent of IPC path. The process acquires a database-scoped lifetime lease before touching the IPC endpoint or starting scheduling.
+
+Database ownership is based on physical path identity, not merely the textual path supplied by the caller. On Linux the ownership path resolves filesystem-link aliases so the same authoritative database cannot obtain multiple Kernel owners through symlink/path aliases.
 
 A second Kernel targeting the same database fails whether it requests the same socket or another socket. It cannot unlink the first Kernel's endpoint and cannot run another scheduler over the same authoritative database.
 
@@ -119,6 +137,8 @@ The scheduler is wake/deadline driven. Submission, cancellation, attempt complet
 
 Eligible Work is considered as a complete metadata set with explicit urgency/creation ordering, so waiting unavailable Work cannot starve a later runnable item. The candidate query does **not** load `prepared_input`; payload is loaded transactionally only after Work is actually claimed for an attempt.
 
+A scheduler pass snapshots the dispatch capacity available at the start of that pass. If a fast physical attempt completes and releases a slot while the pass is still traversing its already-ordered candidate set, the newly released slot is handled by a fresh scheduler pass rather than reused against stale ordering. This preserves urgency across slot-release races.
+
 Timing defaults are named technical Kernel policy and injectable for tests. They are not nontechnical Owner knobs.
 
 ## Background supervision and health truth
@@ -203,12 +223,21 @@ There is no current production Microsoft Agent Framework dependency or workflow/
 
 An unusual Owner-controlled inference system should normally be usable through configuration or an `IInferenceBinding`, not provider-specific edits to Kernel architecture. Do not add connector marketplaces, hot-loading frameworks, generic plugin systems or security prisons without evidence. Provided integrations use the same class of seam available to advanced Owners.
 
-## Current acceptance
+## Physical verification
 
-Normal CI runs the complete Java/.NET Lane C suite on Linux and Windows. It proves, among other retained behavior:
+Kernel verification is deliberately manual/on-demand after closure rather than a permanent PR/push tax. The active workflow is `.github/workflows/kernel-verification.yml`.
+
+It exposes four suites on Linux and Windows:
+
+- `regression` — deterministic request, DRE, lifecycle, race, binding and integration coverage plus the preserved Lane C acceptance suite;
+- `qualification` — regression/integration plus qualification stress and expanded scheduler/capability/IPC load;
+- `stress` — deterministic randomized/model/load/restart-chaos coverage;
+- `soak` — sustained mixed workload/resource behavior for the requested duration.
+
+The qualified closure baseline proves, among other retained behavior:
 
 - zero-capability/no-config startup;
-- same-database single-process ownership for same and different socket paths;
+- same-database single-process ownership for same/different socket paths and Linux physical path aliases;
 - non-destructive live endpoint handling and stale filesystem-socket recovery where applicable;
 - explicit schema identity and incompatible pre-release rejection;
 - bounded versioned local-socket protocol and Java/.NET parity;
@@ -218,6 +247,7 @@ Normal CI runs the complete Java/.NET Lane C suite on Linux and Windows. It prov
 - explicit UTF-8 non-ASCII process round-trip;
 - stalled/disappearing clients do not own Kernel lifetime;
 - eligibility, urgency, deadlines, cancellation and release;
+- urgency preservation across physical slot-release races;
 - restart `UnknownCompletion` with no implicit duplication;
 - configured-capability reconciliation with history retained;
 - optional-probe `Unknown` execution and evidence update;
@@ -225,12 +255,15 @@ Normal CI runs the complete Java/.NET Lane C suite on Linux and Windows. It prov
 - unavailable capabilities recover under pending demand;
 - probe timeout remains `Unknown`;
 - binding/version-scoped latency evidence;
-- process/custom binding openness;
+- process/custom binding openness and hostile process supervision;
 - no fixed-head starvation and deterministic eligibility-boundary wake behavior;
-- forced scheduler/probe/attempt persistence failures fail the host instead of creating zombie health.
+- forced scheduler/probe/attempt persistence failures fail the host instead of creating zombie health;
+- randomized/model stress, concurrent IPC/load, restart chaos and sustained mixed workload behavior.
+
+A green verifier run is evidence, not architectural authority. A failing assertion must be classified against current Owner intent before it is allowed to redefine the product.
 
 ## Historical evidence
 
 Historical native C++, worker/runtime, llama.cpp, protocol-v4, loopback web-host and MAF validation implementations are not current architecture. Useful behaviors survive only when independently justified by MADRE and re-proven in the current tree.
 
-This implementation status is evidence for Owner/orchestrator audit. The implementation does not declare Lane C closed.
+Lane C physical architecture is closed at the qualified baseline above. Future agents should use `docs/architecture/kernel-handoff.md` before reopening it and should require a concrete physical defect, real product need or new Owner decision rather than a preference for another platform architecture.
