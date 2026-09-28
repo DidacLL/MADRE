@@ -23,12 +23,12 @@ internal static partial class Program
         using var candidateStarted = new SemaphoreSlim(0, 3);
         var binding = new ControlledBinding("controlled/urgency-order", "1")
         {
-            ExecuteHandler = (request, _) => request.PreparedInput switch
+            ExecuteHandler = (request, cancellationToken) => request.PreparedInput switch
             {
-                "blocker" => SignalAndWait(blockerStarted, blockerRelease),
-                "interactive" => SignalAndWait(candidateStarted, interactiveRelease),
-                "normal" => SignalAndWait(candidateStarted, normalRelease),
-                "background" => SignalAndWait(candidateStarted, backgroundRelease),
+                "blocker" => SignalAndWait(blockerStarted, blockerRelease, cancellationToken),
+                "interactive" => SignalAndWait(candidateStarted, interactiveRelease, cancellationToken),
+                "normal" => SignalAndWait(candidateStarted, normalRelease, cancellationToken),
+                "background" => SignalAndWait(candidateStarted, backgroundRelease, cancellationToken),
                 _ => throw new InvalidOperationException("unexpected urgency fixture input")
             }
         };
@@ -74,18 +74,20 @@ internal static partial class Program
 
     private static Task<BindingExecutionResult> SignalAndWait(
         TaskCompletionSource<bool> started,
-        TaskCompletionSource<BindingExecutionResult> release)
+        TaskCompletionSource<BindingExecutionResult> release,
+        CancellationToken cancellationToken)
     {
         started.TrySetResult(true);
-        return release.Task;
+        return release.Task.WaitAsync(cancellationToken);
     }
 
     private static Task<BindingExecutionResult> SignalAndWait(
         SemaphoreSlim started,
-        TaskCompletionSource<BindingExecutionResult> release)
+        TaskCompletionSource<BindingExecutionResult> release,
+        CancellationToken cancellationToken)
     {
         started.Release();
-        return release.Task;
+        return release.Task.WaitAsync(cancellationToken);
     }
 
     private static async Task JavaStalledPeerTimeoutAsync()
