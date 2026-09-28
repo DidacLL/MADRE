@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 
 internal static partial class Program
@@ -24,27 +25,30 @@ internal static partial class Program
         switch (options.Mode)
         {
             case "regression":
-                await RunRegressionVerificationAsync(options);
-                await RunIntegrationVerificationAsync(options);
-                await ProcessBindingIntegrationVerificationAsync();
-                await RunExpandedIntegrationVerificationAsync(options);
-                await RunAdditionalBoundaryVerificationAsync();
+                await RunPhaseAsync("regression-contracts", () => RunRegressionVerificationAsync(options));
+                await RunPhaseAsync("integration", () => RunIntegrationVerificationAsync(options));
+                await RunPhaseAsync("process-binding-integration", ProcessBindingIntegrationVerificationAsync);
+                await RunPhaseAsync("expanded-integration", () => RunExpandedIntegrationVerificationAsync(options));
+                await RunPhaseAsync("additional-boundaries", RunAdditionalBoundaryVerificationAsync);
                 break;
             case "qualification":
-                await RunRegressionVerificationAsync(options);
-                await RunIntegrationVerificationAsync(options);
-                await ProcessBindingIntegrationVerificationAsync();
-                await RunExpandedIntegrationVerificationAsync(options);
-                await RunAdditionalBoundaryVerificationAsync();
-                await RunQualificationStressAsync(options);
-                await RunExpandedQualificationVerificationAsync(options);
+                await RunPhaseAsync("regression-contracts", () => RunRegressionVerificationAsync(options));
+                await RunPhaseAsync("integration", () => RunIntegrationVerificationAsync(options));
+                await RunPhaseAsync("process-binding-integration", ProcessBindingIntegrationVerificationAsync);
+                await RunPhaseAsync("expanded-integration", () => RunExpandedIntegrationVerificationAsync(options));
+                await RunPhaseAsync("additional-boundaries", RunAdditionalBoundaryVerificationAsync);
+                await RunPhaseAsync("qualification-stress", () => RunQualificationStressAsync(options));
+                await RunPhaseAsync("expanded-qualification", () => RunExpandedQualificationVerificationAsync(options));
                 break;
             case "stress":
-                await RunStressVerificationAsync(options);
-                await RunExpandedStressVerificationAsync(options);
+                await RunPhaseAsync("stress", () => RunStressVerificationAsync(options));
+                await RunPhaseAsync("expanded-stress", () => RunExpandedStressVerificationAsync(options));
                 break;
             case "soak":
-                await RunSoakVerificationAsync(options);
+                await RunPhaseAsync(
+                    "soak",
+                    () => RunSoakVerificationAsync(options),
+                    options.SoakDuration + TimeSpan.FromMinutes(2));
                 break;
             default:
                 throw new InvalidDataException($"unknown verification mode: {options.Mode}");
@@ -52,6 +56,27 @@ internal static partial class Program
 
         Console.WriteLine($"MADRE Kernel verification {options.Mode} passed seed={options.Seed}");
         return 0;
+    }
+
+    private static async Task RunPhaseAsync(
+        string name,
+        Func<Task> phase,
+        TimeSpan? timeout = null)
+    {
+        TimeSpan limit = timeout ?? TimeSpan.FromMinutes(10);
+        Stopwatch stopwatch = Stopwatch.StartNew();
+        Console.WriteLine($"BEGIN phase={name} timeout={limit}");
+        try
+        {
+            await phase().WaitAsync(limit).ConfigureAwait(false);
+        }
+        catch (TimeoutException ex)
+        {
+            throw new TimeoutException(
+                $"verification phase '{name}' exceeded bounded runtime {limit}",
+                ex);
+        }
+        Console.WriteLine($"PASS phase={name} elapsed={stopwatch.Elapsed}");
     }
 
     private static VerificationOptions ParseVerificationOptions(string[] args)
