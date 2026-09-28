@@ -1,4 +1,4 @@
-name: MADRE Kernel Windows Qualification Diagnostic
+name: MADRE Kernel Urgency Race Repair
 
 on:
   push:
@@ -6,50 +6,53 @@ on:
       - agentic/kernel-qualification-execution
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  qualify-windows:
-    name: qualification / windows-latest
-    runs-on: windows-latest
-    timeout-minutes: 20
+  repair:
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout exact Kernel verification candidate
+      - name: Checkout exact verification branch head
         uses: actions/checkout@v4
         with:
-          ref: 21f657307fe10b8007831281e59b6c0fb173ab54
-      - uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: '21'
-      - uses: gradle/actions/setup-gradle@v4
+          ref: agentic/kernel-physical-verification
+          fetch-depth: 0
+      - name: Confirm expected starting SHA
+        run: test "$(git rev-parse HEAD)" = "21f657307fe10b8007831281e59b6c0fb173ab54"
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '10.0.x'
-      - name: Confirm exact tested SHA
-        shell: pwsh
-        run: if ((git rev-parse HEAD).Trim() -ne '21f657307fe10b8007831281e59b6c0fb173ab54') { throw 'wrong tested SHA' }
-      - name: Build Java physical client and acceptance tooling
-        shell: pwsh
-        run: .\gradlew.bat --no-daemon clean build
-      - name: Build Kernel acceptance and verification
-        shell: pwsh
-        run: >-
-          dotnet build tests/Madre.Kernel.Acceptance/Madre.Kernel.Acceptance.csproj
-          --configuration Release;
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE };
-          dotnet build tests/Madre.Kernel.Verification/Madre.Kernel.Verification.csproj
-          --configuration Release;
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Run preserved Lane C acceptance
-        shell: pwsh
-        run: dotnet run --project tests/Madre.Kernel.Acceptance/Madre.Kernel.Acceptance.csproj --configuration Release --no-build
-      - name: Run bounded Windows qualification
-        shell: pwsh
-        run: >-
-          dotnet run --project tests/Madre.Kernel.Verification/Madre.Kernel.Verification.csproj
-          --configuration Release --no-build --
-          --mode qualification
-          --seed 12648430
-          --scale medium
-          --soak-seconds 60
+      - name: Repair stale ready-set slot handoff
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('kernel/src/Madre.Kernel/KernelEngine.cs')
+          text = path.read_text()
+          replacements = {
+              '''            while (!cancellationToken.IsCancellationRequested)\n            {\n                DateTimeOffset now = _clock.UtcNow;''': '''            while (!cancellationToken.IsCancellationRequested)\n            {\n                int dispatchBudget = _slots.CurrentCount;\n                DateTimeOffset now = _clock.UtcNow;''',
+              '''                    if (_slots.CurrentCount > 0)\n                    {\n                        await ScheduleAsync(work, decision.Capability!, cancellationToken).ConfigureAwait(false);\n                    }''': '''                    if (dispatchBudget > 0\n                        && await ScheduleAsync(work, decision.Capability!, cancellationToken).ConfigureAwait(false))\n                    {\n                        dispatchBudget--;\n                    }''',
+              '''    private async Task ScheduleAsync(\n        SchedulingWork work,''': '''    private async Task<bool> ScheduleAsync(\n        SchedulingWork work,''',
+              '''        if (!_slots.Wait(0))\n        {\n            return;\n        }''': '''        if (!_slots.Wait(0))\n        {\n            return false;\n        }''',
+              '''            if (claimed is null)\n            {\n                _slots.Release();\n                return;\n            }''': '''            if (claimed is null)\n            {\n                _slots.Release();\n                return false;\n            }''',
+              '''            if (task.IsCompleted)\n            {\n                _runningTasks.TryRemove(work.WorkId, out _);\n            }\n        }\n        finally''': '''            if (task.IsCompleted)\n            {\n                _runningTasks.TryRemove(work.WorkId, out _);\n            }\n            return true;\n        }\n        finally''',
+          }
+          for old, new in replacements.items():
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'expected one match, found {count}: {old[:100]!r}')
+              text = text.replace(old, new)
+          path.write_text(text)
+          PY
+          git diff --check
+          git diff -- kernel/src/Madre.Kernel/KernelEngine.cs
+      - name: Build Kernel verification after repair
+        run: dotnet build tests/Madre.Kernel.Verification/Madre.Kernel.Verification.csproj --configuration Release
+      - name: Commit and push urgency repair
+        run: |
+          git config user.name 'MADRE orchestrator'
+          git config user.email '107514286+DidacLL@users.noreply.github.com'
+          git add kernel/src/Madre.Kernel/KernelEngine.cs
+          git commit -m 'Preserve urgency across slot release races'
+          git push origin HEAD:agentic/kernel-physical-verification
+          git rev-parse HEAD
