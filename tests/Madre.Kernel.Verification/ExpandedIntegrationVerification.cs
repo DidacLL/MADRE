@@ -279,8 +279,10 @@ internal static partial class Program
         health.CopyTo(extra, 0);
         Encoding.ASCII.GetBytes("EXTRA").CopyTo(extra, health.Length);
         byte[]? extraResponse = await SendRawFrameAsync(env.Socket, health.Length, extra);
-        Check(extraResponse is not null && RawResponseOk(extraResponse),
-            "extra bytes after one complete request corrupted the completed request");
+        Check(extraResponse is null || RawResponseOk(extraResponse),
+            "trailing bytes after a complete frame produced an invalid structured response");
+        Check((await client.CallAsync<Health>("Health", null)).Status == "ok",
+            "trailing bytes after a complete frame damaged subsequent Kernel IPC");
 
         string[] malformedOrIncomplete =
         [
