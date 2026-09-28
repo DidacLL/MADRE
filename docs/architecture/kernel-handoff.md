@@ -2,7 +2,15 @@
 
 Status: **operational handoff for work after Lane C closure**.
 
-This document is not a new product authority and does not redefine Lane A, Lane B, the semantic SDK, Runtime, SPIRA, CORE or Module semantics. It records the qualified physical Kernel baseline, the boundary that later work may rely on, the concrete defects found during closure verification, and the remaining work that belongs above or beside Kernel.
+This document is not a new product authority and does not redefine the semantic SDK, Runtime, SPIRA, CORE or Module semantics. It records the qualified physical Kernel baseline, the boundary later work may rely on, the concrete defects found during closure verification, and the remaining work that belongs above or beside Kernel.
+
+The current lane mapping for post-Lane-C work is:
+
+```text
+Lane A = public Java 21 semantic SDK / Module construction surface
+Lane B = minimal Runtime: Module environment + semantic reasoning persistence/correlation + semantic→physical bridge
+Lane C = closed qualified physical Kernel
+```
 
 When this document conflicts with a current Owner instruction or a higher authority in `AGENTS.md`, the higher authority wins. For Kernel architecture itself, `docs/architecture/kernel.md` remains the current architecture definition.
 
@@ -46,7 +54,7 @@ That evidence supports the current implementation. It does not elevate tests or 
 
 ## 2. What later lanes may rely on
 
-The current Kernel is MADRE's shared **physical inference substrate**. Later semantic work may rely on these responsibilities being available without reimplementing them above the boundary:
+The current Kernel is MADRE's shared **physical inference substrate**. Lanes A and B may rely on these responsibilities being available without reimplementing them above the boundary:
 
 - durable `PhysicalInferenceWork` identity and lifecycle;
 - eligibility, urgency and deadline-aware physical scheduling;
@@ -106,7 +114,7 @@ Kernel does **not** own or understand:
 - provider/model/runtime internal lifecycle;
 - model loading, warmness or generic RAM/VRAM ownership.
 
-Agents must not construct Kernel `PhysicalInferenceWork` directly as a public semantic programming model. Semantic MADRE derives the bounded physical requirement. The exact public carrier and Runtime journey remain work above Kernel.
+Agents must not construct Kernel `PhysicalInferenceWork` directly as a public semantic programming model. Semantic MADRE derives the bounded physical requirement. The exact public carrier is Lane A design work; its installed transport, persistence/correlation and execution journey are Lane B work.
 
 ## 4. What Kernel intentionally does not freeze
 
@@ -153,11 +161,9 @@ Do not turn those harness fixes into product architecture. The reusable lesson i
 
 The verification project may use controlled bindings, deterministic clocks, fixture processes, raw IPC peers and deliberate SQLite failure injection. Production Kernel must not gain test-only architectural hooks merely to make tests convenient.
 
-## 7. Backlog for the next semantic/runtime lanes
+## 7. Lane A backlog — public Java 21 semantic SDK
 
-This backlog describes work that can proceed **without reopening Kernel**. It does not assign or redefine Lane A/B labels; the current Owner task for a lane determines its exact scope.
-
-### Public semantic SDK
+Lane A owns the public semantic construction surface. It does **not** own Runtime installation mechanics or Kernel physical scheduling.
 
 The public SDK still needs a small explicit construction vocabulary for ordinary, independent and eventually AI-generated Modules. Current architecture already establishes the semantic concepts and ownership rules:
 
@@ -167,13 +173,27 @@ The public SDK still needs a small explicit construction vocabulary for ordinary
 - Skill / Workflow / WorkPlan as semantic reusable/planning concepts;
 - Material/context and direct SPIRA carriers;
 - semantic `ReasoningRequest`;
-- public composition surfaces sufficient for first-party and independent Modules.
+- public composition surfaces sufficient for first-party and independent Modules;
+- the public semantic side of the bounded reasoning→physical derivation contract.
 
-The SDK must not depend on Kernel implementation types or force Module authors to understand physical scheduling/provider machinery.
+Lane A must preserve these constraints:
 
-### Runtime Module environment
+- public Java 21 construction vocabulary, not Kernel DTO leakage;
+- first-party, independent and generated Modules use the same SDK surface;
+- no hidden richer private semantic architecture behind shipped Modules;
+- agentless Modules remain normal;
+- Operation invocation and Agent delegation remain distinct;
+- SPIRA facets remain on their actual semantic carriers rather than a generic security context;
+- `ReasoningRequest` remains semantic and does not become Kernel Work;
+- the SDK does not force Module authors to understand physical scheduling, providers, bindings or SQLite/IPC mechanics.
 
-Runtime remains responsible for semantic installation mechanics:
+Lane A should define the smallest public carrier/facility necessary for semantic software to express a reasoning need and later allow Lane B to derive the current physical Kernel request. Do not freeze future Kernel capabilities into a giant semantic request object.
+
+## 8. Lane B backlog — minimal Runtime and semantic→physical bridge
+
+Lane B owns the installed semantic environment and the actual crossing from semantic reasoning to the already-closed physical Kernel.
+
+Runtime responsibilities currently established are:
 
 - Module installation/configuration;
 - CORE role assignment;
@@ -183,13 +203,15 @@ Runtime remains responsible for semantic installation mechanics:
 - semantic inspection/diagnostics;
 - persistence/correlation needed for delayed semantic reasoning;
 - semantic continuation/recovery support;
-- correlation of semantic requests with Kernel Work/results.
+- correlation of semantic requests with Kernel Work/results;
+- transport through `madre-kernel-client`;
+- derivation/transport of the small physical inference requirement from actual semantic facts.
 
 Runtime must not become a global semantic scheduler, SPIRA policy engine or owner of Module domain meaning merely because it transports calls.
 
-### Semantic reasoning -> physical Kernel bridge
+### Semantic reasoning → physical Kernel bridge
 
-A later lane must implement the still-open semantic derivation boundary. Start from actual semantic facts and produce only the physical consequences consumed below the boundary.
+Lane B must implement the still-open semantic derivation boundary. Start from actual semantic facts and produce only the physical consequences consumed below the boundary.
 
 The current Kernel request supports:
 
@@ -204,15 +226,13 @@ hard LocalOnly / ExternalAllowed execution boundary
 
 Do not expose Kernel `PhysicalInferenceWork` directly as the semantic SDK request. Do not preselect an exact provider/model/configuration above Kernel when doing so removes meaningful physical DRE choice. Do not send Module/Agent/Material/SPIRA/CORE semantics into Kernel to avoid doing the semantic derivation properly.
 
-If later semantic needs require an additional physical field, demonstrate the actual DRE consumer before extending the contract.
+If Lane A/B later discover a semantic need that requires an additional physical field, identify the actual Kernel DRE consumer before extending the physical contract.
 
-### CORE
+## 9. CORE and end-to-end proof for A/B
 
 CORE remains an ordinary Module assigned the CORE installation role. It may supply useful defaults and Owner interaction, but it must use the same public semantic construction surfaces as other Modules and must not become Runtime, Kernel, owner of other Modules/Agents or special SPIRA authority.
 
-### End-to-end product proof
-
-After SDK, Runtime and the semantic->physical bridge exist coherently, prove at least one ordinary Module path end to end:
+After Lane A and Lane B exist coherently, prove at least one ordinary Module path end to end:
 
 ```text
 Module/Agent semantic need
@@ -224,11 +244,11 @@ Module/Agent semantic need
 → semantic correlation/continuation
 ```
 
-The proof should validate the boundary, not create hidden first-party shortcuts.
+The proof should validate the public SDK and Runtime boundary, not create hidden first-party shortcuts or require Kernel changes merely to make the demo convenient.
 
-## 8. Anti-drift checks for future agents
+## 10. Anti-drift checks for future agents
 
-Before changing Kernel because a later lane feels inconvenient, answer these questions:
+Before changing Kernel because Lane A or B feels inconvenient, answer these questions:
 
 1. Is the requested change a physical inference responsibility or semantic application/runtime responsibility?
 2. Does a current product requirement actually consume the new field/abstraction?
@@ -237,25 +257,25 @@ Before changing Kernel because a later lane feels inconvenient, answer these que
 5. Would it rematerialize provider/model/runtime internals as MADRE-owned workers/engines?
 6. Would it preselect so much above Kernel that meaningful physical DRE disappears?
 7. Is the proposed structure solving an observed defect or merely matching a familiar platform pattern?
-8. Can the same requirement be implemented through the existing open binding seam?
+8. Can the same physical integration requirement be implemented through the existing open binding seam?
 9. Does the change preserve durable truth under cancellation, crash, restart and uncertain completion?
 10. Is the architecture being reopened because of a concrete failing behavior, or only because a new agent would have designed it differently?
 
 A concrete defect may justify changing settled implementation. Preference, familiarity or a greenfield redesign instinct does not.
 
-## 9. When Kernel should be reopened
+## 11. When Kernel should be reopened
 
 Reopen Kernel responsibility only when at least one of these exists:
 
 - a reproducible physical correctness defect;
-- a real semantic->physical requirement that the current physical contract cannot express and an implemented DRE consumer is identified;
+- a real semantic→physical requirement that the current physical contract cannot express and an implemented DRE consumer is identified;
 - a real inference environment that cannot be integrated through the existing binding/capability construction without violating current physical truth;
 - a measured physical scheduling/recovery requirement not representable by the current model;
 - a current Owner decision explicitly changing the physical architecture.
 
 When reopening, add the smallest regression evidence that demonstrates the need. Do not start with a new architecture catalogue.
 
-## 10. Verification policy after closure
+## 12. Verification policy after closure
 
 Kernel verification is intentionally **manual/on-demand**, not a permanent PR/push tax.
 
@@ -274,9 +294,11 @@ It exposes four suites on both Ubuntu and Windows:
 
 Use the regression suite after a bounded physical change. Use qualification when a production physical invariant, scheduler, persistence, IPC or binding behavior changes materially. Use stress/soak when concurrency, recovery, load or resource behavior is relevant.
 
+Lane A/SDK and Lane B/Runtime work must not trigger full Kernel verification simply because they share the repository. Run Kernel verification when the physical Kernel, physical client boundary, or an actual physical invariant changes.
+
 A green run is evidence, not authority. A failing test must first be classified as product defect, verifier defect or obsolete assertion against superseded Owner intent.
 
-## 11. Repository truth after closure
+## 13. Repository truth after closure
 
 Active Kernel architecture:
 
@@ -308,4 +330,4 @@ Agent authority and anti-drift rules:
 AGENTS.md
 ```
 
-This handoff exists so future agents do not need to reconstruct Lane C history before doing semantic work. Historical C++, worker/runtime, loopback-web, protocol-v4, checkpoint/MAF-validation and other superseded shapes remain Git-history evidence only and must not be restored as active alternatives.
+This handoff exists so Lane A, Lane B and anti-drift agents do not need to reconstruct Lane C history before doing semantic work. Historical C++, worker/runtime, loopback-web, protocol-v4, checkpoint/MAF-validation and other superseded shapes remain Git-history evidence only and must not be restored as active alternatives.
