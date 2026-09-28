@@ -169,8 +169,22 @@ internal static partial class Program
 
         string tree = await engine.SubmitAsync(Req("SPAWN_TREE:any", InferenceEffort.Low, WorkUrgency.Normal, ExecutionBoundary.LocalOnly));
         await WaitStateAsync(engine, tree, WorkState.Running);
-        await WaitFileAsync(childMarker);
-        int childPid = int.Parse((await File.ReadAllTextAsync(childMarker)).Trim());
+        int childPid = 0;
+        await WaitUntilAsync(
+            () =>
+            {
+                try
+                {
+                    return File.Exists(childMarker)
+                        && int.TryParse(File.ReadAllText(childMarker).Trim(), out childPid);
+                }
+                catch (IOException)
+                {
+                    return false;
+                }
+            },
+            5_000,
+            "child process marker did not contain a parseable PID");
         _ = await engine.CancelAsync(tree);
         WorkInspection treeCancelled = await WaitTerminalAsync(engine, tree, 10_000);
         Check(treeCancelled.State is WorkState.Cancelled or WorkState.UnknownCompletion,
