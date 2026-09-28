@@ -655,7 +655,7 @@ internal static partial class Program
         string observed = await engine.SubmitAsync(Req("observe-commit", InferenceEffort.Low, WorkUrgency.Normal, ExecutionBoundary.LocalOnly));
         await commitStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Task[] readers = Enumerable.Range(0, 64)
-            .Select(async _ =>
+            .Select(async _unused =>
             {
                 _ = await engine.InspectAsync(observed).ConfigureAwait(false);
                 _ = await engine.ResultAsync(observed).ConfigureAwait(false);
