@@ -115,8 +115,58 @@ internal static partial class Program
 
     private static async Task ShutdownRecoveryAsync()
     {
-        using var temp = new TempDir("verify-shutdown"); string db = Path.Combine(temp.Path, "shutdown.db"); var gate = new TaskCompletionSource<BindingExecutionResult>(TaskCreationOptions.RunContinuationsAsynchronously); var binding = new ControlledBinding("controlled/shutdown", "1") { ExecuteHandler = (_, _) => gate.Task }; InferenceCapability cap = Capability("shutdown", binding.BindingId, "1", InferenceEffort.Low, ExecutionBoundary.LocalOnly, 1);
-        var engine = new KernelEngine(new WorkStore(db), [cap], [binding], 4); await engine.InitializeAsync(); await engine.RefreshCapabilityStatesAsync(); engine.Start(); var ids = new List<string>(); for (int i = 0; i < 8; i++) ids.Add(await engine.SubmitAsync(Req($"shutdown-{i}", InferenceEffort.Low, WorkUrgency.Normal, ExecutionBoundary.LocalOnly))); await WaitUntilAsync(() => binding.Active == 4, 5000, "shutdown fixture did not occupy slots"); await engine.DisposeAsync();
-        await using var recovered = new KernelEngine(new WorkStore(db), [cap], [new ControlledBinding(binding.BindingId, "1")], 1); await recovered.InitializeAsync(); foreach (string id in ids) { WorkInspection w = (await recovered.InspectAsync(id))!; Check(w.State != WorkState.Running && w.Attempts.All(a => a.Outcome != PhysicalAttemptOutcome.Running), "shutdown recovery left Running durable truth"); }
+        using var temp = new TempDir("verify-shutdown");
+        string db = Path.Combine(temp.Path, "shutdown.db");
+        var allCancelled = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        int cancellationsObserved = 0;
+        var binding = new ControlledBinding("controlled/shutdown", "1")
+        {
+            ExecuteHandler = async (_, cancellationToken) =>
+            {
+                var cancelled = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                using (cancellationToken.Register(() =>
+                {
+                    if (Interlocked.Increment(ref cancellationsObserved) == 4)
+                    {
+                        allCancelled.TrySetResult(true);
+                    }
+                    cancelled.TrySetResult(true);
+                }))
+                {
+                    await cancelled.Task.ConfigureAwait(false);
+                    return BindingExecutionResult.Cancelled("controlled shutdown cancellation");
+                }
+            }
+        };
+        InferenceCapability cap = Capability(
+            "shutdown", binding.BindingId, "1", InferenceEffort.Low, ExecutionBoundary.LocalOnly, 1);
+        var engine = new KernelEngine(new WorkStore(db), [cap], [binding], 4);
+        await engine.InitializeAsync();
+        await engine.RefreshCapabilityStatesAsync();
+        engine.Start();
+        var ids = new List<string>();
+        for (int i = 0; i < 8; i++)
+        {
+            ids.Add(await engine.SubmitAsync(Req(
+                $"shutdown-{i}", InferenceEffort.Low, WorkUrgency.Normal, ExecutionBoundary.LocalOnly)));
+        }
+        await WaitUntilAsync(() => binding.Active == 4, 5_000, "shutdown fixture did not occupy all four physical slots");
+
+        Task shutdown = engine.DisposeAsync().AsTask();
+        await allCancelled.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        await shutdown.WaitAsync(TimeSpan.FromSeconds(5));
+        Check(Volatile.Read(ref cancellationsObserved) == 4,
+            "Kernel shutdown cancellation did not reach every occupied controlled execution");
+
+        await using var recovered = new KernelEngine(
+            new WorkStore(db), [cap], [new ControlledBinding(binding.BindingId, "1")], 1);
+        await recovered.InitializeAsync();
+        foreach (string id in ids)
+        {
+            WorkInspection work = (await recovered.InspectAsync(id))!;
+            Check(work.State != WorkState.Running
+                && work.Attempts.All(attempt => attempt.Outcome != PhysicalAttemptOutcome.Running),
+                "shutdown recovery left Running durable truth");
+        }
     }
 }
