@@ -4,7 +4,7 @@ MADRE — **Model-Agnostic Delayed Reasoning Effort Agentic System** — is an o
 
 This file is the detailed repository-level product and semantic overview. It intentionally preserves the reasoning connections among Modules, Agents, Operations, SPIRA, DRE, Runtime, CORE, Kernel and the SDK generation target.
 
-Read `NORTH_STAR.md` first as the short mandatory recovery checkpoint before substantial work. Read `docs/product/lane-c-owner-decision.md` for the current DRE/physical-inference correction and rationale, `docs/product/owner-intent-corpus.md` for deeper product reasoning, `docs/architecture/security-algebra.md` for the operational SPIRA model, `docs/architecture/mid-level-architecture.md` for the whole-system design, and `docs/architecture/kernel.md` for current physical Lane C.
+Read `NORTH_STAR.md` first as the short mandatory recovery checkpoint before substantial work. Read `docs/product/lane-c-owner-decision.md` for the current DRE/physical-inference correction and rationale, `docs/product/owner-intent-corpus.md` for deeper product reasoning, `docs/architecture/security-algebra.md` for the operational SPIRA model, `docs/architecture/mid-level-architecture.md` for the whole-system design, and `docs/architecture/kernel.md` for the current closed physical Kernel. `docs/architecture/kernel-handoff.md` records Lane C closure evidence and later-lane anti-drift guidance; it is an operational handoff rather than a new product authority.
 
 Current Owner instructions override repository documentation when more specific. Historical code/tests/PRs/commits and familiar platform patterns are evidence only.
 
@@ -183,12 +183,13 @@ MEAI remains useful interoperability behind bindings. A future actual physical s
 
 ## Current physical construction
 
-Current Lane C is a cross-platform .NET Kernel under `kernel/` with:
+Lane C is now a closed, qualified cross-platform .NET Kernel under `kernel/` with:
 
-- one process-lifetime owner per SQLite database, independent of IPC path;
+- one process-lifetime owner per SQLite database, independent of IPC path and resilient to Linux physical path/symlink aliases;
 - explicit current SQLite schema identity and early rejection of incompatible pre-release databases rather than migrations;
 - durable Work, attempts, configured/current capability truth and retained results;
 - wake/deadline-driven DRE scheduling over metadata-only candidates, loading prepared input only after claim;
+- urgency-preserving dispatch across physical slot-release races;
 - asynchronous startup observation and demand-driven unavailable-capability re-observation, with probe timeout represented as `Unknown`;
 - latency evidence scoped to the current capability/binding/version;
 - configuration reconciliation so removed capabilities are no longer selectable while historical attempts remain historical;
@@ -205,7 +206,9 @@ A missing configuration and zero configured capabilities are valid; configuratio
 
 There is no TCP/loopback web control plane, configurable port, web-host dependency, production MAF workflow/checkpoint behavior, compatibility/migration layer, provider-specific Kernel ontology or packaged Java acceptance CLI.
 
-The semantic SDK/Module layer and Runtime are **not yet implemented in the active tree**. Lane C correction must not be used as an excuse to start SDK/Runtime work.
+The executable closure baseline `95ddf2250c27d28e90e215391223164965b68729` passed manual regression, qualification, stress and soak on Linux and Windows in GitHub Actions run `36493627377`. `.github/workflows/kernel-verification.yml` remains as the on-demand physical verifier; Kernel validation is no longer a permanent PR/push tax.
+
+The semantic SDK/Module layer and Runtime are **not yet implemented in the active tree**. Their implementation should consume the settled physical boundary rather than reopening Kernel absent a concrete physical defect or new Owner requirement.
 
 ## SDK as generation target
 
@@ -225,7 +228,7 @@ Engineering target:
 
 Simplicity does not mean deleting semantic ownership/application points that make a concept operational, and it does not mean narrowing Kernel until meaningful physical inference choice has already been completed elsewhere. New structure earns its place because an actual MADRE responsibility requires it.
 
-Lane C implementation state is evidence for Owner/orchestrator audit; the implementation does not declare Lane C closed.
+Lane C physical Kernel architecture is closed at the qualified baseline. Future work above the boundary should proceed against it. Reopen Kernel only for a concrete physical defect, a real physical requirement the present contracts cannot express, or an explicit new Owner decision; do not reopen it because a new agent prefers another platform design.
 
 ## Authority order
 
@@ -237,6 +240,8 @@ Lane C implementation state is evidence for Owner/orchestrator audit; the implem
 6. `docs/architecture/security-algebra.md` for SPIRA;
 7. `docs/architecture/mid-level-architecture.md` for whole-system engineering;
 8. `docs/architecture/kernel.md` for current Kernel architecture/implementation;
-9. active implementation/tests/CI as evidence.
+9. active implementation/tests/manual verification as evidence.
+
+`docs/architecture/kernel-handoff.md` is the operational closure handoff for later agents. It summarizes evidence and backlog but does not outrank the authorities above.
 
 Historical implementation is evidence only and loses whenever later Owner intent supersedes it.
