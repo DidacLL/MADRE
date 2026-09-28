@@ -1,4 +1,4 @@
-name: MADRE Kernel One-Off Verifier Repair
+name: MADRE Kernel One-Off Qualification
 
 on:
   push:
@@ -6,41 +6,66 @@ on:
       - agentic/kernel-qualification-execution
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  repair:
-    runs-on: ubuntu-latest
+  qualify:
+    name: ${{ matrix.suite }} / ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        suite: [regression, qualification, stress, soak]
+    runs-on: ${{ matrix.os }}
     steps:
-      - name: Checkout verification branch
+      - name: Checkout exact corrected Kernel verification SHA
         uses: actions/checkout@v4
         with:
-          ref: agentic/kernel-physical-verification
-          fetch-depth: 0
-      - name: Confirm expected starting SHA
+          ref: 34220dced0b2b574135ea5f6fb05ebd15a5bd7cc
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Confirm exact tested SHA
         shell: bash
-        run: test "$(git rev-parse HEAD)" = "3454187841dc285ac6c9a887dbc23c053d3038f3"
-      - name: Apply exact verifier compile correction
-        shell: bash
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          path = Path('tests/Madre.Kernel.Verification/RegressionVerification.cs')
-          text = path.read_text()
-          old = '''        Task[] readers = Enumerable.Range(0, 64)\n            .Select(async _ =>\n            {\n                _ = await engine.InspectAsync(observed).ConfigureAwait(false);\n                _ = await engine.ResultAsync(observed).ConfigureAwait(false);\n            })\n'''
-          new = '''        Task[] readers = Enumerable.Range(0, 64)\n            .Select(async _unused =>\n            {\n                _ = await engine.InspectAsync(observed).ConfigureAwait(false);\n                _ = await engine.ResultAsync(observed).ConfigureAwait(false);\n            })\n'''
-          if text.count(old) != 1:
-              raise SystemExit(f'expected exactly one compile-defect block, found {text.count(old)}')
-          path.write_text(text.replace(old, new))
-          PY
-          git diff --check
-          git diff -- tests/Madre.Kernel.Verification/RegressionVerification.cs
-      - name: Commit and push bounded correction
-        shell: bash
-        run: |
-          git config user.name 'MADRE orchestrator'
-          git config user.email '107514286+DidacLL@users.noreply.github.com'
-          git add tests/Madre.Kernel.Verification/RegressionVerification.cs
-          git commit -m 'Fix verifier reader discard compilation'
-          git push origin HEAD:agentic/kernel-physical-verification
-          git rev-parse HEAD
+        if: runner.os == 'Linux'
+        run: test "$(git rev-parse HEAD)" = "34220dced0b2b574135ea5f6fb05ebd15a5bd7cc"
+      - name: Confirm exact tested SHA
+        shell: pwsh
+        if: runner.os == 'Windows'
+        run: if ((git rev-parse HEAD).Trim() -ne '34220dced0b2b574135ea5f6fb05ebd15a5bd7cc') { throw 'wrong tested SHA' }
+
+      - name: Build Java physical client and acceptance tooling
+        if: runner.os == 'Linux'
+        run: ./gradlew --no-daemon clean build
+      - name: Build Java physical client and acceptance tooling
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: .\gradlew.bat --no-daemon clean build
+
+      - name: Build Kernel acceptance and verification
+        run: >-
+          dotnet build tests/Madre.Kernel.Acceptance/Madre.Kernel.Acceptance.csproj
+          --configuration Release
+          && dotnet build tests/Madre.Kernel.Verification/Madre.Kernel.Verification.csproj
+          --configuration Release
+
+      - name: Run preserved Lane C acceptance
+        if: matrix.suite == 'regression' || matrix.suite == 'qualification'
+        run: >-
+          dotnet run --project tests/Madre.Kernel.Acceptance/Madre.Kernel.Acceptance.csproj
+          --configuration Release --no-build
+
+      - name: Run selected verification suite
+        run: >-
+          dotnet run --project tests/Madre.Kernel.Verification/Madre.Kernel.Verification.csproj
+          --configuration Release --no-build --
+          --mode "${{ matrix.suite }}"
+          --seed "12648430"
+          --scale "medium"
+          --soak-seconds "60"
