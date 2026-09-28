@@ -28,12 +28,14 @@ internal static partial class Program
                 await RunIntegrationVerificationAsync(options);
                 await ProcessBindingIntegrationVerificationAsync();
                 await RunCorrectedExpandedIntegrationVerificationAsync(options);
+                await RunAdditionalBoundaryVerificationAsync();
                 break;
             case "qualification":
                 await RunRegressionVerificationAsync(options);
                 await RunIntegrationVerificationAsync(options);
                 await ProcessBindingIntegrationVerificationAsync();
                 await RunCorrectedExpandedIntegrationVerificationAsync(options);
+                await RunAdditionalBoundaryVerificationAsync();
                 await RunQualificationStressAsync(options);
                 await RunExpandedQualificationVerificationAsync(options);
                 break;
@@ -42,7 +44,7 @@ internal static partial class Program
                 await RunExpandedStressVerificationAsync(options);
                 break;
             case "soak":
-                await RunSoakVerificationAsync(options);
+                await RunQualifiedSoakVerificationAsync(options);
                 break;
             default:
                 throw new InvalidDataException($"unknown verification mode: {options.Mode}");
