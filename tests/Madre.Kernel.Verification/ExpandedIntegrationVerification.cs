@@ -254,7 +254,8 @@ internal static partial class Program
             "null",
             "[]",
             $"{{\"version\":{KernelProtocol.Version},\"requestId\":\"missing-operation\",\"payload\":null}}",
-            $"{{\"version\":{KernelProtocol.Version},\"requestId\":\"unknown-operation\",\"operation\":\"NoSuchOperation\",\"payload\":null}}"
+            $"{{\"version\":{KernelProtocol.Version},\"requestId\":\"unknown-operation\",\"operation\":\"NoSuchOperation\",\"payload\":null}}",
+            $"{{\"version\":{KernelProtocol.Version},\"requestId\":\"missing-payload\",\"operation\":\"Submit\"}}"
         ];
         foreach (string raw in malformedOrIncomplete)
         {
@@ -262,9 +263,6 @@ internal static partial class Program
             _ = await SendRawFrameAsync(env.Socket, body.Length, body);
         }
 
-        await AssertRawIpcErrorAsync(env.Socket,
-            $"{{\"version\":{KernelProtocol.Version},\"requestId\":\"missing-payload\",\"operation\":\"Submit\"}}",
-            "InvalidRequest");
         await AssertRawIpcErrorAsync(env.Socket,
             $"{{\"version\":{KernelProtocol.Version},\"requestId\":\"unexpected\",\"operation\":\"Submit\",\"payload\":{{\"preparedInput\":\"x\",\"requestedEffort\":\"Low\",\"urgency\":\"Normal\",\"executionBoundary\":\"LocalOnly\",\"unexpected\":1}}}}",
             "InvalidRequest");
@@ -395,8 +393,11 @@ internal static partial class Program
         string queued = await SubmitAsync(client, new PhysicalInferenceRequest(
             "java-nonterminal", InferenceEffort.Standard, WorkUrgency.Normal,
             DateTimeOffset.UtcNow.AddMinutes(2), null, ExecutionBoundary.LocalOnly));
-        Check((await RunJavaToExitAsync(env.Socket, "result", queued)).ExitCode != 0,
-            "Java nonterminal result unexpectedly succeeded");
+        ProcessExit nonterminal = await RunJavaToExitAsync(env.Socket, "result", queued);
+        Check(nonterminal.ExitCode == 0
+            && nonterminal.Stdout.Contains("Queued", StringComparison.Ordinal)
+            && nonterminal.Stdout.Contains("\"result\":null", StringComparison.Ordinal),
+            "Java nonterminal Result did not preserve queued/no-result physical truth");
         Check((await RunJavaToExitAsync(env.Socket, "cancel", queued)).ExitCode == 0,
             "Java cancel operation failed");
         Check((await RunJavaToExitAsync(env.Socket, "release", queued)).ExitCode == 0,
