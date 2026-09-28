@@ -1,4 +1,4 @@
-name: MADRE Kernel Windows Qualification Diagnostic
+name: MADRE Kernel Full Requalification
 
 on:
   push:
@@ -9,9 +9,14 @@ permissions:
   contents: read
 
 jobs:
-  qualify-windows:
-    name: qualification / windows-latest
-    runs-on: windows-latest
+  qualify:
+    name: ${{ matrix.suite }} / ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        suite: [regression, qualification, stress, soak]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     steps:
       - name: Checkout exact Kernel verification candidate
@@ -27,29 +32,36 @@ jobs:
         with:
           dotnet-version: '10.0.x'
       - name: Confirm exact tested SHA
+        shell: bash
+        if: runner.os == 'Linux'
+        run: test "$(git rev-parse HEAD)" = "95ddf2250c27d28e90e215391223164965b68729"
+      - name: Confirm exact tested SHA
         shell: pwsh
+        if: runner.os == 'Windows'
         run: if ((git rev-parse HEAD).Trim() -ne '95ddf2250c27d28e90e215391223164965b68729') { throw 'wrong tested SHA' }
       - name: Build Java physical client and acceptance tooling
+        if: runner.os == 'Linux'
+        run: ./gradlew --no-daemon clean build
+      - name: Build Java physical client and acceptance tooling
+        if: runner.os == 'Windows'
         shell: pwsh
         run: .\gradlew.bat --no-daemon clean build
       - name: Build Kernel acceptance and verification
-        shell: pwsh
         run: >-
           dotnet build tests/Madre.Kernel.Acceptance/Madre.Kernel.Acceptance.csproj
-          --configuration Release;
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE };
-          dotnet build tests/Madre.Kernel.Verification/Madre.Kernel.Verification.csproj
-          --configuration Release;
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          --configuration Release
+          && dotnet build tests/Madre.Kernel.Verification/Madre.Kernel.Verification.csproj
+          --configuration Release
       - name: Run preserved Lane C acceptance
-        shell: pwsh
-        run: dotnet run --project tests/Madre.Kernel.Acceptance/Madre.Kernel.Acceptance.csproj --configuration Release --no-build
-      - name: Run bounded Windows qualification
-        shell: pwsh
+        if: matrix.suite == 'regression' || matrix.suite == 'qualification'
+        run: >-
+          dotnet run --project tests/Madre.Kernel.Acceptance/Madre.Kernel.Acceptance.csproj
+          --configuration Release --no-build
+      - name: Run selected verification suite
         run: >-
           dotnet run --project tests/Madre.Kernel.Verification/Madre.Kernel.Verification.csproj
           --configuration Release --no-build --
-          --mode qualification
-          --seed 12648430
-          --scale medium
-          --soak-seconds 60
+          --mode "${{ matrix.suite }}"
+          --seed "12648430"
+          --scale "medium"
+          --soak-seconds "60"
