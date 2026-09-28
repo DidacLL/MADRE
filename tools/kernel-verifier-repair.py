@@ -11,116 +11,125 @@ def replace_once(path: str, old: str, new: str, label: str) -> None:
 
 
 replace_once(
-    "tests/Madre.Kernel.Verification/ExpandedIntegrationVerification.cs",
-    '''        await Task.Delay(750);
-        var survivors = new List<(RawHost Host, string Socket)>();
-        foreach ((RawHost host, string socket) in contenders)
+    "tests/Madre.Kernel.Verification/AdditionalVerification.cs",
+    '''        var blockerStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var blockerRelease = new TaskCompletionSource<BindingExecutionResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var binding = new ControlledBinding("controlled/urgency-order", "1")
         {
-            try
+            ExecuteHandler = (request, _) =>
             {
-                _ = await host.WaitForExitAsync(150);
-            }
-            catch (TimeoutException)
-            {
-                survivors.Add((host, socket));
-            }
-        }
-        Check(survivors.Count == 1, $"simultaneous Kernel startups produced {survivors.Count} owners instead of one");
-        Check((await new IpcClient(survivors[0].Socket).CallAsync<Health>("Health", null)).Status == "ok",
-            "losing ownership contenders damaged the winning Kernel");
-''',
-    '''        int winnerIndex = -1;
-        Stopwatch ownershipWait = Stopwatch.StartNew();
-        while (ownershipWait.Elapsed < TimeSpan.FromSeconds(10))
-        {
-            bool[] healthy = await Task.WhenAll(contenders.Select(async contender =>
-            {
-                try
+                if (request.PreparedInput == "blocker")
                 {
-                    return (await new IpcClient(contender.Socket).CallAsync<Health>("Health", null)).Status == "ok";
+                    blockerStarted.TrySetResult(true);
+                    return blockerRelease.Task;
                 }
-                catch (Exception ex) when (ex is SocketException or IOException or InvalidOperationException)
-                {
-                    return false;
-                }
-            }));
-            int[] healthyIndexes = healthy
-                .Select((value, index) => (value, index))
-                .Where(item => item.value)
-                .Select(item => item.index)
-                .ToArray();
-            Check(healthyIndexes.Length <= 1,
-                $"simultaneous Kernel startups produced {healthyIndexes.Length} healthy owners");
-            if (healthyIndexes.Length == 1)
-            {
-                winnerIndex = healthyIndexes[0];
-                break;
+                return Task.FromResult(BindingExecutionResult.Success(request.PreparedInput));
             }
-            await Task.Delay(50);
-        }
-        Check(winnerIndex >= 0, "simultaneous Kernel startups produced no healthy owner");
-
-        for (int i = 0; i < contenders.Count; i++)
-        {
-            if (i == winnerIndex)
-            {
-                continue;
-            }
-            HostExit loserExit;
-            try
-            {
-                loserExit = await contenders[i].Host.WaitForExitAsync(10_000);
-            }
-            catch (TimeoutException)
-            {
-                throw new InvalidOperationException($"losing ownership contender {i} did not terminate");
-            }
-            Check(loserExit.ExitCode != 0, $"losing ownership contender {i} exited successfully");
-        }
-        Check((await new IpcClient(contenders[winnerIndex].Socket).CallAsync<Health>("Health", null)).Status == "ok",
-            "losing ownership contenders damaged the winning Kernel");
-''',
-    "simultaneous ownership eventual-state verification",
-)
-
-replace_once(
-    "tests/Madre.Kernel.Acceptance/Support.cs",
-    '''    private static async Task<string> JavaAsync(string socket, params string[] args)
-    {
-        var psi = new ProcessStartInfo { FileName = "java", RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true };
-        psi.ArgumentList.Add("-cp"); psi.ArgumentList.Add(JavaClasspath); psi.ArgumentList.Add("io.github.didacll.madre.kernel.client.KernelClientProcess"); psi.ArgumentList.Add(socket); foreach (string a in args) psi.ArgumentList.Add(a);
-''',
-    '''    private static async Task<string> JavaAsync(string socket, params string[] args)
-    {
-        var psi = new ProcessStartInfo
-        {
-            FileName = "java",
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            StandardOutputEncoding = Encoding.UTF8,
-            StandardErrorEncoding = Encoding.UTF8,
-            UseShellExecute = false,
-            CreateNoWindow = true
         };
-        psi.ArgumentList.Add("-Dfile.encoding=UTF-8");
-        psi.ArgumentList.Add("-Dstdout.encoding=UTF-8");
-        psi.ArgumentList.Add("-Dstderr.encoding=UTF-8");
-        psi.ArgumentList.Add("-cp"); psi.ArgumentList.Add(JavaClasspath); psi.ArgumentList.Add("io.github.didacll.madre.kernel.client.KernelClientProcess"); psi.ArgumentList.Add(socket); foreach (string a in args) psi.ArgumentList.Add(a);
 ''',
-    "JavaAsync explicit UTF-8 boundary",
+    '''        var blockerStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var blockerRelease = new TaskCompletionSource<BindingExecutionResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var interactiveRelease = new TaskCompletionSource<BindingExecutionResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var normalRelease = new TaskCompletionSource<BindingExecutionResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var backgroundRelease = new TaskCompletionSource<BindingExecutionResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var candidateStarted = new SemaphoreSlim(0, 3);
+        var binding = new ControlledBinding("controlled/urgency-order", "1")
+        {
+            ExecuteHandler = (request, _) => request.PreparedInput switch
+            {
+                "blocker" => SignalAndWait(blockerStarted, blockerRelease),
+                "interactive" => SignalAndWait(candidateStarted, interactiveRelease),
+                "normal" => SignalAndWait(candidateStarted, normalRelease),
+                "background" => SignalAndWait(candidateStarted, backgroundRelease),
+                _ => throw new InvalidOperationException("unexpected urgency fixture input")
+            }
+        };
+''',
+    "urgency fixture gates",
 )
 
 replace_once(
     "tests/Madre.Kernel.Verification/AdditionalVerification.cs",
-    '''        File.WriteAllText(env.SlowState, "available");
-        _ = await client.CallAsync<List<CapabilitySnapshot>>("RefreshCapabilities", null);
+    '''        blockerRelease.TrySetResult(BindingExecutionResult.Success("blocker"));
+        await WaitAllTerminalAsync(engine, [blocker, background, normal, interactive]);
 
-        int completed = 0;
+        string[] order = binding.Invocations.ToArray();
+        Check(order.Length == 4
+            && order[0] == "blocker"
+            && order[1] == "interactive"
+            && order[2] == "normal"
+            && order[3] == "background",
+            "urgency priority was not applied when the final physical slot became available");
+    }
 ''',
-    '''        await WriteProbeStateAsync(env.SlowState, "available");
-        _ = await client.CallAsync<List<CapabilitySnapshot>>("RefreshCapabilities", null);
+    '''        blockerRelease.TrySetResult(BindingExecutionResult.Success("blocker"));
 
-        int completed = 0;
+        await candidateStarted.WaitAsync(TimeSpan.FromSeconds(5));
+        string[] first = binding.Invocations.ToArray();
+        Check(first.Length == 2 && first[0] == "blocker" && first[1] == "interactive",
+            "Interactive Work was not the first dispatch after the final physical slot became available");
+        interactiveRelease.TrySetResult(BindingExecutionResult.Success("interactive"));
+
+        await candidateStarted.WaitAsync(TimeSpan.FromSeconds(5));
+        string[] second = binding.Invocations.ToArray();
+        Check(second.Length == 3 && second[2] == "normal",
+            "Normal Work was not dispatched before Background Work");
+        normalRelease.TrySetResult(BindingExecutionResult.Success("normal"));
+
+        await candidateStarted.WaitAsync(TimeSpan.FromSeconds(5));
+        string[] third = binding.Invocations.ToArray();
+        Check(third.Length == 4 && third[3] == "background",
+            "Background Work was not the final urgency dispatch");
+        backgroundRelease.TrySetResult(BindingExecutionResult.Success("background"));
+
+        await WaitAllTerminalAsync(engine, [blocker, background, normal, interactive]);
+    }
+
+    private static Task<BindingExecutionResult> SignalAndWait(
+        TaskCompletionSource<bool> started,
+        TaskCompletionSource<BindingExecutionResult> release)
+    {
+        started.TrySetResult(true);
+        return release.Task;
+    }
+
+    private static Task<BindingExecutionResult> SignalAndWait(
+        SemaphoreSlim started,
+        TaskCompletionSource<BindingExecutionResult> release)
+    {
+        started.Release();
+        return release.Task;
+    }
 ''',
-    "post-restart soak probe-state writer",
+    "staged urgency assertions",
+)
+
+replace_once(
+    "madre-kernel-client/src/test/java/io/github/didacll/madre/kernel/client/KernelClientProcess.java",
+    '''                case "result" -> System.out.println(json.writeValueAsString(client.result(new WorkId(args[2]))));
+                case "cancel" -> System.out.println(client.cancel(new WorkId(args[2])));
+''',
+    '''                case "result" -> System.out.println(json.writeValueAsString(client.result(new WorkId(args[2]))));
+                case "result-equals" -> {
+                    if (args.length < 4) {
+                        throw new IllegalArgumentException("result-equals requires work id and expected result");
+                    }
+                    WorkResult result = client.result(new WorkId(args[2]));
+                    if (!args[3].equals(result.result())) {
+                        throw new IllegalStateException("result did not match expected value");
+                    }
+                    System.out.println("true");
+                }
+                case "cancel" -> System.out.println(client.cancel(new WorkId(args[2])));
+''',
+    "Java result value assertion helper",
+)
+
+replace_once(
+    "tests/Madre.Kernel.Verification/IntegrationVerification.cs",
+    '''        string id = (await JavaAsync(env.Socket, "submit", "java-á😀𐐷", "Standard", "Normal", "LocalOnly")).Trim(); await WaitStateAsync(client, id, WorkState.Succeeded); Check((await JavaAsync(env.Socket, "result", id)).Contains("java-á😀𐐷", StringComparison.Ordinal), "Java Unicode roundtrip failed");
+''',
+    '''        string id = (await JavaAsync(env.Socket, "submit", "java-á😀𐐷", "Standard", "Normal", "LocalOnly")).Trim(); await WaitStateAsync(client, id, WorkState.Succeeded); Check((await JavaAsync(env.Socket, "result-equals", id, "slow:java-á😀𐐷")).Trim() == "true", "Java Unicode roundtrip failed");
+''',
+    "Java Unicode logical value assertion",
 )
