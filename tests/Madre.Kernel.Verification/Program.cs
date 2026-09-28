@@ -27,13 +27,13 @@ internal static partial class Program
                 await RunRegressionVerificationAsync(options);
                 await RunIntegrationVerificationAsync(options);
                 await ProcessBindingIntegrationVerificationAsync();
-                await RunExpandedIntegrationVerificationAsync(options);
+                await RunCorrectedExpandedIntegrationVerificationAsync(options);
                 break;
             case "qualification":
                 await RunRegressionVerificationAsync(options);
                 await RunIntegrationVerificationAsync(options);
                 await ProcessBindingIntegrationVerificationAsync();
-                await RunExpandedIntegrationVerificationAsync(options);
+                await RunCorrectedExpandedIntegrationVerificationAsync(options);
                 await RunQualificationStressAsync(options);
                 await RunExpandedQualificationVerificationAsync(options);
                 break;
