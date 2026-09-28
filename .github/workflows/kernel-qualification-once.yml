@@ -1,4 +1,4 @@
-name: MADRE Kernel Windows Qualification Diagnostic
+name: MADRE Kernel Verifier Fixture Repair
 
 on:
   push:
@@ -6,50 +6,49 @@ on:
       - agentic/kernel-qualification-execution
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  qualify-windows:
-    name: qualification / windows-latest
-    runs-on: windows-latest
-    timeout-minutes: 20
+  repair:
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout exact Kernel verification candidate
+      - name: Checkout exact verification branch head
         uses: actions/checkout@v4
         with:
-          ref: 41771241a968ff1cfa6d2cfc9bba9e104f5f6985
-      - uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: '21'
-      - uses: gradle/actions/setup-gradle@v4
-      - uses: actions/setup-dotnet@v5
-        with:
-          dotnet-version: '10.0.x'
-      - name: Confirm exact tested SHA
-        shell: pwsh
-        run: if ((git rev-parse HEAD).Trim() -ne '41771241a968ff1cfa6d2cfc9bba9e104f5f6985') { throw 'wrong tested SHA' }
-      - name: Build Java physical client and acceptance tooling
-        shell: pwsh
-        run: .\gradlew.bat --no-daemon clean build
-      - name: Build Kernel acceptance and verification
-        shell: pwsh
-        run: >-
-          dotnet build tests/Madre.Kernel.Acceptance/Madre.Kernel.Acceptance.csproj
-          --configuration Release;
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE };
-          dotnet build tests/Madre.Kernel.Verification/Madre.Kernel.Verification.csproj
-          --configuration Release;
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Run preserved Lane C acceptance
-        shell: pwsh
-        run: dotnet run --project tests/Madre.Kernel.Acceptance/Madre.Kernel.Acceptance.csproj --configuration Release --no-build
-      - name: Run bounded Windows qualification
-        shell: pwsh
-        run: >-
-          dotnet run --project tests/Madre.Kernel.Verification/Madre.Kernel.Verification.csproj
-          --configuration Release --no-build --
-          --mode qualification
-          --seed 12648430
-          --scale medium
-          --soak-seconds 60
+          ref: agentic/kernel-physical-verification
+          fetch-depth: 0
+      - name: Confirm expected starting SHA
+        run: test "$(git rev-parse HEAD)" = "41771241a968ff1cfa6d2cfc9bba9e104f5f6985"
+      - name: Make urgency fixture cancellation-aware
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('tests/Madre.Kernel.Verification/AdditionalVerification.cs')
+          text = path.read_text()
+          replacements = {
+              'ExecuteHandler = (request, _) => request.PreparedInput switch': 'ExecuteHandler = (request, cancellationToken) => request.PreparedInput switch',
+              '"blocker" => SignalAndWait(blockerStarted, blockerRelease),': '"blocker" => SignalAndWait(blockerStarted, blockerRelease, cancellationToken),',
+              '"interactive" => SignalAndWait(candidateStarted, interactiveRelease),': '"interactive" => SignalAndWait(candidateStarted, interactiveRelease, cancellationToken),',
+              '"normal" => SignalAndWait(candidateStarted, normalRelease),': '"normal" => SignalAndWait(candidateStarted, normalRelease, cancellationToken),',
+              '"background" => SignalAndWait(candidateStarted, backgroundRelease),': '"background" => SignalAndWait(candidateStarted, backgroundRelease, cancellationToken),',
+              '''    private static Task<BindingExecutionResult> SignalAndWait(\n        TaskCompletionSource<bool> started,\n        TaskCompletionSource<BindingExecutionResult> release)\n    {\n        started.TrySetResult(true);\n        return release.Task;\n    }''': '''    private static Task<BindingExecutionResult> SignalAndWait(\n        TaskCompletionSource<bool> started,\n        TaskCompletionSource<BindingExecutionResult> release,\n        CancellationToken cancellationToken)\n    {\n        started.TrySetResult(true);\n        return release.Task.WaitAsync(cancellationToken);\n    }''',
+              '''    private static Task<BindingExecutionResult> SignalAndWait(\n        SemaphoreSlim started,\n        TaskCompletionSource<BindingExecutionResult> release)\n    {\n        started.Release();\n        return release.Task;\n    }''': '''    private static Task<BindingExecutionResult> SignalAndWait(\n        SemaphoreSlim started,\n        TaskCompletionSource<BindingExecutionResult> release,\n        CancellationToken cancellationToken)\n    {\n        started.Release();\n        return release.Task.WaitAsync(cancellationToken);\n    }''',
+          }
+          for old, new in replacements.items():
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'expected one match, found {count}: {old[:80]!r}')
+              text = text.replace(old, new)
+          path.write_text(text)
+          PY
+          git diff --check
+          git diff -- tests/Madre.Kernel.Verification/AdditionalVerification.cs
+      - name: Commit and push fixture repair
+        run: |
+          git config user.name 'MADRE orchestrator'
+          git config user.email '107514286+DidacLL@users.noreply.github.com'
+          git add tests/Madre.Kernel.Verification/AdditionalVerification.cs
+          git commit -m 'Make urgency verifier cancellation-aware'
+          git push origin HEAD:agentic/kernel-physical-verification
+          git rev-parse HEAD
