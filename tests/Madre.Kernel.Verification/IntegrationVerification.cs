@@ -69,7 +69,9 @@ internal static partial class Program
         Check((await RunHostToExitAsync(["--db", dotted, "--ipc-path", NewSocketPath()])).ExitCode != 0, "normalized alias admitted second owner");
         if (OperatingSystem.IsLinux()) { string link = Path.Combine(temp.Path, "owner-link.db"); File.CreateSymbolicLink(link, ownerDb); Check((await RunHostToExitAsync(["--db", link, "--ipc-path", NewSocketPath()])).ExitCode != 0, "symlink alias admitted second physical owner"); }
         var contenders = Enumerable.Range(0, 8).Select(_ => RawHost.StartConfigured(null, ownerDb, NewSocketPath())).ToArray();
-        await Task.Delay(500); int alive = 0; foreach (RawHost h in contenders) { try { _ = await h.WaitForExitAsync(100); } catch (TimeoutException) { alive++; } } Check(alive == 0, "losing owners remained alive while established owner held database"); foreach (RawHost h in contenders) await h.DisposeAsync();
+        HostExit[] contenderExits = await Task.WhenAll(contenders.Select(host => host.WaitForExitAsync(5_000)));
+        Check(contenderExits.All(exit => exit.ExitCode != 0), "established database owner admitted a losing contender");
+        foreach (RawHost h in contenders) await h.DisposeAsync();
         await winner.DisposeAsync(); await using RawHost successor = await RawHost.StartHealthyAsync(null, ownerDb, socket); Check((await new IpcClient(socket).CallAsync<Health>("Health", null)).Status == "ok", "owner successor failed");
     }
 

@@ -143,9 +143,9 @@ internal static partial class Program
             }
             else
             {
-                File.WriteAllText(env.SlowState, "unavailable");
+                await WriteProbeStateAsync(env.SlowState, "unavailable");
                 _ = await client.CallAsync<List<CapabilitySnapshot>>("RefreshCapabilities", null);
-                File.WriteAllText(env.SlowState, "available");
+                await WriteProbeStateAsync(env.SlowState, "available");
                 _ = await client.CallAsync<List<CapabilitySnapshot>>("RefreshCapabilities", null);
             }
 
@@ -195,6 +195,22 @@ internal static partial class Program
             + $"latencyP95Ms={Percentile(attemptDiagnostics.Latencies, 0.95):F1} "
             + $"verifierWorkingSetBytes={process.WorkingSet64} verifierHandles={process.HandleCount} "
             + $"descendantProcesses={(descendants?.ToString() ?? "n/a")} dbBytes={new FileInfo(env.Database).Length}");
+    }
+
+    private static async Task WriteProbeStateAsync(string path, string value)
+    {
+        for (int attempt = 0; ; attempt++)
+        {
+            try
+            {
+                await File.WriteAllTextAsync(path, value).ConfigureAwait(false);
+                return;
+            }
+            catch (IOException) when (OperatingSystem.IsWindows() && attempt < 100)
+            {
+                await Task.Delay(10).ConfigureAwait(false);
+            }
+        }
     }
 
     private sealed record SoakAttemptDiagnostics(int MaxConcurrency, IReadOnlyList<long> Latencies);

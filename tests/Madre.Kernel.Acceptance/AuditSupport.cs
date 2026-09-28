@@ -113,9 +113,14 @@ internal static partial class Program
             FileName = "java",
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
             UseShellExecute = false,
             CreateNoWindow = true
         };
+        psi.ArgumentList.Add("-Dfile.encoding=UTF-8");
+        psi.ArgumentList.Add("-Dstdout.encoding=UTF-8");
+        psi.ArgumentList.Add("-Dstderr.encoding=UTF-8");
         psi.ArgumentList.Add("-cp");
         psi.ArgumentList.Add(JavaClasspath);
         psi.ArgumentList.Add("io.github.didacll.madre.kernel.client.KernelClientProcess");
