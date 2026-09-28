@@ -1,10 +1,10 @@
 # MADRE — mid-level architecture
 
-Status: **accepted whole-system engineering boundaries; Lane C physical implementation current, semantic SDK/Runtime not yet implemented in the active tree**.
+Status: **accepted whole-system engineering boundaries; Lane C physical Kernel closed and qualified; Lane A semantic SDK and Lane B Runtime remain the next unimplemented semantic layers**.
 
 This document translates Product/Owner intent plus the current Lane C Owner decision into engineering boundaries. It is intentionally mid-level: concrete enough to constrain implementation and explain the complete system, while avoiding speculative private classes and exhaustive catalogues.
 
-Normative SPIRA semantics are in `docs/architecture/security-algebra.md`. The causal rationale for the DRE/physical-inference boundary is in `docs/product/lane-c-owner-decision.md`.
+Normative SPIRA semantics are in `docs/architecture/security-algebra.md`. The causal rationale for the DRE/physical-inference boundary is in `docs/product/lane-c-owner-decision.md`. The qualified physical implementation is defined in `docs/architecture/kernel.md`; `docs/architecture/kernel-handoff.md` records closure evidence and the backlog/interface constraints for Lane A, Lane B and anti-drift agents.
 
 Two rules govern this architecture:
 
@@ -182,7 +182,7 @@ small physical inference requirement
 Kernel PhysicalInferenceWork
 ```
 
-The exact public request type remains design work. It must not become a second semantic ontology inside Kernel.
+The exact public request type remains Lane A design work. It must not become a second semantic ontology inside Kernel.
 
 ## 9. Runtime responsibilities
 
@@ -215,6 +215,8 @@ Runtime also provides installation mechanics for:
 
 The meaning of reasoning remains in the responsible Agent/Module semantic process. There is no Runtime-owned global semantic scheduler merely because Kernel physical inference can remain outstanding for a long time.
 
+These responsibilities are the current Lane B boundary.
+
 ## 10. Semantic-to-physical inference contract
 
 Agents create `ReasoningRequest`s. They do not construct Kernel `PhysicalInferenceWork` directly.
@@ -243,6 +245,8 @@ Only physical consequences cross the boundary. Module/Agent/MADRE Workflow/WorkP
 The first version must remain small. A field is justified by an implemented DRE consumer, not hypothetical platform flexibility.
 
 The earlier exact `ConcretePhysicalInvocation`-before-Kernel boundary remains historical evidence only; it is not current architecture because it removes meaningful capability/effort selection from Kernel DRE.
+
+Lane A owns the public semantic construction side of this contract. Lane B owns installed semantic derivation/correlation/transport into `madre-kernel-client`. Lane C owns the already-closed physical side below that client boundary.
 
 ## 11. Delayed Reasoning Effort split
 
@@ -277,7 +281,7 @@ Kernel owns shared physical inference concepts, not external inference engines.
 
 ### PhysicalInferenceWork
 
-One authoritative durable Work lifecycle stores the physical requirement and execution evidence needed for DRE/recovery. Current Work has no MAF/checkpoint/strategy scaffolding. SQLite is authoritative for current Lane C physical state.
+One authoritative durable Work lifecycle stores the physical requirement and execution evidence needed for DRE/recovery. Current Work has no MAF/checkpoint/strategy scaffolding. SQLite is authoritative for current physical state.
 
 ### InferenceCapability
 
@@ -297,7 +301,9 @@ Kernel does not judge application-level answer quality.
 
 The scheduler is wake/deadline driven and considers the complete eligible metadata set so waiting head Work cannot hide later runnable Work. Scheduling candidates contain scheduling facts only; prepared payload is loaded only after a Work claim succeeds.
 
-One process-lifetime owner exists per database regardless of IPC endpoint. Current SQLite schema identity is explicit. An incompatible unversioned/pre-release database fails early; there is no migration/compatibility layer.
+One process-lifetime owner exists per database regardless of IPC endpoint. Physical ownership on Linux canonicalizes filesystem aliases/symlinks so one authoritative database cannot obtain multiple owners through different paths. Current SQLite schema identity is explicit. An incompatible unversioned/pre-release database fails early; there is no migration/compatibility layer.
+
+Scheduler passes snapshot dispatch capacity. Capacity released by a fast completion is reconsidered in a fresh pass rather than reused later in the stale ordering, preserving urgency across slot-release races.
 
 Fatal scheduler, capability-observation persistence or attempt persistence failures are supervised. The host must fail/terminate instead of continuing to report healthy while authoritative physical state can no longer be maintained.
 
@@ -348,6 +354,8 @@ The builder is absent from normal execution after the software exists. A future 
 
 At the physical layer, an advanced Owner should likewise be able to create an unusual inference binding through the same class of surface used by provided adapters.
 
+This public Java 21 construction surface is the current Lane A boundary.
+
 ## 17. Logical dependency direction
 
 ```text
@@ -370,12 +378,12 @@ Kernel              -X-> MADRE Runtime
 
 Kernel physical implementation libraries do not leak into the semantic SDK. A Module may privately use external AI or other systems without creating a Kernel dependency.
 
-## 18. Current Lane C implementation status
+## 18. Current implementation status and lane handoff
 
-Current Lane C implements and CI-proves:
+Lane C is closed and qualified. The current physical implementation provides:
 
 - zero-capability startup without mandatory configuration;
-- one active process owner per database across same/different IPC paths and non-destructive live endpoint handling;
+- one active process owner per database across same/different IPC paths, including Linux physical path aliases, with non-destructive live endpoint handling;
 - SQLite durable Work/attempt/result lifecycle with explicit schema identity and truthful incompatible-pre-release failure;
 - configured/current/observed capability truth and catalogue reconciliation;
 - asynchronous startup observation plus demand-driven unavailable-capability recovery;
@@ -383,17 +391,30 @@ Current Lane C implements and CI-proves:
 - binding/version-scoped latency evidence;
 - capability-aware DRE with explicit domain ordering;
 - wake/deadline-driven metadata-only scheduling without fixed busy polling or fixed-head starvation;
+- urgency preservation across physical slot-release races;
 - supervised fatal background infrastructure failures;
 - typed physical failures and technical detail;
 - shell-free UTF-8 process/MEAI/custom open binding seam;
 - bounded local Unix-domain-socket IPC and bounded Java 21 calls on Windows/Linux;
 - strict IPC/config/CLI parsing;
 - caller disappearance, eligibility/deadlines, cancellation, retained release and restart `UnknownCompletion`;
-- contamination checks preventing semantic leakage, web/port residue, checkpoint/MAF residue and test-helper production packaging.
+- behavioral verification for request boundaries, lifecycle/state races, hostile bindings/processes, SQLite/restart/ownership, raw IPC, Java interoperability, load, randomized/model stress, restart chaos and soak behavior.
+
+The executable closure baseline is `95ddf2250c27d28e90e215391223164965b68729`. GitHub Actions run `36493627377` passed regression, qualification, stress and soak on Ubuntu and Windows. This is deliberate qualification evidence, not automatic per-PR/per-push Kernel CI.
+
+The active physical verifier is `.github/workflows/kernel-verification.yml` and is manual/on-demand. Lane A/SDK and Lane B/Runtime changes do not run the full Kernel arsenal merely because they share the repository; Kernel verification is used when the physical boundary or implementation actually changes.
 
 The superseded C++/worker/model-lifecycle/llama.cpp/protocol-v4/web-host/MAF-validation shapes are historical evidence, not active alternatives.
 
-The semantic SDK/Module layer and Runtime described above remain architecture, not work started by Lane C. Implementation status is submitted for Owner/orchestrator audit; this document does not declare Lane C closed.
+Current post-Lane-C work split:
+
+```text
+Lane A = public Java 21 semantic SDK / Module construction surface
+Lane B = minimal Runtime with Module environment, semantic reasoning persistence/correlation and semantic→physical bridge
+Lane C = closed qualified physical Kernel
+```
+
+Lane A and Lane B must consume the existing physical boundary rather than reopen Kernel absent a concrete physical defect, real new physical requirement or explicit Owner decision. The detailed handoff is `docs/architecture/kernel-handoff.md`.
 
 ## 19. Engineering invariants
 
@@ -419,3 +440,4 @@ The semantic SDK/Module layer and Runtime described above remain architecture, n
 20. Independent/generated Modules use the same public SDK as shipped software.
 21. Modularity means small replaceable boundaries where a real responsibility exists, not a framework for every possible future idea.
 22. Neither rejected extreme may return: Kernel-owned inference runtimes, or a Kernel so narrow that meaningful physical choice is already completed above it.
+23. Lane A and Lane B do not reopen Lane C merely to simplify semantic implementation; a Kernel change requires a concrete physical reason.
