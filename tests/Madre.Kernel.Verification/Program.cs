@@ -26,14 +26,20 @@ internal static partial class Program
             case "regression":
                 await RunRegressionVerificationAsync(options);
                 await RunIntegrationVerificationAsync(options);
+                await ProcessBindingIntegrationVerificationAsync();
+                await RunExpandedIntegrationVerificationAsync(options);
                 break;
             case "qualification":
                 await RunRegressionVerificationAsync(options);
                 await RunIntegrationVerificationAsync(options);
+                await ProcessBindingIntegrationVerificationAsync();
+                await RunExpandedIntegrationVerificationAsync(options);
                 await RunQualificationStressAsync(options);
+                await RunExpandedQualificationVerificationAsync(options);
                 break;
             case "stress":
                 await RunStressVerificationAsync(options);
+                await RunExpandedStressVerificationAsync(options);
                 break;
             case "soak":
                 await RunSoakVerificationAsync(options);
