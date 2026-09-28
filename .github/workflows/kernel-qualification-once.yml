@@ -1,4 +1,4 @@
-name: MADRE Kernel One-Off Verifier Repair
+name: MADRE Kernel One-Off Qualification
 
 on:
   push:
@@ -6,31 +6,61 @@ on:
       - agentic/kernel-qualification-execution
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  repair:
-    runs-on: ubuntu-latest
+  qualify:
+    name: ${{ matrix.suite }} / ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        suite: [regression, qualification, stress, soak]
+    runs-on: ${{ matrix.os }}
     steps:
-      - name: Checkout verification branch
+      - name: Checkout exact Kernel verification candidate
         uses: actions/checkout@v4
         with:
-          ref: agentic/kernel-physical-verification
-          fetch-depth: 0
-      - name: Confirm expected starting SHA
-        run: test "$(git rev-parse HEAD)" = "fa6420657f1f09834a409d66b25203c8fff2d31e"
-      - name: Fetch one-off repair script
-        run: git show origin/agentic/kernel-qualification-execution:tools/kernel-verifier-repair.py > /tmp/kernel-verifier-repair.py
-      - name: Apply bounded corrections
-        run: |
-          python3 /tmp/kernel-verifier-repair.py
-          git diff --check
-          git diff --stat
-      - name: Commit and push
-        run: |
-          git config user.name 'MADRE orchestrator'
-          git config user.email '107514286+DidacLL@users.noreply.github.com'
-          git add tests/Madre.Kernel.Verification/ExpandedIntegrationVerification.cs tests/Madre.Kernel.Acceptance/Support.cs tests/Madre.Kernel.Verification/AdditionalVerification.cs
-          git commit -m 'Correct verifier startup and Windows portability'
-          git push origin HEAD:agentic/kernel-physical-verification
-          git rev-parse HEAD
+          ref: eb257da4d80f348c72f5644bb55807893ddc5ddd
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+      - name: Confirm exact tested SHA
+        shell: bash
+        if: runner.os == 'Linux'
+        run: test "$(git rev-parse HEAD)" = "eb257da4d80f348c72f5644bb55807893ddc5ddd"
+      - name: Confirm exact tested SHA
+        shell: pwsh
+        if: runner.os == 'Windows'
+        run: if ((git rev-parse HEAD).Trim() -ne 'eb257da4d80f348c72f5644bb55807893ddc5ddd') { throw 'wrong tested SHA' }
+      - name: Build Java physical client and acceptance tooling
+        if: runner.os == 'Linux'
+        run: ./gradlew --no-daemon clean build
+      - name: Build Java physical client and acceptance tooling
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: .\gradlew.bat --no-daemon clean build
+      - name: Build Kernel acceptance and verification
+        run: >-
+          dotnet build tests/Madre.Kernel.Acceptance/Madre.Kernel.Acceptance.csproj
+          --configuration Release
+          && dotnet build tests/Madre.Kernel.Verification/Madre.Kernel.Verification.csproj
+          --configuration Release
+      - name: Run preserved Lane C acceptance
+        if: matrix.suite == 'regression' || matrix.suite == 'qualification'
+        run: >-
+          dotnet run --project tests/Madre.Kernel.Acceptance/Madre.Kernel.Acceptance.csproj
+          --configuration Release --no-build
+      - name: Run selected verification suite
+        run: >-
+          dotnet run --project tests/Madre.Kernel.Verification/Madre.Kernel.Verification.csproj
+          --configuration Release --no-build --
+          --mode "${{ matrix.suite }}"
+          --seed "12648430"
+          --scale "medium"
+          --soak-seconds "60"
