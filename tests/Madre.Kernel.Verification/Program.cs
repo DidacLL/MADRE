@@ -29,14 +29,16 @@ internal static partial class Program
                 await RunPhaseAsync("integration", () => RunIntegrationVerificationAsync(options));
                 await RunPhaseAsync("process-binding-integration", ProcessBindingIntegrationVerificationAsync);
                 await RunPhaseAsync("expanded-integration", () => RunExpandedIntegrationVerificationAsync(options));
-                await RunPhaseAsync("additional-boundaries", RunAdditionalBoundaryVerificationAsync);
+                await RunPhaseAsync("urgency-final-slot", UrgencyOnFinalSlotAsync, TimeSpan.FromMinutes(1));
+                await RunPhaseAsync("java-stalled-peer-timeout", JavaStalledPeerTimeoutAsync, TimeSpan.FromMinutes(1));
                 break;
             case "qualification":
                 await RunPhaseAsync("regression-contracts", () => RunRegressionVerificationAsync(options));
                 await RunPhaseAsync("integration", () => RunIntegrationVerificationAsync(options));
                 await RunPhaseAsync("process-binding-integration", ProcessBindingIntegrationVerificationAsync);
                 await RunPhaseAsync("expanded-integration", () => RunExpandedIntegrationVerificationAsync(options));
-                await RunPhaseAsync("additional-boundaries", RunAdditionalBoundaryVerificationAsync);
+                await RunPhaseAsync("urgency-final-slot", UrgencyOnFinalSlotAsync, TimeSpan.FromMinutes(1));
+                await RunPhaseAsync("java-stalled-peer-timeout", JavaStalledPeerTimeoutAsync, TimeSpan.FromMinutes(1));
                 await RunPhaseAsync("qualification-stress", () => RunQualificationStressAsync(options));
                 await RunPhaseAsync("expanded-qualification", () => RunExpandedQualificationVerificationAsync(options));
                 break;
