@@ -9,18 +9,34 @@ Before substantial MADRE work, read `NORTH_STAR.md` first and answer its eight q
 Then use this authority order:
 
 1. current Owner request;
-2. `docs/product/lane-c-owner-decision.md` for the accepted current Lane C / DRE / physical-inference correction and the reasons behind it;
+2. `docs/product/lane-c-owner-decision.md` for the accepted Lane C / DRE / physical-inference correction and the reasons behind it;
 3. `docs/product/owner-intent-corpus.md` for detailed product meaning and causal reasoning not superseded by the more recent Lane C decision;
 4. `NORTH_STAR.md` as the concise anti-drift checkpoint;
 5. `MADRE.md` for the detailed cross-repository product/semantic overview;
 6. `docs/architecture/security-algebra.md` for operational SPIRA semantics;
 7. `docs/architecture/mid-level-architecture.md` for accepted whole-system engineering boundaries;
-8. `docs/architecture/kernel.md` for the current physical Kernel architecture and implementation;
-9. active implementation/tests/CI as evidence of what exists.
+8. `docs/architecture/kernel.md` for the current closed physical Kernel architecture and implementation;
+9. active implementation/tests/manual verification as evidence of what exists.
 
-`NORTH_STAR.md` is deliberately short. It does not replace the richer authorities. The Lane C decision is deliberately narrow: it supersedes older exact-invocation-before-Kernel statements where they conflict, but it does not rewrite unrelated Module, Agent, Operation, Material, Runtime, CORE, SDK or SPIRA semantics.
+`docs/architecture/kernel-handoff.md` is the operational Lane C closure handoff for Lane A, Lane B and anti-drift agents. It records closure evidence, concrete Kernel defects found during verification, next-lane integration constraints and the manual verification policy. It is not a product authority above the list above.
+
+`NORTH_STAR.md` is deliberately short. It does not replace the richer authorities. The Lane C Owner decision is deliberately narrow: it supersedes older exact-invocation-before-Kernel statements where they conflict, but it does not rewrite unrelated Module, Agent, Operation, Material, Runtime, CORE, SDK or SPIRA semantics.
+
+The original `docs/product/lane-c-owner-decision.md` text was written before the final closure audit and therefore still contains historical implementation-status wording about pending audit. Its architectural rationale remains authoritative; Lane C closure status and qualified implementation truth are recorded by `docs/architecture/kernel.md` and `docs/architecture/kernel-handoff.md` after the Owner/orchestrator closure decision.
 
 Historical code, PRs, commits, issues, discarded documents and familiar software/AI-platform patterns are evidence only. Later Owner corrections supersede historical implementation even when historical code is more detailed. Do not restore an old abstraction merely because it once compiled, and do not preserve a corrective abstraction merely because it successfully removed an earlier drift.
+
+## Post-Lane-C lane map
+
+The current work split after physical Kernel closure is:
+
+```text
+Lane A = public Java 21 semantic SDK / Module construction surface
+Lane B = minimal Runtime: Module environment + semantic reasoning persistence/correlation + semantic→physical bridge
+Lane C = closed qualified physical Kernel
+```
+
+Lane A and Lane B consume the closed physical boundary. They do not reopen Lane C merely because another semantic carrier or Runtime implementation would be easier against a different Kernel.
 
 ## North Star gate before substantial work
 
@@ -157,7 +173,7 @@ Do not invent or restore a mandatory `ReasoningRequest.S/P/I/R/A` tuple. Risk re
 
 Agents do not construct Kernel `PhysicalInferenceWork` directly. Semantic MADRE derives a small physical inference requirement from the actual reasoning need and constraints. It may include prepared input, requested result characteristics, desired reasoning effort, context characteristics, urgency, acceptable delay/deadline, modality requirements, hard restrictions derived from semantic composition and explicit Owner preferences.
 
-The exact public carrier and SDK/Runtime journey remain design work. Do not freeze a giant request object or restore a provider-specific executor API merely to make the boundary concrete.
+The exact public carrier is Lane A design work. Its installed persistence/correlation, semantic continuation and transport into `madre-kernel-client` are Lane B work. Do not freeze a giant request object or restore a provider-specific executor API merely to make the boundary concrete.
 
 ```text
 ReasoningRequest + actual semantic context/preferences
@@ -209,9 +225,9 @@ MADRE-provided inference conveniences use the same class of physical constructio
 
 ## Current Lane C implementation
 
-The active tree contains one current Lane C implementation under `kernel/` plus the Java 21 `madre-kernel-client`:
+Lane C is closed and qualified. The active tree contains one current physical implementation under `kernel/` plus the Java 21 `madre-kernel-client`:
 
-- cross-platform .NET Kernel with one process owner per database;
+- cross-platform .NET Kernel with one physical process owner per database, including Linux path/symlink aliases;
 - SQLite-authoritative durable physical Work and attempt history with explicit current schema identity;
 - configured/current/observed `InferenceCapability` truth;
 - capability-aware DRE using effort/boundary admissibility, availability, Owner preference and current-binding latency evidence where implemented;
@@ -219,6 +235,7 @@ The active tree contains one current Lane C implementation under `kernel/` plus 
 - asynchronous startup observation and demand-driven re-observation of unavailable capabilities; probe timeout means `Unknown`, not `Unavailable`;
 - current configured capability catalogue reconciled on restart while historical attempts remain historical;
 - wake/deadline-driven scheduling over metadata-only candidates, loading physical payload only after claim;
+- urgency-preserving dispatch when physical slots are released during scheduler traversal;
 - typed physical failure vocabulary with separate technical detail;
 - one common physical binding-execution responsibility;
 - shell-free explicitly UTF-8 process binding, MEAI interoperability and the open `IInferenceBinding` seam;
@@ -226,11 +243,13 @@ The active tree contains one current Lane C implementation under `kernel/` plus 
 - strict IPC/config/CLI parsing rather than silent defaults;
 - supervised Kernel-owned scheduler/probe/execution persistence: fatal infrastructure failure terminates/fails the host instead of leaving a zombie healthy Kernel;
 - bounded concurrency, caller disappearance, eligibility/deadlines, cancellation, retained results/release and restart `UnknownCompletion` behavior;
-- Linux and Windows behavioral CI.
+- manual/on-demand Linux and Windows regression, qualification, stress and soak verification through `.github/workflows/kernel-verification.yml`.
+
+The executable closure baseline is `95ddf2250c27d28e90e215391223164965b68729`; full cross-platform requalification is GitHub Actions run `36493627377`. The later closure-policy commit removed obsolete automatic Lane C CI without changing executable behavior.
 
 There is no TCP/loopback web control plane, configurable port, ASP.NET host dependency, production MAF workflow/checkpoint strategy, checkpoint state, MAF package dependency, packaged Java CLI containing test classes, or compatibility/migration layer for pre-release databases.
 
-The semantic SDK/Module layer and Runtime remain accepted architecture but are not implemented by Lane C. Do not start or restore them while working a Kernel-only task.
+Lane A and Lane B may now proceed against this physical boundary. Do not start or restore semantic SDK/Runtime code while working a Kernel-only task, and do not reopen Kernel during Lane A/B merely because a semantic implementation would prefer another physical architecture. Read `docs/architecture/kernel-handoff.md` first if a later lane believes Kernel must change.
 
 ## SDK as generation target
 
@@ -248,4 +267,4 @@ Prefer working behavior, explicit contracts and behavioral evidence over specula
 
 Simplification must not erase semantic ownership or meaningful DRE. Removing a concrete carrier, causal relation or meaningful boundary is architecture drift; so is narrowing Kernel until all meaningful physical inference choice has already happened elsewhere.
 
-Commit and push coherent behavior. Keep implementation truth, documentation truth and CI evidence aligned. Lane C closure is an Owner/orchestrator decision, not an implementation claim.
+Commit and push coherent behavior. Keep implementation truth, documentation truth and verification evidence aligned. Lane C closure is an Owner/orchestrator decision already recorded in the active Kernel architecture and handoff; green tests support that decision but do not become architectural authority.
