@@ -21,18 +21,16 @@ jobs:
         run: test "$(git rev-parse HEAD)" = "4c34f0b2fd42433d06ea67dad5a304e2fb6d5fd2"
       - name: Fetch one-off repair script
         run: git show origin/agentic/kernel-qualification-execution:tools/kernel-verifier-repair.py > /tmp/kernel-verifier-repair.py
-      - name: Apply fixture correction and preserve both workflows
+      - name: Apply bounded fixture correction
         run: |
           python3 /tmp/kernel-verifier-repair.py
-          cp .github/workflows/build.yml .github/workflows/kernel-verification.yml
-          git show c57af73c1a3a87d0e53cccdd91719125be121273:.github/workflows/build.yml > .github/workflows/build.yml
           git diff --check
           git diff --stat
       - name: Commit and push
         run: |
           git config user.name 'MADRE orchestrator'
           git config user.email '107514286+DidacLL@users.noreply.github.com'
-          git add tests/Madre.Kernel.Verification/ProcessIntegrationVerification.cs .github/workflows/build.yml .github/workflows/kernel-verification.yml
-          git commit -m 'Stabilize process-tree verification and preserve Lane C CI'
+          git add tests/Madre.Kernel.Verification/ProcessIntegrationVerification.cs
+          git commit -m 'Wait for parseable process-tree child marker'
           git push origin HEAD:agentic/kernel-physical-verification
           git rev-parse HEAD
