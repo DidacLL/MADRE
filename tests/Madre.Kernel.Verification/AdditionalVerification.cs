@@ -162,7 +162,7 @@ internal static partial class Program
         await kernel.RestartAsync();
         client = new IpcClient(env.Socket);
         restarts++;
-        File.WriteAllText(env.SlowState, "available");
+        await WriteProbeStateAsync(env.SlowState, "available");
         _ = await client.CallAsync<List<CapabilitySnapshot>>("RefreshCapabilities", null);
 
         int completed = 0;

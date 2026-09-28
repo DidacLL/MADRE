@@ -81,7 +81,19 @@ internal static partial class Program
 
     private static async Task<string> JavaAsync(string socket, params string[] args)
     {
-        var psi = new ProcessStartInfo { FileName = "java", RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true };
+        var psi = new ProcessStartInfo
+        {
+            FileName = "java",
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+        psi.ArgumentList.Add("-Dfile.encoding=UTF-8");
+        psi.ArgumentList.Add("-Dstdout.encoding=UTF-8");
+        psi.ArgumentList.Add("-Dstderr.encoding=UTF-8");
         psi.ArgumentList.Add("-cp"); psi.ArgumentList.Add(JavaClasspath); psi.ArgumentList.Add("io.github.didacll.madre.kernel.client.KernelClientProcess"); psi.ArgumentList.Add(socket); foreach (string a in args) psi.ArgumentList.Add(a);
         using Process p = Process.Start(psi) ?? throw new InvalidOperationException("failed to launch Java helper"); string stdout = await p.StandardOutput.ReadToEndAsync(); string stderr = await p.StandardError.ReadToEndAsync(); await p.WaitForExitAsync();
         Check(p.ExitCode == 0, "Java client failed: " + stderr); return stdout;
