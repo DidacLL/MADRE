@@ -79,7 +79,7 @@ Kernel performs DRE against configured `InferenceCapability` facts, current phys
 
 ## Current Lane C implementation
 
-Lane C is a single current implementation under [`kernel/`](kernel/): the capability-aware .NET physical Kernel. Superseded native/worker/model-lifecycle implementations and validation side trees are not active alternatives; Git history is the historical record.
+Lane C is a single current implementation under [`kernel/`](kernel/): the capability-aware .NET physical Kernel. The physical baseline is closed and qualified; superseded native/worker/model-lifecycle implementations and validation side trees are not active alternatives, and Git history is the historical record.
 
 MADRE owns below the semantic/physical boundary:
 
@@ -114,11 +114,13 @@ SQLite is authoritative for Work, configured/current capability state, attempts 
 
 The earlier validation-only multi-stage checkpoint strategy is not part of the current product implementation. No production checkpoint state, workflow dependency or validation-only strategy registry remains in the active tree.
 
-## Repository acceptance
+## Kernel verification
 
-The active CI runs the complete current Java/.NET Lane C acceptance on Linux and Windows. It proves zero-capability/no-config startup, bounded local IPC, real Java↔.NET operation, concurrent/stalled/disappearing callers, capability truth and automatic recovery, DRE admissibility/Owner preference/observed latency, durable eligibility/deadlines, cancellation, retained results/release, restart `UnknownCompletion`, configuration reconciliation, process/custom binding openness and no fixed-head starvation.
+The closed physical baseline was fully requalified on Linux and Windows at executable head `95ddf2250c27d28e90e215391223164965b68729`. GitHub Actions run `36493627377` passed regression, qualification, stress and soak on both operating systems.
 
-CI also runs destructive-convergence/contamination checks so rejected web/TCP control-plane code, validation checkpoint machinery, semantic leakage, native Kernel fossils and Java test-helper production packaging cannot silently return.
+Kernel verification is now deliberately manual/on-demand rather than a permanent PR/push tax. The active `.github/workflows/kernel-verification.yml` exposes the four suites with deterministic seed/scale controls.
+
+The retained verification covers zero-capability/no-config startup, bounded local IPC, real Java↔.NET operation, concurrent/stalled/disappearing callers, capability truth and automatic recovery, DRE admissibility/Owner preference/observed latency, durable eligibility/deadlines, cancellation, retained results/release, restart `UnknownCompletion`, configuration reconciliation, process/custom binding openness, scheduler races, persistence failure truth, hostile process behavior, randomized/model stress, restart chaos and sustained load.
 
 The semantic SDK/Module layer and MADRE Runtime remain outside this Lane C implementation and are not reconstructed here.
 
@@ -132,7 +134,8 @@ Start here:
 - [`MADRE.md`](MADRE.md) — detailed repository-level product/semantic overview and authority order;
 - [`docs/architecture/security-algebra.md`](docs/architecture/security-algebra.md) — operational SPIRA semantics;
 - [`docs/architecture/mid-level-architecture.md`](docs/architecture/mid-level-architecture.md) — accepted whole-system architecture;
-- [`docs/architecture/kernel.md`](docs/architecture/kernel.md) — current physical Kernel/DRE architecture and implementation.
+- [`docs/architecture/kernel.md`](docs/architecture/kernel.md) — current closed physical Kernel/DRE architecture and implementation;
+- [`docs/architecture/kernel-handoff.md`](docs/architecture/kernel-handoff.md) — Lane C closure evidence, next-lane integration backlog and anti-drift handoff.
 
 ## Development principle
 
