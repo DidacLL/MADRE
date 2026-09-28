@@ -162,7 +162,7 @@ public sealed class KernelDatabaseLease : IDisposable
             throw new PlatformNotSupportedException("MADRE Kernel database ownership is supported on Windows and Linux");
         }
 
-        string database = Path.GetFullPath(databasePath);
+        string database = ResolveOwnershipPath(databasePath);
         string? directory = Path.GetDirectoryName(database);
         if (directory is null)
         {
@@ -197,6 +197,47 @@ public sealed class KernelDatabaseLease : IDisposable
         {
             stream.Dispose();
             throw;
+        }
+    }
+
+    private static string ResolveOwnershipPath(string databasePath)
+    {
+        string fullPath = Path.GetFullPath(databasePath);
+        if (!OperatingSystem.IsLinux())
+        {
+            return fullPath;
+        }
+
+        FileSystemInfo? target = TryResolveLink(new FileInfo(fullPath));
+        if (target is not null)
+        {
+            return Path.GetFullPath(target.FullName);
+        }
+
+        string? directory = Path.GetDirectoryName(fullPath);
+        if (directory is null)
+        {
+            return fullPath;
+        }
+        FileSystemInfo? directoryTarget = TryResolveLink(new DirectoryInfo(directory));
+        return directoryTarget is null
+            ? fullPath
+            : Path.Combine(Path.GetFullPath(directoryTarget.FullName), Path.GetFileName(fullPath));
+    }
+
+    private static FileSystemInfo? TryResolveLink(FileSystemInfo path)
+    {
+        try
+        {
+            return path.ResolveLinkTarget(returnFinalTarget: true);
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return null;
         }
     }
 
