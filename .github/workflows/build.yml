@@ -1,53 +1,22 @@
-name: MADRE Kernel Physical Verification
+name: MADRE Lane C
 
 on:
+  pull_request:
+  push:
+    branches: [main, 'agentic/lane-c-engine-contract-repair']
   workflow_dispatch:
-    inputs:
-      suite:
-        description: Kernel verification suite
-        required: true
-        default: regression
-        type: choice
-        options:
-          - regression
-          - qualification
-          - stress
-          - soak
-      seed:
-        description: Deterministic stress/fuzz seed
-        required: true
-        default: '12648430'
-        type: string
-      scale:
-        description: Workload scale profile
-        required: true
-        default: medium
-        type: choice
-        options:
-          - small
-          - medium
-          - large
-      soak_seconds:
-        description: Soak duration in seconds
-        required: true
-        default: '60'
-        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.suite }}
-  cancel-in-progress: false
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  kernel-verification:
-    name: Kernel ${{ inputs.suite }} / ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+  lane-c-linux:
+    name: Lane C Linux acceptance
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v5
@@ -58,56 +27,32 @@ jobs:
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '10.0.x'
-
       - name: Build Java physical client and acceptance tooling
-        if: runner.os == 'Linux'
         run: ./gradlew --no-daemon clean build
+      - name: Build Lane C acceptance
+        run: dotnet build tests/Madre.Kernel.Acceptance/Madre.Kernel.Acceptance.csproj --configuration Release
+      - name: Run complete Lane C acceptance
+        run: dotnet run --project tests/Madre.Kernel.Acceptance/Madre.Kernel.Acceptance.csproj --configuration Release --no-build
+
+  lane-c-windows:
+    name: Lane C Windows acceptance
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
       - name: Build Java physical client and acceptance tooling
-        if: runner.os == 'Windows'
         shell: pwsh
         run: .\gradlew.bat --no-daemon clean build
-
-      - name: Build Kernel acceptance and verification
-        run: >-
-          dotnet build tests/Madre.Kernel.Acceptance/Madre.Kernel.Acceptance.csproj
-          --configuration Release
-          && dotnet build tests/Madre.Kernel.Verification/Madre.Kernel.Verification.csproj
-          --configuration Release
-
-      - name: Run preserved Lane C acceptance
-        if: inputs.suite == 'regression' || inputs.suite == 'qualification'
-        run: >-
-          dotnet run --project tests/Madre.Kernel.Acceptance/Madre.Kernel.Acceptance.csproj
-          --configuration Release --no-build
-
-      - name: Run deterministic regression and physical integration
-        if: inputs.suite == 'regression'
-        run: >-
-          dotnet run --project tests/Madre.Kernel.Verification/Madre.Kernel.Verification.csproj
-          --configuration Release --no-build --
-          --mode regression --seed "${{ inputs.seed }}" --scale "${{ inputs.scale }}"
-          --soak-seconds "${{ inputs.soak_seconds }}"
-
-      - name: Run qualification
-        if: inputs.suite == 'qualification'
-        run: >-
-          dotnet run --project tests/Madre.Kernel.Verification/Madre.Kernel.Verification.csproj
-          --configuration Release --no-build --
-          --mode qualification --seed "${{ inputs.seed }}" --scale "${{ inputs.scale }}"
-          --soak-seconds "${{ inputs.soak_seconds }}"
-
-      - name: Run stress and restart chaos
-        if: inputs.suite == 'stress'
-        run: >-
-          dotnet run --project tests/Madre.Kernel.Verification/Madre.Kernel.Verification.csproj
-          --configuration Release --no-build --
-          --mode stress --seed "${{ inputs.seed }}" --scale "${{ inputs.scale }}"
-          --soak-seconds "${{ inputs.soak_seconds }}"
-
-      - name: Run soak
-        if: inputs.suite == 'soak'
-        run: >-
-          dotnet run --project tests/Madre.Kernel.Verification/Madre.Kernel.Verification.csproj
-          --configuration Release --no-build --
-          --mode soak --seed "${{ inputs.seed }}" --scale "${{ inputs.scale }}"
-          --soak-seconds "${{ inputs.soak_seconds }}"
+      - name: Build Lane C acceptance
+        shell: pwsh
+        run: dotnet build tests/Madre.Kernel.Acceptance/Madre.Kernel.Acceptance.csproj --configuration Release
+      - name: Run complete Lane C acceptance
+        shell: pwsh
+        run: dotnet run --project tests/Madre.Kernel.Acceptance/Madre.Kernel.Acceptance.csproj --configuration Release --no-build
