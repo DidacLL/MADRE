@@ -38,16 +38,32 @@ internal sealed class CapabilityStore
             configured.CommandText = """
                 INSERT INTO capabilities (
                     capability_id, binding_id, binding_version,
-                    execution_boundary, execution_boundary_source,
+                    execution_location, execution_location_source,
+                    destination, destination_source,
+                    route, route_source,
+                    data_retention, data_retention_source,
                     supported_effort, supported_effort_source,
                     owner_preference)
-                VALUES ($id, $binding, $bindingVersion, $boundary, $boundarySource, $effort, $effortSource, $preference);
+                VALUES (
+                    $id, $binding, $bindingVersion,
+                    $location, $locationSource,
+                    $destination, $destinationSource,
+                    $route, $routeSource,
+                    $dataRetention, $dataRetentionSource,
+                    $effort, $effortSource,
+                    $preference);
                 """;
             configured.Parameters.AddWithValue("$id", capability.CapabilityId);
             configured.Parameters.AddWithValue("$binding", capability.BindingId);
             configured.Parameters.AddWithValue("$bindingVersion", capability.BindingVersion);
-            configured.Parameters.AddWithValue("$boundary", capability.ExecutionBoundary.Value.ToString());
-            configured.Parameters.AddWithValue("$boundarySource", capability.ExecutionBoundary.Provenance.ToString());
+            configured.Parameters.AddWithValue("$location", capability.ExecutionPath.Location.Value.ToString());
+            configured.Parameters.AddWithValue("$locationSource", capability.ExecutionPath.Location.Provenance.ToString());
+            configured.Parameters.AddWithValue("$destination", capability.ExecutionPath.Destination.Value);
+            configured.Parameters.AddWithValue("$destinationSource", capability.ExecutionPath.Destination.Provenance.ToString());
+            configured.Parameters.AddWithValue("$route", capability.ExecutionPath.Route is null ? DBNull.Value : capability.ExecutionPath.Route.Value.Value);
+            configured.Parameters.AddWithValue("$routeSource", capability.ExecutionPath.Route is null ? DBNull.Value : capability.ExecutionPath.Route.Value.Provenance.ToString());
+            configured.Parameters.AddWithValue("$dataRetention", capability.ExecutionPath.DataRetention is null ? DBNull.Value : capability.ExecutionPath.DataRetention.Value.Value);
+            configured.Parameters.AddWithValue("$dataRetentionSource", capability.ExecutionPath.DataRetention is null ? DBNull.Value : capability.ExecutionPath.DataRetention.Value.Provenance.ToString());
             configured.Parameters.AddWithValue("$effort", capability.SupportedEffort.Value.ToString());
             configured.Parameters.AddWithValue("$effortSource", capability.SupportedEffort.Provenance.ToString());
             configured.Parameters.AddWithValue("$preference", capability.OwnerPreference);
@@ -96,7 +112,10 @@ internal sealed class CapabilityStore
         await using SqliteCommand command = connection.CreateCommand();
         command.CommandText = """
             SELECT c.capability_id, c.binding_id, c.binding_version,
-                   c.execution_boundary, c.execution_boundary_source,
+                   c.execution_location, c.execution_location_source,
+                   c.destination, c.destination_source,
+                   c.route, c.route_source,
+                   c.data_retention, c.data_retention_source,
                    c.supported_effort, c.supported_effort_source,
                    c.owner_preference,
                    s.availability, s.observed_at_ms,
@@ -117,22 +136,34 @@ internal sealed class CapabilityStore
         await using SqliteDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
         {
+            ConfiguredFact<string>? route = reader.IsDBNull(7)
+                ? null
+                : new ConfiguredFact<string>(reader.GetString(7), Enum.Parse<FactProvenance>(reader.GetString(8)));
+            ConfiguredFact<string>? dataRetention = reader.IsDBNull(9)
+                ? null
+                : new ConfiguredFact<string>(reader.GetString(9), Enum.Parse<FactProvenance>(reader.GetString(10)));
             var capability = new InferenceCapability(
                 reader.GetString(0),
                 reader.GetString(1),
                 reader.GetString(2),
-                new ConfiguredFact<ExecutionBoundary>(
-                    Enum.Parse<ExecutionBoundary>(reader.GetString(3)),
-                    Enum.Parse<FactProvenance>(reader.GetString(4))),
+                new CapabilityExecutionPath(
+                    new ConfiguredFact<ExecutionLocation>(
+                        Enum.Parse<ExecutionLocation>(reader.GetString(3)),
+                        Enum.Parse<FactProvenance>(reader.GetString(4))),
+                    new ConfiguredFact<string>(
+                        reader.GetString(5),
+                        Enum.Parse<FactProvenance>(reader.GetString(6))),
+                    route,
+                    dataRetention),
                 new ConfiguredFact<InferenceEffort>(
-                    Enum.Parse<InferenceEffort>(reader.GetString(5)),
-                    Enum.Parse<FactProvenance>(reader.GetString(6))),
-                reader.GetInt32(7));
+                    Enum.Parse<InferenceEffort>(reader.GetString(11)),
+                    Enum.Parse<FactProvenance>(reader.GetString(12))),
+                reader.GetInt32(13));
             var state = new CapabilityState(
                 capability.CapabilityId,
-                Enum.Parse<CapabilityAvailability>(reader.GetString(8)),
-                reader.IsDBNull(9) ? null : SqliteDatabase.FromMs(reader.GetInt64(9)));
-            double? latency = reader.IsDBNull(10) ? null : reader.GetDouble(10);
+                Enum.Parse<CapabilityAvailability>(reader.GetString(14)),
+                reader.IsDBNull(15) ? null : SqliteDatabase.FromMs(reader.GetInt64(15)));
+            double? latency = reader.IsDBNull(16) ? null : reader.GetDouble(16);
             result.Add(new CapabilitySnapshot(capability, state, latency));
         }
         return result;
