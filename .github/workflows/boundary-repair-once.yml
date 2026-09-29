@@ -1,0 +1,82 @@
+name: One-shot Lane C boundary wiring
+
+on:
+  push:
+    branches: [agentic/lane-c-boundary-repair]
+
+permissions:
+  contents: write
+
+jobs:
+  wire-build:
+    if: ${{ github.event.head_commit.message == 'Run one-shot boundary wiring' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agentic/lane-c-boundary-repair
+          fetch-depth: 0
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+      - name: Apply remaining bounded wiring
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace(path, old, new):
+              p = Path(path); s = p.read_text()
+              if old not in s:
+                  raise SystemExit(f'expected shape not found: {path}')
+              p.write_text(s.replace(old, new))
+
+          replace('kernel/src/Madre.Kernel/KernelEngine.cs',
+          '''        if (request.Deadline is { } deadline && request.EligibleAt is { } eligible && deadline <= eligible)\n        {\n            throw new ArgumentException("deadline must be later than eligibleAt", nameof(request));\n        }\n\n        string id = await _store.SubmitAsync(request, _clock.UtcNow, cancellationToken).ConfigureAwait(false);''',
+          '''        if (request.Deadline is { } deadline && request.EligibleAt is { } eligible && deadline <= eligible)\n        {\n            throw new ArgumentException("deadline must be later than eligibleAt", nameof(request));\n        }\n        if (request.EligibleCapabilityIds is { } eligibleCapabilityIds)\n        {\n            if (eligibleCapabilityIds.Count == 0)\n            {\n                throw new ArgumentException("eligibleCapabilityIds must not be empty when present", nameof(request));\n            }\n            var seen = new HashSet<string>(StringComparer.Ordinal);\n            foreach (string capabilityId in eligibleCapabilityIds)\n            {\n                if (string.IsNullOrWhiteSpace(capabilityId))\n                {\n                    throw new ArgumentException("eligibleCapabilityIds must not contain blank ids", nameof(request));\n                }\n                if (!seen.Add(capabilityId))\n                {\n                    throw new ArgumentException("eligibleCapabilityIds must not contain duplicates", nameof(request));\n                }\n            }\n        }\n\n        string id = await _store.SubmitAsync(request, _clock.UtcNow, cancellationToken).ConfigureAwait(false);''')
+
+          replace('kernel/src/Madre.Kernel.Host/KernelIpcServer.cs',
+          '''    DateTimeOffset? EligibleAt,\n    DateTimeOffset? Deadline,\n    ExecutionBoundary? ExecutionBoundary);''',
+          '''    DateTimeOffset? EligibleAt,\n    DateTimeOffset? Deadline,\n    ExecutionBoundary? ExecutionBoundary,\n    List<string>? EligibleCapabilityIds);''')
+          replace('kernel/src/Madre.Kernel.Host/KernelIpcServer.cs',
+          '''            payload.EligibleAt,\n            payload.Deadline,\n            payload.ExecutionBoundary.Value);''',
+          '''            payload.EligibleAt,\n            payload.Deadline,\n            payload.ExecutionBoundary.Value,\n            payload.EligibleCapabilityIds);''')
+
+          p = Path('tests/Madre.Kernel.Acceptance/Support.cs'); s = p.read_text()
+          s = s.replace('executionBoundary = "LocalOnly", supportedEffort', 'executionLocation = "Local", destination = "local-process", route = "owner-local-process", dataRetention = "process-defined", supportedEffort')
+          s = s.replace('executionBoundary = "ExternalAllowed", supportedEffort', 'executionLocation = "External", destination = "test-external", route = "test-route", dataRetention = "test-retention", supportedEffort')
+          old = 'private static InferenceCapability Cap(string id, string binding, InferenceEffort effort, ExecutionBoundary boundary, int preference) => new(id, binding, "1", new ConfiguredFact<ExecutionBoundary>(boundary, FactProvenance.Owner), new ConfiguredFact<InferenceEffort>(effort, FactProvenance.Owner), preference);'
+          new = '''private static InferenceCapability Cap(string id, string binding, InferenceEffort effort, ExecutionBoundary boundary, int preference) => new(\n        id,\n        binding,\n        "1",\n        new CapabilityExecutionPath(\n            new ConfiguredFact<ExecutionLocation>(boundary == ExecutionBoundary.LocalOnly ? ExecutionLocation.Local : ExecutionLocation.External, FactProvenance.Owner),\n            new ConfiguredFact<string>(id, FactProvenance.Owner)),\n        new ConfiguredFact<InferenceEffort>(effort, FactProvenance.Owner),\n        preference);'''
+          if old not in s: raise SystemExit('acceptance Cap helper not found')
+          p.write_text(s.replace(old, new))
+
+          p = Path('tests/Madre.Kernel.Verification/VerificationSupport.cs'); s = p.read_text()
+          old = '''            new ConfiguredFact<ExecutionBoundary>(boundary, FactProvenance.Owner),\n            new ConfiguredFact<InferenceEffort>(effort, FactProvenance.Owner),'''
+          new = '''            new CapabilityExecutionPath(\n                new ConfiguredFact<ExecutionLocation>(boundary == ExecutionBoundary.LocalOnly ? ExecutionLocation.Local : ExecutionLocation.External, FactProvenance.Owner),\n                new ConfiguredFact<string>(id, FactProvenance.Owner)),\n            new ConfiguredFact<InferenceEffort>(effort, FactProvenance.Owner),'''
+          if old not in s: raise SystemExit('verification Capability helper not found')
+          p.write_text(s.replace(old, new))
+
+          replace('tests/Madre.Kernel.Acceptance/PersistenceShapeAcceptance.cs',
+                  'Check(Convert.ToInt32(await command.ExecuteScalarAsync()) == 1,',
+                  'Check(Convert.ToInt32(await command.ExecuteScalarAsync()) == 2,')
+          PY
+
+      - name: Build all physical projects
+        shell: bash
+        run: |
+          ./gradlew --no-daemon clean build
+          dotnet build tests/Madre.Kernel.Acceptance/Madre.Kernel.Acceptance.csproj --configuration Release
+          dotnet build tests/Madre.Kernel.Verification/Madre.Kernel.Verification.csproj --configuration Release
+      - name: Commit wired boundary
+        shell: bash
+        run: |
+          git config user.name 'MADRE boundary worker'
+          git config user.email 'actions@users.noreply.github.com'
+          git add kernel madre-kernel-client tests
+          git commit -m 'Wire physical boundary repair through host and tests'
+          git push origin HEAD:agentic/lane-c-boundary-repair
