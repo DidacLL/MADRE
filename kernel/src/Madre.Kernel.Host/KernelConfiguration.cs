@@ -24,7 +24,10 @@ public sealed class ProcessCapabilityConfiguration
     public string? Executable { get; init; }
     public List<string>? Arguments { get; init; } = [];
     public List<string>? ProbeArguments { get; init; }
-    public ExecutionBoundary? ExecutionBoundary { get; init; }
+    public ExecutionLocation? ExecutionLocation { get; init; }
+    public string? Destination { get; init; }
+    public string? Route { get; init; }
+    public string? DataRetention { get; init; }
     public InferenceEffort? SupportedEffort { get; init; }
     public int? OwnerPreference { get; init; }
 }
@@ -129,12 +132,21 @@ public static class KernelConfigurationLoader
             {
                 throw new InvalidDataException("capabilityId, bindingId, bindingVersion and executable are required");
             }
-            if (entry.ExecutionBoundary is null
+            if (entry.ExecutionLocation is null
+                || string.IsNullOrWhiteSpace(entry.Destination)
                 || entry.SupportedEffort is null
                 || entry.OwnerPreference is null)
             {
                 throw new InvalidDataException(
-                    $"capability {entry.CapabilityId} requires executionBoundary, supportedEffort and ownerPreference");
+                    $"capability {entry.CapabilityId} requires executionLocation, destination, supportedEffort and ownerPreference");
+            }
+            if (entry.Route is not null && string.IsNullOrWhiteSpace(entry.Route))
+            {
+                throw new InvalidDataException($"capability {entry.CapabilityId} route must not be empty when present");
+            }
+            if (entry.DataRetention is not null && string.IsNullOrWhiteSpace(entry.DataRetention))
+            {
+                throw new InvalidDataException($"capability {entry.CapabilityId} dataRetention must not be empty when present");
             }
             if (entry.Arguments is null || entry.Arguments.Any(argument => argument is null))
             {
@@ -154,11 +166,22 @@ public static class KernelConfigurationLoader
                 throw new InvalidDataException($"duplicate binding identity: {bindingKey}");
             }
 
+            ConfiguredFact<string>? route = entry.Route is null
+                ? null
+                : new ConfiguredFact<string>(entry.Route, FactProvenance.Owner);
+            ConfiguredFact<string>? dataRetention = entry.DataRetention is null
+                ? null
+                : new ConfiguredFact<string>(entry.DataRetention, FactProvenance.Owner);
+
             capabilities.Add(new InferenceCapability(
                 entry.CapabilityId,
                 entry.BindingId,
                 entry.BindingVersion,
-                new ConfiguredFact<ExecutionBoundary>(entry.ExecutionBoundary.Value, FactProvenance.Owner),
+                new CapabilityExecutionPath(
+                    new ConfiguredFact<ExecutionLocation>(entry.ExecutionLocation.Value, FactProvenance.Owner),
+                    new ConfiguredFact<string>(entry.Destination, FactProvenance.Owner),
+                    route,
+                    dataRetention),
                 new ConfiguredFact<InferenceEffort>(entry.SupportedEffort.Value, FactProvenance.Owner),
                 entry.OwnerPreference.Value));
             bindings.Add(new ProcessInferenceBinding(
