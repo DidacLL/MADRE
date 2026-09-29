@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.Data.Sqlite;
 
 namespace Madre.Kernel;
@@ -9,7 +10,8 @@ internal sealed record SchedulingWork(
     WorkUrgency Urgency,
     DateTimeOffset EligibleAt,
     DateTimeOffset? Deadline,
-    ExecutionBoundary ExecutionBoundary);
+    ExecutionBoundary ExecutionBoundary,
+    IReadOnlyList<string>? EligibleCapabilityIds);
 
 internal sealed record ClaimedAttempt(int AttemptNumber, string PreparedInput);
 
@@ -43,13 +45,16 @@ public sealed class WorkStore
     {
         string id = Guid.NewGuid().ToString("N");
         DateTimeOffset eligible = request.EligibleAt ?? createdAt;
+        string? eligibleCapabilities = request.EligibleCapabilityIds is null
+            ? null
+            : JsonSerializer.Serialize(request.EligibleCapabilityIds);
         await using SqliteConnection connection = await _database.OpenAsync(cancellationToken).ConfigureAwait(false);
         await using SqliteCommand command = connection.CreateCommand();
         command.CommandText = """
             INSERT INTO work (
                 work_id, state, prepared_input, requested_effort, urgency, eligible_at_ms, deadline_ms,
-                execution_boundary, created_at_ms)
-            VALUES ($id, $state, $input, $effort, $urgency, $eligible, $deadline, $boundary, $created);
+                execution_boundary, eligible_capability_ids_json, created_at_ms)
+            VALUES ($id, $state, $input, $effort, $urgency, $eligible, $deadline, $boundary, $eligibleCapabilities, $created);
             """;
         command.Parameters.AddWithValue("$id", id);
         command.Parameters.AddWithValue("$state", WorkState.Queued.ToString());
@@ -59,6 +64,7 @@ public sealed class WorkStore
         command.Parameters.AddWithValue("$eligible", eligible.ToUnixTimeMilliseconds());
         command.Parameters.AddWithValue("$deadline", request.Deadline is null ? DBNull.Value : request.Deadline.Value.ToUnixTimeMilliseconds());
         command.Parameters.AddWithValue("$boundary", request.ExecutionBoundary.ToString());
+        command.Parameters.AddWithValue("$eligibleCapabilities", eligibleCapabilities is null ? DBNull.Value : eligibleCapabilities);
         command.Parameters.AddWithValue("$created", createdAt.ToUnixTimeMilliseconds());
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         return id;
@@ -73,7 +79,7 @@ public sealed class WorkStore
         await using SqliteCommand command = connection.CreateCommand();
         command.CommandText = """
             SELECT work_id, requested_effort, urgency, eligible_at_ms, deadline_ms,
-                   execution_boundary, created_at_ms
+                   execution_boundary, eligible_capability_ids_json, created_at_ms
             FROM work
             WHERE state = $queued AND eligible_at_ms <= $now AND released = 0
             ORDER BY created_at_ms ASC;
@@ -85,12 +91,13 @@ public sealed class WorkStore
         {
             result.Add(new SchedulingWork(
                 reader.GetString(0),
-                SqliteDatabase.FromMs(reader.GetInt64(6)),
+                SqliteDatabase.FromMs(reader.GetInt64(7)),
                 Enum.Parse<InferenceEffort>(reader.GetString(1)),
                 Enum.Parse<WorkUrgency>(reader.GetString(2)),
                 SqliteDatabase.FromMs(reader.GetInt64(3)),
                 reader.IsDBNull(4) ? null : SqliteDatabase.FromMs(reader.GetInt64(4)),
-                Enum.Parse<ExecutionBoundary>(reader.GetString(5))));
+                Enum.Parse<ExecutionBoundary>(reader.GetString(5)),
+                reader.IsDBNull(6) ? null : DeserializeEligibleCapabilityIds(reader.GetString(6))));
         }
 
         return result
@@ -387,6 +394,7 @@ public sealed class WorkStore
         await using SqliteCommand work = connection.CreateCommand();
         work.CommandText = """
             SELECT state, created_at_ms, eligible_at_ms, deadline_ms, urgency,
+                   execution_boundary, eligible_capability_ids_json,
                    selected_capability_id, selected_binding_id, selected_binding_version,
                    cancel_requested, released, failure_kind, failure_detail
             FROM work WHERE work_id = $id;
@@ -402,12 +410,16 @@ public sealed class WorkStore
         DateTimeOffset eligible = SqliteDatabase.FromMs(reader.GetInt64(2));
         DateTimeOffset? deadline = reader.IsDBNull(3) ? null : SqliteDatabase.FromMs(reader.GetInt64(3));
         WorkUrgency urgency = Enum.Parse<WorkUrgency>(reader.GetString(4));
-        string? selectedCapability = reader.IsDBNull(5) ? null : reader.GetString(5);
-        string? selectedBinding = reader.IsDBNull(6) ? null : reader.GetString(6);
-        string? selectedBindingVersion = reader.IsDBNull(7) ? null : reader.GetString(7);
-        bool cancelRequested = reader.GetInt64(8) != 0;
-        bool released = reader.GetInt64(9) != 0;
-        PhysicalFailure? failure = ReadFailure(reader, 10, 11);
+        ExecutionBoundary executionBoundary = Enum.Parse<ExecutionBoundary>(reader.GetString(5));
+        IReadOnlyList<string>? eligibleCapabilityIds = reader.IsDBNull(6)
+            ? null
+            : DeserializeEligibleCapabilityIds(reader.GetString(6));
+        string? selectedCapability = reader.IsDBNull(7) ? null : reader.GetString(7);
+        string? selectedBinding = reader.IsDBNull(8) ? null : reader.GetString(8);
+        string? selectedBindingVersion = reader.IsDBNull(9) ? null : reader.GetString(9);
+        bool cancelRequested = reader.GetInt64(10) != 0;
+        bool released = reader.GetInt64(11) != 0;
+        PhysicalFailure? failure = ReadFailure(reader, 12, 13);
         await reader.DisposeAsync().ConfigureAwait(false);
 
         var attempts = new List<AttemptInspection>();
@@ -440,6 +452,8 @@ public sealed class WorkStore
             eligible,
             deadline,
             urgency,
+            executionBoundary,
+            eligibleCapabilityIds,
             selectedCapability,
             selectedBinding,
             selectedBindingVersion,
@@ -507,6 +521,16 @@ public sealed class WorkStore
             await work.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
         transaction.Commit();
+    }
+
+    private static IReadOnlyList<string> DeserializeEligibleCapabilityIds(string json)
+    {
+        string[]? ids = JsonSerializer.Deserialize<string[]>(json);
+        if (ids is null || ids.Length == 0 || ids.Any(string.IsNullOrWhiteSpace))
+        {
+            throw new InvalidDataException("stored eligible capability set is invalid");
+        }
+        return ids;
     }
 
     private static PhysicalFailure? ReadFailure(SqliteDataReader reader, int kindIndex, int detailIndex)
