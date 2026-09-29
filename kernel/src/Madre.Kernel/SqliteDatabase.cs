@@ -4,7 +4,7 @@ namespace Madre.Kernel;
 
 internal sealed class SqliteDatabase
 {
-    private const int CurrentSchemaVersion = 1;
+    private const int CurrentSchemaVersion = 2;
     private const int BusyTimeoutMilliseconds = 5_000;
     private readonly string _connectionString;
 
@@ -58,8 +58,14 @@ internal sealed class SqliteDatabase
                     capability_id TEXT PRIMARY KEY,
                     binding_id TEXT NOT NULL,
                     binding_version TEXT NOT NULL,
-                    execution_boundary TEXT NOT NULL,
-                    execution_boundary_source TEXT NOT NULL,
+                    execution_location TEXT NOT NULL,
+                    execution_location_source TEXT NOT NULL,
+                    destination TEXT NOT NULL,
+                    destination_source TEXT NOT NULL,
+                    route TEXT,
+                    route_source TEXT,
+                    data_retention TEXT,
+                    data_retention_source TEXT,
                     supported_effort TEXT NOT NULL,
                     supported_effort_source TEXT NOT NULL,
                     owner_preference INTEGER NOT NULL
@@ -78,6 +84,7 @@ internal sealed class SqliteDatabase
                     eligible_at_ms INTEGER NOT NULL,
                     deadline_ms INTEGER,
                     execution_boundary TEXT NOT NULL,
+                    eligible_capability_ids_json TEXT,
                     created_at_ms INTEGER NOT NULL,
                     selected_capability_id TEXT,
                     selected_binding_id TEXT,
@@ -105,7 +112,7 @@ internal sealed class SqliteDatabase
                 CREATE INDEX idx_work_ready ON work(state, eligible_at_ms, created_at_ms);
                 CREATE INDEX idx_attempt_capability_binding
                     ON attempts(capability_id, binding_id, binding_version, outcome, ended_at_ms);
-                PRAGMA user_version=1;
+                PRAGMA user_version=2;
                 """;
             await schema.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
             transaction.Commit();
