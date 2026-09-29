@@ -53,7 +53,9 @@ internal static partial class Program
             "stable-id",
             "audit/versioned",
             "1",
-            new ConfiguredFact<ExecutionBoundary>(ExecutionBoundary.LocalOnly, FactProvenance.Owner),
+            new CapabilityExecutionPath(
+                new ConfiguredFact<ExecutionLocation>(ExecutionLocation.Local, FactProvenance.Owner),
+                new ConfiguredFact<string>("owner-local-versioned-test", FactProvenance.Owner)),
             new ConfiguredFact<InferenceEffort>(InferenceEffort.Low, FactProvenance.Owner),
             1);
         await using (var first = new KernelEngine(
