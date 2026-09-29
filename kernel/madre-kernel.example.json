@@ -8,7 +8,10 @@
       "bindingVersion": "1",
       "executable": "path-to-inference-wrapper",
       "arguments": [],
-      "executionBoundary": "LocalOnly",
+      "executionLocation": "Local",
+      "destination": "owner-local-process",
+      "route": "direct-local-process",
+      "dataRetention": "wrapper-defined",
       "supportedEffort": "Standard",
       "ownerPreference": 100
     }
