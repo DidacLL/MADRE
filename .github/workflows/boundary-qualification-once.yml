@@ -1,0 +1,56 @@
+name: One-shot Lane C Boundary Qualification
+
+on:
+  push:
+    branches: [agentic/lane-c-boundary-repair]
+
+permissions:
+  contents: read
+
+jobs:
+  qualification:
+    if: ${{ github.event.head_commit.message == 'Qualify repaired boundary' }}
+    name: ${{ matrix.suite }} / ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        suite: [regression, qualification]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 77a862941e9c05d15652317616069a296af0f397
+      - name: Confirm exact executable candidate
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "77a862941e9c05d15652317616069a296af0f397"
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build Java physical client
+        if: runner.os == 'Linux'
+        run: ./gradlew --no-daemon clean build
+      - name: Build Java physical client
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: .\gradlew.bat --no-daemon clean build
+      - name: Build physical verification
+        run: >-
+          dotnet build tests/Madre.Kernel.Acceptance/Madre.Kernel.Acceptance.csproj
+          --configuration Release
+          && dotnet build tests/Madre.Kernel.Verification/Madre.Kernel.Verification.csproj
+          --configuration Release
+      - name: Run preserved and repaired acceptance
+        run: >-
+          dotnet run --project tests/Madre.Kernel.Acceptance/Madre.Kernel.Acceptance.csproj
+          --configuration Release --no-build
+      - name: Run selected deterministic suite
+        run: >-
+          dotnet run --project tests/Madre.Kernel.Verification/Madre.Kernel.Verification.csproj
+          --configuration Release --no-build --
+          --mode ${{ matrix.suite }} --seed "12648430" --scale "medium" --soak-seconds "60"
