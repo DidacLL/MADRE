@@ -212,7 +212,7 @@ A missing configuration and zero configured capabilities are valid; configuratio
 
 There is no TCP/loopback web control plane, configurable port, web-host dependency, production MAF workflow/checkpoint behavior, compatibility/migration layer, provider-specific Kernel ontology or packaged Java acceptance CLI.
 
-The executable closure baseline `77a862941e9c05d15652317616069a296af0f397` passed manual regression, qualification, stress and soak on Linux and Windows in GitHub Actions run `36604046199`. `.github/workflows/kernel-verification.yml` remains as the on-demand physical verifier; Kernel validation is no longer a permanent PR/push tax.
+The executable closure baseline `77a862941e9c05d15652317616069a296af0f397` passed preserved acceptance plus deterministic regression and qualification on Ubuntu and Windows in GitHub Actions run `36604046199` (seed `12648430`, scale `medium`). Stress/soak remain manual verifier suites and were deliberately not rerun for this bounded boundary/schema correction. `.github/workflows/kernel-verification.yml` remains as the on-demand physical verifier; Kernel validation is no longer a permanent PR/push tax.
 
 The semantic SDK/Module layer and Runtime are **not yet implemented in the active tree**. Their implementation should consume the settled physical boundary rather than reopening Kernel absent a concrete physical defect or new Owner requirement.
 
