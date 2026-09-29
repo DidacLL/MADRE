@@ -234,8 +234,10 @@ reasoning effort/depth indication
 context/modality characteristics
 urgency
 acceptable delay / deadline
-hard physical restrictions
-Owner execution preferences where relevant
+request-side allowed exposure
+opaque eligible physical capability identities
+exact physical capability when explicitly selected by the Owner
+other hard physical restrictions justified by an actual consumer
         ↓
 PhysicalInferenceWork request
 ```
@@ -285,13 +287,13 @@ One authoritative durable Work lifecycle stores the physical requirement and exe
 
 ### InferenceCapability
 
-An `InferenceCapability` is a configured physical intelligence opportunity consisting of identity/binding and typed configured facts currently consumed by DRE. Configured facts, current availability and historical attempt observations remain separate.
+An `InferenceCapability` is a configured physical intelligence opportunity consisting of identity/binding and typed physical facts. Its configured `ExecutionPath` exposes factual location, destination and optional route/retention information with provenance so semantic MADRE can resolve the Owner's information journey. Configured facts, current availability and historical attempt observations remain separate.
 
 Current implementation models execution boundary, supported effort, Owner preference, `Unknown/Unavailable/Available`, observation time and successful latency evidence scoped to current capability/binding/version. Durable attempts retain physical history; unused success/failure aggregate counters are not public capability state.
 
 ### DRE
 
-Current DRE consumes eligibility/deadlines, effort/boundary admissibility, availability truth, Owner preference and binding-scoped observed latency where comparable for interactive Work.
+Current DRE consumes eligibility/deadlines, the optional opaque eligible capability set, effort admissibility, request-side allowed exposure against factual capability location, availability truth, Owner preference and binding-scoped observed latency where comparable for interactive Work.
 
 Known available is preferred. `Unknown` remains usable when no known-available admissible candidate exists. Known unavailable waits and is automatically re-observed only while relevant pending Work creates demand. Probe timeout yields `Unknown`, not fabricated `Unavailable`.
 
@@ -400,7 +402,7 @@ Lane C is closed and qualified. The current physical implementation provides:
 - caller disappearance, eligibility/deadlines, cancellation, retained release and restart `UnknownCompletion`;
 - behavioral verification for request boundaries, lifecycle/state races, hostile bindings/processes, SQLite/restart/ownership, raw IPC, Java interoperability, load, randomized/model stress, restart chaos and soak behavior.
 
-The executable closure baseline is `95ddf2250c27d28e90e215391223164965b68729`. GitHub Actions run `36493627377` passed regression, qualification, stress and soak on Ubuntu and Windows. This is deliberate qualification evidence, not automatic per-PR/per-push Kernel CI.
+The executable closure baseline is `77a862941e9c05d15652317616069a296af0f397`. GitHub Actions run `36604046199` passed regression, qualification, stress and soak on Ubuntu and Windows. This is deliberate qualification evidence, not automatic per-PR/per-push Kernel CI.
 
 The active physical verifier is `.github/workflows/kernel-verification.yml` and is manual/on-demand. Lane A/SDK and Lane B/Runtime changes do not run the full Kernel arsenal merely because they share the repository; Kernel verification is used when the physical boundary or implementation actually changes.
 
@@ -429,8 +431,9 @@ Lane A and Lane B must consume the existing physical boundary rather than reopen
 9. Runtime routes/executes mechanics but does not own or semantically evaluate SPIRA.
 10. ReasoningRequest remains semantic and is not mandated to contain a generic SPIRA tuple.
 11. Agents create semantic ReasoningRequests, not Kernel Work.
-12. Semantic MADRE derives a small physical requirement; exact provider/model/configuration selection is not required before Kernel.
+12. Semantic MADRE derives a small physical requirement; it may constrain an opaque eligible capability set or preserve an exact Owner physical choice without sending provider/model semantics into Kernel.
 13. Kernel owns durable Work, capability truth/observations, scheduling and physical execution only.
+13a. Capability-side factual execution path and Work-side allowed exposure are opposite-direction contracts and must not be represented as one ambiguous fact; Kernel DRE must not widen the eligible physical set supplied by semantic MADRE.
 14. Kernel may use physical observations but does not become an application answer-quality evaluator.
 15. Semantic continuation/persistence remains above Kernel.
 16. Kernel does not own external inference-engine workers, model loading/warmness or generic RAM/VRAM lifecycle.

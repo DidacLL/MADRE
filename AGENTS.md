@@ -22,7 +22,7 @@ Then use this authority order:
 
 `NORTH_STAR.md` is deliberately short. It does not replace the richer authorities. The Lane C Owner decision is deliberately narrow: it supersedes older exact-invocation-before-Kernel statements where they conflict, but it does not rewrite unrelated Module, Agent, Operation, Material, Runtime, CORE, SDK or SPIRA semantics.
 
-The original `docs/product/lane-c-owner-decision.md` text was written before the final closure audit and therefore still contains historical implementation-status wording about pending audit. Its architectural rationale remains authoritative; Lane C closure status and qualified implementation truth are recorded by `docs/architecture/kernel.md` and `docs/architecture/kernel-handoff.md` after the Owner/orchestrator closure decision.
+`docs/product/lane-c-owner-decision.md` now includes the final closure-audit correction: semantic/Owner physical admissibility must survive into Work, exact physical choice must be representable, and factual capability execution-path information must remain distinct from request-side allowed exposure. `docs/architecture/kernel.md` records the qualified implementation of that decision.
 
 Historical code, PRs, commits, issues, discarded documents and familiar software/AI-platform patterns are evidence only. Later Owner corrections supersede historical implementation even when historical code is more detailed. Do not restore an old abstraction merely because it once compiled, and do not preserve a corrective abstraction merely because it successfully removed an earlier drift.
 
@@ -68,6 +68,8 @@ Do not answer these from memory, historical implementation or industry conventio
 - The Owner's models/providers/runtimes remain independent inference mechanisms; Kernel must not rematerialize them as a MADRE-owned worker/engine ontology.
 - Kernel is expected to know configured physical `InferenceCapability` facts, current physical state and provenance-preserving observations because DRE uses that knowledge.
 - The opposite extreme is also rejected: semantic MADRE must not completely resolve provider/model/configuration before Kernel when doing so removes meaningful physical DRE choice.
+- Semantic MADRE/Owner may derive an opaque eligible physical capability set; Kernel DRE must never widen it. A singleton set preserves an exact physical choice.
+- Capability factual execution location/destination/route/retention flows upward for information-journey reasoning; request-side `LocalOnly`/`ExternalAllowed` flows downward as a Work constraint. Never conflate those directions.
 
 ## Modules, Agents, Operations, Skills and planning
 
@@ -171,7 +173,7 @@ A `ReasoningRequest` is semantic and is created by an Agent. It may involve rele
 
 Do not invent or restore a mandatory `ReasoningRequest.S/P/I/R/A` tuple. Risk remains with the actual Operation/effect; Autonomy remains with the actual Agent continuation; other facets remain on the actual semantic facts that contribute them.
 
-Agents do not construct Kernel `PhysicalInferenceWork` directly. Semantic MADRE derives a small physical inference requirement from the actual reasoning need and constraints. It may include prepared input, requested result characteristics, desired reasoning effort, context characteristics, urgency, acceptable delay/deadline, modality requirements, hard restrictions derived from semantic composition and explicit Owner preferences.
+Agents do not construct Kernel `PhysicalInferenceWork` directly. Semantic MADRE derives a small physical inference requirement from the actual reasoning need, actual SPIRA composition, explicit Owner choices and factual configured capability execution paths. It may include prepared input, requested result characteristics, desired reasoning effort, urgency, acceptable delay/deadline, request-side allowed exposure, and an opaque eligible physical capability set. A singleton eligible set is the exact-selection case; Kernel never receives the semantic reason for the restriction.
 
 The exact public carrier is Lane A design work. Its installed persistence/correlation, semantic continuation and transport into `madre-kernel-client` are Lane B work. Do not freeze a giant request object or restore a provider-specific executor API merely to make the boundary concrete.
 
@@ -230,6 +232,8 @@ Lane C is closed and qualified. The active tree contains one current physical im
 - cross-platform .NET Kernel with one physical process owner per database, including Linux path/symlink aliases;
 - SQLite-authoritative durable physical Work and attempt history with explicit current schema identity;
 - configured/current/observed `InferenceCapability` truth;
+- factual capability `ExecutionPath` (location, destination, optional route/retention with provenance) exposed upward without becoming SPIRA;
+- durable optional `EligibleCapabilityIds` on Work, with singleton exact selection and DRE constrained to the supplied set;
 - capability-aware DRE using effort/boundary admissibility, availability, Owner preference and current-binding latency evidence where implemented;
 - valid zero-capability startup and optional configuration;
 - asynchronous startup observation and demand-driven re-observation of unavailable capabilities; probe timeout means `Unknown`, not `Unavailable`;
@@ -245,7 +249,7 @@ Lane C is closed and qualified. The active tree contains one current physical im
 - bounded concurrency, caller disappearance, eligibility/deadlines, cancellation, retained results/release and restart `UnknownCompletion` behavior;
 - manual/on-demand Linux and Windows regression, qualification, stress and soak verification through `.github/workflows/kernel-verification.yml`.
 
-The executable closure baseline is `95ddf2250c27d28e90e215391223164965b68729`; full cross-platform requalification is GitHub Actions run `36493627377`. The later closure-policy commit removed obsolete automatic Lane C CI without changing executable behavior.
+The executable closure baseline is `77a862941e9c05d15652317616069a296af0f397`; full cross-platform requalification is GitHub Actions run `36604046199`. The later closure-policy commit removed obsolete automatic Lane C CI without changing executable behavior.
 
 There is no TCP/loopback web control plane, configurable port, ASP.NET host dependency, production MAF workflow/checkpoint strategy, checkpoint state, MAF package dependency, packaged Java CLI containing test classes, or compatibility/migration layer for pre-release databases.
 

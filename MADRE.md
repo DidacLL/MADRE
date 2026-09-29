@@ -88,7 +88,7 @@ A `ReasoningRequest` is a semantic need for reasoning created by an Agent. It ca
 
 Agents do not construct Kernel Work directly, and `ReasoningRequest` does not cross into Kernel as a semantic object.
 
-Semantic MADRE derives a small physical inference requirement from what it can actually know about the reasoning need, for example:
+Semantic MADRE derives a small physical inference requirement from what it can actually know about the reasoning need and the configured physical paths, for example:
 
 ```text
 prepared inference input
@@ -98,8 +98,9 @@ context characteristics
 urgency
 acceptable delay / deadline
 required modality/context characteristics
-hard physical restrictions derived from semantic composition
-explicit Owner execution preferences where relevant
+request-side allowed exposure
+opaque eligible physical capability identities
+exact physical capability when the Owner explicitly chose one
 ```
 
 The exact SDK carrier and Runtime journey remain design work. A field belongs in the first physical contract because an implemented DRE decision consumes it, not because a generic AI platform might want it.
@@ -138,10 +139,13 @@ Capability knowledge preserves provenance rather than flattening every fact into
 ```text
 CONFIGURED / DECLARED
     physical identity/binding
-    locality/exposure boundary
+    factual execution location
+    factual destination
+    optional route/intermediary description
+    optional retention/history description
     supported reasoning characteristics
     Owner configuration/preferences
-    other typed facts only when a DRE consumer exists
+    other typed facts only when an actual consumer exists
 
 CURRENT
     reachability / availability
@@ -155,7 +159,7 @@ HISTORICAL / OBSERVED
 
 Provider claims, Owner declarations and MADRE observations are different facts.
 
-Kernel does not understand Module, Agent, Operation semantics, Material meaning, ReasoningRequest semantics, SPIRA, CORE or semantic continuation. It also does not own model loading/warmness, provider/runtime internal lifecycle, generic engine RAM/VRAM accounting or external inference-engine implementation. A Module may privately use another AI environment without shared Kernel involvement.
+Kernel does not understand Module, Agent, Operation semantics, Material meaning, ReasoningRequest semantics, SPIRA, CORE or semantic continuation. It receives only physical admissibility; an optional opaque eligible capability set may restrict DRE, and a singleton set preserves exact physical selection. It also does not own model loading/warmness, provider/runtime internal lifecycle, generic engine RAM/VRAM accounting or external inference-engine implementation. A Module may privately use another AI environment without shared Kernel involvement.
 
 ## Delayed Reasoning Effort
 
@@ -186,6 +190,8 @@ MEAI remains useful interoperability behind bindings. A future actual physical s
 Lane C is now a closed, qualified cross-platform .NET Kernel under `kernel/` with:
 
 - one process-lifetime owner per SQLite database, independent of IPC path and resilient to Linux physical path/symlink aliases;
+- durable request-side physical admissibility including optional eligible capability ids / exact selection;
+- factual configured capability execution paths (location, destination, optional route/retention) exposed with provenance;
 - explicit current SQLite schema identity and early rejection of incompatible pre-release databases rather than migrations;
 - durable Work, attempts, configured/current capability truth and retained results;
 - wake/deadline-driven DRE scheduling over metadata-only candidates, loading prepared input only after claim;
@@ -206,7 +212,7 @@ A missing configuration and zero configured capabilities are valid; configuratio
 
 There is no TCP/loopback web control plane, configurable port, web-host dependency, production MAF workflow/checkpoint behavior, compatibility/migration layer, provider-specific Kernel ontology or packaged Java acceptance CLI.
 
-The executable closure baseline `95ddf2250c27d28e90e215391223164965b68729` passed manual regression, qualification, stress and soak on Linux and Windows in GitHub Actions run `36493627377`. `.github/workflows/kernel-verification.yml` remains as the on-demand physical verifier; Kernel validation is no longer a permanent PR/push tax.
+The executable closure baseline `77a862941e9c05d15652317616069a296af0f397` passed manual regression, qualification, stress and soak on Linux and Windows in GitHub Actions run `36604046199`. `.github/workflows/kernel-verification.yml` remains as the on-demand physical verifier; Kernel validation is no longer a permanent PR/push tax.
 
 The semantic SDK/Module layer and Runtime are **not yet implemented in the active tree**. Their implementation should consume the settled physical boundary rather than reopening Kernel absent a concrete physical defect or new Owner requirement.
 
