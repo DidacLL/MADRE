@@ -51,7 +51,8 @@ internal sealed record KernelSubmitPayload(
     WorkUrgency? Urgency,
     DateTimeOffset? EligibleAt,
     DateTimeOffset? Deadline,
-    ExecutionBoundary? ExecutionBoundary);
+    ExecutionBoundary? ExecutionBoundary,
+    List<string>? EligibleCapabilityIds);
 
 internal sealed record WorkIdPayload(string? WorkId);
 internal sealed record CancelResponse(WorkState State);
@@ -331,7 +332,8 @@ public static class KernelIpcServer
             payload.Urgency.Value,
             payload.EligibleAt,
             payload.Deadline,
-            payload.ExecutionBoundary.Value);
+            payload.ExecutionBoundary.Value,
+            payload.EligibleCapabilityIds);
     }
 
     private static T ReadPayload<T>(KernelIpcRequest request) where T : class =>

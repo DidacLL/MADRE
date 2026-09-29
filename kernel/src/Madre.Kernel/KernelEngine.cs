@@ -114,6 +114,25 @@ public sealed class KernelEngine : IAsyncDisposable
         {
             throw new ArgumentException("deadline must be later than eligibleAt", nameof(request));
         }
+        if (request.EligibleCapabilityIds is { } eligibleCapabilityIds)
+        {
+            if (eligibleCapabilityIds.Count == 0)
+            {
+                throw new ArgumentException("eligibleCapabilityIds must not be empty when present", nameof(request));
+            }
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            foreach (string capabilityId in eligibleCapabilityIds)
+            {
+                if (string.IsNullOrWhiteSpace(capabilityId))
+                {
+                    throw new ArgumentException("eligibleCapabilityIds must not contain blank ids", nameof(request));
+                }
+                if (!seen.Add(capabilityId))
+                {
+                    throw new ArgumentException("eligibleCapabilityIds must not contain duplicates", nameof(request));
+                }
+            }
+        }
 
         string id = await _store.SubmitAsync(request, _clock.UtcNow, cancellationToken).ConfigureAwait(false);
         Wake();

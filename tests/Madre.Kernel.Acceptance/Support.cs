@@ -38,13 +38,21 @@ internal static partial class Program
     private static void WriteConfig(string config, string db, string slowState, string fastState, bool includeSlow, bool slowProbe, bool fastProbe)
     {
         var caps = new List<object>();
-        if (includeSlow) caps.Add(new { capabilityId = Slow, bindingId = "process/slow", bindingVersion = "1", executable = Dotnet, arguments = new[] { FixtureDll, "--delay-ms", "180", "--prefix", "slow:" }, probeArguments = slowProbe ? new[] { FixtureDll, "--probe", slowState } : null, executionBoundary = "LocalOnly", supportedEffort = "Standard", ownerPreference = 100 });
-        caps.Add(new { capabilityId = Fast, bindingId = "process/fast", bindingVersion = "1", executable = Dotnet, arguments = new[] { FixtureDll, "--delay-ms", "20", "--prefix", "fast:" }, probeArguments = fastProbe ? new[] { FixtureDll, "--probe", fastState } : null, executionBoundary = "ExternalAllowed", supportedEffort = "High", ownerPreference = 10 });
+        if (includeSlow) caps.Add(new { capabilityId = Slow, bindingId = "process/slow", bindingVersion = "1", executable = Dotnet, arguments = new[] { FixtureDll, "--delay-ms", "180", "--prefix", "slow:" }, probeArguments = slowProbe ? new[] { FixtureDll, "--probe", slowState } : null, executionLocation = "Local", destination = "local-process", route = "owner-local-process", dataRetention = "process-defined", supportedEffort = "Standard", ownerPreference = 100 });
+        caps.Add(new { capabilityId = Fast, bindingId = "process/fast", bindingVersion = "1", executable = Dotnet, arguments = new[] { FixtureDll, "--delay-ms", "20", "--prefix", "fast:" }, probeArguments = fastProbe ? new[] { FixtureDll, "--probe", fastState } : null, executionLocation = "External", destination = "test-external", route = "test-route", dataRetention = "test-retention", supportedEffort = "High", ownerPreference = 10 });
         File.WriteAllText(config, JsonSerializer.Serialize(new { databasePath = db, maxConcurrent = 1, capabilities = caps }, Json));
     }
 
     private static PhysicalInferenceRequest Req(string input, InferenceEffort effort, WorkUrgency urgency, ExecutionBoundary boundary) => new(input, effort, urgency, null, null, boundary);
-    private static InferenceCapability Cap(string id, string binding, InferenceEffort effort, ExecutionBoundary boundary, int preference) => new(id, binding, "1", new ConfiguredFact<ExecutionBoundary>(boundary, FactProvenance.Owner), new ConfiguredFact<InferenceEffort>(effort, FactProvenance.Owner), preference);
+    private static InferenceCapability Cap(string id, string binding, InferenceEffort effort, ExecutionBoundary boundary, int preference) => new(
+        id,
+        binding,
+        "1",
+        new CapabilityExecutionPath(
+            new ConfiguredFact<ExecutionLocation>(boundary == ExecutionBoundary.LocalOnly ? ExecutionLocation.Local : ExecutionLocation.External, FactProvenance.Owner),
+            new ConfiguredFact<string>(id, FactProvenance.Owner)),
+        new ConfiguredFact<InferenceEffort>(effort, FactProvenance.Owner),
+        preference);
     private static Task<string> SubmitAsync(IpcClient c, PhysicalInferenceRequest r) => SubmitCoreAsync(c, r);
     private static async Task<string> SubmitCoreAsync(IpcClient c, PhysicalInferenceRequest r) => (await c.CallAsync<WorkSubmissionResponse>("Submit", r)).WorkId;
     private static Task<WorkInspection> InspectAsync(IpcClient c, string id) => c.CallAsync<WorkInspection>("Inspect", new WorkIdArg(id));

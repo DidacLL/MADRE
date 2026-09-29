@@ -185,7 +185,9 @@ internal static partial class Program
             id,
             bindingId,
             bindingVersion,
-            new ConfiguredFact<ExecutionBoundary>(boundary, FactProvenance.Owner),
+            new CapabilityExecutionPath(
+                new ConfiguredFact<ExecutionLocation>(boundary == ExecutionBoundary.LocalOnly ? ExecutionLocation.Local : ExecutionLocation.External, FactProvenance.Owner),
+                new ConfiguredFact<string>(id, FactProvenance.Owner)),
             new ConfiguredFact<InferenceEffort>(effort, FactProvenance.Owner),
             preference);
 

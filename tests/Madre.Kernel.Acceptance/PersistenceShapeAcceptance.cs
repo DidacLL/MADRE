@@ -33,7 +33,7 @@ internal static partial class Program
             await db.OpenAsync();
             await using SqliteCommand command = db.CreateCommand();
             command.CommandText = "PRAGMA user_version;";
-            Check(Convert.ToInt32(await command.ExecuteScalarAsync()) == 1,
+            Check(Convert.ToInt32(await command.ExecuteScalarAsync()) == 2,
                 "current database did not persist explicit schema identity");
         }
 
