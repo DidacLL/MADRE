@@ -14,10 +14,18 @@ public enum WorkUrgency
     Interactive
 }
 
+// Request-side admissibility ceiling. This is not a factual description of where a capability executes.
 public enum ExecutionBoundary
 {
     LocalOnly,
     ExternalAllowed
+}
+
+// Capability-side factual location of the physical execution path.
+public enum ExecutionLocation
+{
+    Local,
+    External
 }
 
 public enum FactProvenance
@@ -69,13 +77,23 @@ public sealed record PhysicalFailure(PhysicalFailureKind Kind, string? Detail = 
 
 public sealed record ConfiguredFact<T>(T Value, FactProvenance Provenance);
 
+// Factual configured description of the physical information journey. Optional route/retention text
+// remains deliberately opaque to Kernel policy; it is exposed so semantic MADRE/Owner tooling can
+// understand the configured journey without Kernel learning SPIRA or provider semantics.
+public sealed record CapabilityExecutionPath(
+    ConfiguredFact<ExecutionLocation> Location,
+    ConfiguredFact<string> Destination,
+    ConfiguredFact<string>? Route = null,
+    ConfiguredFact<string>? DataRetention = null);
+
 public sealed record PhysicalInferenceRequest(
     string PreparedInput,
     InferenceEffort RequestedEffort,
     WorkUrgency Urgency,
     DateTimeOffset? EligibleAt,
     DateTimeOffset? Deadline,
-    ExecutionBoundary ExecutionBoundary);
+    ExecutionBoundary ExecutionBoundary,
+    IReadOnlyList<string>? EligibleCapabilityIds = null);
 
 public sealed record InferenceExecutionRequest(string PreparedInput);
 
@@ -83,7 +101,7 @@ public sealed record InferenceCapability(
     string CapabilityId,
     string BindingId,
     string BindingVersion,
-    ConfiguredFact<ExecutionBoundary> ExecutionBoundary,
+    CapabilityExecutionPath ExecutionPath,
     ConfiguredFact<InferenceEffort> SupportedEffort,
     int OwnerPreference);
 
@@ -129,7 +147,7 @@ public sealed record CapabilitySnapshot(
 
 public static class KernelProtocol
 {
-    public const int Version = 1;
+    public const int Version = 2;
     public const int MaxPayloadBytes = 1024 * 1024;
     public const int MaxFrameBytes = (8 * MaxPayloadBytes) + (64 * 1024);
 }
