@@ -8,6 +8,7 @@ internal static partial class Program
         await SingleInstanceSafetyAsync();
         await BackgroundFailureTruthAsync();
         await ObservationDemandAndProvenanceAsync();
+        await PhysicalBoundaryContractAsync();
         await StrictBoundaryAsync();
         await IpcBoundednessAndUtf8Async();
         await ProcessBindingSupervisionAsync();
