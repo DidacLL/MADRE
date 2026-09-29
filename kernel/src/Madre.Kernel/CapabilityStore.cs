@@ -60,10 +60,10 @@ internal sealed class CapabilityStore
             configured.Parameters.AddWithValue("$locationSource", capability.ExecutionPath.Location.Provenance.ToString());
             configured.Parameters.AddWithValue("$destination", capability.ExecutionPath.Destination.Value);
             configured.Parameters.AddWithValue("$destinationSource", capability.ExecutionPath.Destination.Provenance.ToString());
-            configured.Parameters.AddWithValue("$route", capability.ExecutionPath.Route is null ? DBNull.Value : capability.ExecutionPath.Route.Value.Value);
-            configured.Parameters.AddWithValue("$routeSource", capability.ExecutionPath.Route is null ? DBNull.Value : capability.ExecutionPath.Route.Value.Provenance.ToString());
-            configured.Parameters.AddWithValue("$dataRetention", capability.ExecutionPath.DataRetention is null ? DBNull.Value : capability.ExecutionPath.DataRetention.Value.Value);
-            configured.Parameters.AddWithValue("$dataRetentionSource", capability.ExecutionPath.DataRetention is null ? DBNull.Value : capability.ExecutionPath.DataRetention.Value.Provenance.ToString());
+            configured.Parameters.AddWithValue("$route", capability.ExecutionPath.Route is null ? DBNull.Value : capability.ExecutionPath.Route.Value);
+            configured.Parameters.AddWithValue("$routeSource", capability.ExecutionPath.Route is null ? DBNull.Value : capability.ExecutionPath.Route.Provenance.ToString());
+            configured.Parameters.AddWithValue("$dataRetention", capability.ExecutionPath.DataRetention is null ? DBNull.Value : capability.ExecutionPath.DataRetention.Value);
+            configured.Parameters.AddWithValue("$dataRetentionSource", capability.ExecutionPath.DataRetention is null ? DBNull.Value : capability.ExecutionPath.DataRetention.Provenance.ToString());
             configured.Parameters.AddWithValue("$effort", capability.SupportedEffort.Value.ToString());
             configured.Parameters.AddWithValue("$effortSource", capability.SupportedEffort.Provenance.ToString());
             configured.Parameters.AddWithValue("$preference", capability.OwnerPreference);
