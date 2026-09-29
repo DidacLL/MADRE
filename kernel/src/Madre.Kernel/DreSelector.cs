@@ -14,22 +14,41 @@ public sealed record DreDecision(
 public sealed class DreSelector
 {
     public DreDecision Select(PhysicalInferenceRequest request, IReadOnlyList<CapabilitySnapshot> snapshots) =>
-        SelectCore(request.RequestedEffort, request.Urgency, request.ExecutionBoundary, snapshots);
+        SelectCore(
+            request.RequestedEffort,
+            request.Urgency,
+            request.ExecutionBoundary,
+            request.EligibleCapabilityIds,
+            snapshots);
 
     internal DreDecision Select(SchedulingWork work, IReadOnlyList<CapabilitySnapshot> snapshots) =>
-        SelectCore(work.RequestedEffort, work.Urgency, work.ExecutionBoundary, snapshots);
+        SelectCore(
+            work.RequestedEffort,
+            work.Urgency,
+            work.ExecutionBoundary,
+            work.EligibleCapabilityIds,
+            snapshots);
 
     internal static bool IsAdmissible(SchedulingWork work, InferenceCapability capability) =>
-        IsAdmissible(work.RequestedEffort, work.ExecutionBoundary, capability);
+        IsAdmissible(
+            work.RequestedEffort,
+            work.ExecutionBoundary,
+            work.EligibleCapabilityIds,
+            capability);
 
     private static DreDecision SelectCore(
         InferenceEffort requestedEffort,
         WorkUrgency urgency,
         ExecutionBoundary executionBoundary,
+        IReadOnlyList<string>? eligibleCapabilityIds,
         IReadOnlyList<CapabilitySnapshot> snapshots)
     {
         List<CapabilitySnapshot> admissible = snapshots
-            .Where(snapshot => IsAdmissible(requestedEffort, executionBoundary, snapshot.Capability))
+            .Where(snapshot => IsAdmissible(
+                requestedEffort,
+                executionBoundary,
+                eligibleCapabilityIds,
+                snapshot.Capability))
             .ToList();
 
         if (admissible.Count == 0)
@@ -79,14 +98,21 @@ public sealed class DreSelector
     private static bool IsAdmissible(
         InferenceEffort requestedEffort,
         ExecutionBoundary executionBoundary,
+        IReadOnlyList<string>? eligibleCapabilityIds,
         InferenceCapability capability)
     {
+        if (eligibleCapabilityIds is not null
+            && !eligibleCapabilityIds.Contains(capability.CapabilityId, StringComparer.Ordinal))
+        {
+            return false;
+        }
+
         if (!InferenceEffortPolicy.Supports(capability.SupportedEffort.Value, requestedEffort))
         {
             return false;
         }
 
         return executionBoundary != ExecutionBoundary.LocalOnly
-            || capability.ExecutionBoundary.Value == ExecutionBoundary.LocalOnly;
+            || capability.ExecutionPath.Location.Value == ExecutionLocation.Local;
     }
 }
