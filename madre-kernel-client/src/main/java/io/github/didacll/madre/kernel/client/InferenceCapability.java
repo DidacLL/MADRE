@@ -4,7 +4,7 @@ public record InferenceCapability(
         String capabilityId,
         String bindingId,
         String bindingVersion,
-        ConfiguredFact<ExecutionBoundary> executionBoundary,
+        CapabilityExecutionPath executionPath,
         ConfiguredFact<InferenceEffort> supportedEffort,
         int ownerPreference) {
 }
