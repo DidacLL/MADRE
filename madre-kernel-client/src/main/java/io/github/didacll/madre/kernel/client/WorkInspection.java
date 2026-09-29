@@ -10,6 +10,8 @@ public record WorkInspection(
         OffsetDateTime eligibleAt,
         OffsetDateTime deadline,
         WorkUrgency urgency,
+        ExecutionBoundary executionBoundary,
+        List<String> eligibleCapabilityIds,
         String selectedCapabilityId,
         String selectedBindingId,
         String selectedBindingVersion,
