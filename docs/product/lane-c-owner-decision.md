@@ -1,6 +1,6 @@
 # MADRE — Lane C Owner Decision: DRE and Physical Inference Architecture
 
-Status: **accepted current Owner decision; implementation remains subject to Owner/orchestrator audit**.
+Status: **accepted current Owner decision; implementation closure requires separate Owner/orchestrator audit and evidence**.
 
 This document preserves the product decision and the reasons behind it so later implementation work cannot recover the wrong Lane C architecture from historical code or an intermediate correction.
 
@@ -8,9 +8,11 @@ It is not an implementation plan and does not make .NET, Microsoft.Extensions.AI
 
 Where an older repository document says semantic MADRE must completely select an exact provider/model/configuration or complete `ConcretePhysicalInvocation` candidate set before Kernel, this decision supersedes that statement. That concrete-invocation architecture was a useful correction after earlier worker/engine drift, but it over-corrected the semantic/physical boundary and is no longer the target architecture.
 
+The later closure audit also corrected the opposite over-compression: Kernel Work cannot discard the Owner's exact physical choice or the semantically derived set of physically admissible capabilities, and capability configuration cannot expose only an ambiguous local/external permission. The final boundary preserves both directions without sending semantic concepts into Kernel.
+
 ## Why this correction exists
 
-Lane C exposed two opposite failure modes.
+Lane C exposed three related failure modes.
 
 The first implementation made one possible physical realization into MADRE architecture:
 
@@ -32,7 +34,9 @@ That was rejected because MADRE should use the Owner's inference environment rat
 
 The corrective LCR1/LCR2 architecture then deliberately narrowed Kernel to durable execution of already-approved concrete process/HTTP invocations. That successfully removed workers, engine inventory, model lifecycle and llama.cpp ownership, but moved physical inference selection so far above Kernel that Kernel could no longer perform the inference-aware scheduling Delayed Reasoning Effort requires.
 
-The accepted architecture keeps the ownership correction without amputating DRE.
+A later capability-aware Kernel restored meaningful physical DRE, but its first public request compressed semantic/Owner physical restrictions too far: it could express only effort, urgency, timing and a coarse local/external allowance. That meant semantic MADRE could neither preserve an exact Owner-selected physical target nor pass a derived eligible physical set while still allowing Kernel to choose within that set. At the same time, the capability side reused the same local/external enum as though a request permission were a factual execution-path description.
+
+The accepted architecture keeps the ownership correction and meaningful DRE **while preserving the information journey and physical admissibility established above Kernel**.
 
 ## Fixed semantic/physical responsibility boundary
 
@@ -46,9 +50,12 @@ Semantic MADRE owns application and reasoning meaning. A Module/Agent can know f
 - acceptable delay;
 - requested result characteristics;
 - constraints derived from actual SPIRA composition;
-- explicit Owner requirements/preferences.
+- explicit Owner requirements/preferences;
+- the actual information journey and which configured physical capabilities are admissible for this reasoning need.
 
 Semantic MADRE reduces those facts into a **physical inference requirement**. The semantic `ReasoningRequest` itself does not cross into Kernel.
+
+The downward physical requirement may contain an opaque set of eligible physical capability identities. Kernel does not know why another capability was excluded. A singleton eligible set preserves an exact Owner/semantic physical choice. A larger set preserves meaningful Kernel DRE within the physical space semantic MADRE has established as valid. If no capability-id restriction is needed, Kernel may choose among all capabilities satisfying the other physical constraints.
 
 Kernel receives physical inference Work and owns physical consequences:
 
@@ -57,7 +64,7 @@ Kernel receives physical inference Work and owns physical consequences:
 - current capability state;
 - physical observations/history;
 - inference-aware scheduling;
-- capability selection among physically/semantically admissible options expressed by request constraints;
+- capability selection **inside the Work's physical admissibility restrictions**;
 - physical effort/strategy choice where implemented;
 - delay/defer/re-observation decisions;
 - physically justified retry/escalation where a real physical strategy defines it;
@@ -65,13 +72,15 @@ Kernel receives physical inference Work and owns physical consequences:
 
 There is no semantic global scheduler and no Kernel ownership of Module/Agent continuation.
 
+The reverse direction is also explicit: configured capabilities expose factual physical execution-path information upward so semantic MADRE and Owner tooling can understand where information will physically go. Kernel stores/exposes these facts; it does not turn them into SPIRA or application policy.
+
 ## DRE is the inference-aware physical scheduler
 
 Kernel DRE is not a generic timer service plus an unrelated policy layer. Its meaningful questions include:
 
 ```text
 run now or later?
-which admissible capability is currently appropriate?
+which capability inside the admissible physical set is currently appropriate?
 should known unavailability justify waiting/re-observation?
 how much physical reasoning effort should be spent?
 which current physical observations should affect choice?
@@ -92,10 +101,15 @@ requested physical effort
 urgency
 optional eligibility time
 optional deadline
-hard local/external execution boundary
+request-side allowed exposure: LocalOnly / ExternalAllowed
+optional eligible physical capability IDs
 ```
 
-A field belongs in the physical contract because an implemented DRE decision consumes it, not because a generic AI platform might want it.
+The request-side exposure value is a **constraint on this Work**, not a factual description of any capability. `ExternalAllowed` means the Work may leave the local environment; it does not say that a selected capability actually does so.
+
+The optional eligible capability set is deliberately opaque. It carries only physical identity. A singleton set is the exact-selection case; a larger set lets DRE choose within the semantically/Owner-established physical space.
+
+A field belongs in the physical contract because an implemented DRE decision or the preservation of an actual Owner/semantic physical restriction consumes it, not because a generic AI platform might want it.
 
 No Module, Agent, Operation, Material, SPIRA, CORE, semantic Workflow/WorkPlan or semantic continuation is smuggled into Work.
 
@@ -113,7 +127,10 @@ InferenceCapability
     execution binding + version
 
 CONFIGURED / DECLARED
-    locality / external boundary
+    factual execution location
+    factual destination
+    optional factual route/intermediary description
+    optional factual retention/history description
     supported physical effort/characteristics currently modeled
     Owner configuration/preferences
 
@@ -127,7 +144,11 @@ HISTORICAL / OBSERVED
     other evidence only when an actual DRE consumer exists
 ```
 
-A provider claim, an Owner declaration and a MADRE observation are different facts. Only properties with actual DRE consumers should become first-class in the initial typed core.
+`ExecutionLocation` is a factual capability property (`Local` or `External`). Destination identifies where the configured path actually sends/executes information. Route and retention/history descriptions are physical facts exposed for semantic/Owner inspection; Kernel need not interpret their provider-specific meaning.
+
+A provider claim, an Owner declaration and a MADRE observation are different facts. Provenance must remain visible rather than collapsing them into one mutable truth.
+
+The capability-side factual execution path and the Work-side allowed exposure are intentionally different contracts flowing in opposite directions. Do not reuse an `ExternalAllowed`-style permission as though it were factual capability location.
 
 ### Unknown is not Unavailable
 
@@ -179,7 +200,7 @@ MEAI remains useful generic interoperability behind bindings.
 
 MADRE keeps one authoritative `PhysicalInferenceWork` lifecycle in SQLite for current Lane C.
 
-One process-lifetime Kernel owner exists per database, regardless of IPC path. A second Kernel must fail before it can unlink or replace a live endpoint or run another scheduler against the same authoritative database.
+One process-lifetime Kernel owner exists per database, regardless of IPC path. A second Kernel must fail before it can unlink or replace a live endpoint or run another scheduler against the same authoritative database. Physical filesystem aliases must not create independent owners of the same database.
 
 The local socket endpoint is independently protected: a live endpoint is never deleted. A stale filesystem socket may be removed only after it is established not to be live.
 
@@ -187,15 +208,17 @@ SQLite carries an explicit current schema identity. Databases produced by incomp
 
 On startup current configured capability catalogue is reconciled to actual configuration. Removed capabilities disappear from selectable current configuration/state; historical attempts remain historical.
 
-An interrupted active attempt recovers as `UnknownCompletion`. MADRE does not silently duplicate uncertain physical Work or rewrite uncertainty into definite failure. Terminal release preserves Work identity/history while clearing retained input/result payload.
+An interrupted active attempt recovers as `UnknownCompletion`. MADRE does not silently duplicate uncertain physical Work or rewrite uncertainty into definite failure. Terminal release preserves Work identity/history and physical metadata while clearing retained input/result payload.
 
 ## Scheduler shape and memory truth
 
 DRE must preserve complete-set/no-head-starvation behavior without materialising every physical payload merely to schedule.
 
-Eligible scheduling candidates contain scheduling metadata only. Prepared input—potentially up to the physical payload bound—is loaded only after Work is actually claimed for execution.
+Eligible scheduling candidates contain scheduling metadata and physical admissibility only. Prepared input—potentially up to the physical payload bound—is loaded only after Work is actually claimed for execution.
 
 Urgency/effort ordering belongs in explicit domain code, not enum ordinals or SQL policy. SQLite query mechanics do not own DRE policy. The scheduler is wake/deadline driven rather than fixed busy polling.
+
+Capacity released by an attempt during a scheduler pass must be reconsidered against a fresh urgency ordering rather than reused later in a stale candidate traversal.
 
 ## Background failure truth
 
@@ -215,9 +238,9 @@ Connections are independent and short-lived. Active server client handlers are b
 
 Protocol operation/error vocabulary is typed on the Java side rather than scattered string literals.
 
-Malformed IPC does not silently acquire defaults: required operation/submit fields must be present, numeric enum encodings are rejected, and unknown properties are rejected where the contract is parsed.
+Malformed IPC does not silently acquire defaults: required operation/submit fields must be present, numeric enum encodings are rejected, and unknown properties are rejected where the contract is parsed. Physical eligible capability sets reject empty/blank/duplicate values when explicitly supplied.
 
-Host configuration likewise rejects unknown properties, numeric enum encodings and missing required capability facts. CLI parsing rejects unknown flags, duplicate flags, missing values and malformed values. Technical defaults have one intentional owner rather than being copied across layers.
+Host configuration likewise rejects unknown properties, numeric enum encodings and missing required capability facts. A configured capability must provide truthful physical execution location and destination; optional route/retention facts cannot be empty. Programmatic/custom capability construction obeys the same physical contract. CLI parsing rejects unknown flags, duplicate flags, missing values and malformed values. Technical defaults have one intentional owner rather than being copied across layers.
 
 ## Process binding
 
@@ -231,7 +254,9 @@ Behavior survives when MADRE needs it, not because an old implementation shape d
 
 - independent Kernel lifetime;
 - one authoritative durable physical Work lifecycle;
-- capability-aware DRE;
+- semantic/Owner-derived physical admissibility and exact-selection preservation;
+- capability-aware DRE inside that admissible physical space;
+- inspectable factual capability execution paths;
 - bounded payloads and physical concurrency;
 - concurrent local clients and caller disappearance;
 - eligibility/deadlines;
@@ -252,6 +277,10 @@ Lane C is drifting if it:
 
 - rematerializes provider/model/runtime internals as MADRE-owned engine/worker ontology;
 - resolves all meaningful physical choice above Kernel;
+- discards an exact Owner physical choice or semantically derived eligible physical set before Work;
+- lets DRE select a capability outside the Work's opaque physical admissibility;
+- conflates request-side allowed exposure with factual capability execution location/destination;
+- hides the configured physical destination/route/retention facts needed above Kernel to resolve the Owner's information journey;
 - sends semantic MADRE objects into Kernel;
 - treats `Unknown` as `Unavailable` because a custom probe is absent or times out;
 - probes every capability forever without current physical demand;
@@ -268,6 +297,6 @@ Lane C is drifting if it:
 - privileges first-party integrations over Owner/custom bindings;
 - starts SDK/Runtime work while correcting Lane C.
 
-The target remains: **a small, truthful, durable, capability-aware physical inference Kernel that belongs to MADRE without trying to own the Owner's intelligence environment.**
+The target remains: **a small, truthful, durable, capability-aware physical inference Kernel that preserves the Owner's physical admissibility and information-journey intent without trying to own the Owner's intelligence environment.**
 
-Implementation evidence is submitted for Owner/orchestrator audit. This document does not declare Lane C closed.
+Implementation evidence is submitted for Owner/orchestrator audit. This product-decision document does not declare Lane C closed by itself.
