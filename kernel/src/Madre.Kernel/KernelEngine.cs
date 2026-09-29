@@ -53,11 +53,54 @@ public sealed class KernelEngine : IAsyncDisposable
 
         foreach (InferenceCapability capability in capabilities)
         {
+            ValidateCapability(capability);
             string key = BindingKey(capability.BindingId, capability.BindingVersion);
             if (!_bindings.ContainsKey(key))
             {
                 throw new InvalidOperationException($"Capability {capability.CapabilityId} references missing binding {key}");
             }
+        }
+    }
+
+    private static void ValidateCapability(InferenceCapability capability)
+    {
+        if (string.IsNullOrWhiteSpace(capability.CapabilityId)
+            || string.IsNullOrWhiteSpace(capability.BindingId)
+            || string.IsNullOrWhiteSpace(capability.BindingVersion))
+        {
+            throw new ArgumentException("capability identity and binding identity/version must not be blank", nameof(capability));
+        }
+        if (capability.ExecutionPath is null
+            || capability.ExecutionPath.Location is null
+            || capability.ExecutionPath.Destination is null)
+        {
+            throw new ArgumentException($"Capability {capability.CapabilityId} requires factual execution path location and destination", nameof(capability));
+        }
+        if (!Enum.IsDefined(typeof(ExecutionLocation), capability.ExecutionPath.Location.Value)
+            || !Enum.IsDefined(typeof(FactProvenance), capability.ExecutionPath.Location.Provenance)
+            || !Enum.IsDefined(typeof(FactProvenance), capability.ExecutionPath.Destination.Provenance))
+        {
+            throw new ArgumentException($"Capability {capability.CapabilityId} contains invalid execution-path fact values", nameof(capability));
+        }
+        if (string.IsNullOrWhiteSpace(capability.ExecutionPath.Destination.Value))
+        {
+            throw new ArgumentException($"Capability {capability.CapabilityId} requires a nonblank factual destination", nameof(capability));
+        }
+        if (capability.ExecutionPath.Route is { } route
+            && (string.IsNullOrWhiteSpace(route.Value) || !Enum.IsDefined(typeof(FactProvenance), route.Provenance)))
+        {
+            throw new ArgumentException($"Capability {capability.CapabilityId} route must be a nonblank factual value with valid provenance", nameof(capability));
+        }
+        if (capability.ExecutionPath.DataRetention is { } retention
+            && (string.IsNullOrWhiteSpace(retention.Value) || !Enum.IsDefined(typeof(FactProvenance), retention.Provenance)))
+        {
+            throw new ArgumentException($"Capability {capability.CapabilityId} data retention must be a nonblank factual value with valid provenance", nameof(capability));
+        }
+        if (capability.SupportedEffort is null
+            || !Enum.IsDefined(typeof(InferenceEffort), capability.SupportedEffort.Value)
+            || !Enum.IsDefined(typeof(FactProvenance), capability.SupportedEffort.Provenance))
+        {
+            throw new ArgumentException($"Capability {capability.CapabilityId} contains invalid supported-effort fact", nameof(capability));
         }
     }
 

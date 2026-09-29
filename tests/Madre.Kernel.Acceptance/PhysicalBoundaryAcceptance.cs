@@ -13,6 +13,7 @@ internal static partial class Program
     private static async Task PhysicalEligibilityContractAsync()
     {
         using var temp = new TempDir("madre-physical-boundary");
+        AssertInvalidCustomCapabilityPath(temp.Path);
         var capabilityA = new InferenceCapability(
             "external-a",
             "boundary/a",
@@ -121,6 +122,33 @@ internal static partial class Program
         Check(a.Capability.ExecutionPath.DataRetention?.Value == "provider-retains-30d"
             && a.Capability.ExecutionPath.DataRetention?.Provenance == FactProvenance.ProviderOrRuntime,
             "capability snapshot lost retention fact provenance");
+    }
+
+    private static void AssertInvalidCustomCapabilityPath(string directory)
+    {
+        var invalid = new InferenceCapability(
+            "invalid-path",
+            "boundary/invalid",
+            "1",
+            new CapabilityExecutionPath(
+                new ConfiguredFact<ExecutionLocation>(ExecutionLocation.External, FactProvenance.Owner),
+                new ConfiguredFact<string>(" ", FactProvenance.Owner)),
+            new ConfiguredFact<InferenceEffort>(InferenceEffort.Standard, FactProvenance.Owner),
+            1);
+        bool rejected = false;
+        try
+        {
+            _ = new KernelEngine(
+                new WorkStore(Path.Combine(directory, "invalid-path.db")),
+                [invalid],
+                [new FixedBinding("boundary/invalid", CapabilityAvailability.Available, false)],
+                1);
+        }
+        catch (ArgumentException ex) when (ex.Message.Contains("destination", StringComparison.OrdinalIgnoreCase))
+        {
+            rejected = true;
+        }
+        Check(rejected, "programmatic capability bypassed factual execution-path validation");
     }
 
     private static async Task JavaPhysicalBoundaryContractAsync()
