@@ -128,6 +128,8 @@ public sealed record WorkInspection(
     DateTimeOffset EligibleAt,
     DateTimeOffset? Deadline,
     WorkUrgency Urgency,
+    ExecutionBoundary ExecutionBoundary,
+    IReadOnlyList<string>? EligibleCapabilityIds,
     string? SelectedCapabilityId,
     string? SelectedBindingId,
     string? SelectedBindingVersion,
