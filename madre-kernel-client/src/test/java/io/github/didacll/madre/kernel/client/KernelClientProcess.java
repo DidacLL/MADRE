@@ -90,7 +90,16 @@ public final class KernelClientProcess {
                 ? WorkUrgency.valueOf(args[optionIndex + 1]) : WorkUrgency.Normal;
         ExecutionBoundary boundary = args.length > optionIndex + 2
                 ? ExecutionBoundary.valueOf(args[optionIndex + 2]) : ExecutionBoundary.LocalOnly;
-        return client.submit(new PhysicalInferenceRequest(input, effort, urgency, null, null, boundary));
+        List<String> eligibleCapabilityIds = args.length > optionIndex + 3
+                ? List.of(args[optionIndex + 3].split(",")) : null;
+        return client.submit(new PhysicalInferenceRequest(
+                input,
+                effort,
+                urgency,
+                null,
+                null,
+                boundary,
+                eligibleCapabilityIds));
     }
 
     private static String exactUtf8Bytes(String unit, int byteCount) {
