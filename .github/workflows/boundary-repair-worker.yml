@@ -1,0 +1,105 @@
+name: Temporary Lane C Boundary Repair Worker
+
+on:
+  push:
+    branches: [agentic/lane-c-boundary-repair]
+
+permissions:
+  contents: write
+
+jobs:
+  repair-and-build:
+    if: ${{ !startsWith(github.event.head_commit.message, 'boundary-worker:') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agentic/lane-c-boundary-repair
+          fetch-depth: 0
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+      - name: Apply bounded boundary wiring
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace(path, old, new):
+              p = Path(path)
+              s = p.read_text()
+              if old not in s:
+                  raise SystemExit(f"expected text not found in {path}: {old[:100]!r}")
+              p.write_text(s.replace(old, new))
+
+          # Kernel request validation.
+          replace('kernel/src/Madre.Kernel/KernelEngine.cs',
+          '''        if (request.Deadline is { } deadline && request.EligibleAt is { } eligible && deadline <= eligible)\n        {\n            throw new ArgumentException("deadline must be later than eligibleAt", nameof(request));\n        }\n\n        string id = await _store.SubmitAsync(request, _clock.UtcNow, cancellationToken).ConfigureAwait(false);''',
+          '''        if (request.Deadline is { } deadline && request.EligibleAt is { } eligible && deadline <= eligible)\n        {\n            throw new ArgumentException("deadline must be later than eligibleAt", nameof(request));\n        }\n        if (request.EligibleCapabilityIds is { } eligibleCapabilityIds)\n        {\n            if (eligibleCapabilityIds.Count == 0)\n            {\n                throw new ArgumentException("eligibleCapabilityIds must not be empty when present", nameof(request));\n            }\n            var seen = new HashSet<string>(StringComparer.Ordinal);\n            foreach (string capabilityId in eligibleCapabilityIds)\n            {\n                if (string.IsNullOrWhiteSpace(capabilityId))\n                {\n                    throw new ArgumentException("eligibleCapabilityIds must not contain blank ids", nameof(request));\n                }\n                if (!seen.Add(capabilityId))\n                {\n                    throw new ArgumentException("eligibleCapabilityIds must not contain duplicates", nameof(request));\n                }\n            }\n        }\n\n        string id = await _store.SubmitAsync(request, _clock.UtcNow, cancellationToken).ConfigureAwait(false);''')
+
+          # IPC v2 submit carrier.
+          replace('kernel/src/Madre.Kernel.Host/KernelIpcServer.cs',
+          '''    DateTimeOffset? EligibleAt,\n    DateTimeOffset? Deadline,\n    ExecutionBoundary? ExecutionBoundary);''',
+          '''    DateTimeOffset? EligibleAt,\n    DateTimeOffset? Deadline,\n    ExecutionBoundary? ExecutionBoundary,\n    List<string>? EligibleCapabilityIds);''')
+          replace('kernel/src/Madre.Kernel.Host/KernelIpcServer.cs',
+          '''            payload.EligibleAt,\n            payload.Deadline,\n            payload.ExecutionBoundary.Value);''',
+          '''            payload.EligibleAt,\n            payload.Deadline,\n            payload.ExecutionBoundary.Value,\n            payload.EligibleCapabilityIds);''')
+
+          # Java protocol and contracts.
+          replace('madre-kernel-client/src/main/java/io/github/didacll/madre/kernel/client/KernelProtocol.java',
+                  'static final int VERSION = 1;', 'static final int VERSION = 2;')
+
+          Path('madre-kernel-client/src/main/java/io/github/didacll/madre/kernel/client/ExecutionLocation.java').write_text('''package io.github.didacll.madre.kernel.client;\n\npublic enum ExecutionLocation {\n    Local,\n    External\n}\n''')
+          Path('madre-kernel-client/src/main/java/io/github/didacll/madre/kernel/client/CapabilityExecutionPath.java').write_text('''package io.github.didacll.madre.kernel.client;\n\npublic record CapabilityExecutionPath(\n        ConfiguredFact<ExecutionLocation> location,\n        ConfiguredFact<String> destination,\n        ConfiguredFact<String> route,\n        ConfiguredFact<String> dataRetention) {\n}\n''')
+          Path('madre-kernel-client/src/main/java/io/github/didacll/madre/kernel/client/InferenceCapability.java').write_text('''package io.github.didacll.madre.kernel.client;\n\npublic record InferenceCapability(\n        String capabilityId,\n        String bindingId,\n        String bindingVersion,\n        CapabilityExecutionPath executionPath,\n        ConfiguredFact<InferenceEffort> supportedEffort,\n        int ownerPreference) {\n}\n''')
+          Path('madre-kernel-client/src/main/java/io/github/didacll/madre/kernel/client/PhysicalInferenceRequest.java').write_text('''package io.github.didacll.madre.kernel.client;\n\nimport java.time.OffsetDateTime;\nimport java.util.HashSet;\nimport java.util.List;\nimport java.util.Objects;\n\npublic record PhysicalInferenceRequest(\n        String preparedInput,\n        InferenceEffort requestedEffort,\n        WorkUrgency urgency,\n        OffsetDateTime eligibleAt,\n        OffsetDateTime deadline,\n        ExecutionBoundary executionBoundary,\n        List<String> eligibleCapabilityIds) {\n    public PhysicalInferenceRequest {\n        Objects.requireNonNull(preparedInput, "preparedInput");\n        Objects.requireNonNull(requestedEffort, "requestedEffort");\n        Objects.requireNonNull(urgency, "urgency");\n        Objects.requireNonNull(executionBoundary, "executionBoundary");\n        if (eligibleCapabilityIds != null) {\n            if (eligibleCapabilityIds.isEmpty()) {\n                throw new IllegalArgumentException("eligibleCapabilityIds must not be empty when present");\n            }\n            if (eligibleCapabilityIds.stream().anyMatch(id -> id == null || id.isBlank())) {\n                throw new IllegalArgumentException("eligibleCapabilityIds must not contain blank ids");\n            }\n            if (new HashSet<>(eligibleCapabilityIds).size() != eligibleCapabilityIds.size()) {\n                throw new IllegalArgumentException("eligibleCapabilityIds must not contain duplicates");\n            }\n            eligibleCapabilityIds = List.copyOf(eligibleCapabilityIds);\n        }\n    }\n\n    public PhysicalInferenceRequest(\n            String preparedInput,\n            InferenceEffort requestedEffort,\n            WorkUrgency urgency,\n            OffsetDateTime eligibleAt,\n            OffsetDateTime deadline,\n            ExecutionBoundary executionBoundary) {\n        this(preparedInput, requestedEffort, urgency, eligibleAt, deadline, executionBoundary, null);\n    }\n}\n''')
+          Path('madre-kernel-client/src/main/java/io/github/didacll/madre/kernel/client/WorkInspection.java').write_text('''package io.github.didacll.madre.kernel.client;\n\nimport java.time.OffsetDateTime;\nimport java.util.List;\n\npublic record WorkInspection(\n        String workId,\n        WorkState state,\n        OffsetDateTime createdAt,\n        OffsetDateTime eligibleAt,\n        OffsetDateTime deadline,\n        WorkUrgency urgency,\n        ExecutionBoundary executionBoundary,\n        List<String> eligibleCapabilityIds,\n        String selectedCapabilityId,\n        String selectedBindingId,\n        String selectedBindingVersion,\n        boolean cancelRequested,\n        boolean released,\n        PhysicalFailure failure,\n        List<AttemptInspection> attempts) {\n}\n''')
+
+          # Acceptance fixture config and helper constructors.
+          p = Path('tests/Madre.Kernel.Acceptance/Support.cs')
+          s = p.read_text()
+          s = s.replace('executionBoundary = "LocalOnly", supportedEffort', 'executionLocation = "Local", destination = "local-process", route = "owner-local-process", dataRetention = "process-defined", supportedEffort')
+          s = s.replace('executionBoundary = "ExternalAllowed", supportedEffort', 'executionLocation = "External", destination = "test-external", route = "test-route", dataRetention = "test-retention", supportedEffort')
+          s = s.replace('''private static InferenceCapability Cap(string id, string binding, InferenceEffort effort, ExecutionBoundary boundary, int preference) => new(id, binding, "1", new ConfiguredFact<ExecutionBoundary>(boundary, FactProvenance.Owner), new ConfiguredFact<InferenceEffort>(effort, FactProvenance.Owner), preference);''', '''private static InferenceCapability Cap(string id, string binding, InferenceEffort effort, ExecutionBoundary boundary, int preference) => new(\n        id,\n        binding,\n        "1",\n        new CapabilityExecutionPath(\n            new ConfiguredFact<ExecutionLocation>(boundary == ExecutionBoundary.LocalOnly ? ExecutionLocation.Local : ExecutionLocation.External, FactProvenance.Owner),\n            new ConfiguredFact<string>(id, FactProvenance.Owner)),\n        new ConfiguredFact<InferenceEffort>(effort, FactProvenance.Owner),\n        preference);''')
+          p.write_text(s)
+
+          # Verification fixture helper constructor.
+          p = Path('tests/Madre.Kernel.Verification/VerificationSupport.cs')
+          s = p.read_text()
+          old = '''            new ConfiguredFact<ExecutionBoundary>(boundary, FactProvenance.Owner),\n            new ConfiguredFact<InferenceEffort>(effort, FactProvenance.Owner),'''
+          new = '''            new CapabilityExecutionPath(\n                new ConfiguredFact<ExecutionLocation>(boundary == ExecutionBoundary.LocalOnly ? ExecutionLocation.Local : ExecutionLocation.External, FactProvenance.Owner),\n                new ConfiguredFact<string>(id, FactProvenance.Owner)),\n            new ConfiguredFact<InferenceEffort>(effort, FactProvenance.Owner),'''
+          if old not in s:
+              raise SystemExit('verification capability helper shape not found')
+          p.write_text(s.replace(old, new))
+
+          # Current schema acceptance is v2.
+          p = Path('tests/Madre.Kernel.Acceptance/PersistenceShapeAcceptance.cs')
+          s = p.read_text().replace('user_version=1', 'user_version=2').replace('user_version = 1', 'user_version = 2')
+          p.write_text(s)
+          PY
+
+          echo 'Remaining capability-side executionBoundary references:'
+          grep -RIn --exclude-dir=bin --exclude-dir=obj 'executionBoundary' kernel tests madre-kernel-client/src/main/java || true
+
+      - name: Build after boundary wiring
+        run: |
+          ./gradlew --no-daemon clean build
+          dotnet build tests/Madre.Kernel.Acceptance/Madre.Kernel.Acceptance.csproj --configuration Release
+          dotnet build tests/Madre.Kernel.Verification/Madre.Kernel.Verification.csproj --configuration Release
+      - name: Commit bounded wiring
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo 'No repair changes to commit.'
+            exit 0
+          fi
+          git config user.name 'MADRE boundary worker'
+          git config user.email 'actions@users.noreply.github.com'
+          git add kernel madre-kernel-client tests
+          git commit -m 'boundary-worker: wire physical admissibility contracts'
+          git push origin HEAD:agentic/lane-c-boundary-repair
