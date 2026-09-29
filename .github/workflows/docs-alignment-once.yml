@@ -1,0 +1,117 @@
+name: One-shot repaired Lane C documentation alignment
+
+on:
+  push:
+    branches: [agentic/lane-c-boundary-repair]
+
+permissions:
+  contents: write
+
+jobs:
+  docs:
+    if: ${{ github.event.head_commit.message == 'Align remaining architecture docs' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agentic/lane-c-boundary-repair
+          fetch-depth: 0
+      - name: Align active authorities with repaired boundary
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          OLD_SHA = '95ddf2250c27d28e90e215391223164965b68729'
+          NEW_SHA = '77a862941e9c05d15652317616069a296af0f397'
+          OLD_RUN = '36493627377'
+          NEW_RUN = '36604046199'
+
+          def replace(path, old, new, required=True):
+              p = Path(path)
+              s = p.read_text()
+              if old not in s:
+                  if required:
+                      raise SystemExit(f'expected text not found in {path}: {old[:120]!r}')
+                  return
+              p.write_text(s.replace(old, new))
+
+          # Exact evidence references in active semantic/agent authorities.
+          for path in ['AGENTS.md', 'MADRE.md', 'docs/architecture/mid-level-architecture.md']:
+              p = Path(path)
+              s = p.read_text().replace(OLD_SHA, NEW_SHA).replace(OLD_RUN, NEW_RUN)
+              p.write_text(s)
+
+          replace('AGENTS.md',
+          '''The original `docs/product/lane-c-owner-decision.md` text was written before the final closure audit and therefore still contains historical implementation-status wording about pending audit. Its architectural rationale remains authoritative; Lane C closure status and qualified implementation truth are recorded by `docs/architecture/kernel.md` and `docs/architecture/kernel-handoff.md` after the Owner/orchestrator closure decision.''',
+          '''`docs/product/lane-c-owner-decision.md` now includes the final closure-audit correction: semantic/Owner physical admissibility must survive into Work, exact physical choice must be representable, and factual capability execution-path information must remain distinct from request-side allowed exposure. `docs/architecture/kernel.md` records the qualified implementation of that decision.''')
+
+          replace('AGENTS.md',
+          '''- The opposite extreme is also rejected: semantic MADRE must not completely resolve provider/model/configuration before Kernel when doing so removes meaningful physical DRE choice.''',
+          '''- The opposite extreme is also rejected: semantic MADRE must not completely resolve provider/model/configuration before Kernel when doing so removes meaningful physical DRE choice.\n- Semantic MADRE/Owner may derive an opaque eligible physical capability set; Kernel DRE must never widen it. A singleton set preserves an exact physical choice.\n- Capability factual execution location/destination/route/retention flows upward for information-journey reasoning; request-side `LocalOnly`/`ExternalAllowed` flows downward as a Work constraint. Never conflate those directions.''')
+
+          replace('AGENTS.md',
+          '''Agents do not construct Kernel `PhysicalInferenceWork` directly. Semantic MADRE derives a small physical inference requirement from the actual reasoning need and constraints. It may include prepared input, requested result characteristics, desired reasoning effort, context characteristics, urgency, acceptable delay/deadline, modality requirements, hard restrictions derived from semantic composition and explicit Owner preferences.''',
+          '''Agents do not construct Kernel `PhysicalInferenceWork` directly. Semantic MADRE derives a small physical inference requirement from the actual reasoning need, actual SPIRA composition, explicit Owner choices and factual configured capability execution paths. It may include prepared input, requested result characteristics, desired reasoning effort, urgency, acceptable delay/deadline, request-side allowed exposure, and an opaque eligible physical capability set. A singleton eligible set is the exact-selection case; Kernel never receives the semantic reason for the restriction.''')
+
+          replace('AGENTS.md',
+          '''- configured/current/observed `InferenceCapability` truth;''',
+          '''- configured/current/observed `InferenceCapability` truth;\n- factual capability `ExecutionPath` (location, destination, optional route/retention with provenance) exposed upward without becoming SPIRA;\n- durable optional `EligibleCapabilityIds` on Work, with singleton exact selection and DRE constrained to the supplied set;''')
+
+          replace('MADRE.md',
+          '''Semantic MADRE derives a small physical inference requirement from what it can actually know about the reasoning need, for example:\n\n```text\nprepared inference input\nrequested result characteristics\ndesired reasoning depth / effort\ncontext characteristics\nurgency\nacceptable delay / deadline\nrequired modality/context characteristics\nhard physical restrictions derived from semantic composition\nexplicit Owner execution preferences where relevant\n```''',
+          '''Semantic MADRE derives a small physical inference requirement from what it can actually know about the reasoning need and the configured physical paths, for example:\n\n```text\nprepared inference input\nrequested result characteristics\ndesired reasoning depth / effort\ncontext characteristics\nurgency\nacceptable delay / deadline\nrequired modality/context characteristics\nrequest-side allowed exposure\nopaque eligible physical capability identities\nexact physical capability when the Owner explicitly chose one\n```''')
+
+          replace('MADRE.md',
+          '''CONFIGURED / DECLARED\n    physical identity/binding\n    locality/exposure boundary\n    supported reasoning characteristics\n    Owner configuration/preferences\n    other typed facts only when a DRE consumer exists''',
+          '''CONFIGURED / DECLARED\n    physical identity/binding\n    factual execution location\n    factual destination\n    optional route/intermediary description\n    optional retention/history description\n    supported reasoning characteristics\n    Owner configuration/preferences\n    other typed facts only when an actual consumer exists''')
+
+          replace('MADRE.md',
+          '''Kernel does not understand Module, Agent, Operation semantics, Material meaning, ReasoningRequest semantics, SPIRA, CORE or semantic continuation.''',
+          '''Kernel does not understand Module, Agent, Operation semantics, Material meaning, ReasoningRequest semantics, SPIRA, CORE or semantic continuation. It receives only physical admissibility; an optional opaque eligible capability set may restrict DRE, and a singleton set preserves exact physical selection.''')
+
+          replace('MADRE.md',
+          '''- one process-lifetime owner per SQLite database, independent of IPC path and resilient to Linux physical path/symlink aliases;''',
+          '''- one process-lifetime owner per SQLite database, independent of IPC path and resilient to Linux physical path/symlink aliases;\n- durable request-side physical admissibility including optional eligible capability ids / exact selection;\n- factual configured capability execution paths (location, destination, optional route/retention) exposed with provenance;''')
+
+          replace('docs/architecture/mid-level-architecture.md',
+          '''prepared input\nrequested result characteristics\nreasoning effort/depth indication\ncontext/modality characteristics\nurgency\nacceptable delay / deadline\nhard physical restrictions\nOwner execution preferences where relevant''',
+          '''prepared input\nrequested result characteristics\nreasoning effort/depth indication\ncontext/modality characteristics\nurgency\nacceptable delay / deadline\nrequest-side allowed exposure\nopaque eligible physical capability identities\nexact physical capability when explicitly selected by the Owner\nother hard physical restrictions justified by an actual consumer''')
+
+          replace('docs/architecture/mid-level-architecture.md',
+          '''An `InferenceCapability` is a configured physical intelligence opportunity consisting of identity/binding and typed configured facts currently consumed by DRE. Configured facts, current availability and historical attempt observations remain separate.''',
+          '''An `InferenceCapability` is a configured physical intelligence opportunity consisting of identity/binding and typed physical facts. Its configured `ExecutionPath` exposes factual location, destination and optional route/retention information with provenance so semantic MADRE can resolve the Owner's information journey. Configured facts, current availability and historical attempt observations remain separate.''')
+
+          replace('docs/architecture/mid-level-architecture.md',
+          '''Current DRE consumes eligibility/deadlines, effort/boundary admissibility, availability truth, Owner preference and binding-scoped observed latency where comparable for interactive Work.''',
+          '''Current DRE consumes eligibility/deadlines, the optional opaque eligible capability set, effort admissibility, request-side allowed exposure against factual capability location, availability truth, Owner preference and binding-scoped observed latency where comparable for interactive Work.''')
+
+          replace('docs/architecture/mid-level-architecture.md',
+          '''12. Semantic MADRE derives a small physical requirement; exact provider/model/configuration selection is not required before Kernel.''',
+          '''12. Semantic MADRE derives a small physical requirement; it may constrain an opaque eligible capability set or preserve an exact Owner physical choice without sending provider/model semantics into Kernel.''')
+
+          # Add a hard engineering invariant immediately after the physical ownership rule.
+          replace('docs/architecture/mid-level-architecture.md',
+          '''13. Kernel owns durable Work, capability truth/observations, scheduling and physical execution only.''',
+          '''13. Kernel owns durable Work, capability truth/observations, scheduling and physical execution only.\n13a. Capability-side factual execution path and Work-side allowed exposure are opposite-direction contracts and must not be represented as one ambiguous fact; Kernel DRE must not widen the eligible physical set supplied by semantic MADRE.''')
+
+          # Sanity checks for the repaired concepts in all three authorities.
+          checks = {
+              'AGENTS.md': ['EligibleCapabilityIds', 'ExecutionPath', 'singleton'],
+              'MADRE.md': ['eligible capability', 'factual execution location', NEW_SHA, NEW_RUN],
+              'docs/architecture/mid-level-architecture.md': ['eligible physical capability', 'ExecutionPath', NEW_SHA, NEW_RUN],
+          }
+          for path, terms in checks.items():
+              text = Path(path).read_text()
+              for term in terms:
+                  if term not in text:
+                      raise SystemExit(f'{path} missing repaired-boundary term: {term}')
+          PY
+      - name: Commit documentation alignment
+        shell: bash
+        run: |
+          git config user.name 'MADRE documentation worker'
+          git config user.email 'actions@users.noreply.github.com'
+          git add AGENTS.md MADRE.md docs/architecture/mid-level-architecture.md
+          git commit -m 'Align semantic authorities with repaired Kernel boundary'
+          git push origin HEAD:agentic/lane-c-boundary-repair
