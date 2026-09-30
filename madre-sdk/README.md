@@ -11,13 +11,16 @@ classDiagram
     MADREAgent ..> ModuleOperation : invokes
     MADREAgent ..> ReasoningRequest : creates
     MADREAgent ..> MADREAgent : may delegate
-    WorkPlan ..> MADREAgent : may coordinate
-    WorkPlan ..> Workflow : may compose
+    WorkPlan "1" o-- "0..*" Step : coordinates
+    Step --> MADREAgent : assigned Agent
+    Step --> Executable : assigned work
+    Executable <|-- ModuleOperation
+    Executable <|-- Workflow
     ModuleOperation ..> Material : accepts or produces
 ```
 
 `Material.sensitivity()`, `MADREAgent.integrity()`, and `ModuleOperation.risk()` put three settled SPIRA facts on their direct semantic carriers. The five enums preserve the accepted 0–5 order. Privacy belongs to the actual receiving boundary, including an Operation's accepted Material boundary; Autonomy belongs to the current acting Agent continuation. Neither is placed permanently on the Agent, Operation, Module, or ReasoningRequest. No Compound, EffectProfile, authorization service, or five-field request label is introduced.
 
-Skill, Workflow, WorkPlan, and ReasoningRequest are named without invented state or lifecycle methods. The SDK types do not require a Module to expose any Agent or Skill. A Module can expose an Operation while remaining agentless. Module-owned domain types, persistence, UI, integrations, and Agent behavior remain its own.
+Skill and ReasoningRequest are named without invented state or lifecycle methods. A WorkPlan exposes its steps, with an Agent assigned to each Step and an Operation or Workflow as its Executable. Workflow remains a result-dependent graph; its Java graph and invocation methods are not yet defined. The SDK types do not require a Module to expose any Agent or Skill. A Module can expose an Operation while remaining agentless. Module-owned domain types, persistence, UI, integrations, Agent behavior, and WorkPlan state remain its own.
 
 The TODOs mark Java contracts still requiring Owner-led design: Material input/output boundary shape, Operation invocation, explicit Agent delegation, current continuation representation, ReasoningRequest construction, execution preferences, and the Module-owned reasoning-to-physical function. No SDK type constructs Kernel Work or depends on `madre-kernel-client`.
