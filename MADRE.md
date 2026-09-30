@@ -165,7 +165,7 @@ A future BuilderModule may be deferred. The requirement that the public SDK be s
 - Java `madre-kernel-client`;
 - native llama.cpp worker path.
 
-The active tree has a narrow Java SDK and installed Runtime base for Module installation, discovery, and CORE role assignment; see `docs/architecture/runtime-base.md`. Agent and Operation behavior, semantic routing, reasoning, and continuation are still unimplemented. Do not restore discarded historical semantic implementations to hide that gap.
+The active tree has a narrow Java SDK and installed Runtime base for Module installation, discovery, CORE role assignment, Module data locations, and durable non-inference wakeups; see `docs/architecture/runtime-base.md`. Agent and Operation behavior, semantic routing, reasoning, and inference continuation are still unimplemented. Do not restore discarded historical semantic implementations to hide that gap.
 
 ## Development character
 

@@ -6,12 +6,16 @@ import io.github.didacll.madre.kernel.client.LocalKernelClient;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -38,6 +42,24 @@ public final class RuntimeInstallation {
     }
 
     public Path home() { return home; }
+
+    /** Stable location for one Module's own persistence. Runtime never interprets its files. */
+    public Path moduleDataDirectory(String moduleId) throws IOException {
+        if (Objects.requireNonNull(moduleId, "moduleId").isBlank()) {
+            throw new IllegalArgumentException("Module identity must not be blank");
+        }
+        byte[] digest;
+        try {
+            digest = MessageDigest.getInstance("SHA-256")
+                    .digest(moduleId.getBytes(StandardCharsets.UTF_8));
+        } catch (NoSuchAlgorithmException impossible) {
+            throw new AssertionError(impossible);
+        }
+        Path directory = home.resolve("module-data")
+                .resolve("module-" + HexFormat.of().formatHex(digest));
+        Files.createDirectories(directory);
+        return directory;
+    }
 
     /** Stage one readable Java JAR without assigning Module identity or executing code. */
     public String installArtifact(Path source) throws IOException {

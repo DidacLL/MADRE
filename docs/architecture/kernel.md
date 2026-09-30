@@ -156,4 +156,4 @@ fc7ce5c75bc84de5b277aaa91e796a97a54242fd
 
 That baseline passed the full Lane C validation on Linux and Windows, including native build/tests, durability/restart scheduling, worker lifecycle/resource accounting, local IPC hardening and real native llama.cpp inference.
 
-The active tree has a public SDK development base and narrow installed Runtime foundation. Semantic invocation, reasoning conversion and continuation remain unimplemented; the physical Kernel boundary stays closed.
+The active tree has a public SDK development base and installed Runtime mechanics for Module lifecycle and durable non-inference wakeups. Semantic invocation, reasoning conversion and inference continuation remain unimplemented; the physical Kernel boundary stays closed.
