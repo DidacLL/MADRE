@@ -1,4 +1,4 @@
-package io.github.didacll.madre.sdk;
+package io.github.didacll.madre.sdk.spira;
 
 /** Ordered state of the current acting Agent continuation, not an Operation property. */
 public enum Autonomy {

@@ -1,4 +1,4 @@
-package io.github.didacll.madre.sdk;
+package io.github.didacll.madre.sdk.spira;
 
 /** Ordered assurance of an actual causal or provenance participant. */
 public enum Integrity {

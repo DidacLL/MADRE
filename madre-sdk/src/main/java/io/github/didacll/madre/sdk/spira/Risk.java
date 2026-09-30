@@ -1,4 +1,4 @@
-package io.github.didacll.madre.sdk;
+package io.github.didacll.madre.sdk.spira;
 
 /** Ordered consequence of the concrete Operation or effect selected now. */
 public enum Risk {
