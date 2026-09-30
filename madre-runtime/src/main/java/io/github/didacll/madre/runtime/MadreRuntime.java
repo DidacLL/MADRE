@@ -1,7 +1,9 @@
 package io.github.didacll.madre.runtime;
 
 import io.github.didacll.madre.kernel.client.EngineDescriptor;
+import io.github.didacll.madre.sdk.MADREAgent;
 import io.github.didacll.madre.sdk.MADREModule;
+import io.github.didacll.madre.sdk.ModuleOperation;
 
 import java.io.IOException;
 import java.net.URL;
@@ -22,6 +24,8 @@ public final class MadreRuntime implements AutoCloseable {
     private final List<URLClassLoader> loaders = new ArrayList<>();
     private List<ModuleInfo> modules = List.of();
     private Map<String, MADREModule> available = Map.of();
+    private Map<String, Map<String, MADREAgent>> agents = Map.of();
+    private Map<String, Map<String, ModuleOperation>> operations = Map.of();
 
     public MadreRuntime(Path home) throws IOException {
         installation = new RuntimeInstallation(home);
@@ -57,6 +61,14 @@ public final class MadreRuntime implements AutoCloseable {
         return Optional.ofNullable(available.get(Objects.requireNonNull(id, "id")));
     }
 
+    public Optional<MADREAgent> agent(String moduleId, String agentId) {
+        return Optional.ofNullable(agents.getOrDefault(moduleId, Map.of()).get(agentId));
+    }
+
+    public Optional<ModuleOperation> operation(String moduleId, String operationId) {
+        return Optional.ofNullable(operations.getOrDefault(moduleId, Map.of()).get(operationId));
+    }
+
     public List<EngineDescriptor> engines() throws IOException { return installation.engines(); }
 
     /** Re-read JARs; each JAR supplies one Module through the standard Java service entry. */
@@ -64,6 +76,8 @@ public final class MadreRuntime implements AutoCloseable {
         closeLoaders();
         List<ModuleInfo> found = new ArrayList<>();
         Map<String, MADREModule> loaded = new LinkedHashMap<>();
+        Map<String, Map<String, MADREAgent>> foundAgents = new LinkedHashMap<>();
+        Map<String, Map<String, ModuleOperation>> foundOperations = new LinkedHashMap<>();
         for (String artifact : installation.artifacts()) {
             Path path = installation.home().resolve("artifacts").resolve(artifact);
             URLClassLoader loader = null;
@@ -83,19 +97,36 @@ public final class MadreRuntime implements AutoCloseable {
                 if (id.isBlank() || loaded.containsKey(id)) {
                     throw new IllegalArgumentException("Blank or duplicate Module identity");
                 }
-                int agents = Objects.requireNonNull(module.agents(), "agents").size();
-                int operations = Objects.requireNonNull(module.operations(), "operations").size();
+                Map<String, MADREAgent> moduleAgents = new LinkedHashMap<>();
+                for (MADREAgent agent : Objects.requireNonNull(module.agents(), "agents")) {
+                    String agentId = Objects.requireNonNull(agent.id(), "Agent identity");
+                    if (agentId.isBlank() || moduleAgents.putIfAbsent(agentId, agent) != null) {
+                        throw new IllegalArgumentException("Blank or duplicate Agent identity");
+                    }
+                }
+                Map<String, ModuleOperation> moduleOperations = new LinkedHashMap<>();
+                for (ModuleOperation operation : Objects.requireNonNull(module.operations(), "operations")) {
+                    String operationId = Objects.requireNonNull(operation.id(), "Operation identity");
+                    if (operationId.isBlank() || moduleOperations.putIfAbsent(operationId, operation) != null) {
+                        throw new IllegalArgumentException("Blank or duplicate Operation identity");
+                    }
+                }
                 loaders.add(loader);
                 loaded.put(id, module);
-                found.add(new ModuleInfo(artifact, id, true, agents, operations, ""));
+                foundAgents.put(id, Map.copyOf(moduleAgents));
+                foundOperations.put(id, Map.copyOf(moduleOperations));
+                found.add(new ModuleInfo(artifact, id, true,
+                        List.copyOf(moduleAgents.keySet()), List.copyOf(moduleOperations.keySet()), ""));
             } catch (RuntimeException | ServiceConfigurationError failure) {
                 if (loader != null) loader.close();
-                found.add(new ModuleInfo(artifact, "", false, 0, 0,
-                        failure.getClass().getSimpleName()));
+                found.add(new ModuleInfo(artifact, "", false, List.of(), List.of(),
+                        failure.toString()));
             }
         }
         modules = List.copyOf(found);
         available = Map.copyOf(loaded);
+        agents = Map.copyOf(foundAgents);
+        operations = Map.copyOf(foundOperations);
     }
 
     @Override public void close() throws IOException { closeLoaders(); }
@@ -112,10 +143,12 @@ public final class MadreRuntime implements AutoCloseable {
         loaders.clear();
         modules = List.of();
         available = Map.of();
+        agents = Map.of();
+        operations = Map.of();
         if (first != null) throw first;
     }
 
     /** Inspection facts only; Module behavior and state remain its own. */
     public record ModuleInfo(String artifact, String id, boolean available,
-                             int agentCount, int operationCount, String diagnostic) { }
+                             List<String> agentIds, List<String> operationIds, String diagnostic) { }
 }
