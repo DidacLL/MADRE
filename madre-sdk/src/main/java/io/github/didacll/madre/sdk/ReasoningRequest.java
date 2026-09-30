@@ -1,12 +1,7 @@
 package io.github.didacll.madre.sdk;
 
-/**
- * Semantic need for reasoning created by an Agent. Relevant context, Material,
- * provenance, Owner instruction, SPIRA facts and the objective may participate.
- * The responsible Agent/Module context establishes the current valid semantic
- * construction. A ReasoningRequest never enters Kernel as a semantic object.
- */
+/** Semantic need for reasoning created by an Agent; never sent to Kernel as such. */
 public interface ReasoningRequest {
-    // TODO: Define public construction without inventing mandatory S/P/I/R/A fields.
-    // Execution preferences and the Module-owned reasoning executor are separate.
+    // TODO: Define public request construction with the Owner. Context, Material,
+    // provenance and objective may participate; no five-facet tuple is required.
 }
