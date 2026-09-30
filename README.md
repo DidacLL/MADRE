@@ -108,11 +108,11 @@ The repository contains the accepted Lane C/native Kernel foundation:
 - small Java `madre-kernel-client`;
 - real native llama.cpp worker path.
 
-The first Runtime base adds a small public Java `madre-sdk` with `MadreModule`, `Agent`, and `Operation`; owner-local JAR installation and discovery; and persisted assignment of the CORE role to an ordinary Module. See [`docs/architecture/runtime-base.md`](docs/architecture/runtime-base.md) for its exact contract and limits.
+The first Runtime base adds a public Java `madre-sdk` vocabulary and Module entry point; owner-local JAR installation and discovery; and persisted assignment of the CORE role to an ordinary Module. See [`madre-sdk/README.md`](madre-sdk/README.md) for the SDK development base and [`docs/architecture/runtime-base.md`](docs/architecture/runtime-base.md) for the installed Runtime's exact contract and limits.
 
 ### Not yet implemented
 
-Agent and Operation behavior, cross-Module invocation, delegation, SPIRA carriers, semantic reasoning, and delayed continuation are not implemented in this base. Their SDK contracts remain open for Owner-led architecture work.
+Agent and Operation execution, cross-Module invocation, delegation, the remaining SPIRA boundary/continuation shapes, semantic reasoning, and delayed continuation are not implemented in this base. Their SDK contracts remain open for Owner-led architecture work.
 
 ## Documentation
 

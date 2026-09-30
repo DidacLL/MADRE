@@ -1,7 +1,7 @@
 package io.github.didacll.madre.runtime;
 
 import io.github.didacll.madre.kernel.client.EngineDescriptor;
-import io.github.didacll.madre.sdk.MadreModule;
+import io.github.didacll.madre.sdk.MADREModule;
 
 import java.io.IOException;
 import java.net.URL;
@@ -21,7 +21,7 @@ public final class MadreRuntime implements AutoCloseable {
     private final RuntimeInstallation installation;
     private final List<URLClassLoader> loaders = new ArrayList<>();
     private List<ModuleInfo> modules = List.of();
-    private Map<String, MadreModule> available = Map.of();
+    private Map<String, MADREModule> available = Map.of();
 
     public MadreRuntime(Path home) throws IOException {
         installation = new RuntimeInstallation(home);
@@ -53,7 +53,7 @@ public final class MadreRuntime implements AutoCloseable {
 
     public List<ModuleInfo> modules() { return modules; }
 
-    public Optional<MadreModule> module(String id) {
+    public Optional<MADREModule> module(String id) {
         return Optional.ofNullable(available.get(Objects.requireNonNull(id, "id")));
     }
 
@@ -63,22 +63,22 @@ public final class MadreRuntime implements AutoCloseable {
     public void discover() throws IOException {
         closeLoaders();
         List<ModuleInfo> found = new ArrayList<>();
-        Map<String, MadreModule> loaded = new LinkedHashMap<>();
+        Map<String, MADREModule> loaded = new LinkedHashMap<>();
         for (String artifact : installation.artifacts()) {
             Path path = installation.home().resolve("artifacts").resolve(artifact);
             URLClassLoader loader = null;
             try {
                 URL url = path.toUri().toURL();
                 URLClassLoader moduleLoader = new URLClassLoader(new URL[] {url},
-                        MadreModule.class.getClassLoader());
+                        MADREModule.class.getClassLoader());
                 loader = moduleLoader;
-                List<ServiceLoader.Provider<MadreModule>> providers = ServiceLoader
-                        .load(MadreModule.class, moduleLoader).stream()
+                List<ServiceLoader.Provider<MADREModule>> providers = ServiceLoader
+                        .load(MADREModule.class, moduleLoader).stream()
                         .filter(provider -> provider.type().getClassLoader() == moduleLoader).toList();
                 if (providers.size() != 1) {
-                    throw new IllegalArgumentException("JAR must provide exactly one MadreModule");
+                    throw new IllegalArgumentException("JAR must provide exactly one MADREModule");
                 }
-                MadreModule module = Objects.requireNonNull(providers.getFirst().get(), "Module");
+                MADREModule module = Objects.requireNonNull(providers.getFirst().get(), "Module");
                 String id = Objects.requireNonNull(module.id(), "Module identity");
                 if (id.isBlank() || loaded.containsKey(id)) {
                     throw new IllegalArgumentException("Blank or duplicate Module identity");

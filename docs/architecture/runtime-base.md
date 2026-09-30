@@ -1,21 +1,22 @@
 # Installed Runtime base
 
-This is the implemented foundation for Owner-led SDK architecture work. It installs Java Modules in one JVM and exposes their live presence. It does not define Agent or Operation behavior.
+This is the implemented foundation for Owner-led SDK architecture work. It installs Java Modules in one JVM and exposes their live presence. It does not execute Agent or Operation behavior.
 
 The accepted Module, Agent, and Operation relationship is drawn in [`mid-level-architecture.md`](mid-level-architecture.md#2-module-boundary). The implemented shape is deliberately smaller:
 
 ```mermaid
 classDiagram
-    MadreModule "1" o-- "0..*" Agent : provides
-    MadreModule "1" o-- "0..*" Operation : exposes
+    MADREModule "1" o-- "0..*" MADREAgent : provides
+    MADREModule "1" o-- "0..*" ModuleOperation : exposes
+    MADREModule "1" o-- "0..*" Skill : may provide
     RuntimeMain --> MadreRuntime
     MadreRuntime --> RuntimeInstallation
-    MadreRuntime --> MadreModule : discovers
+    MadreRuntime --> MADREModule : discovers
 ```
 
 ## Public entry
 
-An independently built Java 21 JAR implements `io.github.didacll.madre.sdk.MadreModule` and lists its implementation class in `META-INF/services/io.github.didacll.madre.sdk.MadreModule`. The JAR needs only `madre-sdk` at compile time. One JAR supplies one Module. The Module provides a stable installation-local `id()` and may expose `Agent` and `Operation` instances. Those two SDK interfaces intentionally have no members yet: the Owner will establish their semantic contracts before execution is added.
+An independently built Java 21 JAR implements `io.github.didacll.madre.sdk.MADREModule` and lists its implementation class in `META-INF/services/io.github.didacll.madre.sdk.MADREModule`. The JAR needs only `madre-sdk` at compile time. One JAR supplies one Module. The Module provides a stable installation-local `id()` and may expose `MADREAgent`, `ModuleOperation`, and `Skill` instances. The SDK's accepted semantic vocabulary and open contracts are recorded in [`madre-sdk/README.md`](../../madre-sdk/README.md).
 
 ## Installation and inspection
 
@@ -27,4 +28,4 @@ The local command entry is `io.github.didacll.madre.runtime.RuntimeMain` with an
 
 ## Deliberate limit
 
-There is no Operation invocation, Agent delegation, reasoning conversion, semantic store, or delayed continuation in this slice. The initial types carry no invented SPIRA tuple, continuation object, CORE implementation, or application path policy. The next SDK work can define those contracts from Owner meaning without adapting to placeholder execution behavior.
+There is no Operation invocation, Agent delegation, reasoning conversion, semantic store, or delayed continuation in this slice. The types carry no invented SPIRA tuple, continuation object, CORE implementation, or application path policy. The next SDK work can define those contracts from Owner meaning without adapting to placeholder execution behavior.

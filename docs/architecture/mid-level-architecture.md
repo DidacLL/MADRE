@@ -564,9 +564,9 @@ Current `main` contains Lane C:
 - native llama.cpp worker path;
 - Linux and Windows validation/hardening.
 
-### Accepted architecture, not yet implemented in the active tree
+### Accepted architecture still to implement
 
-The semantic SDK/Module layer and Runtime described in this document are accepted architecture but are not yet present in the active tree.
+The active tree has a narrow public SDK development base and installed Runtime foundation. Agent/Operation execution, semantic reasoning, routing and continuation in this document remain to be built from Owner-approved SDK contracts.
 
 Historical semantic implementations are evidence for recovering settled semantic meaning but are not code to restore wholesale. Where historical implementation conflicts with later Owner corrections—such as mandatory `EffectProfile` pairing or Runtime-owned algebra evaluation—the later Owner model wins.
 
