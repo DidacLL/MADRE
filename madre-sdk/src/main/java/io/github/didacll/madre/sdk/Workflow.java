@@ -1,12 +1,6 @@
 package io.github.didacll.madre.sdk;
 
-import java.util.Collection;
-
-/** Reusable graph of Operations whose transitions may depend on results. */
-public interface Workflow extends Executable {
-    /** Starting Operations of this graph. */
-    Collection<ModuleOperation> starts();
-
-    /** Successors after an Operation result; this does not execute them. */
-    <R> Collection<ModuleOperation> next(ModuleOperation completed, R result);
+/** Reusable Agent behavior, distinct from Runtime scheduling and Kernel Work. */
+public interface Workflow {
+    // TODO: Define the reusable ModuleOperations graph, and the Agent's role in it, as a first-class object.
 }

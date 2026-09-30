@@ -1,15 +1,6 @@
 package io.github.didacll.madre.sdk;
 
-import java.util.Collection;
-
-/** Objective-specific semantic planning whose state belongs to its Module. */
+/** Objective-specific semantic planning that may coordinate Agents and Workflows. */
 public interface WorkPlan {
-    Collection<? extends Step> steps();
-
-    /** The acting Agent is bound to this step's work. */
-    interface Step {
-        MADREAgent agent();
-
-        Executable executable();
-    }
+    // TODO: Define coordination only from a concrete Agent/Module semantic need.
 }
