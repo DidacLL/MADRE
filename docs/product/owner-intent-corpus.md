@@ -4,6 +4,8 @@ This document preserves the product meaning of MADRE: why it exists, what its co
 
 Current Owner instructions override this document when they are more specific. Historical code, tests, issues and familiar AI-platform patterns are evidence only.
 
+The current Owner boundary for Runtime is the Module launcher and the MADRE loop. Launcher responsibilities and loop execution are distinct. Earlier allocations in this corpus of semantic routing, delayed correlation, and Kernel-facing work to Runtime are superseded as Runtime ownership claims. Their eventual public SDK and Module interactions require separate design; they must not be rebuilt inside Runtime by analogy with an agent platform.
+
 ## North Star
 
 MADRE — **Model-Agnostic Delayed Reasoning Effort Agentic System** — is an owner-controlled, local-first environment for using and creating AI-native software.
@@ -396,9 +398,7 @@ and translates that semantic reasoning need into the physical Work requirements 
 
 The exact preference object and implementation details are intentionally not fixed here. It may express things such as desired effort, timing or other technical preferences without exposing Kernel mechanics to Agent code.
 
-This conversion is executed by Runtime, but—as with other executable MADRE behaviour—the implementation belongs to a Module. The shipped default CORE Module provides the ordinary implementation needed for a basic installation.
-
-Runtime keeps the installation-level selection of the implementation. The Owner may replace, wrap or extend it; for example, an Owner could insert a logger/learning experiment that observes the reasoning-to-Work journey and delegates to the default implementation.
+This conversion belongs to a Module. Its interaction with the MADRE loop and the public SDK remains to be designed. The Owner may replace, wrap or extend a chosen implementation.
 
 The implementation can inspect the semantic request and factual engine descriptions as needed, but it outputs physical constraints. Module, Agent, Material and SPIRA semantics do not cross into Kernel Work.
 
@@ -419,7 +419,7 @@ This creates a deliberate persistence split:
 
 ## Runtime
 
-MADRE Runtime is the installed semantic environment around the public SDK and Kernel.
+MADRE Runtime launches installed Modules and runs the MADRE loop. It does not own the Module's semantic work.
 
 Its responsibilities include:
 
@@ -427,13 +427,10 @@ Its responsibilities include:
 - CORE role assignment;
 - Module discovery;
 - lifecycle/activation and addressing;
-- cross-Module Operation routing and Agent delegation transport;
-- execution of installation-required functions such as the configured reasoning-to-physical Operation;
-- semantic ReasoningRequest persistence/correlation and continuation support;
-- correlation of Kernel Work with semantic requests;
-- inspection, diagnostics, backup/recovery and Owner-facing configuration where appropriate.
+- execution of Module-posted actions on the MADRE loop without interpreting them;
+- inspection and diagnostics of installation, lifecycle and loop failures.
 
-Runtime provides mechanics. It does **not** acquire Module domain meaning or become the semantic evaluator of SPIRA simply because it routes or executes calls.
+Runtime provides these mechanics. It does **not** acquire Module domain meaning or become the semantic evaluator of SPIRA simply because it executes Module-owned code.
 
 The actual Agent/Module semantic context owns the meaning of the current work and reacts to the algebraic composition it encounters.
 
@@ -441,11 +438,11 @@ The actual Agent/Module semantic context owns the meaning of the current work an
 
 CORE is an ordinary Module assigned the CORE role.
 
-It provides useful defaults for an ordinary installation: general Owner interaction, default/meta behaviour, default Agents, reusable generic behaviour and the shipped implementation of required Module-owned Runtime Operations such as the ReasoningRequest-to-Work translation.
+An ordinary CORE candidate may provide general Owner interaction, default Agents, reusable behaviour or a reasoning-to-Work implementation. Its particular behavior belongs to that Module, not to the CORE role.
 
 CORE does not own other Modules or their Agents. CORE is not Runtime, Kernel or a special SPIRA authority.
 
-Because required Runtime Operations are Module-owned and selected through Runtime configuration, the Owner can replace or decorate them without redefining MADRE.
+The Owner can replace or decorate Module-owned behavior without redefining MADRE.
 
 ## Kernel
 
@@ -498,7 +495,7 @@ It means each real responsibility has a clear boundary and can be replaced where
 
 - Modules are replaceable applications/domains.
 - Agents, Operations, Skills and Workflows compose without flattening domains.
-- required Runtime semantic functions are bounded and their Module-owned implementations are selectable/replaceable;
+- bounded semantic functions can have Module-owned, replaceable implementations without giving Runtime their meaning;
 - the reasoning-to-physical bridge can be wrapped or replaced;
 - the physical Kernel remains independently replaceable and internally adaptable without importing semantic SDK concepts;
 - engine/worker implementations are replaceable behind Kernel's physical contracts.
@@ -525,7 +522,7 @@ New structure earns its place because an actual MADRE responsibility requires it
 
 MADRE's core bet is that much current dependence on frontier-cloud AI is architectural rather than inevitable.
 
-A domain-aware application can retain its own knowledge and state. Deterministic Operations can perform ordinary software work. Agents can compose bounded reasoning. DRE can spend time instead of only model power. ReasoningRequests can be translated through a replaceable Runtime seam into physical Work. The Kernel can execute that Work without knowing semantic MADRE. SPIRA preserves the actual information, receiving boundary, provenance, consequence and autonomy composition without becoming a central security authority. Strong external inference remains available when useful.
+A domain-aware application can retain its own knowledge and state. Deterministic Operations can perform ordinary software work. Agents can compose bounded reasoning. DRE can spend time instead of only model power. Module-owned semantic reasoning can yield physical Work for the Kernel without giving the Kernel semantic knowledge. SPIRA preserves the actual information, receiving boundary, provenance, consequence and autonomy composition without becoming a central security authority. Strong external inference remains available when useful.
 
 The result is intended to let owner-controlled, locally installed AI-native software do far more useful work than an isolated local model suggests while preserving the freedom to use frontier providers selectively.
 

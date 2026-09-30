@@ -1,8 +1,5 @@
 package io.github.didacll.madre.runtime;
 
-import io.github.didacll.madre.kernel.client.EngineDescriptor;
-import io.github.didacll.madre.kernel.client.LocalKernelClient;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -27,7 +24,6 @@ import java.util.jar.JarFile;
  * A staged JAR is an artifact, not yet a discovered or activated Module.
  */
 public final class RuntimeInstallation {
-    private static final String KERNEL_ENDPOINT = "kernel.endpoint";
     private static final String CORE_ROLE = "role.core";
 
     private final Path home;
@@ -95,15 +91,6 @@ public final class RuntimeInstallation {
         Files.delete(artifacts.resolve(artifactName(name)));
     }
 
-    /** Owner-editable local Kernel endpoint; this does not assert semantic locality or assurance. */
-    public void configureKernelEndpoint(Path endpoint) throws IOException {
-        String value = Objects.requireNonNull(endpoint, "endpoint").toString();
-        if (value.isBlank()) throw new IllegalArgumentException("Kernel endpoint must not be blank");
-        Properties properties = readConfiguration();
-        properties.setProperty(KERNEL_ENDPOINT, value);
-        writeConfiguration(properties);
-    }
-
     public void assignCore(String moduleId) throws IOException {
         if (Objects.requireNonNull(moduleId, "moduleId").isBlank()) {
             throw new IllegalArgumentException("Module identity must not be blank");
@@ -132,18 +119,6 @@ public final class RuntimeInstallation {
         } finally {
             Files.deleteIfExists(temporary);
         }
-    }
-
-    public Optional<Path> kernelEndpoint() throws IOException {
-        String value = readConfiguration().getProperty(KERNEL_ENDPOINT);
-        return value == null || value.isBlank() ? Optional.empty() : Optional.of(Path.of(value));
-    }
-
-    /** Physical facts from the closed Kernel client; no semantic interpretation. */
-    public List<EngineDescriptor> engines() throws IOException {
-        Path endpoint = kernelEndpoint().orElseThrow(() ->
-                new IllegalStateException("Configure kernel.endpoint before inspecting engines"));
-        return new LocalKernelClient(endpoint).engines();
     }
 
     private Properties readConfiguration() throws IOException {

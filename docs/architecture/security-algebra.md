@@ -255,7 +255,7 @@ An Agent therefore encounters the SPIRA structure produced by what it is actuall
 
 When Agent A invokes an Operation exposed by Module B, Agent A remains the actor carrying that semantic continuation unless there is an explicit Agent-to-Agent delegation. Module B can be agentless.
 
-A Module can contribute its own bounded semantic strategies at its boundary because it owns its domain meaning. Runtime routing does not make Runtime the semantic evaluator.
+A Module can contribute its own bounded semantic strategies at its boundary because it owns its domain meaning. Runtime loop execution does not make Runtime the semantic evaluator.
 
 ## 10. ReasoningRequest
 
@@ -280,13 +280,9 @@ Risk remains with an actual selected Operation/effect. Autonomy remains with the
 
 ## 11. Runtime
 
-Runtime supplies installation mechanics: Module discovery, activation/lifecycle, addressing, routing, persistence/correlation mechanisms and execution of installation-required functions.
+Runtime launches Modules and runs the MADRE loop for Module-posted code. It does **not** become the owner or semantic evaluator of SPIRA because it executes that code.
 
-Runtime does **not** become the owner or semantic evaluator of SPIRA merely because it transports or executes calls.
-
-The semantic values and their composition belong to the participating Module/Agent/Material/Operation context. Runtime can carry the facts and support the execution path without redefining their meaning.
-
-The special ReasoningRequest-to-physical-Work function follows the same rule: Runtime executes the configured implementation, but that implementation belongs to a Module. The shipped default CORE Module provides the default implementation. The Owner can replace or wrap it.
+The semantic values and their composition belong to the participating Module/Agent/Material/Operation context. The ReasoningRequest-to-physical-Work behavior likewise belongs to a Module; its public SDK invocation contract is not yet defined.
 
 ## 12. Kernel boundary
 

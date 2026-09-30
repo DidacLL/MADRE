@@ -168,16 +168,14 @@ ReasoningRequest does not cross into Kernel as a semantic object.
 
 Agents do not construct Kernel Work directly.
 
-The SDK defines a bounded required function/Operation:
+The semantic architecture needs a Module-owned conversion; its public SDK form is not yet accepted:
 
 ```text
 ReasoningRequest + execution preferences/declarations
     -> physical Work requirements
 ```
 
-Runtime executes the installation-selected implementation. The implementation belongs to a Module; shipped CORE provides the default; the Owner can replace/wrap/decorate it.
-
-Runtime supplies mechanics. It does **not** own Module semantics or evaluate SPIRA as a central subsystem.
+The implementation belongs to a Module; the Owner can replace/wrap/decorate it. The public SDK interaction that invokes it remains to be designed. Runtime currently launches Modules and runs Module-posted code on the MADRE loop; it does **not** own Module semantics or evaluate SPIRA as a central subsystem.
 
 The configured implementation can use the semantic request and factual engine descriptions to choose acceptable physical constraints. Only those physical constraints enter Kernel.
 
@@ -211,7 +209,7 @@ Do not build a speculative generic extension framework merely to prove openness.
 
 ## Current tree
 
-The active tree contains the Lane C/native Kernel and Java physical client, plus a narrow Java SDK and installed Runtime base. The base is documented in `docs/architecture/runtime-base.md`; Agent and Operation behavior, semantic routing, reasoning and continuation remain to be designed. Do not restore discarded Python or previous generated semantic code to make the repository look complete.
+The active tree contains the Lane C/native Kernel and Java physical client, plus a narrow Java SDK and installed Runtime launcher and MADRE loop. The base is documented in `docs/architecture/runtime-base.md`; Agent and Operation behavior, reasoning and continuation remain to be designed. Do not restore discarded Python or previous generated semantic code to make the repository look complete.
 
 Historical semantic code can help recover reasoning, but when it conflicts with later Owner corrections—especially `EffectProfile`, Runtime-owned algebra evaluation or a fixed ReasoningRequest algebra payload—the later Owner model wins.
 

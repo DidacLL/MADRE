@@ -1,6 +1,5 @@
 package io.github.didacll.madre.runtime;
 
-import io.github.didacll.madre.kernel.client.EngineDescriptor;
 import io.github.didacll.madre.sdk.MADREAgent;
 import io.github.didacll.madre.sdk.MADREModule;
 import io.github.didacll.madre.sdk.ModuleEnvironment;
@@ -18,7 +17,6 @@ import java.nio.file.StandardOpenOption;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.DirectoryStream;
 import java.nio.file.NoSuchFileException;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -28,23 +26,24 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.ServiceConfigurationError;
 import java.util.ServiceLoader;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 
 /** Live installed Module environment. It does not interpret Module work. */
 public final class MadreRuntime implements AutoCloseable {
     private final RuntimeInstallation installation;
-    private final RuntimeWakeups wakeups;
     private final Path runtimeCopies;
     private final FileChannel lockChannel;
     private final FileLock lock;
     private final Map<String, Loaded> loaded = new LinkedHashMap<>();
     private final Map<String, Failure> failures = new HashMap<>();
-    private final Map<String, Instant> retryAfter = new HashMap<>();
+    private final BlockingQueue<Posted> posted = new LinkedBlockingQueue<>();
     private String lastInspection = "";
     private volatile boolean closed;
 
     public MadreRuntime(Path home) throws IOException {
         installation = new RuntimeInstallation(home);
-        wakeups = new RuntimeWakeups(installation.home());
         runtimeCopies = installation.home().resolve("runtime-load");
         Files.createDirectories(runtimeCopies);
         lockChannel = FileChannel.open(installation.home().resolve("runtime.lock"),
@@ -94,9 +93,6 @@ public final class MadreRuntime implements AutoCloseable {
 
     public synchronized void assignCore(String moduleId) throws IOException {
         ensureOpen();
-        if (module(moduleId).isEmpty()) {
-            throw new IllegalArgumentException("No live Module with identity " + moduleId);
-        }
         installation.assignCore(moduleId);
         writeInspection();
     }
@@ -109,7 +105,8 @@ public final class MadreRuntime implements AutoCloseable {
         for (String artifact : installation.artifacts()) {
             Loaded module = loaded.get(artifact);
             if (module != null) result.add(new ModuleInfo(artifact, module.id, true,
-                    List.copyOf(module.agents.keySet()), List.copyOf(module.operations.keySet()), ""));
+                    List.copyOf(module.agents.keySet()), List.copyOf(module.operations.keySet()),
+                    module.lastFailure));
             else result.add(new ModuleInfo(artifact, "", false, List.of(), List.of(),
                     failures.containsKey(artifact) ? failures.get(artifact).message : "Not loaded"));
         }
@@ -130,8 +127,6 @@ public final class MadreRuntime implements AutoCloseable {
         return loaded.values().stream().filter(item -> item.id.equals(moduleId))
                 .map(item -> item.operations.get(operationId)).filter(Objects::nonNull).findFirst();
     }
-
-    public List<EngineDescriptor> engines() throws IOException { return installation.engines(); }
 
     /** Detect added and removed artifacts without restarting unrelated Modules. */
     public synchronized void discover() throws IOException {
@@ -171,6 +166,28 @@ public final class MadreRuntime implements AutoCloseable {
         if (closeFailure != null) throw closeFailure;
     }
 
+    /** Advance one posted Module action. The Module owns the action's semantics. */
+    public boolean runNext(long waitMillis) throws IOException, InterruptedException {
+        if (waitMillis < 0) throw new IllegalArgumentException("Negative wait");
+        ensureOpen();
+        Posted next = posted.poll(waitMillis, TimeUnit.MILLISECONDS);
+        if (next == null) return false;
+        synchronized (this) {
+            ensureOpen();
+            if (!next.environment.active) return false;
+            Loaded module = loaded.values().stream()
+                    .filter(item -> item.environment == next.environment).findFirst().orElse(null);
+            if (module == null) return false;
+            try {
+                next.action.run();
+            } catch (RuntimeException failure) {
+                module.lastFailure = failure.toString();
+                writeInspection();
+            }
+            return true;
+        }
+    }
+
     private void writeInspection() throws IOException {
         String core = installation.core().orElse("unassigned");
         StringBuilder report = new StringBuilder("CORE: ").append(core);
@@ -195,36 +212,6 @@ public final class MadreRuntime implements AutoCloseable {
         }
     }
 
-    /** Deliver due non-inference wakeups; the Module persists its own semantic effect. */
-    public synchronized int runDue(Instant now) throws IOException {
-        ensureOpen();
-        int delivered = 0;
-        for (RuntimeWakeups.Wakeup wakeup : wakeups.pending()) {
-            if (wakeup.due().isAfter(now)) break;
-            if (retryAfter.getOrDefault(wakeup.id(), Instant.MIN).isAfter(now)) continue;
-            MADREModule recipient = module(wakeup.moduleId()).orElse(null);
-            if (recipient == null) continue;
-            try {
-                recipient.onWakeup(wakeup.id(), wakeup.reference());
-                wakeups.delivered(wakeup);
-                retryAfter.remove(wakeup.id());
-                delivered++;
-            } catch (Exception failure) {
-                wakeups.failed(wakeup, failure);
-                retryAfter.put(wakeup.id(), now.plusSeconds(60));
-            }
-        }
-        return delivered;
-    }
-
-    /** Inspection omits the Module-owned reference. */
-    public synchronized List<WakeupInfo> pendingWakeups() throws IOException {
-        ensureOpen();
-        return wakeups.pending().stream().map(wakeup -> new WakeupInfo(wakeup.id(),
-                wakeup.moduleId(), wakeup.due(), module(wakeup.moduleId()).isPresent(),
-                wakeup.attempts(), wakeup.error())).toList();
-    }
-
     private Loaded load(Path jar) throws Exception {
         Path copy = Files.createTempFile(runtimeCopies, "module-", ".jar");
         try {
@@ -236,6 +223,7 @@ public final class MadreRuntime implements AutoCloseable {
         URLClassLoader loader = new URLClassLoader(new URL[] {copy.toUri().toURL()},
                 MADREModule.class.getClassLoader());
         MADREModule module = null;
+        InstalledEnvironment environment = null;
         try {
             List<ServiceLoader.Provider<MADREModule>> providers = ServiceLoader
                     .load(MADREModule.class, loader).stream()
@@ -262,12 +250,16 @@ public final class MadreRuntime implements AutoCloseable {
                     throw new IllegalArgumentException("Blank or duplicate Operation identity");
                 }
             }
-            InstalledEnvironment environment = new InstalledEnvironment(id,
-                    installation.moduleDataDirectory(id));
+            environment = new InstalledEnvironment(installation.moduleDataDirectory(id));
             module.start(environment);
             return new Loaded(id, module, loader, copy, environment, Map.copyOf(agents),
                     Map.copyOf(operations));
         } catch (Exception | ServiceConfigurationError failure) {
+            if (environment != null) {
+                environment.active = false;
+                InstalledEnvironment failedEnvironment = environment;
+                posted.removeIf(item -> item.environment == failedEnvironment);
+            }
             if (module != null) {
                 try { module.close(); }
                 catch (RuntimeException closeFailure) { failure.addSuppressed(closeFailure); }
@@ -292,6 +284,7 @@ public final class MadreRuntime implements AutoCloseable {
             }
         }
         loaded.clear();
+        posted.clear();
         try { lock.release(); }
         catch (IOException failure) {
             if (first == null) first = failure;
@@ -310,31 +303,24 @@ public final class MadreRuntime implements AutoCloseable {
     }
 
     private final class InstalledEnvironment implements ModuleEnvironment {
-        private final String moduleId;
         private final Path dataDirectory;
         private volatile boolean active = true;
 
-        private InstalledEnvironment(String moduleId, Path dataDirectory) {
-            this.moduleId = moduleId;
-            this.dataDirectory = dataDirectory;
-        }
+        private InstalledEnvironment(Path dataDirectory) { this.dataDirectory = dataDirectory; }
 
         @Override public Path dataDirectory() { return dataDirectory; }
 
-        @Override public String schedule(Instant due, String reference) throws IOException {
+        @Override public void post(Runnable action) {
+            Objects.requireNonNull(action, "action");
             if (!active || closed) throw new IllegalStateException("Module is not active");
-            return wakeups.schedule(moduleId, due, reference);
-        }
-
-        @Override public boolean cancel(String wakeupId) throws IOException {
-            if (!active || closed) throw new IllegalStateException("Module is not active");
-            return wakeups.cancel(moduleId, wakeupId);
+            posted.add(new Posted(this, action));
         }
     }
 
+    private record Posted(InstalledEnvironment environment, Runnable action) { }
     private record Failure(String stamp, String message) { }
 
-    private static final class Loaded {
+    private final class Loaded {
         private final String id;
         private final MADREModule module;
         private final URLClassLoader loader;
@@ -342,6 +328,7 @@ public final class MadreRuntime implements AutoCloseable {
         private final InstalledEnvironment environment;
         private final Map<String, MADREAgent> agents;
         private final Map<String, ModuleOperation> operations;
+        private String lastFailure = "";
 
         private Loaded(String id, MADREModule module, URLClassLoader loader, Path copy,
                        InstalledEnvironment environment, Map<String, MADREAgent> agents,
@@ -357,11 +344,12 @@ public final class MadreRuntime implements AutoCloseable {
 
         private void close() throws IOException {
             IOException first = null;
+            environment.active = false;
+            posted.removeIf(item -> item.environment == environment);
             try { module.close(); }
             catch (RuntimeException failure) {
                 first = new IOException("Module " + id + " close failed", failure);
             }
-            environment.active = false;
             try { loader.close(); }
             catch (IOException failure) {
                 if (first == null) first = failure;
@@ -379,6 +367,4 @@ public final class MadreRuntime implements AutoCloseable {
     public record ModuleInfo(String artifact, String id, boolean available,
                              List<String> agentIds, List<String> operationIds, String diagnostic) { }
 
-    public record WakeupInfo(String id, String moduleId, Instant due, boolean moduleAvailable,
-                             int attempts, String diagnostic) { }
 }

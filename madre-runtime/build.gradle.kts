@@ -9,7 +9,6 @@ java {
 }
 
 dependencies {
-    implementation(project(":madre-kernel-client"))
     implementation(project(":madre-sdk"))
 }
 

@@ -16,7 +16,7 @@ An **Agent** is the semantic actor. An **Operation** is a bounded action. An age
 
 The public SDK is part of the product, not a thin transport adapter. It is intended to be simple and explicit enough for human developers and eventually AI-assisted builders to generate ordinary owner-local Modules without hidden first-party hooks.
 
-MADRE Runtime supplies installation mechanics and shared semantic execution facilities. The native Kernel is deliberately narrower: it owns durable **physical inference Work only**.
+MADRE Runtime launches Modules and runs the MADRE loop for Module-owned code. The native Kernel owns durable **physical inference Work only**.
 
 ## DRE
 
@@ -77,7 +77,7 @@ ReasoningRequest + execution preferences/declarations
     -> physical Work requirements
 ```
 
-Runtime executes the configured implementation. The implementation belongs to a Module; shipped CORE provides the default; the Owner can wrap or replace it.
+The implementation belongs to a Module and can be replaced by the Owner. Its public SDK invocation contract remains to be designed.
 
 Kernel receives only physical Work. It does not receive Module/Agent/Material/SPIRA semantics and does not derive Privacy or Integrity from physical engine/provider/locality facts.
 
@@ -86,7 +86,7 @@ Kernel receives only physical Work. It does not receive Module/Agent/Material/SP
 MADRE is intended to remain replaceable at every real boundary without turning every boundary into a speculative plugin framework.
 
 - Modules can be replaced or generated against the public SDK.
-- Runtime-required semantic Operations have selectable Module-owned implementations.
+- bounded semantic functions can have replaceable Module-owned implementations.
 - CORE provides defaults without monopolizing them.
 - the ReasoningRequest-to-Work translation can be wrapped/replaced for Owner experiments.
 - Kernel stays independent of the semantic SDK while physical routing/resource journeys remain adaptable.

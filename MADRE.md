@@ -111,15 +111,15 @@ ReasoningRequest + execution preferences/declarations
     -> physical Work requirements
 ```
 
-Runtime executes the installation-selected implementation. The implementation belongs to a Module; the shipped CORE Module provides the default. The Owner may wrap or replace it.
+The implementation belongs to a Module and can be replaced by the Owner. The public SDK contract for invoking it from the MADRE loop remains to be designed.
 
-Runtime supplies installation mechanics—Module discovery/lifecycle/addressing/routing, persistence/correlation, configured execution and diagnostics. Runtime does **not** become the semantic owner/evaluator of SPIRA merely because it transports or executes calls.
+Runtime launches Modules and runs the MADRE loop. Modules post their own code to that loop; Runtime does not acquire its Agent, Operation, or SPIRA meaning. The launcher does not maintain a second Kernel-like scheduler or semantic-to-physical correlation store.
 
 ## CORE
 
 CORE is an ordinary Module assigned the CORE installation role.
 
-It can provide ordinary Owner interaction, default/meta behaviour, default Agents and shipped implementations of required Module-owned Runtime Operations.
+Its candidate Module can provide Owner interaction, Agents and Module-owned behavior according to that Module's own design.
 
 CORE is not Runtime, Kernel, owner of other Modules or a special SPIRA authority.
 
@@ -165,7 +165,7 @@ A future BuilderModule may be deferred. The requirement that the public SDK be s
 - Java `madre-kernel-client`;
 - native llama.cpp worker path.
 
-The active tree has a narrow Java SDK and installed Runtime base for Module installation, discovery, CORE role assignment, Module data locations, and durable non-inference wakeups; see `docs/architecture/runtime-base.md`. Agent and Operation behavior, semantic routing, reasoning, and inference continuation are still unimplemented. Do not restore discarded historical semantic implementations to hide that gap.
+The active tree has a narrow Java SDK and installed Runtime base for Module installation, discovery, lifecycle, CORE role assignment, Module data locations, and a loop for Module-posted code; see `docs/architecture/runtime-base.md`. Agent and Operation behavior, reasoning, and inference continuation are still unimplemented. Do not restore discarded historical semantic implementations to hide that gap.
 
 ## Development character
 

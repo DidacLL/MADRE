@@ -6,6 +6,8 @@ It is intentionally **mid-level**: concrete enough to constrain implementation a
 
 Normative SPIRA semantics are in `docs/architecture/security-algebra.md`.
 
+Current Owner correction: Runtime launches Modules and owns the MADRE loop, as distinct responsibilities. Earlier diagrams and sections below that assign semantic routing, reasoning execution, or delayed correlation to Runtime do not define accepted Runtime contracts. The public SDK interactions for those journeys remain to be designed without making Runtime a second Kernel or a semantic owner.
+
 Two rules govern this architecture:
 
 > Assign ownership only where MADRE actually needs ownership. Preserve intrinsic composition as composition rather than creating managers for relations.
@@ -43,7 +45,7 @@ These are not equivalent services.
 
 - **Modules** contain application/domain meaning.
 - **SDK** is the public construction vocabulary shared by shipped, independent and generated software.
-- **Runtime** supplies the installed environment: Module lifecycle/discovery/routing plus shared semantic execution mechanics.
+- **Runtime** launches installed Modules and runs the MADRE loop for Module-owned code.
 - **Kernel client** is a small physical boundary artifact.
 - **Kernel** owns already-physical inference Work.
 - **engines/workers** perform physical inference.
@@ -323,7 +325,7 @@ The ReasoningRequest does not cross into Kernel as a semantic object.
 
 ## 10. Runtime responsibilities
 
-Runtime is the installed semantic environment around Modules, SDK facilities and the physical Kernel boundary.
+Runtime launches installed Modules and runs the MADRE loop. The loop executes Module-owned code without interpreting its semantics.
 
 ### Module environment
 
@@ -334,35 +336,27 @@ Runtime provides installation mechanics for:
 - live discovery of exposed Module surfaces;
 - activation/lifecycle;
 - addressing;
-- routing cross-Module Operation calls;
-- routing Agent delegation;
-- Owner/runtime inspection and diagnostics.
+- execution of Module-posted actions on the MADRE loop;
+- inspection and diagnostics of installation, lifecycle and loop failures.
 
-Runtime provides the mechanics. It does not acquire the Module's domain meaning and does not become the evaluator of SPIRA.
+Runtime provides these mechanics. It does not acquire the Module's domain meaning and does not become the evaluator of SPIRA.
 
-### Shared reasoning execution
+### Semantic work
 
-Runtime also provides installation mechanics for:
+Agent and Operation interactions, cross-Module calls, delayed semantic state and the reasoning-to-physical bridge require public SDK design. The current Runtime does not provide a second scheduler, a semantic correlation store or a Kernel client path. The meaning of work remains in the responsible Agent/Module semantic process.
 
-- receiving/executing the configured reasoning-to-physical function;
-- persistence/correlation needed for delayed semantic reasoning;
-- correlation between semantic requests and physical Kernel Work/results;
-- continuation/recovery support.
-
-The meaning of the reasoning remains in the responsible Agent/Module semantic process.
-
-## 11. ReasoningRequest to physical Work is a Module-owned special Operation
+## 11. Module-owned reasoning-to-physical bridge
 
 Agents create `ReasoningRequest`s. They do **not** construct Kernel `WorkRequest`s directly.
 
-The SDK defines a bounded required function:
+The semantic side requires a Module-owned bridge. Its Java form and public SDK interaction remain to be designed:
 
 ```text
 ReasoningRequest
 +
 execution preferences/declarations
         ↓
-configured reasoning executor Operation
+Module-owned reasoning behavior
         ↓
 physical WorkRequest
 ```
@@ -371,32 +365,21 @@ The preference/declaration object is intentionally not frozen at this level. It 
 
 This function follows ordinary MADRE modularity:
 
-- Runtime executes it;
 - its implementation belongs to a Module;
-- the shipped CORE Module provides the default implementation;
-- Runtime stores the installation-level selection;
 - the Owner may replace, wrap or decorate the implementation.
 
 ```mermaid
 flowchart TB
     RR["ReasoningRequest"]
     EP["Execution preferences / declarations"]
-    OP["SDK required reasoning executor Operation"]
-    SEL["Runtime selected implementation"]
-    EXT["Optional Owner extension<br/>logging · learning · experiment"]
-    CORE["Shipped CORE default implementation"]
+    OP["Module-owned reasoning behavior"]
     W["Physical WorkRequest"]
     KC["KernelClient"]
     K["Kernel"]
 
     RR --> OP
     EP --> OP
-    OP --> SEL
-    SEL -. optional extension .-> EXT
-    EXT -. may delegate .-> CORE
-    SEL -. default .-> CORE
-    EXT -. may translate .-> W
-    CORE --> W
+    OP --> W
     W --> KC
     KC --> K
 ```
@@ -410,28 +393,28 @@ DRE spans semantic and physical persistence without collapsing them.
 ```mermaid
 sequenceDiagram
     participant A as Agent or Module
-    participant R as Runtime semantic side
+    participant M as Module-owned semantic side
     participant X as Configured reasoning executor
     participant C as KernelClient
     participant K as Kernel
     participant E as Engine or Worker
 
-    A->>R: persist semantic request and continuation as needed
+    A->>M: persist semantic request and continuation as needed
     A->>X: ReasoningRequest plus execution preferences
     X->>C: submit physical Work
     C->>K: durable physical Work
     K-->>C: Work identity
-    C-->>R: correlate Work identity
-    Note right of R: semantic process may stop
+    C-->>M: correlate Work identity
+    Note right of M: semantic process may stop
     K->>K: retain physical responsibility until eligible
     K->>E: execute when physically eligible
     E-->>K: physical result or failure
     K->>K: retain terminal outcome
-    R->>C: collect correlated outcome later
+    M->>C: collect correlated outcome later
     C->>K: fetch outcome
     K-->>C: outcome
-    C-->>R: outcome
-    R-->>A: resume semantic continuation
+    C-->>M: outcome
+    M-->>A: resume semantic continuation
 ```
 
 Semantic persistence may include the semantic request, relevant context, origin/correlation, continuation and interpretation state.
@@ -490,7 +473,7 @@ This does not require a speculative generic plugin framework now. It requires av
 
 CORE is an ordinary Module assigned the CORE installation role.
 
-The shipped default CORE may provide ordinary Owner interaction, default/meta behavior, default Agents, reusable general Operations/Skills, and the shipped default implementation of Runtime-required Module-owned Operations such as the reasoning executor.
+A CORE candidate may provide ordinary Owner interaction, Agents, reusable behavior or a reasoning implementation. Its behavior belongs to that Module, not to the CORE role.
 
 CORE is not Runtime, Kernel, owner of other Modules, or a special SPIRA authority.
 
@@ -581,10 +564,10 @@ Historical semantic implementations are evidence for recovering settled semantic
 7. There is no mandatory `EffectProfile` in the current architecture.
 8. Only actual constituents participate; unrelated history, unused Operations and rejected destinations do not contaminate the current construction.
 9. No Agent owns or manages a SPIRA Compound; Agents react to intrinsic composition.
-10. Runtime routes/executes mechanics but does not own or semantically evaluate SPIRA.
+10. Runtime launches Modules and runs Module-posted code on the MADRE loop without owning or semantically evaluating SPIRA.
 11. ReasoningRequest remains semantic and is not mandated to contain a generic SPIRA tuple.
 12. Agents create semantic ReasoningRequests, not Kernel Work.
-13. ReasoningRequest-to-Work conversion is a bounded SDK Operation executed by Runtime and implemented by a selectable Module; shipped CORE provides the default.
+13. ReasoningRequest-to-Work conversion belongs to a Module; its public SDK interaction remains to be designed.
 14. Semantic continuation/persistence remains above Kernel.
 15. Kernel owns physical Work and remains semantically blind.
 16. Kernel internals remain replaceable/experimentable without importing semantic SDK concepts.
