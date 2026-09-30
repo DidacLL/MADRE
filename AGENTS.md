@@ -211,9 +211,7 @@ Do not build a speculative generic extension framework merely to prove openness.
 
 ## Current tree
 
-The active tree contains the implemented Lane C/native Kernel foundation and Java physical client.
-
-The semantic SDK/Module layer and MADRE Runtime are accepted architecture but are not yet implemented. Do not restore discarded Python or previous generated semantic code to make the repository look complete.
+The active tree contains the Lane C/native Kernel and Java physical client, plus a narrow Java SDK and installed Runtime base. The base is documented in `docs/architecture/runtime-base.md`; Agent and Operation behavior, semantic routing, reasoning and continuation remain to be designed. Do not restore discarded Python or previous generated semantic code to make the repository look complete.
 
 Historical semantic code can help recover reasoning, but when it conflicts with later Owner corrections—especially `EffectProfile`, Runtime-owned algebra evaluation or a fixed ReasoningRequest algebra payload—the later Owner model wins.
 

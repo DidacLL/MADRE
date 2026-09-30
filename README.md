@@ -98,7 +98,7 @@ The hard semantic/physical boundary remains hard even when implementations on ei
 
 ### Implemented
 
-Current `main` contains the accepted Lane C/native Kernel foundation:
+The repository contains the accepted Lane C/native Kernel foundation:
 
 - C++ native Kernel;
 - durable physical Work and restart recovery;
@@ -108,9 +108,11 @@ Current `main` contains the accepted Lane C/native Kernel foundation:
 - small Java `madre-kernel-client`;
 - real native llama.cpp worker path.
 
+The first Runtime base adds a small public Java `madre-sdk` with `MadreModule`, `Agent`, and `Operation`; owner-local JAR installation and discovery; and persisted assignment of the CORE role to an ordinary Module. See [`docs/architecture/runtime-base.md`](docs/architecture/runtime-base.md) for its exact contract and limits.
+
 ### Not yet implemented
 
-The semantic SDK/Module layer and MADRE Runtime described by the accepted architecture are still missing from the active tree. Their architecture is documented; their implementation must be built cleanly rather than restored wholesale from discarded historical code.
+Agent and Operation behavior, cross-Module invocation, delegation, SPIRA carriers, semantic reasoning, and delayed continuation are not implemented in this base. Their SDK contracts remain open for Owner-led architecture work.
 
 ## Documentation
 

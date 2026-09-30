@@ -1,9 +1,9 @@
-name: MADRE Lane C validation
+name: MADRE validation
 
 on:
   pull_request:
   push:
-    branches: [main, 'agentic/c2-scheduling-recovery', 'agentic/c3-worker-resources', 'agentic/c4-llamacpp-worker', 'agentic/c5-hardening']
+    branches: [main, 'agentic/runtime-first', 'agentic/c2-scheduling-recovery', 'agentic/c3-worker-resources', 'agentic/c4-llamacpp-worker', 'agentic/c5-hardening']
   workflow_dispatch:
 
 permissions:
@@ -31,7 +31,7 @@ jobs:
           cmake --build kernel/build --parallel 2
       - name: Run native unit tests
         run: ctest --test-dir kernel/build --output-on-failure
-      - name: Build Java physical client
+      - name: Build Java physical client, SDK, and Runtime base
         run: ./gradlew --no-daemon clean build
       - name: Prove caller-disappearance durability
         run: ./kernel/tests/caller_disappearance.sh ./kernel/build/madre-kernel 'madre-kernel-client/build/classes/java/main:madre-kernel-client/build/classes/java/test'
@@ -80,7 +80,7 @@ jobs:
       - name: Run native unit tests
         shell: pwsh
         run: ctest --test-dir kernel/build -C Release --output-on-failure
-      - name: Build Java physical client and acceptance harness
+      - name: Build Java physical client, SDK, Runtime base, and acceptance harness
         shell: pwsh
         run: .\gradlew.bat --no-daemon clean build
       - name: Prove C5 Windows named-pipe and process hardening
